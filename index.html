@@ -1,0 +1,325 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>IHBB Premium Drill — Audio Only (v2)</title>
+  <meta name="color-scheme" content="light dark">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="shell">
+  <div class="brand">
+    <div class="logo">IH</div>
+    <div>
+      <h1>IHBB Premium Drill — Audio Only</h1>
+      <div class="sub">Buzz early, train fast. <b>Space</b> to Buzz → 5-sec timer → answer → mark → <b>N</b>ext.</div>
+      <nav class="nav">
+        <a href="#" id="nav-setup" class="active">Setup</a>
+        <a href="#" id="nav-practice">Practice</a>
+        <a href="#" id="nav-review">Review</a>
+        <a href="#" id="nav-library">Library</a>
+        <a href="#" id="nav-help">Shortcuts ?</a>
+      </nav>
+    </div>
+  </div>
+
+  <!-- SETUP -->
+  <section id="view-setup" class="view active">
+    <div class="grid grid-2">
+      <!-- Quick Start -->
+      <div class="card">
+        <div class="card-title">Quick Start</div>
+        <div class="col">
+          <div class="row" style="align-items:flex-end">
+            <div class="col" style="flex:1 1 320px">
+              <label class="muted">Question set</label>
+              <div class="row">
+                <select id="qs-picker" style="min-width:260px"></select>
+                <button class="btn ghost" id="qs-preview">Preview 5</button>
+                <input id="fileInput" type="file" accept=".txt"/>
+              </div>
+              <div class="muted" id="qs-meta">—</div>
+            </div>
+            <div class="right">
+              <button id="btn-demo-fetch" class="btn ghost">Fetch default</button>
+            </div>
+          </div>
+
+          <!-- Prominent category picker on startup -->
+          <div class="row" id="cat-row">
+            <div class="col" style="flex:1 1 320px">
+              <label class="muted">Categories</label><br>
+              <div id="cat-chips" class="chips"></div>
+            </div>
+          </div>
+
+          <div class="row">
+            <div>
+              <label class="muted">Mode</label><br>
+              <div class="chips" id="mode-chips">
+                <div class="chip active" data-mode="random">Random</div>
+                <div class="chip" data-mode="sequential">Sequential</div>
+                <div class="chip" data-mode="srs">Wrong-bank (SRS)</div>
+              </div>
+            </div>
+            <div>
+              <label class="muted">Session length</label><br>
+              <div class="chips" id="len-chips">
+                <div class="chip active" data-n="10">10</div>
+                <div class="chip" data-n="15">15</div>
+                <div class="chip" data-n="20">20</div>
+                <div class="chip" data-n="50">50</div>
+                <div class="chip" data-n="all">All</div>
+                <div class="chip" data-n="custom">Custom</div>
+                <input id="len-custom" type="number" min="1" max="500" placeholder="#" style="width:90px; display:none">
+              </div>
+            </div>
+          </div>
+
+          <div class="row" id="filter-row">
+            <div>
+              <label class="muted">Era</label><br>
+              <select id="filter-era" style="min-width:160px"><option value="">All</option></select>
+            </div>
+            <div>
+              <label class="muted">Source</label><br>
+              <select id="filter-src" style="min-width:180px"><option value="">All</option></select>
+            </div>
+          </div>
+
+          <div class="row" style="margin-top:8px">
+            <button id="startSession" class="btn pri icon">▶ Start Session</button>
+            <button id="startLast" class="btn ghost">Start last settings</button>
+            <div class="grow"></div>
+            <button id="savePreset" class="btn ghost">Save preset</button>
+            <select id="presetSel" style="min-width:200px"><option value="">Load preset…</option></select>
+            <button id="delPreset" class="btn ghost">Delete</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Advanced -->
+      <div class="card">
+        <div class="row" style="align-items:center">
+          <div class="card-title" style="margin:0">Advanced</div>
+          <div class="muted">(voice, buzz, cues, strict mode, auto-advance)</div>
+          <div class="grow"></div>
+          <button id="advToggle" class="btn ghost icon"><span id="advCaret" class="caret">▾</span> Toggle</button>
+        </div>
+        <div id="advBody">
+          <div class="sep"></div>
+          <div class="col">
+            <div class="row">
+              <div class="col" style="min-width:260px">
+                <label class="muted">Voice</label>
+                <select id="voiceSel" style="min-width:260px"></select>
+              </div>
+              <label class="muted">Rate
+                <input id="rate" type="range" min="0.8" max="1.25" step="0.05" value="1.0" style="vertical-align:middle;">
+              </label>
+              <button id="testVoice" class="btn ghost">Pronunciation test</button>
+            </div>
+
+            <div class="row">
+              <div class="pill"><input id="strictMode" type="checkbox"> Strict Mode (Requires Correct Spelling)</div>
+              <div class="pill"><input id="autoAdvance" type="checkbox"> Auto-advance after mark</div>
+              <div class="pill"><label>Delay <input id="autoAdvanceDelay" type="number" min="0" max="5" value="1" style="width:70px"></label>s</div>
+            </div>
+
+            <div class="row">
+              <div class="pill"><input id="cueTicks" type="checkbox" checked> Countdown ticks</div>
+              <div class="pill"><input id="cueBeep" type="checkbox" checked> Final beep</div>
+              <div class="pill"><input id="haptics" type="checkbox" checked> Haptics (mobile)</div>
+            </div>
+
+            <div class="row">
+              <div class="pill">Shortcuts: Space=Buzz • R=Right • W=Wrong • N=Next • L=Replay • ?=Help</div>
+              <div class="grow"></div>
+              <button id="openHelp" class="btn ghost">Open help</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- PRACTICE -->
+  <section id="view-practice" class="view">
+    <div class="card">
+      <div class="row">
+        <div class="pill">Total: <span id="drill-total">—</span></div>
+        <div class="pill">Correct: <span id="drill-correct" class="stat">0</span></div>
+        <div class="pill">Accuracy: <span id="drill-acc" class="stat">—</span></div>
+        <div class="bar" style="flex:1 1 280px"><span id="barfill"></span></div>
+        <div class="pill right muted" id="drill-progress">0 / 0</div>
+      </div>
+      <div class="sep"></div>
+
+      <div class="row" style="align-items:center">
+        <div class="big" id="status">Ready.</div>
+        <div class="pill">Buzz time: <span id="buzz-time" class="stat">—</span></div>
+        <div class="grow"></div>
+        <button id="btn-pause" class="btn ghost">Pause</button>
+        <button id="btn-quit" class="btn ghost">Quit</button>
+      </div>
+
+      <div class="buzz-wrap">
+        <button id="btn-buzz" class="buzz pulse">B U Z Z (Space)</button>
+      </div>
+
+      <div class="counter" id="countdown"></div>
+      <div class="row" id="typing-row" style="display:none; margin-top:10px">
+        <input id="user-answer" type="text" placeholder="Type your answer…" style="flex:1 1 420px"/>
+        <button id="btn-submit-answer" class="btn pri">Submit</button>
+      </div>
+      <div class="answer" id="answer"></div>
+
+      <div class="row practice-bottom" style="margin-top:14px">
+        <button id="btn-replay" class="btn ghost" disabled>Replay last line (L)</button>
+        <button id="btn-next" class="btn ghost" disabled>Next (N)</button>
+        <!-- Manual grading disabled when auto-grade is on -->
+        <button id="btn-right" class="btn good" disabled style="display:none">✔ Right (R)</button>
+        <button id="btn-wrong" class="btn bad" disabled style="display:none">✖ Wrong (W)</button>
+        <div class="grow"></div>
+        <button id="btn-copy-answer" class="btn ghost" disabled>Copy answer (C)</button>
+        <button id="btn-alias" class="btn ghost" disabled>Add alias</button>
+        <button id="btn-flag" class="btn ghost" disabled>Flag</button>
+      </div>
+
+      <div class="muted" style="margin-top:10px">Space = Buzz • R = Right • W = Wrong • N = Next • L = Replay • ? = Help</div>
+    </div>
+  </section>
+
+  <!-- REVIEW -->
+  <section id="view-review" class="view">
+    <div class="grid grid-2">
+      <div class="card">
+        <div class="card-title">Last session</div>
+        <div class="row">
+          <div class="pill">Total: <span id="r-last-total">—</span></div>
+          <div class="pill">Correct: <span id="r-last-correct">—</span></div>
+          <div class="pill">Accuracy: <span id="r-last-acc">—</span></div>
+          <div class="pill">Duration: <span id="r-last-dur">—</span></div>
+        </div>
+        <div class="sep"></div>
+        <svg id="chart-buzz" class="chart" viewBox="0 0 640 180" aria-label="Time to buzz histogram"></svg>
+        <div class="sep"></div>
+        <svg id="chart-acc-cat" class="chart" viewBox="0 0 640 180" aria-label="Accuracy by region"></svg>
+        <div class="sep"></div>
+        <div class="row">
+          <button id="btn-review-misses" class="btn pri">Review missed now</button>
+          <button id="btn-export-wrong" class="btn ghost">Export wrong.txt</button>
+          <div class="grow"></div>
+          <button id="btn-clear-wrong" class="btn ghost">Clear wrong bank</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Wrong bank (SRS)</div>
+        <div class="row">
+          <div class="pill">Due today: <span id="due-today">0</span></div>
+          <div class="pill">Total tracked: <span id="wrong-count">0</span></div>
+          <div class="grow"></div
+>
+         <button id="btn-practice-due" class="btn ghost">Practice due now</button>
+        </div>
+        <div class="sep"></div>
+        <div class="row" style="margin-bottom:6px">
+          <input id="wrong-search" type="text" placeholder="Search in wrong bank…" style="flex:1 1 auto">
+          <button id="wrong-refresh" class="btn ghost">Refresh</button>
+        </div>
+        <div style="max-height:320px; overflow:auto">
+          <table id="tbl-wrong">
+            <thead><tr><th>Answer</th><th>Box</th><th>Due</th><th>Aliases</th><th></th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:14px">
+      <div class="card-title">History</div>
+      <div style="overflow:auto">
+        <table id="tbl-history">
+          <thead>
+            <tr><th>Date</th><th>Total</th><th>Correct</th><th>Accuracy</th><th>Duration</th><th>Actions</th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div class="sep"></div>
+      <div class="row">
+        <button id="btn-clear-history" class="btn ghost">Clear history</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- LIBRARY -->
+  <section id="view-library" class="view">
+    <div class="card">
+      <div class="row">
+        <div class="card-title">Library — manage sets, tags, filters</div>
+        <div class="grow"></div>
+        <button id="lib-new-set" class="btn ghost">New set from file</button>
+        <button id="lib-sanitize-all" class="btn ghost">Sanitize current set</button>
+        <button id="lib-import-btn" class="btn ghost">Import JSON</button>
+        <button id="lib-export-all" class="btn ghost">Export all sets</button>
+        <button id="lib-merge-dupes" class="btn ghost">Merge duplicates</button>
+      </div>
+      <div class="sep"></div>
+      <div class="row">
+        <select id="lib-set-sel" style="min-width:260px"></select>
+        <div class="pill">Items: <span id="lib-count">0</span></div>
+        <div class="pill">Categories: <span id="lib-cats">—</span></div>
+        <div class="pill">Eras: <span id="lib-eras">—</span></div>
+        <div class="grow"></div>
+        <button id="lib-export-json" class="btn ghost">Export JSON</button>
+      </div>
+      <div class="sep"></div>
+      <div class="row" style="margin-bottom:6px">
+        <input id="lib-search" type="text" placeholder="Search question/answer…" style="flex:1 1 auto">
+        <select id="lib-filter-cat" style="min-width:160px"><option value="">All regions</option></select>
+        <select id="lib-filter-era" style="min-width:140px"><option value="">All eras</option></select>
+        <div class="grow"></div>
+        <button id="lib-practice-filtered" class="btn pri">Practice filtered</button>
+      </div>
+      <div style="max-height:420px; overflow:auto">
+        <table id="tbl-lib"><thead><tr><th>#</th><th>Answer</th><th>Aliases</th><th>Region</th><th>Era</th><th>Source</th></tr></thead><tbody></tbody></table>
+      </div>
+    </div>
+  </section>
+</div>
+
+<!-- Hidden inputs -->
+<input id="lib-import-json" type="file" accept="application/json" style="display:none">
+
+<!-- Help Overlay -->
+<div id="overlay" class="overlay" role="dialog" aria-modal="true">
+  <div class="sheet">
+    <div class="row" style="align-items:center">
+      <div class="card-title" style="margin:0">Keyboard shortcuts</div>
+      <div class="grow"></div>
+      <button id="closeHelp" class="btn ghost">Close</button>
+    </div>
+    <div class="sep"></div>
+    <table>
+      <thead><tr><th>Key</th><th>Action</th></tr></thead>
+      <tbody>
+        <tr><td>Space</td><td>Buzz</td></tr>
+        <tr><td>R</td><td>Mark Right</td></tr>
+        <tr><td>W</td><td>Mark Wrong</td></tr>
+        <tr><td>N</td><td>Next</td></tr>
+        <tr><td>L</td><td>Replay last line</td></tr>
+        <tr><td>?</td><td>Open/close cheatsheet</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div id="toast" class="toast"></div>
+
+<!-- Your logic file -->
+<script src="app.js"></script>
+</body>
+</html>
