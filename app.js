@@ -1257,13 +1257,13 @@ async function submitAnswer(auto = false) {
 
   let correct = false, reason = '';
   try {
-    const res = await fetch('http://127.0.0.1:5057/grade', {
+    const res = await fetch('/api/grade', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         question: item.question,
         expected: item.answer,
         aliases: item.aliases || [],
-        user_answer: userAns,
+        answer: userAns,
         strict: !!Settings.strict
       })
     });
@@ -2301,13 +2301,13 @@ async function submitAnswer(auto = false) {
 
   let correct = false, reason = '';
   try {
-    const res = await fetch('http://127.0.0.1:5057/grade', {
+    const res = await fetch('/api/grade', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         question: item.question,
         expected: item.answer,
         aliases: item.aliases || [],
-        user_answer: userAns,
+        answer: userAns,
         strict: !!Settings.strict
       })
     });
@@ -2344,4 +2344,5 @@ try {
   window.markRight = function(){ if (App.autoGrade) return; return __origMarkRight(); };
   window.markWrong = function(){ if (App.autoGrade) return; return __origMarkWrong(); };
 } catch {}
+
 
