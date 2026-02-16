@@ -1,3 +1,4 @@
+import logging
 import os
 import json
 from typing import List, Dict, Any
@@ -7,13 +8,16 @@ from urllib.parse import urlparse
 
 import requests
 
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+log = logging.getLogger(__name__)
+from dotenv import load_dotenv
+
+load_dotenv()
 
 PORT = int(os.environ.get("IHBB_SERVER_PORT", "5057"))
-OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY")
-OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
-MODEL = os.environ.get("OPENROUTER_MODEL", "deepseek/deepseek-chat-v3.1:free")
-SITE_URL = os.environ.get("OPENROUTER_SITE_URL", "")
-SITE_NAME = os.environ.get("OPENROUTER_SITE_NAME", "")
+DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY")
+DEEPSEEK_URL = "https://api.deepseek.com/v1/chat/completions"
+MODEL = os.environ.get("DEEPSEEK_MODEL", "deepseek-chat")
 
 
 def normalize(s: str) -> str:
@@ -32,21 +36,17 @@ def basic_match(user: str, expected: str, aliases: List[str]) -> bool:
     return False
 
 
-def grade_with_openrouter(payload: Dict[str, Any]) -> Dict[str, Any]:
-    if not OPENROUTER_API_KEY:
+def grade_with_deepseek(payload: Dict[str, Any]) -> Dict[str, Any]:
+    if not DEEPSEEK_API_KEY:
         return {
             "correct": basic_match(payload.get("user_answer", ""), payload.get("expected", ""), payload.get("aliases", [])),
-            "reason": "OPENROUTER_API_KEY not set; used fallback matcher"
+            "reason": "DEEPSEEK_API_KEY not set; used fallback matcher"
         }
 
     headers = {
-        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+        "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
         "Content-Type": "application/json",
     }
-    if SITE_URL:
-        headers["HTTP-Referer"] = SITE_URL
-    if SITE_NAME:
-        headers["X-Title"] = SITE_NAME
 
     system = (
         "You are a concise, strict grader for quiz-bowl short answers.\n"
@@ -75,7 +75,7 @@ def grade_with_openrouter(payload: Dict[str, Any]) -> Dict[str, Any]:
     }
 
     try:
-        r = requests.post(OPENROUTER_URL, headers=headers, json=body, timeout=20)
+        r = requests.post(DEEPSEEK_URL, headers=headers, json=body, timeout=20)
         r.raise_for_status()
         data = r.json()
         content = data["choices"][0]["message"]["content"] if data.get("choices") else ""
@@ -85,8 +85,20 @@ def grade_with_openrouter(payload: Dict[str, Any]) -> Dict[str, Any]:
         if start != -1 and end != -1 and end > start:
             obj = json.loads(content[start:end+1])
             return {"correct": bool(obj.get("correct", False)), "reason": str(obj.get("reason", ""))}
-    except Exception:
-        pass
+    except requests.exceptions.Timeout as e:
+        log.error("DeepSeek API request timeout: %s", e)
+    except requests.exceptions.ConnectionError as e:
+        log.error("DeepSeek API connection error: %s", e)
+    except requests.exceptions.HTTPError as e:
+        log.error("DeepSeek API HTTP error: %s, response: %s", e, getattr(e.response, "text", ""))
+    except (KeyError, IndexError, json.JSONDecodeError) as e:
+        try:
+            preview = r.text[:500] if r else "N/A"
+        except Exception:
+            preview = "N/A"
+        log.error("DeepSeek API response parse error: %s, response preview: %s", e, preview)
+    except Exception as e:
+        log.exception("DeepSeek API unexpected error: %s", e)
 
     # Fallback
     return {
@@ -189,7 +201,7 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(b"{\"error\":\"invalid json\"}")
             return
 
-        result = grade_with_openrouter(payload)
+        result = grade_with_deepseek(payload)
         self._set_headers(200)
         self.wfile.write(json.dumps(result).encode('utf-8'))
 
@@ -213,7 +225,7 @@ class NoFQDNHTTPServer(HTTPServer):
 def run():
     server = NoFQDNHTTPServer(("127.0.0.1", PORT), Handler)
     print(f"* Grader server listening on http://127.0.0.1:{PORT}")
-    print("* Set OPENROUTER_API_KEY env var to enable DeepSeek via OpenRouter")
+    print("* Set DEEPSEEK_API_KEY env var to enable DeepSeek API grading")
     try:
         server.serve_forever()
     except KeyboardInterrupt:
