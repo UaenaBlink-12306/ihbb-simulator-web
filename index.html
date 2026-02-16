@@ -37,19 +37,20 @@
               <div class="row">
                 <select id="qs-picker" style="min-width:260px"></select>
                 <button class="btn ghost" id="qs-preview">Preview 5</button>
-                <input id="fileInput" type="file" accept=".txt"/>
+                <input id="fileInput" type="file" accept=".json,application/json,text/json" style="display:none"/>
               </div>
               <div class="muted" id="qs-meta">—</div>
             </div>
             <div class="right">
-              <button id="btn-demo-fetch" class="btn ghost">Fetch default</button>
+              <button id="btn-upload-json" class="btn ghost">Upload questions.json</button>
+              <button id="btn-demo-fetch" class="btn ghost">Reload questions.json</button>
             </div>
           </div>
 
-          <!-- Prominent category picker on startup -->
+          <!-- Category filter — click to practice specific regions (East Asia, European History, etc.) -->
           <div class="row" id="cat-row">
             <div class="col" style="flex:1 1 320px">
-              <label class="muted">Categories</label><br>
+              <label class="muted">Practice by category (click to toggle)</label><br>
               <div id="cat-chips" class="chips"></div>
             </div>
           </div>
@@ -292,7 +293,7 @@
 </div>
 
 <!-- Hidden inputs -->
-<input id="lib-import-json" type="file" accept="application/json" style="display:none">
+<input id="lib-import-json" type="file" accept=".json,application/json,text/json" style="display:none">
 
 <!-- Help Overlay -->
 <div id="overlay" class="overlay" role="dialog" aria-modal="true">
