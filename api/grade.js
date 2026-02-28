@@ -49,7 +49,8 @@ export default async function handler(req, res) {
     const messages = [
       {
         role: 'system',
-        content: 'You are a strict quiz grader. Reply with ONLY JSON: {"correct": true|false, "reason": "brief explanation"}.'
+        content:
+          'You are a grader for IHBB. Only respond with a JSON object having two keys: "correct" (true or false) and "reason" (brief explanation). Do not include any other text or commentary.'
       },
       {
         role: 'user',
