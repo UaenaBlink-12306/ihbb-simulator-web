@@ -1,6 +1,6 @@
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
+.    return res.status(405).json({ error: 'Method not allowed' });
   }
   try {
     const { question = '', answer = '', expected = '', aliases = [], strict = true } = req.body || {};
@@ -65,8 +65,9 @@ export default async function handler(req, res) {
       body: JSON.stringify({
         model,
         messages,
-        temperature: 0.0,
-        max_tokens: 40
+            response_format: { type: 'json_object' },
+      temperature: 0.0,
+        max_tokens: 200
       })
     });
     const data = await response.json();
