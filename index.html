@@ -76,22 +76,6 @@
           });
         }
 
-        // Account Deletion
-        const delBtn = document.getElementById('nav-delete-account');
-        if (delBtn) {
-          delBtn.addEventListener('click', async (e) => {
-            e.preventDefault();
-            if (!confirm('⚠️ Are you sure you want to permanently delete your account and all data? This cannot be undone.')) return;
-            if (!confirm('This is your FINAL warning. All your data will be erased forever. Proceed?')) return;
-            try {
-              await window.supabaseClient.rpc('delete_user');
-              await window.supabaseClient.auth.signOut();
-              window.location.replace('login.html');
-            } catch (err) {
-              alert('Failed to delete account: ' + (err.message || err));
-            }
-          });
-        }
       } catch (err) {
         console.error("Auth failed:", err);
         window.location.replace('login.html');
@@ -114,7 +98,6 @@
           <a href="#" id="nav-library">Library</a>
           <a href="#" id="nav-help">Shortcuts ?</a>
           <a href="index.html" style="margin-left:auto;">📊 Dashboard</a>
-          <a href="#" id="nav-delete-account" style="color:#f85149; font-size:12px;">Delete Account</a>
           <a href="#" id="nav-logout" style="color:var(--error-color, #f85149); font-weight:600;">Logout</a>
         </nav>
       </div>
