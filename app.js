@@ -1331,7 +1331,7 @@ try {
 
 /********************* Assignment Integration *********************/
 // When opened with ?assignment=<id>, load assignment questions from localStorage
-// and auto-submit the score back to Supabase when the session is done.
+// and auto-start the practice session so the student goes straight to the buzz button.
 (function assignmentHook() {
   const params = new URLSearchParams(window.location.search);
   const assignId = params.get('assignment');
@@ -1360,22 +1360,20 @@ try {
     renderLibrarySelectors();
     updateSetMeta();
 
-    // Show a banner
-    toast('📝 Assignment loaded: ' + (assignData.title || 'Assignment'));
+    // Set session length to ALL questions and mode to sequential
+    App.size = 'all';
+    App.mode = 'sequential';
 
-    // Monitor for session end to submit score
-    const origFinishSession = window.finishSession;
-    if (typeof origFinishSession === 'function') {
-      window.finishSession = function () {
-        origFinishSession.apply(this, arguments);
-        submitAssignmentScore(assignId, items.length);
-      };
-    }
+    // Auto-start the session after a short delay (DOM needs to be ready)
+    setTimeout(() => {
+      toast('📝 Starting assignment: ' + (assignData.title || 'Assignment'));
+      startSession();
+    }, 500);
 
-    // Also hook into the review screen rendering as a fallback
+    // Monitor for session end (review view becomes active) and submit score
     const checkDone = setInterval(() => {
-      const reviewEl = document.getElementById('v-review');
-      if (reviewEl && reviewEl.classList.contains('active') && App.phase === 'idle') {
+      const reviewEl = document.querySelector('.view.active');
+      if (reviewEl && reviewEl.id && reviewEl.id.includes('review') && App.phase === 'idle' && App.i >= App.order.length) {
         clearInterval(checkDone);
         submitAssignmentScore(assignId, items.length);
       }
@@ -1398,7 +1396,6 @@ try {
         total: total,
         correct: App.correct || 0
       });
-      // Clean up localStorage
       localStorage.removeItem(storageKey);
       toast('✅ Assignment score submitted!');
     } catch (e) {
@@ -1406,3 +1403,4 @@ try {
     }
   }
 })();
+
