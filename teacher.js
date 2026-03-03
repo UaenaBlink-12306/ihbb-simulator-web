@@ -162,6 +162,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 <span style="font-size: 20px;">👤</span>
                 <span class="item-title">${esc(nameMap[s.student_id] || 'Unnamed')}</span>
                 <span class="item-meta">Joined ${new Date(s.joined_at).toLocaleDateString()}</span>
+                <a class="btn ghost" href="profile.html?user=${encodeURIComponent(s.student_id)}">Profile</a>
             </div>
         `).join('');
         showModal(`Enrolled Students (${data.length})`, html);
@@ -246,12 +247,14 @@ document.addEventListener('DOMContentLoaded', async () => {
                     <span class="item-title">${esc(name)}</span>
                     <span class="item-score ${pct >= 50 ? 'good' : 'bad'}">${sub.correct}/${sub.total} (${pct}%)</span>
                     <span class="status-pill done">✓ Completed</span>
+                    <a class="btn ghost" href="profile.html?user=${encodeURIComponent(sid)}">Profile</a>
                 </div>`;
             } else {
                 return `<div class="list-item">
                     <span style="font-size: 20px;">👤</span>
                     <span class="item-title">${esc(name)}</span>
                     <span class="status-pill pending">⏳ Not Completed</span>
+                    <a class="btn ghost" href="profile.html?user=${encodeURIComponent(sid)}">Profile</a>
                 </div>`;
             }
         }).join('');
