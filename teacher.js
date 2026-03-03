@@ -18,6 +18,26 @@ document.addEventListener('DOMContentLoaded', async () => {
     let selectedQuestions = [];
     let myClasses = [];
 
+    const ERA_LABELS = {
+        "01": "8000 BCE – 600 BCE",
+        "02": "600 BCE – 600 CE",
+        "03": "600 CE – 1450 CE",
+        "04": "1450 CE – 1750 CE",
+        "05": "1750 – 1914",
+        "06": "1914 – 1991",
+        "07": "1991 – Present"
+    };
+    const getEraLabel = (era) => ERA_LABELS[era] || era;
+    const sortEraCodes = (codes) => (codes || []).slice().sort((a, b) => {
+        const na = Number.parseInt(String(a), 10);
+        const nb = Number.parseInt(String(b), 10);
+        const aNum = Number.isFinite(na);
+        const bNum = Number.isFinite(nb);
+        if (aNum && bNum && na !== nb) return na - nb;
+        if (aNum !== bNum) return aNum ? -1 : 1;
+        return String(a).localeCompare(String(b));
+    });
+
     // Load questions from questions.json
     try {
         const res = await fetch('questions.json');
@@ -213,11 +233,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     // ========== CREATE ASSIGNMENT ==========
     // Populate filter dropdowns
     const cats = [...new Set(allQuestions.map(q => q.meta?.category || q.category || '').filter(Boolean))];
-    const eras = [...new Set(allQuestions.map(q => q.meta?.era || q.era || '').filter(Boolean))];
+    const eras = sortEraCodes([...new Set(allQuestions.map(q => q.meta?.era || q.era || '').filter(Boolean))]);
     const catSel = document.getElementById('filter-category');
     const eraSel = document.getElementById('filter-era-select');
     cats.forEach(c => { const o = document.createElement('option'); o.value = c; o.textContent = c; catSel.appendChild(o); });
-    eras.forEach(e => { const o = document.createElement('option'); o.value = e; o.textContent = e; eraSel.appendChild(o); });
+    eras.forEach(e => {
+        const o = document.createElement('option');
+        o.value = e;
+        o.textContent = getEraLabel(e);
+        eraSel.appendChild(o);
+    });
 
     function updatePreview() {
         const area = document.getElementById('preview-area');

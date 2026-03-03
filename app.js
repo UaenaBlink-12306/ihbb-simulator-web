@@ -175,7 +175,7 @@ function updateSetMeta() {
   const qm = $('qs-meta'); if (qm) qm.textContent = set ? `Items: ${set.items.length}` : '—';
   const lc = $('lib-count'); if (lc) lc.textContent = set ? String(set.items.length) : '0';
   const cats = set ? [...new Set(set.items.map(it => it.meta?.category || '').filter(Boolean))] : [];
-  const eras = set ? [...new Set(set.items.map(it => it.meta?.era || '').filter(Boolean))] : [];
+  const eras = set ? sortEraCodes([...new Set(set.items.map(it => it.meta?.era || '').filter(Boolean))]) : [];
   const lca = $('lib-cats'); if (lca) lca.textContent = cats.length ? String(cats.length) : '—';
   const le = $('lib-eras'); if (le) le.textContent = eras.length ? String(eras.length) : '—';
 
@@ -203,17 +203,29 @@ function updateSetMeta() {
 }
 
 const ERA_NAMES = {
-  "01": "8000 BCE - 600 BCE",
-  "02": "600 BCE - 600 CE",
-  "03": "600 CE - 1450 CE",
-  "04": "1450 CE - 1750 CE",
-  "05": "1750-1914",
-  "06": "1914-1991",
-  "07": "1991-Present"
+  "01": "8000 BCE – 600 BCE",
+  "02": "600 BCE – 600 CE",
+  "03": "600 CE – 1450 CE",
+  "04": "1450 CE – 1750 CE",
+  "05": "1750 – 1914",
+  "06": "1914 – 1991",
+  "07": "1991 – Present"
 };
 
 function getEraName(code) {
   return ERA_NAMES[code] || code;
+}
+
+function sortEraCodes(codes) {
+  return (codes || []).slice().sort((a, b) => {
+    const na = Number.parseInt(String(a), 10);
+    const nb = Number.parseInt(String(b), 10);
+    const aNum = Number.isFinite(na);
+    const bNum = Number.isFinite(nb);
+    if (aNum && bNum && na !== nb) return na - nb;
+    if (aNum !== bNum) return aNum ? -1 : 1;
+    return String(a).localeCompare(String(b));
+  });
 }
 
 function updateFilterRow() {
