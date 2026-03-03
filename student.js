@@ -30,7 +30,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.querySelectorAll('.dash-tab').forEach(tab => {
         tab.addEventListener('click', () => {
             document.querySelectorAll('.dash-tab').forEach(t => t.classList.remove('active'));
-            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            document.querySelectorAll('.view').forEach(c => c.classList.remove('active'));
             tab.classList.add('active');
             document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
         });
@@ -63,7 +63,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             return `<div class="list-item">
                 <span class="item-title">${esc(c.name)}</span>
                 <span class="item-badge">${c.code}</span>
-                <button class="dash-btn danger" onclick="leaveClass('${cs.class_id}')">Leave</button>
+                <button class="btn bad" onclick="leaveClass('${cs.class_id}')">Leave</button>
             </div>`;
         }).join('');
     }
@@ -96,11 +96,22 @@ document.addEventListener('DOMContentLoaded', async () => {
         loadClasses(); loadAssignments();
     };
 
+    // ========== ASSIGNMENT SUB-TABS ==========
+    document.querySelectorAll('.assign-sub-tab').forEach(tab => {
+        tab.addEventListener('click', () => {
+            document.querySelectorAll('.assign-sub-tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.assign-panel').forEach(p => p.classList.add('hidden'));
+            tab.classList.add('active');
+            document.getElementById('assign-' + tab.dataset.sub).classList.remove('hidden');
+        });
+    });
+
     // ========== ASSIGNMENTS ==========
     async function loadAssignments() {
         const { data: memberships } = await sb.from('class_students').select('class_id').eq('student_id', uid);
         if (!memberships || !memberships.length) {
-            document.getElementById('student-assignments').innerHTML = '<p class="muted">Join a class to see assignments.</p>';
+            document.getElementById('student-assignments-todo').innerHTML = '<p class="muted">Join a class to see assignments.</p>';
+            document.getElementById('student-assignments-completed').innerHTML = '<p class="muted">No completed assignments.</p>';
             return;
         }
         const classIds = memberships.map(m => m.class_id);
@@ -114,25 +125,50 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     function renderAssignments(list, subMap) {
-        const el = document.getElementById('student-assignments');
-        if (!list.length) { el.innerHTML = '<p class="muted">No assignments yet.</p>'; return; }
-        el.innerHTML = list.map(a => {
-            const due = a.due_date ? new Date(a.due_date).toLocaleDateString() : 'No deadline';
-            const cls = a.classes?.name || '';
-            const sub = subMap[a.id];
-            let statusHtml;
-            if (sub) {
+        const todoEl = document.getElementById('student-assignments-todo');
+        const doneEl = document.getElementById('student-assignments-completed');
+
+        const todoList = list.filter(a => !subMap[a.id]);
+        const doneList = list.filter(a => subMap[a.id]);
+
+        // Render To Do
+        if (!todoList.length) {
+            todoEl.innerHTML = '<p class="muted">🎉 All caught up! No pending assignments.</p>';
+        } else {
+            todoEl.innerHTML = todoList.map(a => {
+                const due = a.due_date ? new Date(a.due_date).toLocaleDateString() : 'No deadline';
+                const cls = a.classes?.name || '';
+                return `<div class="list-item">
+                    <span class="item-title">${esc(a.title)}</span>
+                    <span class="item-meta">${esc(cls)} · Due: ${due}</span>
+                    <button class="btn pri" onclick="startAssignment('${a.id}', '${esc(a.title)}')">🎯 Start</button>
+                </div>`;
+            }).join('');
+        }
+
+        // Render Completed
+        if (!doneList.length) {
+            doneEl.innerHTML = '<p class="muted">No completed assignments yet.</p>';
+        } else {
+            doneEl.innerHTML = doneList.map(a => {
+                const due = a.due_date ? new Date(a.due_date).toLocaleDateString() : 'No deadline';
+                const cls = a.classes?.name || '';
+                const sub = subMap[a.id];
                 const pct = sub.total ? Math.round(sub.correct / sub.total * 100) : 0;
-                statusHtml = `<span class="item-score ${pct >= 50 ? 'good' : 'bad'}">${sub.correct}/${sub.total} (${pct}%)</span>`;
-            } else {
-                statusHtml = `<button class="dash-btn primary" onclick="startAssignment('${a.id}', '${esc(a.title)}')">🎯 Start in Practice Hub</button>`;
-            }
-            return `<div class="list-item">
-                <span class="item-title">${esc(a.title)}</span>
-                <span class="item-meta">${esc(cls)} · Due: ${due}</span>
-                ${statusHtml}
-            </div>`;
-        }).join('');
+                return `<div class="list-item">
+                    <span class="item-title">${esc(a.title)}</span>
+                    <span class="item-meta">${esc(cls)} · Due: ${due}</span>
+                    <span class="item-score ${pct >= 50 ? 'good' : 'bad'}">${sub.correct}/${sub.total} (${pct}%)</span>
+                    <button class="btn ghost" onclick="startAssignment('${a.id}', '${esc(a.title)}')">🔄 Redo</button>
+                </div>`;
+            }).join('');
+        }
+
+        // Update sub-tab labels with counts
+        document.querySelectorAll('.assign-sub-tab').forEach(t => {
+            if (t.dataset.sub === 'todo') t.textContent = `📋 To Do (${todoList.length})`;
+            if (t.dataset.sub === 'completed') t.textContent = `✅ Completed (${doneList.length})`;
+        });
     }
 
     // ========== START ASSIGNMENT → PRACTICE HUB ==========

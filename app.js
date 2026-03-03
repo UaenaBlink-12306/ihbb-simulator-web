@@ -1397,7 +1397,8 @@ try {
         correct: App.correct || 0
       });
       localStorage.removeItem(storageKey);
-      toast('✅ Assignment score submitted!');
+      toast('✅ Assignment score submitted! Returning to dashboard...');
+      setTimeout(() => { window.location.href = 'student.html'; }, 2500);
     } catch (e) {
       console.error('Score submit error:', e);
     }

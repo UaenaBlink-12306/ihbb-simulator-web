@@ -29,7 +29,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.querySelectorAll('.dash-tab').forEach(tab => {
         tab.addEventListener('click', () => {
             document.querySelectorAll('.dash-tab').forEach(t => t.classList.remove('active'));
-            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            document.querySelectorAll('.view').forEach(c => c.classList.remove('active'));
             tab.classList.add('active');
             document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
         });
@@ -73,25 +73,43 @@ document.addEventListener('DOMContentLoaded', async () => {
             <div class="list-item">
                 <span class="item-title">${esc(c.name)}</span>
                 <span class="item-badge">${c.code}</span>
-                <button class="dash-btn ghost" onclick="copyCode('${c.code}')">Copy Code</button>
-                <button class="dash-btn ghost" onclick="viewStudents('${c.id}')">Students</button>
-                <button class="dash-btn danger" onclick="deleteClass('${c.id}')">Delete</button>
+                <button class="btn ghost" onclick="copyCode('${c.code}')">Copy Code</button>
+                <button class="btn ghost" onclick="viewStudents('${c.id}')">Students</button>
+                <button class="btn bad" onclick="deleteClass('${c.id}')">Delete</button>
             </div>
         `).join('');
     }
 
     window.copyCode = (code) => { navigator.clipboard.writeText(code).then(() => showAlert('Code copied: ' + code, 'success')); };
 
+    // Modal helpers
+    function showModal(title, bodyHtml) {
+        document.getElementById('modal-title').textContent = title;
+        document.getElementById('modal-body').innerHTML = bodyHtml;
+        document.getElementById('teacher-modal').classList.remove('hidden');
+    }
+    document.getElementById('modal-close').addEventListener('click', () => {
+        document.getElementById('teacher-modal').classList.add('hidden');
+    });
+    document.getElementById('teacher-modal').addEventListener('click', (e) => {
+        if (e.target === e.currentTarget) document.getElementById('teacher-modal').classList.add('hidden');
+    });
+
     window.viewStudents = async (classId) => {
         const { data } = await sb.from('class_students').select('student_id, joined_at').eq('class_id', classId);
-        if (!data || !data.length) { alert('No students enrolled yet.'); return; }
-        // Fetch display names
+        if (!data || !data.length) { showModal('Enrolled Students', '<p class="muted">No students enrolled yet.</p>'); return; }
         const ids = data.map(s => s.student_id);
         const { data: profiles } = await sb.from('profiles').select('id, display_name').in('id', ids);
         const nameMap = {};
         (profiles || []).forEach(p => nameMap[p.id] = p.display_name || 'Unnamed');
-        const lines = data.map((s, i) => `${i + 1}. ${nameMap[s.student_id] || 'Unnamed'} (joined ${new Date(s.joined_at).toLocaleDateString()})`);
-        alert('Enrolled Students:\n' + lines.join('\n'));
+        const html = data.map(s => `
+            <div class="list-item">
+                <span style="font-size: 20px;">👤</span>
+                <span class="item-title">${esc(nameMap[s.student_id] || 'Unnamed')}</span>
+                <span class="item-meta">Joined ${new Date(s.joined_at).toLocaleDateString()}</span>
+            </div>
+        `).join('');
+        showModal(`Enrolled Students (${data.length})`, html);
     };
 
     window.deleteClass = async (id) => {
@@ -138,22 +156,52 @@ document.addEventListener('DOMContentLoaded', async () => {
             return `<div class="list-item">
                 <span class="item-title">${esc(a.title)}</span>
                 <span class="item-meta">${esc(cls)} · Due: ${due}</span>
-                <button class="dash-btn ghost" onclick="viewScores('${a.id}')">View Scores</button>
-                <button class="dash-btn danger" onclick="deleteAssignment('${a.id}')">Delete</button>
+                <button class="btn ghost" onclick="viewScores('${a.id}')">View Scores</button>
+                <button class="btn bad" onclick="deleteAssignment('${a.id}')">Delete</button>
             </div>`;
         }).join('');
     }
 
     window.viewScores = async (assignId) => {
-        const { data } = await sb.from('assignment_submissions').select('*').eq('assignment_id', assignId);
-        if (!data || !data.length) { alert('No submissions yet.'); return; }
-        // Fetch display names
-        const ids = data.map(s => s.student_id);
-        const { data: profiles } = await sb.from('profiles').select('id, display_name').in('id', ids);
+        // Get the assignment to find its class
+        const { data: assign } = await sb.from('assignments').select('class_id').eq('id', assignId).single();
+        // Get all students in the class
+        const { data: classStudents } = await sb.from('class_students').select('student_id').eq('class_id', assign?.class_id);
+        const allStudentIds = (classStudents || []).map(s => s.student_id);
+
+        // Get submissions
+        const { data: subs } = await sb.from('assignment_submissions').select('*').eq('assignment_id', assignId);
+        const subMap = {};
+        (subs || []).forEach(s => subMap[s.student_id] = s);
+
+        // Fetch display names for all class students
+        const { data: profiles } = await sb.from('profiles').select('id, display_name').in('id', allStudentIds);
         const nameMap = {};
         (profiles || []).forEach(p => nameMap[p.id] = p.display_name || 'Unnamed');
-        const lines = data.map((s, i) => `${i + 1}. ${nameMap[s.student_id] || 'Unnamed'} → ${s.correct}/${s.total} (${s.total ? Math.round(s.correct / s.total * 100) : 0}%)`);
-        alert('Submissions:\n' + lines.join('\n'));
+
+        if (!allStudentIds.length) { showModal('Submissions', '<p class="muted">No students in this class.</p>'); return; }
+
+        const html = allStudentIds.map(sid => {
+            const sub = subMap[sid];
+            const name = nameMap[sid] || 'Unnamed';
+            if (sub) {
+                const pct = sub.total ? Math.round(sub.correct / sub.total * 100) : 0;
+                return `<div class="list-item">
+                    <span style="font-size: 20px;">👤</span>
+                    <span class="item-title">${esc(name)}</span>
+                    <span class="item-score ${pct >= 50 ? 'good' : 'bad'}">${sub.correct}/${sub.total} (${pct}%)</span>
+                    <span class="status-pill done">✓ Completed</span>
+                </div>`;
+            } else {
+                return `<div class="list-item">
+                    <span style="font-size: 20px;">👤</span>
+                    <span class="item-title">${esc(name)}</span>
+                    <span class="status-pill pending">⏳ Not Completed</span>
+                </div>`;
+            }
+        }).join('');
+        const doneCount = Object.keys(subMap).length;
+        showModal(`Submissions (${doneCount}/${allStudentIds.length} completed)`, html);
     };
 
     window.deleteAssignment = async (id) => {
@@ -286,7 +334,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             // Switch to assignments tab
             document.querySelectorAll('.dash-tab').forEach(t => t.classList.remove('active'));
-            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            document.querySelectorAll('.view').forEach(c => c.classList.remove('active'));
             document.querySelector('[data-tab="assignments"]').classList.add('active');
             document.getElementById('tab-assignments').classList.add('active');
         } catch (e) {

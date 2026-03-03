@@ -9,11 +9,10 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link
-        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Outfit:wght@400;600;700;800;900&display=swap"
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@400;600;700;800;900&display=swap"
         rel="stylesheet">
 
-    <link rel="stylesheet" href="login.css">
-    <link rel="stylesheet" href="onboarding.css">
+    <link rel="stylesheet" href="styles.css">
 
     <!-- Supabase SDK -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -30,84 +29,80 @@
 </head>
 
 <body>
-    <div class="background-effects">
-        <div class="blob blob-1"
-            style="background: radial-gradient(circle, rgba(46,117,80,1) 0%, rgba(13,17,23,0) 70%);"></div>
-        <div class="blob blob-2"
-            style="background: radial-gradient(circle, rgba(117,100,46,0.8) 0%, rgba(13,17,23,0) 70%);"></div>
-    </div>
-
-    <div class="auth-container onboarding-container">
-        <div class="auth-header">
-            <div class="logo">IH</div>
-            <h1 id="onboarding-title">Welcome to IHBB Drill</h1>
-            <p id="onboarding-subtitle">Let's set up your account</p>
+    <div class="shell" style="max-width: 600px; margin-top: 5vh;">
+        <div class="brand" style="justify-content: center; flex-direction: column; text-align: center; gap: 8px;">
+            <div class="logo" style="width: 64px; height: 64px; font-size: 24px;">IH</div>
+            <h1 id="onboarding-title" style="font-size: 32px;">Welcome to IHBB Drill</h1>
+            <p id="onboarding-subtitle" class="sub">Let's set up your account</p>
         </div>
 
-        <div id="alert-box" class="alert hidden"></div>
+        <div class="card">
+            <div id="alert-box" class="alert hidden"></div>
 
-        <!-- Step 1: Role Selection -->
-        <div id="step-role" class="step-view">
-            <h3>I am a...</h3>
-            <div class="role-cards">
-                <div class="role-card" data-role="student">
-                    <div class="role-icon">📚</div>
-                    <h4>Student</h4>
-                    <p class="text-sm muted">Join a class and practice drills</p>
+            <!-- Step 1: Role Selection -->
+            <div id="step-role" class="view active">
+                <h3 style="text-align: center; margin-bottom: 8px;">I am a...</h3>
+                <div class="role-cards">
+                    <div class="role-card" data-role="student">
+                        <div class="role-icon">📚</div>
+                        <h4>Student</h4>
+                        <p class="muted">Join a class and practice drills</p>
+                    </div>
+                    <div class="role-card" data-role="teacher">
+                        <div class="role-icon">👨‍🏫</div>
+                        <h4>Teacher</h4>
+                        <p class="muted">Create classes and manage students</p>
+                    </div>
                 </div>
-                <div class="role-card" data-role="teacher">
-                    <div class="role-icon">👨‍🏫</div>
-                    <h4>Teacher</h4>
-                    <p class="text-sm muted">Create classes and manage students</p>
+                <button id="btn-next-role" class="btn pri" disabled
+                    style="width: 100%; margin-top: 20px; font-size: 16px;">Continue</button>
+            </div>
+
+            <!-- Step 2: Student Flow -->
+            <div id="step-student" class="view hidden">
+                <h3 style="margin-bottom: 8px;">Join your Class</h3>
+                <p class="muted" style="margin-bottom: 24px;">Enter the class code provided by your teacher. You can
+                    also skip this and join later.</p>
+
+                <div class="input-group">
+                    <label for="student-class-code">Class Code</label>
+                    <input type="text" id="student-class-code" placeholder="e.g. MATH2026">
                 </div>
-            </div>
-            <button id="btn-next-role" class="btn btn-primary" disabled style="margin-top:20px;">Continue</button>
-        </div>
 
-        <!-- Step 2: Student Flow -->
-        <div id="step-student" class="step-view hidden">
-            <h3>Join your Class</h3>
-            <p class="muted text-sm" style="margin-bottom: 20px;">Enter the class code provided by your teacher. You can
-                also skip this and join later.</p>
-
-            <div class="input-group">
-                <label for="student-class-code">Class Code</label>
-                <input type="text" id="student-class-code" placeholder="e.g. MATH2026">
-            </div>
-
-            <div style="display: flex; gap: 10px;">
-                <button id="btn-skip-student" class="btn btn-ghost" style="flex:1; margin-top:0;">Skip</button>
-                <button id="btn-finish-student" class="btn btn-primary" style="flex:1;">Join & Finish</button>
-            </div>
-        </div>
-
-        <!-- Step 2: Teacher Flow -->
-        <div id="step-teacher" class="step-view hidden">
-            <h3>Create your first Class</h3>
-            <p class="muted text-sm" style="margin-bottom: 20px;">Generate a class code to invite your students. They
-                will use this code when they sign up.</p>
-
-            <div class="input-group">
-                <label for="teacher-class-name">Class Name</label>
-                <input type="text" id="teacher-class-name" placeholder="e.g. History 101 - Fall 2026">
-            </div>
-
-            <div class="input-group">
-                <label for="generated-code">Invite Code</label>
-                <div style="display: flex; gap: 10px;">
-                    <input type="text" id="generated-code" readonly
-                        style="flex: 1; background: rgba(0,0,0,0.3); font-family: monospace; font-size: 16px; letter-spacing: 2px;">
-                    <button id="btn-generate-code" class="btn btn-social"
-                        style="width: auto; padding: 0 15px; margin: 0;">Generate</button>
+                <div style="display: flex; gap: 12px; margin-top: 24px;">
+                    <button id="btn-skip-student" class="btn ghost" style="flex: 1;">Skip</button>
+                    <button id="btn-finish-student" class="btn pri" style="flex: 1;">Join & Finish</button>
                 </div>
             </div>
 
-            <div style="display: flex; gap: 10px; margin-top:20px;">
-                <button id="btn-skip-teacher" class="btn btn-ghost" style="flex:1; margin-top:0;">Skip for now</button>
-                <button id="btn-finish-teacher" class="btn btn-primary" style="flex:1;">Create & Finish</button>
-            </div>
-        </div>
+            <!-- Step 2: Teacher Flow -->
+            <div id="step-teacher" class="view hidden">
+                <h3 style="margin-bottom: 8px;">Create your first Class</h3>
+                <p class="muted" style="margin-bottom: 24px;">Generate a class code to invite your students. They
+                    will use this code when they sign up.</p>
 
+                <div class="input-group">
+                    <label for="teacher-class-name">Class Name</label>
+                    <input type="text" id="teacher-class-name" placeholder="e.g. History 101 - Fall 2026">
+                </div>
+
+                <div class="input-group">
+                    <label for="generated-code">Invite Code</label>
+                    <div style="display: flex; gap: 10px;">
+                        <input type="text" id="generated-code" readonly
+                            style="flex: 1; font-family: 'Outfit', monospace; font-size: 18px; font-weight: 700; letter-spacing: 2px; text-align: center; background: rgba(0,0,0,0.3); color: var(--accent);">
+                        <button id="btn-generate-code" class="btn ghost"
+                            style="flex: 0 0 auto; padding: 0 16px;">Generate</button>
+                    </div>
+                </div>
+
+                <div style="display: flex; gap: 12px; margin-top: 24px;">
+                    <button id="btn-skip-teacher" class="btn ghost" style="flex: 1;">Skip for now</button>
+                    <button id="btn-finish-teacher" class="btn pri" style="flex: 1;">Create & Finish</button>
+                </div>
+            </div>
+
+        </div>
     </div>
 </body>
 

@@ -8,9 +8,9 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link
-        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Outfit:wght@400;600;700;800;900&display=swap"
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@400;600;700;800;900&display=swap"
         rel="stylesheet">
-    <link rel="stylesheet" href="dashboard.css">
+    <link rel="stylesheet" href="styles.css">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="config.js"></script>
     <style id="auth-guard">
@@ -24,33 +24,36 @@
 </head>
 
 <body>
-    <div class="dash-shell">
-        <header class="dash-header">
-            <div class="dash-logo">IH</div>
-            <h1>Student Dashboard</h1>
-            <div class="dash-actions">
-                <a href="index.html?drill=1" class="dash-btn ghost">🎯 Practice Drill</a>
-                <a href="#" id="btn-logout" class="dash-btn danger">Logout</a>
+    <div class="shell">
+        <header class="brand" style="margin-bottom: 24px;">
+            <div class="logo">IH</div>
+            <h1 style="flex: 1;">Student Dashboard</h1>
+            <div class="row right" style="gap: 12px;">
+                <a href="index.html?drill=1" class="btn ghost" style="text-decoration: none;">🎯 Practice Drill</a>
+                <a href="#" id="btn-logout" class="btn bad" style="text-decoration: none;">Logout</a>
             </div>
         </header>
 
         <div id="alert-box" class="alert hidden"></div>
 
-        <nav class="dash-tabs">
-            <button class="dash-tab active" data-tab="classes">My Classes</button>
-            <button class="dash-tab" data-tab="assignments">Assignments</button>
-            <button class="dash-tab" data-tab="account">Account</button>
+        <nav class="nav" style="margin-bottom: 24px;">
+            <button class="dash-tab active" data-tab="classes"
+                style="background: none; border: none; cursor: pointer; color: inherit; font-size: 15px; padding: 10px 18px; font-weight: 600; border-radius: 12px;">My
+                Classes</button>
+            <button class="dash-tab" data-tab="assignments"
+                style="background: none; border: none; cursor: pointer; color: inherit; font-size: 15px; padding: 10px 18px; font-weight: 600; border-radius: 12px;">Assignments</button>
+            <button class="dash-tab" data-tab="account"
+                style="background: none; border: none; cursor: pointer; color: inherit; font-size: 15px; padding: 10px 18px; font-weight: 600; border-radius: 12px;">Account</button>
         </nav>
 
         <!-- Classes Tab -->
-        <section id="tab-classes" class="tab-content active">
+        <section id="tab-classes" class="view active">
             <div class="card">
-                <div class="card-header">
-                    <h2>My Classes</h2>
-                </div>
-                <div class="form-row" style="margin-bottom:16px">
-                    <input type="text" id="join-code" placeholder="Enter class code (e.g. ABC123)" style="flex:1">
-                    <button id="btn-join" class="dash-btn primary">Join Class</button>
+                <h2 class="card-title" style="margin-bottom: 20px;">My Classes</h2>
+                <div class="row align-center" style="margin-bottom:20px;">
+                    <input type="text" id="join-code" placeholder="Enter class code (e.g. ABC123)"
+                        style="flex:1; background: rgba(0,0,0,0.2); border: 1px solid var(--line); border-radius: 14px; padding: 12px 16px; color: var(--ink);">
+                    <button id="btn-join" class="btn pri">Join Class</button>
                 </div>
                 <div id="student-classes" class="list-container">
                     <p class="muted">Loading...</p>
@@ -59,61 +62,80 @@
         </section>
 
         <!-- Assignments Tab -->
-        <section id="tab-assignments" class="tab-content">
+        <section id="tab-assignments" class="view hidden">
             <div class="card">
-                <div class="card-header">
-                    <h2>My Assignments</h2>
+                <h2 class="card-title" style="margin-bottom: 16px;">My Assignments</h2>
+
+                <!-- Internal sub-tabs -->
+                <div class="nav" style="margin-bottom: 20px;">
+                    <button class="assign-sub-tab active" data-sub="todo"
+                        style="background: none; border: none; cursor: pointer; color: inherit; font-size: 14px; padding: 8px 16px; font-weight: 600; border-radius: 10px;">📋
+                        To Do</button>
+                    <button class="assign-sub-tab" data-sub="completed"
+                        style="background: none; border: none; cursor: pointer; color: inherit; font-size: 14px; padding: 8px 16px; font-weight: 600; border-radius: 10px;">✅
+                        Completed</button>
                 </div>
-                <div id="student-assignments" class="list-container">
-                    <p class="muted">Loading...</p>
+
+                <div id="assign-todo" class="assign-panel">
+                    <div id="student-assignments-todo" class="list-container">
+                        <p class="muted">Loading...</p>
+                    </div>
+                </div>
+                <div id="assign-completed" class="assign-panel hidden">
+                    <div id="student-assignments-completed" class="list-container">
+                        <p class="muted">Loading...</p>
+                    </div>
                 </div>
             </div>
         </section>
 
         <!-- Assignment Drill (hidden by default, shown when student clicks "Start") -->
-        <section id="tab-drill" class="tab-content">
+        <section id="tab-drill" class="view hidden">
             <div class="card">
-                <div class="card-header">
-                    <h2 id="drill-title">Assignment</h2>
-                    <button id="btn-back-assignments" class="dash-btn ghost">← Back</button>
+                <div class="row align-center" style="margin-bottom: 20px;">
+                    <h2 id="drill-title" class="card-title" style="margin: 0; flex: 1;">Assignment</h2>
+                    <button id="btn-back-assignments" class="btn ghost">← Back</button>
                 </div>
-                <div id="drill-progress" class="muted" style="margin-bottom:12px"></div>
-                <div id="drill-question" class="card" style="font-size:15px;min-height:80px;margin-bottom:16px"></div>
-                <div class="form-row">
-                    <input type="text" id="drill-answer" placeholder="Type your answer..." style="flex:1"
+                <div id="drill-progress" class="muted" style="margin-bottom:12px; font-weight: 600;"></div>
+                <div id="drill-question" class="card"
+                    style="font-size:16px; min-height:80px; margin-bottom:20px; background: rgba(0,0,0,0.2); border: 1px solid var(--line);">
+                </div>
+                <div class="row align-center">
+                    <input type="text" id="drill-answer" placeholder="Type your answer..."
+                        style="flex:1; background: rgba(0,0,0,0.2); border: 1px solid var(--line); border-radius: 14px; padding: 12px 16px; color: var(--ink);"
                         autocomplete="off">
-                    <button id="btn-drill-submit" class="dash-btn primary">Submit</button>
+                    <button id="btn-drill-submit" class="btn pri">Submit</button>
                 </div>
-                <div id="drill-feedback" style="margin-top:12px;font-size:14px"></div>
-                <div style="margin-top:14px">
-                    <button id="btn-drill-next" class="dash-btn ghost hidden">Next Question →</button>
+                <div id="drill-feedback" style="margin-top:16px; font-size:15px; font-weight: 500;"></div>
+                <div style="margin-top:20px">
+                    <button id="btn-drill-next" class="btn ghost hidden">Next Question →</button>
                 </div>
             </div>
         </section>
 
         <!-- Account Tab -->
-        <section id="tab-account" class="tab-content">
+        <section id="tab-account" class="view hidden">
             <div class="card">
-                <div class="card-header">
-                    <h2>Account Settings</h2>
-                </div>
-                <p class="muted" style="margin-bottom:20px">Manage your account and data.</p>
-                <button id="btn-delete-account" class="dash-btn danger">🗑️ Delete My Account Permanently</button>
+                <h2 class="card-title" style="margin-bottom: 12px;">Account Settings</h2>
+                <p class="muted" style="margin-bottom:24px">Manage your account and data.</p>
+                <button id="btn-delete-account" class="btn warn">🗑️ Delete My Account Permanently</button>
             </div>
         </section>
     </div>
 
     <!-- Name Entry Modal -->
     <div id="name-modal" class="modal-overlay hidden">
-        <div class="modal-card">
-            <div class="dash-logo" style="margin-bottom:12px">IH</div>
-            <h2>What's your name?</h2>
-            <p class="muted" style="margin:8px 0 20px">Your teacher needs to know who you are.</p>
-            <div class="input-group">
+        <div class="modal-card card" style="background: var(--surface);">
+            <div class="logo"
+                style="margin-bottom:20px; width: 48px; height: 48px; font-size: 18px; margin-left: auto; margin-right: auto;">
+                IH</div>
+            <h2 style="font-size: 24px;">What's your name?</h2>
+            <p class="muted" style="margin:8px 0 24px">Your teacher needs to know who you are.</p>
+            <div class="input-group" style="text-align: left;">
                 <label for="modal-name">Full Name</label>
                 <input type="text" id="modal-name" placeholder="e.g. John Smith" autofocus>
             </div>
-            <button id="btn-save-name" class="dash-btn primary full-width">Save & Continue</button>
+            <button id="btn-save-name" class="btn pri" style="width: 100%; margin-top: 8px;">Save & Continue</button>
         </div>
     </div>
 
@@ -121,8 +143,8 @@
         .modal-overlay {
             position: fixed;
             inset: 0;
-            background: rgba(0, 0, 0, .7);
-            backdrop-filter: blur(6px);
+            background: rgba(0, 0, 0, .8);
+            backdrop-filter: blur(8px);
             display: flex;
             align-items: center;
             justify-content: center;
@@ -130,18 +152,10 @@
         }
 
         .modal-card {
-            background: var(--surface);
-            border: 1px solid var(--border);
-            border-radius: 16px;
-            padding: 32px;
-            max-width: 400px;
+            max-width: 440px;
             width: 90%;
-            text-align: center
-        }
-
-        .modal-card h2 {
-            font-size: 20px;
-            margin-bottom: 4px
+            text-align: center;
+            padding: 32px;
         }
 
         .speech-indicator {
@@ -150,17 +164,18 @@
             gap: 6px;
             padding: 4px 10px;
             border-radius: 6px;
-            background: rgba(88, 166, 255, .1);
-            color: var(--primary);
-            font-size: 12px;
-            margin-bottom: 8px
+            background: rgba(96, 165, 250, 0.15);
+            color: var(--accent);
+            font-size: 13px;
+            font-weight: 600;
+            margin-bottom: 12px
         }
 
         .speech-indicator .dot {
-            width: 6px;
-            height: 6px;
+            width: 8px;
+            height: 8px;
             border-radius: 50%;
-            background: var(--primary);
+            background: var(--accent);
             animation: pulse 1s infinite
         }
 
