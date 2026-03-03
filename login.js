@@ -122,10 +122,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (error) throw error;
                 if (data.user && data.user.identities && data.user.identities.length === 0) {
                     showAlert('Email already taken. Please sign in.', 'error');
-                } else if (data.session) {
-                    window.location.href = 'index.html'; // Auto-login
                 } else {
-                    showAlert('Check your email for the verification link!', 'success');
+                    // Bypass email verification in UI and redirect to main app immediately
+                    window.location.href = 'index.html';
                 }
             }
             else if (currentMode === 'login') {
