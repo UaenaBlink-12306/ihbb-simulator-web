@@ -1381,14 +1381,16 @@ try {
       startSession();
     }, 500);
 
-    // Monitor for session end (review view becomes active) and submit score
+    // Monitor for session end (review view becomes active) and submit score.
+    // Session completion phase is "done" in this app.
     const checkDone = setInterval(() => {
-      const reviewEl = document.querySelector('.view.active');
-      if (reviewEl && reviewEl.id && reviewEl.id.includes('review') && App.phase === 'idle' && App.i >= App.order.length) {
+      const reviewActive = document.getElementById('view-review')?.classList.contains('active');
+      const sessionComplete = App.phase === 'done' || (App.phase === 'idle' && App.i >= App.order.length);
+      if (reviewActive && sessionComplete) {
         clearInterval(checkDone);
         submitAssignmentScore(assignId, items.length);
       }
-    }, 2000);
+    }, 500);
 
   } catch (e) {
     console.error('Assignment hook error:', e);
@@ -1401,17 +1403,22 @@ try {
       if (!window.supabaseClient) return;
       const { data: { session } } = await window.supabaseClient.auth.getSession();
       if (!session) return;
-      await window.supabaseClient.from('assignment_submissions').upsert({
-        assignment_id: aId,
-        student_id: session.user.id,
-        total: total,
-        correct: App.correct || 0
-      });
+      const { error } = await window.supabaseClient
+        .from('assignment_submissions')
+        .upsert({
+          assignment_id: aId,
+          student_id: session.user.id,
+          total: total,
+          correct: App.correct || 0
+        }, { onConflict: 'assignment_id,student_id' });
+      if (error) throw error;
       localStorage.removeItem(storageKey);
       toast('✅ Assignment score submitted! Returning to dashboard...');
       setTimeout(() => { window.location.href = 'student.html'; }, 2500);
     } catch (e) {
+      window._assignmentSubmitted = false;
       console.error('Score submit error:', e);
+      toast('Could not submit assignment score. Please retry.');
     }
   }
 })();
