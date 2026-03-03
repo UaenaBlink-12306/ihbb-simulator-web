@@ -17,6 +17,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     let allQuestions = [];
     let selectedQuestions = [];
     let myClasses = [];
+    let currentMode = 'random';
 
     const ERA_LABELS = {
         "01": "8000 BCE – 600 BCE",
@@ -37,6 +38,31 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (aNum !== bNum) return aNum ? -1 : 1;
         return String(a).localeCompare(String(b));
     });
+    const questionKey = (q) => {
+        const explicit = String(q?.id || q?.question_id || '').trim();
+        if (explicit) return explicit;
+        const ans = String(q?.answer || q?.a || '').trim().toLowerCase();
+        const ques = String(q?.question || q?.q || '').trim().toLowerCase();
+        const cat = String(q?.meta?.category || q?.category || '').trim().toLowerCase();
+        const era = String(q?.meta?.era || q?.era || '').trim().toLowerCase();
+        return `${ans}::${ques}::${cat}::${era}`;
+    };
+    const dedupeQuestions = (list) => {
+        const seen = new Set();
+        const out = [];
+        (list || []).forEach(q => {
+            const key = questionKey(q);
+            if (!key || seen.has(key)) return;
+            seen.add(key);
+            out.push(q);
+        });
+        return out;
+    };
+    const clampCount = (n, fallback = 10) => {
+        const v = Number.parseInt(String(n || ''), 10);
+        if (!Number.isFinite(v)) return fallback;
+        return Math.max(1, Math.min(200, v));
+    };
 
     // Load questions from questions.json
     try {
@@ -49,21 +75,30 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.querySelectorAll('.dash-tab').forEach(tab => {
         tab.addEventListener('click', () => {
             document.querySelectorAll('.dash-tab').forEach(t => t.classList.remove('active'));
-            document.querySelectorAll('.view').forEach(c => c.classList.remove('active'));
+            document.querySelectorAll('section.view').forEach(c => c.classList.remove('active'));
             tab.classList.add('active');
             document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
+            if (tab.dataset.tab === 'create') setMode(currentMode);
         });
     });
 
     // Mode switching (create assignment)
-    document.querySelectorAll('.mode-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-            document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
-            document.querySelectorAll('.mode-panel').forEach(p => p.classList.remove('active'));
-            btn.classList.add('active');
-            document.getElementById('mode-' + btn.dataset.mode).classList.add('active');
+    const modeButtons = [...document.querySelectorAll('.mode-btn')];
+    const modePanels = [...document.querySelectorAll('.mode-panel')];
+    function setMode(mode) {
+        currentMode = mode || 'random';
+        modeButtons.forEach(b => b.classList.toggle('active', b.dataset.mode === currentMode));
+        modePanels.forEach(p => {
+            p.classList.remove('active');
+            p.classList.add('hidden');
         });
-    });
+        const panel = document.getElementById('mode-' + currentMode);
+        if (panel) {
+            panel.classList.remove('hidden');
+            panel.classList.add('active');
+        }
+    }
+    modeButtons.forEach(btn => btn.addEventListener('click', () => setMode(btn.dataset.mode)));
 
     // Logout
     document.getElementById('btn-logout').addEventListener('click', async (e) => {
@@ -255,28 +290,53 @@ document.addEventListener('DOMContentLoaded', async () => {
             `<div class="p-item"><strong>${esc(q.answer || q.a || '')}</strong> — ${esc((q.question || q.q || '').substring(0, 80))}…</div>`
         ).join('');
     }
+    function setSelectedQuestions(next) {
+        selectedQuestions = dedupeQuestions(next);
+        updatePreview();
+    }
+    function togglePickedQuestion(item, shouldSelect, rowEl) {
+        const key = questionKey(item);
+        const idx = selectedQuestions.findIndex(s => questionKey(s) === key);
+        if (shouldSelect && idx < 0) selectedQuestions.push(item);
+        if (!shouldSelect && idx >= 0) selectedQuestions.splice(idx, 1);
+        if (rowEl) rowEl.classList.toggle('selected', !!shouldSelect);
+        updatePreview();
+    }
+    document.getElementById('btn-clear-selection')?.addEventListener('click', () => {
+        if (!selectedQuestions.length) return;
+        selectedQuestions = [];
+        updatePreview();
+        if (currentMode === 'pick') {
+            const search = document.getElementById('pick-search');
+            if (search && search.value.trim().length >= 2) {
+                search.dispatchEvent(new Event('input'));
+            }
+        }
+        showAlert('Selection cleared.', 'success');
+    });
 
     // Random
     document.getElementById('btn-random-preview').addEventListener('click', () => {
-        const n = parseInt(document.getElementById('random-count').value) || 10;
+        if (!allQuestions.length) { showAlert('No questions loaded yet.', 'error'); return; }
+        const n = clampCount(document.getElementById('random-count').value, 10);
         const shuffled = [...allQuestions].sort(() => Math.random() - 0.5);
-        selectedQuestions = shuffled.slice(0, Math.min(n, allQuestions.length));
-        updatePreview();
+        setSelectedQuestions(shuffled.slice(0, Math.min(n, allQuestions.length)));
     });
 
     // Filter
     document.getElementById('btn-filter-preview').addEventListener('click', () => {
+        if (!allQuestions.length) { showAlert('No questions loaded yet.', 'error'); return; }
         const cat = document.getElementById('filter-category').value;
         const era = document.getElementById('filter-era-select').value;
-        const n = parseInt(document.getElementById('filter-count').value) || 10;
-        let pool = allQuestions.filter(q => {
+        const n = clampCount(document.getElementById('filter-count').value, 10);
+        const pool = allQuestions.filter(q => {
             if (cat && (q.meta?.category || q.category || '') !== cat) return false;
             if (era && (q.meta?.era || q.era || '') !== era) return false;
             return true;
         });
-        const shuffled = pool.sort(() => Math.random() - 0.5);
-        selectedQuestions = shuffled.slice(0, Math.min(n, pool.length));
-        updatePreview();
+        if (!pool.length) { showAlert('No questions match this filter.', 'error'); return; }
+        const shuffled = [...pool].sort(() => Math.random() - 0.5);
+        setSelectedQuestions(shuffled.slice(0, Math.min(n, pool.length)));
     });
 
     // Hand Pick
@@ -292,28 +352,26 @@ document.addEventListener('DOMContentLoaded', async () => {
                 return ans.includes(q) || ques.includes(q);
             }).slice(0, 50);
             document.getElementById('pick-results').innerHTML = matches.map((item, i) => {
-                const id = item.id || i;
-                const checked = selectedQuestions.some(s => (s.id || '') === (item.id || '')) ? 'checked' : '';
-                return `<div class="pick-item ${checked ? 'selected' : ''}" data-idx="${i}">
-                    <input type="checkbox" ${checked} data-qid="${id}">
+                const key = questionKey(item);
+                const checked = selectedQuestions.some(s => questionKey(s) === key) ? 'checked' : '';
+                return `<div class="pick-item ${checked ? 'selected' : ''}" data-idx="${i}" data-qkey="${esc(key)}">
+                    <input type="checkbox" ${checked} data-qkey="${esc(key)}">
                     <strong>${esc(item.answer || item.a || '')}</strong>
                     <span class="muted" style="flex:1">${esc((item.question || item.q || '').substring(0, 60))}…</span>
                 </div>`;
             }).join('');
             document.querySelectorAll('.pick-item').forEach(el => {
-                el.addEventListener('click', () => {
+                const idx = parseInt(el.dataset.idx, 10);
+                const item = matches[idx];
+                const cb = el.querySelector('input[type=checkbox]');
+                cb.addEventListener('change', () => {
+                    togglePickedQuestion(item, cb.checked, el);
+                });
+                el.addEventListener('click', (evt) => {
+                    if (evt.target && evt.target.matches('input[type=checkbox]')) return;
                     const cb = el.querySelector('input[type=checkbox]');
                     cb.checked = !cb.checked;
-                    const idx = parseInt(el.dataset.idx);
-                    const item = matches[idx];
-                    if (cb.checked) {
-                        if (!selectedQuestions.some(s => s.id === item.id)) selectedQuestions.push(item);
-                        el.classList.add('selected');
-                    } else {
-                        selectedQuestions = selectedQuestions.filter(s => s.id !== item.id);
-                        el.classList.remove('selected');
-                    }
-                    updatePreview();
+                    togglePickedQuestion(item, cb.checked, el);
                 });
             });
         }, 300);
@@ -342,7 +400,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             const questions = selectedQuestions.map(q => ({
                 assignment_id: assignment.id,
-                question_id: q.id || '',
+                question_id: questionKey(q),
                 question_text: q.question || q.q || '',
                 answer_text: q.answer || q.a || '',
                 category: q.meta?.category || q.category || '',
@@ -359,7 +417,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             // Switch to assignments tab
             document.querySelectorAll('.dash-tab').forEach(t => t.classList.remove('active'));
-            document.querySelectorAll('.view').forEach(c => c.classList.remove('active'));
+            document.querySelectorAll('section.view').forEach(c => c.classList.remove('active'));
             document.querySelector('[data-tab="assignments"]').classList.add('active');
             document.getElementById('tab-assignments').classList.add('active');
         } catch (e) {
@@ -378,6 +436,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     function esc(s) { const d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; }
 
     // Init
+    setMode(modeButtons.find(b => b.classList.contains('active'))?.dataset.mode || 'random');
     loadClasses();
     loadAssignments();
 });
