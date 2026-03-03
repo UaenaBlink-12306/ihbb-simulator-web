@@ -18,6 +18,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     let selectedQuestions = [];
     let myClasses = [];
     let currentMode = 'random';
+    let selectedFilterCategories = [];
+    let selectedFilterEras = [];
 
     const ERA_LABELS = {
         "01": "8000 BCE – 600 BCE",
@@ -269,18 +271,64 @@ document.addEventListener('DOMContentLoaded', async () => {
     };
 
     // ========== CREATE ASSIGNMENT ==========
-    // Populate filter dropdowns
-    const cats = [...new Set(allQuestions.map(q => q.meta?.category || q.category || '').filter(Boolean))];
+    // Populate filter chips
+    const cats = [...new Set(allQuestions.map(q => q.meta?.category || q.category || '').filter(Boolean))]
+        .sort((a, b) => String(a).localeCompare(String(b)));
     const eras = sortEraCodes([...new Set(allQuestions.map(q => q.meta?.era || q.era || '').filter(Boolean))]);
-    const catSel = document.getElementById('filter-category');
-    const eraSel = document.getElementById('filter-era-select');
-    cats.forEach(c => { const o = document.createElement('option'); o.value = c; o.textContent = c; catSel.appendChild(o); });
-    eras.forEach(e => {
-        const o = document.createElement('option');
-        o.value = e;
-        o.textContent = getEraLabel(e);
-        eraSel.appendChild(o);
-    });
+    function renderCategoryFilterChips() {
+        const wrap = document.getElementById('filter-category-chips');
+        if (!wrap) return;
+        selectedFilterCategories = selectedFilterCategories.filter(c => cats.includes(c));
+        wrap.innerHTML = '';
+        const all = document.createElement('div');
+        all.className = 'chip' + (selectedFilterCategories.length ? '' : ' active');
+        all.textContent = 'All regions';
+        all.addEventListener('click', () => {
+            selectedFilterCategories = [];
+            renderCategoryFilterChips();
+        });
+        wrap.appendChild(all);
+        cats.forEach(c => {
+            const chip = document.createElement('div');
+            chip.className = 'chip' + (selectedFilterCategories.includes(c) ? ' active' : '');
+            chip.textContent = c;
+            chip.addEventListener('click', () => {
+                const set = new Set(selectedFilterCategories);
+                if (set.has(c)) set.delete(c); else set.add(c);
+                selectedFilterCategories = Array.from(set);
+                renderCategoryFilterChips();
+            });
+            wrap.appendChild(chip);
+        });
+    }
+    function renderEraFilterChips() {
+        const wrap = document.getElementById('filter-era-chips');
+        if (!wrap) return;
+        selectedFilterEras = selectedFilterEras.filter(e => eras.includes(e));
+        wrap.innerHTML = '';
+        const all = document.createElement('div');
+        all.className = 'chip' + (selectedFilterEras.length ? '' : ' active');
+        all.textContent = 'All eras';
+        all.addEventListener('click', () => {
+            selectedFilterEras = [];
+            renderEraFilterChips();
+        });
+        wrap.appendChild(all);
+        eras.forEach(e => {
+            const chip = document.createElement('div');
+            chip.className = 'chip' + (selectedFilterEras.includes(e) ? ' active' : '');
+            chip.textContent = getEraLabel(e);
+            chip.addEventListener('click', () => {
+                const set = new Set(selectedFilterEras);
+                if (set.has(e)) set.delete(e); else set.add(e);
+                selectedFilterEras = Array.from(set);
+                renderEraFilterChips();
+            });
+            wrap.appendChild(chip);
+        });
+    }
+    renderCategoryFilterChips();
+    renderEraFilterChips();
 
     function updatePreview() {
         const area = document.getElementById('preview-area');
@@ -329,17 +377,26 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Filter
     document.getElementById('btn-filter-preview').addEventListener('click', () => {
         if (!allQuestions.length) { showAlert('No questions loaded yet.', 'error'); return; }
-        const cat = document.getElementById('filter-category').value;
-        const era = document.getElementById('filter-era-select').value;
         const n = clampCount(document.getElementById('filter-count').value, 10);
+        const catSet = new Set(selectedFilterCategories);
+        const eraSet = new Set(selectedFilterEras);
         const pool = allQuestions.filter(q => {
-            if (cat && (q.meta?.category || q.category || '') !== cat) return false;
-            if (era && (q.meta?.era || q.era || '') !== era) return false;
+            const cat = (q.meta?.category || q.category || '');
+            const era = (q.meta?.era || q.era || '');
+            if (catSet.size && !catSet.has(cat)) return false;
+            if (eraSet.size && !eraSet.has(era)) return false;
             return true;
         });
-        if (!pool.length) { showAlert('No questions match this filter.', 'error'); return; }
+        if (!pool.length) { showAlert('No questions match the selected regions/eras.', 'error'); return; }
         const shuffled = [...pool].sort(() => Math.random() - 0.5);
         setSelectedQuestions(shuffled.slice(0, Math.min(n, pool.length)));
+    });
+    document.getElementById('btn-filter-reset')?.addEventListener('click', () => {
+        selectedFilterCategories = [];
+        selectedFilterEras = [];
+        renderCategoryFilterChips();
+        renderEraFilterChips();
+        showAlert('Filters cleared.', 'success');
     });
 
     // Hand Pick

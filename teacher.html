@@ -127,24 +127,23 @@
 
                 <!-- Filter Mode -->
                 <div id="mode-filter" class="mode-panel view hidden">
-                    <div class="row align-center">
-                        <div class="input-group" style="margin: 0; min-width: 160px;">
-                            <label>Category</label>
-                            <select id="filter-category">
-                                <option value="">All</option>
-                            </select>
+                    <div class="row" style="align-items: flex-start; width: 100%;">
+                        <div class="input-group" style="margin: 0; min-width: 280px; flex: 1 1 320px;">
+                            <label>Regions (choose multiple)</label>
+                            <div id="filter-category-chips" class="chips"></div>
                         </div>
-                        <div class="input-group" style="margin: 0; min-width: 160px;">
-                            <label>Era</label>
-                            <select id="filter-era-select">
-                                <option value="">All</option>
-                            </select>
+                        <div class="input-group" style="margin: 0; min-width: 280px; flex: 1 1 320px;">
+                            <label>Eras (choose multiple)</label>
+                            <div id="filter-era-chips" class="chips"></div>
                         </div>
+                    </div>
+                    <div class="row align-center" style="margin-top: 12px;">
                         <div class="input-group" style="margin: 0;">
                             <label>Count</label>
                             <input type="number" id="filter-count" value="10" min="1" max="200" style="width: 100px;">
                         </div>
                         <button id="btn-filter-preview" class="btn ghost" style="margin-top: 24px;">Preview</button>
+                        <button id="btn-filter-reset" class="btn ghost" style="margin-top: 24px;">Clear Filters</button>
                     </div>
                 </div>
 
