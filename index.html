@@ -26,6 +26,14 @@
       transition: opacity 0.2s ease-in;
     }
   </style>
+  <style>
+    /* Keep practice-hub tab labels black in all states */
+    .nav a,
+    .nav a:hover,
+    .nav a.active {
+      color: #000 !important;
+    }
+  </style>
   <script>
     document.addEventListener("DOMContentLoaded", async () => {
       const authGuard = document.getElementById('auth-guard');
