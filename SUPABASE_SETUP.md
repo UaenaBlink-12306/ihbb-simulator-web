@@ -1,72 +1,148 @@
 # Supabase Database Setup Guide
 
-Welcome to the IHBB Premium Drill Authentication integration. The codebase now natively supports Supabase Auth with Google/Microsoft SSO, Magic Links, and Role-Based onboarding.
+Run **all** of the following SQL in your **Supabase SQL Editor** (Dashboard → SQL Editor → New Query).
 
-To make everything work seamlessly, you must execute the following SQL in your **Supabase SQL Editor**.
-
-## 1. Create Tables for Onboarding
-
-We need `profiles` to store user roles (Teacher/Student) and `classes` to store the auto-generated join codes.
+## 1. Core Tables
 
 ```sql
--- 1. Create Profiles Table (Triggered automatically upon signup or joined via Onboarding)
-CREATE TABLE profiles (
+-- Profiles: stores user role
+CREATE TABLE IF NOT EXISTS profiles (
   id UUID REFERENCES auth.users NOT NULL PRIMARY KEY,
   role VARCHAR(50) CHECK (role IN ('student', 'teacher')),
   class_code VARCHAR(20) DEFAULT NULL,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc', NOW())
 );
 
--- Turn on RLS
 ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Users can insert their own profile." ON profiles FOR INSERT WITH CHECK (auth.uid() = id);
-CREATE POLICY "Users can update their own profile." ON profiles FOR UPDATE USING (auth.uid() = id);
-CREATE POLICY "Users can read their own profile." ON profiles FOR SELECT USING (auth.uid() = id);
+CREATE POLICY "Users can insert own profile" ON profiles FOR INSERT WITH CHECK (auth.uid() = id);
+CREATE POLICY "Users can update own profile" ON profiles FOR UPDATE USING (auth.uid() = id);
+CREATE POLICY "Users can read own profile"   ON profiles FOR SELECT USING (auth.uid() = id);
+CREATE POLICY "Teachers can read student profiles" ON profiles FOR SELECT
+  USING (
+    auth.uid() = id
+    OR EXISTS (
+      SELECT 1 FROM class_students cs
+      JOIN classes c ON c.id = cs.class_id
+      WHERE cs.student_id = profiles.id AND c.teacher_id = auth.uid()
+    )
+  );
 
--- 2. Create Classes Table (Teachers create these)
-CREATE TABLE classes (
-  id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+-- Classes: teacher-created classrooms
+CREATE TABLE IF NOT EXISTS classes (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   teacher_id UUID REFERENCES auth.users NOT NULL,
   name VARCHAR(255) NOT NULL,
   code VARCHAR(20) UNIQUE NOT NULL,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc', NOW())
 );
 
--- Turn on RLS
 ALTER TABLE classes ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Anyone can read classes to join them." ON classes FOR SELECT USING (true);
-CREATE POLICY "Only teachers can insert classes." ON classes FOR INSERT WITH CHECK (auth.uid() = teacher_id);
+CREATE POLICY "Anyone can read classes" ON classes FOR SELECT USING (true);
+CREATE POLICY "Teachers insert own classes" ON classes FOR INSERT WITH CHECK (auth.uid() = teacher_id);
+CREATE POLICY "Teachers delete own classes" ON classes FOR DELETE USING (auth.uid() = teacher_id);
+
+-- Class Students: join table
+CREATE TABLE IF NOT EXISTS class_students (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  class_id UUID REFERENCES classes(id) ON DELETE CASCADE NOT NULL,
+  student_id UUID REFERENCES auth.users NOT NULL,
+  joined_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc', NOW()),
+  UNIQUE(class_id, student_id)
+);
+
+ALTER TABLE class_students ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Students can join" ON class_students FOR INSERT WITH CHECK (auth.uid() = student_id);
+CREATE POLICY "Members can read" ON class_students FOR SELECT USING (
+  auth.uid() = student_id
+  OR EXISTS (SELECT 1 FROM classes WHERE classes.id = class_students.class_id AND classes.teacher_id = auth.uid())
+);
+CREATE POLICY "Students can leave" ON class_students FOR DELETE USING (auth.uid() = student_id);
 ```
 
-## 2. Account Management & Security
-
-### Rate Limiting
-Rate limiting is handled automatically by Supabase for authentication routes (e.g., maximum password attempts per hour). You can configure these strict limits within the **Supabase Dashboard -> Auth -> Rate Limits**.
-
-### Self-Serve Account Deletion
-Because client-side JavaScript cannot securely delete user identities from the `auth.users` system table natively, we need to create a secure Postgres Function (RPC) that users can call when they want to delete their account.
+## 2. Assignment Tables
 
 ```sql
--- Create a secure function to allow users to delete their own account
+-- Assignments
+CREATE TABLE IF NOT EXISTS assignments (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  class_id UUID REFERENCES classes(id) ON DELETE CASCADE NOT NULL,
+  teacher_id UUID REFERENCES auth.users NOT NULL,
+  title VARCHAR(255) NOT NULL,
+  instructions TEXT DEFAULT '',
+  due_date TIMESTAMP WITH TIME ZONE,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc', NOW())
+);
+
+ALTER TABLE assignments ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Teachers create assignments" ON assignments FOR INSERT WITH CHECK (auth.uid() = teacher_id);
+CREATE POLICY "Teachers delete assignments" ON assignments FOR DELETE USING (auth.uid() = teacher_id);
+CREATE POLICY "Class members read assignments" ON assignments FOR SELECT USING (
+  auth.uid() = teacher_id
+  OR EXISTS (SELECT 1 FROM class_students WHERE class_students.class_id = assignments.class_id AND class_students.student_id = auth.uid())
+);
+
+-- Assignment Questions (stores question IDs from the JSON bank)
+CREATE TABLE IF NOT EXISTS assignment_questions (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  assignment_id UUID REFERENCES assignments(id) ON DELETE CASCADE NOT NULL,
+  question_id TEXT NOT NULL,
+  question_text TEXT NOT NULL,
+  answer_text TEXT NOT NULL,
+  category TEXT DEFAULT '',
+  era TEXT DEFAULT ''
+);
+
+ALTER TABLE assignment_questions ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Teachers insert questions" ON assignment_questions FOR INSERT WITH CHECK (
+  EXISTS (SELECT 1 FROM assignments WHERE assignments.id = assignment_questions.assignment_id AND assignments.teacher_id = auth.uid())
+);
+CREATE POLICY "Members read questions" ON assignment_questions FOR SELECT USING (
+  EXISTS (
+    SELECT 1 FROM assignments a
+    WHERE a.id = assignment_questions.assignment_id
+    AND (a.teacher_id = auth.uid() OR EXISTS (SELECT 1 FROM class_students cs WHERE cs.class_id = a.class_id AND cs.student_id = auth.uid()))
+  )
+);
+
+-- Submissions
+CREATE TABLE IF NOT EXISTS assignment_submissions (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  assignment_id UUID REFERENCES assignments(id) ON DELETE CASCADE NOT NULL,
+  student_id UUID REFERENCES auth.users NOT NULL,
+  total INTEGER NOT NULL DEFAULT 0,
+  correct INTEGER NOT NULL DEFAULT 0,
+  submitted_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc', NOW()),
+  UNIQUE(assignment_id, student_id)
+);
+
+ALTER TABLE assignment_submissions ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Students submit" ON assignment_submissions FOR INSERT WITH CHECK (auth.uid() = student_id);
+CREATE POLICY "Students update own" ON assignment_submissions FOR UPDATE USING (auth.uid() = student_id);
+CREATE POLICY "Read own or teacher reads" ON assignment_submissions FOR SELECT USING (
+  auth.uid() = student_id
+  OR EXISTS (SELECT 1 FROM assignments a WHERE a.id = assignment_submissions.assignment_id AND a.teacher_id = auth.uid())
+);
+```
+
+## 3. Account Deletion RPC
+
+```sql
 CREATE OR REPLACE FUNCTION delete_user()
 RETURNS void
 LANGUAGE sql
 SECURITY DEFINER
 AS $$
-  -- Delete from custom tables first
-  DELETE FROM public.profiles WHERE id = auth.uid();
+  DELETE FROM public.assignment_submissions WHERE student_id = auth.uid();
+  DELETE FROM public.assignment_questions WHERE assignment_id IN (SELECT id FROM public.assignments WHERE teacher_id = auth.uid());
+  DELETE FROM public.assignments WHERE teacher_id = auth.uid();
+  DELETE FROM public.class_students WHERE student_id = auth.uid();
   DELETE FROM public.classes WHERE teacher_id = auth.uid();
-  
-  -- Delete the user identity from Supabase Auth
+  DELETE FROM public.profiles WHERE id = auth.uid();
   DELETE FROM auth.users WHERE id = auth.uid();
 $$;
 ```
 
-To call this from the frontend when you add a specific settings page later:
-`await supabase.rpc('delete_user'); await supabase.auth.signOut();`
-
----
-
-## 3. Next Steps
-1. Navigate to **`config.js`** and input your `SUPABASE_URL` and `SUPABASE_ANON_KEY`.
-2. Visit `login.html` locally and create your first account!
+## 4. Next Steps
+1. Run all SQL above in Supabase SQL Editor.
+2. Ensure `config.js` has your correct URL and Anon Key.
+3. Deploy to Vercel via GitHub push.

@@ -29,34 +29,72 @@
   <script>
     document.addEventListener("DOMContentLoaded", async () => {
       const authGuard = document.getElementById('auth-guard');
-      if (window.supabaseClient) {
-        try {
-          const { data, error } = await window.supabaseClient.auth.getSession();
-          if (error) throw error;
+      if (!window.supabaseClient) {
+        console.warn("Supabase not loaded.");
+        if (authGuard) authGuard.remove();
+        return;
+      }
 
-          if (!data.session) {
-            window.location.replace('login.html');
+      try {
+        const { data, error } = await window.supabaseClient.auth.getSession();
+        if (error) throw error;
+        if (!data.session) { window.location.replace('login.html'); return; }
+
+        // Check if user wants the drill page directly (linked from dashboards)
+        const params = new URLSearchParams(window.location.search);
+        const forceDrill = params.get('drill') === '1';
+
+        if (!forceDrill) {
+          // Fetch profile for role-based routing
+          const { data: profile } = await window.supabaseClient
+            .from('profiles').select('role').eq('id', data.session.user.id).single();
+
+          if (!profile || !profile.role) {
+            window.location.replace('onboarding.html');
             return;
           }
+          if (profile.role === 'teacher') {
+            window.location.replace('teacher.html');
+            return;
+          }
+          if (profile.role === 'student') {
+            window.location.replace('student.html');
+            return;
+          }
+        }
 
-          // Unhide the body
-          if (authGuard) authGuard.remove();
+        // Show the drill page
+        if (authGuard) authGuard.remove();
 
-          const logoutBtn = document.getElementById('nav-logout');
-          if (logoutBtn) {
-            logoutBtn.addEventListener('click', async (e) => {
-              e.preventDefault();
+        // Logout
+        const logoutBtn = document.getElementById('nav-logout');
+        if (logoutBtn) {
+          logoutBtn.addEventListener('click', async (e) => {
+            e.preventDefault();
+            await window.supabaseClient.auth.signOut();
+            window.location.replace('login.html');
+          });
+        }
+
+        // Account Deletion
+        const delBtn = document.getElementById('nav-delete-account');
+        if (delBtn) {
+          delBtn.addEventListener('click', async (e) => {
+            e.preventDefault();
+            if (!confirm('⚠️ Are you sure you want to permanently delete your account and all data? This cannot be undone.')) return;
+            if (!confirm('This is your FINAL warning. All your data will be erased forever. Proceed?')) return;
+            try {
+              await window.supabaseClient.rpc('delete_user');
               await window.supabaseClient.auth.signOut();
               window.location.replace('login.html');
-            });
-          }
-        } catch (err) {
-          console.error("Auth verification failed:", err);
-          window.location.replace('login.html');
+            } catch (err) {
+              alert('Failed to delete account: ' + (err.message || err));
+            }
+          });
         }
-      } else {
-        console.warn("Supabase not loaded. Skipping auth protection.");
-        if (authGuard) authGuard.remove();
+      } catch (err) {
+        console.error("Auth failed:", err);
+        window.location.replace('login.html');
       }
     });
   </script>
@@ -70,13 +108,14 @@
         <h1>IHBB Premium Drill — Audio Only</h1>
         <div class="sub">Buzz early, train fast. <b>Space</b> to Buzz → 5-sec timer → answer → mark → <b>N</b>ext.</div>
         <nav class="nav">
-          <a href="#" id="nav-setup" class="active">Setup</a>
+          <a href="index.html" id="nav-setup" class="active">Setup</a>
           <a href="#" id="nav-practice">Practice</a>
           <a href="#" id="nav-review">Review</a>
           <a href="#" id="nav-library">Library</a>
           <a href="#" id="nav-help">Shortcuts ?</a>
-          <a href="#" id="nav-logout"
-            style="color:var(--error-color, #f85149); font-weight:600; margin-left:auto;">Logout</a>
+          <a href="index.html" style="margin-left:auto;">📊 Dashboard</a>
+          <a href="#" id="nav-delete-account" style="color:#f85149; font-size:12px;">Delete Account</a>
+          <a href="#" id="nav-logout" style="color:var(--error-color, #f85149); font-weight:600;">Logout</a>
         </nav>
       </div>
     </div>

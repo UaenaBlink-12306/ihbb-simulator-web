@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Teacher Dashboard - IHBB Premium Drill</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Outfit:wght@400;600;700;800;900&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="dashboard.css">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="config.js"></script>
+    <style id="auth-guard">
+        body {
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity .2s
+        }
+    </style>
+    <script src="teacher.js" defer></script>
+</head>
+
+<body>
+    <div class="dash-shell">
+        <header class="dash-header">
+            <div class="dash-logo">IH</div>
+            <h1>Teacher Dashboard</h1>
+            <div class="dash-actions">
+                <a href="index.html?drill=1" class="dash-btn ghost">🎯 Practice Drill</a>
+                <a href="#" id="btn-logout" class="dash-btn danger">Logout</a>
+            </div>
+        </header>
+
+        <div id="alert-box" class="alert hidden"></div>
+
+        <!-- Tab Navigation -->
+        <nav class="dash-tabs">
+            <button class="dash-tab active" data-tab="classes">My Classes</button>
+            <button class="dash-tab" data-tab="assignments">Assignments</button>
+            <button class="dash-tab" data-tab="create">Create Assignment</button>
+            <button class="dash-tab" data-tab="account">Account</button>
+        </nav>
+
+        <!-- Classes Tab -->
+        <section id="tab-classes" class="tab-content active">
+            <div class="card">
+                <div class="card-header">
+                    <h2>My Classes</h2>
+                    <button id="btn-new-class" class="dash-btn primary">+ New Class</button>
+                </div>
+                <div id="new-class-form" class="form-row hidden">
+                    <input type="text" id="new-class-name" placeholder="Class name (e.g. History 101)">
+                    <button id="btn-save-class" class="dash-btn primary">Create</button>
+                    <button id="btn-cancel-class" class="dash-btn ghost">Cancel</button>
+                </div>
+                <div id="classes-list" class="list-container">
+                    <p class="muted">Loading classes...</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Assignments Tab -->
+        <section id="tab-assignments" class="tab-content">
+            <div class="card">
+                <div class="card-header">
+                    <h2>Assignments</h2>
+                </div>
+                <div id="assignments-list" class="list-container">
+                    <p class="muted">Loading assignments...</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Create Assignment Tab -->
+        <section id="tab-create" class="tab-content">
+            <div class="card">
+                <div class="card-header">
+                    <h2>Create Assignment</h2>
+                </div>
+                <div class="form-grid">
+                    <div class="input-group">
+                        <label>Title</label>
+                        <input type="text" id="assign-title" placeholder="e.g. Week 3 Quiz">
+                    </div>
+                    <div class="input-group">
+                        <label>Assign to Class</label>
+                        <select id="assign-class"></select>
+                    </div>
+                    <div class="input-group">
+                        <label>Due Date</label>
+                        <input type="datetime-local" id="assign-due">
+                    </div>
+                    <div class="input-group full-width">
+                        <label>Instructions (optional)</label>
+                        <textarea id="assign-instructions" rows="2"
+                            placeholder="Any special instructions..."></textarea>
+                    </div>
+                </div>
+
+                <div class="sep"></div>
+                <h3>Select Questions</h3>
+
+                <div class="mode-selector">
+                    <button class="mode-btn active" data-mode="random">🎲 Random</button>
+                    <button class="mode-btn" data-mode="filter">🏷️ By Topic / Era</button>
+                    <button class="mode-btn" data-mode="pick">✋ Hand Pick</button>
+                </div>
+
+                <!-- Random Mode -->
+                <div id="mode-random" class="mode-panel active">
+                    <div class="form-row">
+                        <div class="input-group">
+                            <label>Number of questions</label>
+                            <input type="number" id="random-count" value="10" min="1" max="200">
+                        </div>
+                        <button id="btn-random-preview" class="dash-btn ghost">Preview Selection</button>
+                    </div>
+                </div>
+
+                <!-- Filter Mode -->
+                <div id="mode-filter" class="mode-panel">
+                    <div class="form-row">
+                        <div class="input-group">
+                            <label>Category</label>
+                            <select id="filter-category">
+                                <option value="">All</option>
+                            </select>
+                        </div>
+                        <div class="input-group">
+                            <label>Era</label>
+                            <select id="filter-era-select">
+                                <option value="">All</option>
+                            </select>
+                        </div>
+                        <div class="input-group">
+                            <label>Count</label>
+                            <input type="number" id="filter-count" value="10" min="1" max="200">
+                        </div>
+                        <button id="btn-filter-preview" class="dash-btn ghost">Preview</button>
+                    </div>
+                </div>
+
+                <!-- Pick Mode -->
+                <div id="mode-pick" class="mode-panel">
+                    <div class="form-row">
+                        <input type="text" id="pick-search" placeholder="Search questions by answer or text..."
+                            style="flex:1">
+                    </div>
+                    <div id="pick-results" class="pick-list"></div>
+                </div>
+
+                <!-- Preview -->
+                <div id="preview-area" class="preview-area hidden">
+                    <h4>Selected Questions (<span id="preview-count">0</span>)</h4>
+                    <div id="preview-list" class="preview-list"></div>
+                </div>
+
+                <div class="sep"></div>
+                <button id="btn-create-assignment" class="dash-btn primary full-width">📝 Create Assignment</button>
+            </div>
+        </section>
+
+        <!-- Account Tab -->
+        <section id="tab-account" class="tab-content">
+            <div class="card">
+                <div class="card-header">
+                    <h2>Account Settings</h2>
+                </div>
+                <p class="muted" style="margin-bottom:20px">Manage your account and data.</p>
+                <button id="btn-delete-account" class="dash-btn danger">🗑️ Delete My Account Permanently</button>
+            </div>
+        </section>
+    </div>
+</body>
+
+</html>

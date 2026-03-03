@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Student Dashboard - IHBB Premium Drill</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Outfit:wght@400;600;700;800;900&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="dashboard.css">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="config.js"></script>
+    <style id="auth-guard">
+        body {
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity .2s
+        }
+    </style>
+    <script src="student.js" defer></script>
+</head>
+
+<body>
+    <div class="dash-shell">
+        <header class="dash-header">
+            <div class="dash-logo">IH</div>
+            <h1>Student Dashboard</h1>
+            <div class="dash-actions">
+                <a href="index.html?drill=1" class="dash-btn ghost">🎯 Practice Drill</a>
+                <a href="#" id="btn-logout" class="dash-btn danger">Logout</a>
+            </div>
+        </header>
+
+        <div id="alert-box" class="alert hidden"></div>
+
+        <nav class="dash-tabs">
+            <button class="dash-tab active" data-tab="classes">My Classes</button>
+            <button class="dash-tab" data-tab="assignments">Assignments</button>
+            <button class="dash-tab" data-tab="account">Account</button>
+        </nav>
+
+        <!-- Classes Tab -->
+        <section id="tab-classes" class="tab-content active">
+            <div class="card">
+                <div class="card-header">
+                    <h2>My Classes</h2>
+                </div>
+                <div class="form-row" style="margin-bottom:16px">
+                    <input type="text" id="join-code" placeholder="Enter class code (e.g. ABC123)" style="flex:1">
+                    <button id="btn-join" class="dash-btn primary">Join Class</button>
+                </div>
+                <div id="student-classes" class="list-container">
+                    <p class="muted">Loading...</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Assignments Tab -->
+        <section id="tab-assignments" class="tab-content">
+            <div class="card">
+                <div class="card-header">
+                    <h2>My Assignments</h2>
+                </div>
+                <div id="student-assignments" class="list-container">
+                    <p class="muted">Loading...</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Assignment Drill (hidden by default, shown when student clicks "Start") -->
+        <section id="tab-drill" class="tab-content">
+            <div class="card">
+                <div class="card-header">
+                    <h2 id="drill-title">Assignment</h2>
+                    <button id="btn-back-assignments" class="dash-btn ghost">← Back</button>
+                </div>
+                <div id="drill-progress" class="muted" style="margin-bottom:12px"></div>
+                <div id="drill-question" class="card" style="font-size:15px;min-height:80px;margin-bottom:16px"></div>
+                <div class="form-row">
+                    <input type="text" id="drill-answer" placeholder="Type your answer..." style="flex:1"
+                        autocomplete="off">
+                    <button id="btn-drill-submit" class="dash-btn primary">Submit</button>
+                </div>
+                <div id="drill-feedback" style="margin-top:12px;font-size:14px"></div>
+                <div style="margin-top:14px">
+                    <button id="btn-drill-next" class="dash-btn ghost hidden">Next Question →</button>
+                </div>
+            </div>
+        </section>
+
+        <!-- Account Tab -->
+        <section id="tab-account" class="tab-content">
+            <div class="card">
+                <div class="card-header">
+                    <h2>Account Settings</h2>
+                </div>
+                <p class="muted" style="margin-bottom:20px">Manage your account and data.</p>
+                <button id="btn-delete-account" class="dash-btn danger">🗑️ Delete My Account Permanently</button>
+            </div>
+        </section>
+    </div>
+</body>
+
+</html>

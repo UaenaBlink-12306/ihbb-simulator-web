@@ -87,10 +87,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             // Even if it fails (table not created), we let them into the app for now
             // since we are just doing frontend setup.
-            window.location.href = 'index.html';
+            window.location.href = 'student.html';
         } catch (err) {
             console.error(err);
-            window.location.href = 'index.html';
+            window.location.href = 'student.html';
         }
     }
 
@@ -125,10 +125,10 @@ document.addEventListener('DOMContentLoaded', async () => {
                         code: inviteCode
                     });
             }
-            window.location.href = 'index.html';
+            window.location.href = 'teacher.html';
         } catch (err) {
             console.error(err);
-            window.location.href = 'index.html';
+            window.location.href = 'teacher.html';
         }
     }
 
