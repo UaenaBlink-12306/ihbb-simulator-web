@@ -45,6 +45,15 @@ const App = {
   autoGrade: true
 };
 
+// Detect assignment launch early so init can avoid overriding the assignment set.
+const URL_PARAMS = new URLSearchParams(window.location.search);
+const ASSIGNMENT_ID = URL_PARAMS.get('assignment');
+const ASSIGNMENT_STORAGE_KEY = ASSIGNMENT_ID ? ('ihbb_assignment_' + ASSIGNMENT_ID) : null;
+const HAS_ASSIGNMENT_PAYLOAD = (() => {
+  if (!ASSIGNMENT_STORAGE_KEY) return false;
+  try { return !!localStorage.getItem(ASSIGNMENT_STORAGE_KEY); } catch { return false; }
+})();
+
 /********************* Voices *********************/
 const PREF = [/Microsoft .* Online .*Natural/i, /Google US English/i, /en[-_]?US/i, /en[-_]?GB/i];
 const englishOnly = (arr) => arr.filter(v => /^en(-|_)?/i.test(v.lang) || /English/i.test(v.name));
@@ -1228,7 +1237,9 @@ async function tryFetchDefault(force = false) {
   try { const p = document.querySelector('#lib-cats')?.parentElement; if (p) p.innerHTML = p.innerHTML.replace('Categories:', 'Regions:'); } catch { }
   renderHistory(); renderWrongBank();
   // Auto-load questions.json on startup (from build_db.py)
-  tryFetchDefault(false);
+  if (!(ASSIGNMENT_ID && HAS_ASSIGNMENT_PAYLOAD)) {
+    tryFetchDefault(false);
+  }
 })();
 
 /*** Auto-grade overrides and typing phase ***/
@@ -1333,11 +1344,10 @@ try {
 // When opened with ?assignment=<id>, load assignment questions from localStorage
 // and auto-start the practice session so the student goes straight to the buzz button.
 (function assignmentHook() {
-  const params = new URLSearchParams(window.location.search);
-  const assignId = params.get('assignment');
+  const assignId = ASSIGNMENT_ID;
   if (!assignId) return;
 
-  const storageKey = 'ihbb_assignment_' + assignId;
+  const storageKey = ASSIGNMENT_STORAGE_KEY || ('ihbb_assignment_' + assignId);
   const raw = localStorage.getItem(storageKey);
   if (!raw) return;
 
@@ -1363,6 +1373,7 @@ try {
     // Set session length to ALL questions and mode to sequential
     App.size = 'all';
     App.mode = 'sequential';
+    App.filters = { cat: '', cats: [], era: '', src: '' };
 
     // Auto-start the session after a short delay (DOM needs to be ready)
     setTimeout(() => {
@@ -1404,4 +1415,3 @@ try {
     }
   }
 })();
-
