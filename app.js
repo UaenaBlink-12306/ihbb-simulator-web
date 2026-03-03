@@ -39,7 +39,7 @@ const App = {
   pool: [], order: [], i: 0, correct: 0, startTs: 0,
   sessionBuzzTimes: [], resultsCorrect: [],
   curItem: null, phase: 'idle', // idle|reading|countdown|answering|done
-  size: 10, mode: 'random', filters: { cat: '', cats: [], era: '', src: '' },
+  size: 10, mode: 'random', filters: { cat: '', cats: [], era: '', eras: [], src: '' },
   lastLines: [], readingAbort: false, buzzStart: 0, buzzAt: null,
   rollingSentences: [], _cdIv: null,
   autoGrade: true
@@ -179,7 +179,7 @@ function updateSetMeta() {
   const lca = $('lib-cats'); if (lca) lca.textContent = cats.length ? String(cats.length) : '—';
   const le = $('lib-eras'); if (le) le.textContent = eras.length ? String(eras.length) : '—';
 
-  const fc = $('filter-cat'); const fe = $('filter-era'); const fs = $('filter-src');
+  const fc = $('filter-cat'); const fs = $('filter-src');
   if (fc) {
     fc.innerHTML = '<option value="">All</option>';
     for (const c of cats) { const o = document.createElement('option'); o.value = c; o.textContent = c; fc.appendChild(o); }
@@ -187,7 +187,6 @@ function updateSetMeta() {
       try { fc.value = App.filters.cat; } catch { }
     }
   }
-  if (fe) { fe.innerHTML = '<option value="">All</option>'; for (const e of eras) { const o = document.createElement('option'); o.value = e; o.textContent = getEraName(e); fe.appendChild(o); } }
   if (fs) {
     fs.innerHTML = '<option value="">All</option>';
     const srcs = set ? [...new Set(set.items.map(it => it.meta?.source || '').filter(Boolean))] : [];
@@ -200,6 +199,7 @@ function updateSetMeta() {
 
   updateFilterRow();
   renderCategoryChips(cats);
+  renderEraChips(eras);
 }
 
 const ERA_NAMES = {
@@ -280,6 +280,48 @@ function renderCategoryChips(cats) {
       App.filters.cats = Array.from(sel);
       App.filters.cat = '';
       renderCategoryChips(cats);
+    };
+    wrap.appendChild(chip);
+  }
+}
+
+// Setup screen: render multi-select era chips
+function renderEraChips(eras) {
+  const wrap = $('era-chips'); if (!wrap) return;
+  const eraList = sortEraCodes((eras || []).slice());
+  wrap.innerHTML = '';
+  if (!eraList.length) { wrap.appendChild(document.createTextNode('(No eras — run build_db.py)')); return; }
+
+  // Backward compatibility with old presets that stored only filters.era
+  if (!Array.isArray(App.filters.eras)) App.filters.eras = [];
+  if (!App.filters.eras.length && App.filters.era) App.filters.eras = [App.filters.era];
+  App.filters.eras = App.filters.eras.filter(Boolean).filter(e => eraList.includes(e));
+  App.filters.era = App.filters.eras.length === 1 ? App.filters.eras[0] : '';
+
+  // All eras chip
+  const all = document.createElement('div');
+  all.className = 'chip' + (App.filters.eras.length ? '' : ' active');
+  all.textContent = 'All eras';
+  all.onclick = () => {
+    App.filters.eras = [];
+    App.filters.era = '';
+    renderEraChips(eraList);
+  };
+  wrap.appendChild(all);
+
+  // Era chips
+  const selected = new Set(App.filters.eras || []);
+  for (const e of eraList) {
+    const chip = document.createElement('div');
+    chip.className = 'chip' + (selected.has(e) ? ' active' : '');
+    chip.textContent = getEraName(e);
+    chip.dataset.era = e;
+    chip.onclick = () => {
+      const sel = new Set(App.filters.eras || []);
+      if (sel.has(e)) sel.delete(e); else sel.add(e);
+      App.filters.eras = Array.from(sel);
+      App.filters.era = App.filters.eras.length === 1 ? App.filters.eras[0] : '';
+      renderEraChips(eraList);
     };
     wrap.appendChild(chip);
   }
@@ -538,15 +580,19 @@ function applyPreset(p) {
     App.mode = p.mode; setChipActive('mode-chips', p.mode, 'mode');
     if (p.size !== undefined) setLenFromPreset(p.size);
     if (p.filters) {
-      // Merge with defaults to keep new keys like 'cats'
-      App.filters = Object.assign({ cat: '', cats: [], era: '', src: '' }, p.filters);
+      // Merge with defaults to keep new keys like 'cats' and 'eras'
+      App.filters = Object.assign({ cat: '', cats: [], era: '', eras: [], src: '' }, p.filters);
     }
+    if (!Array.isArray(App.filters.eras)) App.filters.eras = App.filters.era ? [App.filters.era] : [];
+    App.filters.era = App.filters.eras.length === 1 ? App.filters.eras[0] : '';
     updateFilterRowSafe(); saveSettings();
-    // Sync category chips to preset selection
+    // Sync chips to preset selection
     try {
       const set = getActiveSet();
       const cats = set ? [...new Set(set.items.map(it => it.meta?.category || '').filter(Boolean))] : [];
+      const eras = set ? sortEraCodes([...new Set(set.items.map(it => it.meta?.era || '').filter(Boolean))]) : [];
       renderCategoryChips(cats);
+      renderEraChips(eras);
     } catch { }
   } catch { /* noop */ }
 }
@@ -560,7 +606,8 @@ function buildPool() {
     arr = arr.filter(it => App.filters.cats.includes((it.meta?.category || '')));
   }
   if (App.filters.cat) arr = arr.filter(it => (it.meta?.category || '') === App.filters.cat);
-  if (App.filters.era) arr = arr.filter(it => (it.meta?.era || '') === App.filters.era);
+  if (Array.isArray(App.filters.eras) && App.filters.eras.length) arr = arr.filter(it => App.filters.eras.includes((it.meta?.era || '')));
+  else if (App.filters.era) arr = arr.filter(it => (it.meta?.era || '') === App.filters.era);
   if (App.filters.src) arr = arr.filter(it => (it.meta?.source || '') === App.filters.src);
   App.pool = arr;
 }
@@ -963,7 +1010,7 @@ $('len-custom')?.addEventListener('input', () => {
 });
 
 // Filters
-['filter-cat', 'filter-era', 'filter-src'].forEach(id => $(id)?.addEventListener('change', (e) => {
+['filter-cat', 'filter-src'].forEach(id => $(id)?.addEventListener('change', (e) => {
   const k = id.split('-')[1]; App.filters[k] = e.target.value;
 }));
 
@@ -1074,12 +1121,15 @@ $('lib-practice-filtered')?.addEventListener('click', () => {
   const rc = ($('lib-filter-cat') && $('lib-filter-cat').value) || '';
   const re = ($('lib-filter-era') && $('lib-filter-era').value) || '';
   const fc = $('filter-cat'); if (fc) fc.value = rc; App.filters.cat = rc;
-  const fe = $('filter-era'); if (fe) fe.value = re; App.filters.era = re;
+  App.filters.era = re;
+  App.filters.eras = re ? [re] : [];
   App.filters.cats = rc ? [rc] : [];
   try {
     const set = getActiveSet();
     const cats = set ? [...new Set(set.items.map(it => it.meta?.category || '').filter(Boolean))] : [];
+    const eras = set ? sortEraCodes([...new Set(set.items.map(it => it.meta?.era || '').filter(Boolean))]) : [];
     renderCategoryChips(cats);
+    renderEraChips(eras);
   } catch { }
   navSet('nav-setup'); SHOW('view-setup');
   toast(rc ? `Region set to ${rc}` : 'All regions selected');
@@ -1375,7 +1425,7 @@ try {
     // Set session length to ALL questions and mode to sequential
     App.size = 'all';
     App.mode = 'sequential';
-    App.filters = { cat: '', cats: [], era: '', src: '' };
+    App.filters = { cat: '', cats: [], era: '', eras: [], src: '' };
 
     // Auto-start the session after a short delay (DOM needs to be ready)
     setTimeout(() => {
