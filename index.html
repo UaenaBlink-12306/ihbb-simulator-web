@@ -19,27 +19,44 @@
   <!-- Supabase SDK & Auth Protection -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="config.js"></script>
+  <style id="auth-guard">
+    body {
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s ease-in;
+    }
+  </style>
   <script>
     document.addEventListener("DOMContentLoaded", async () => {
+      const authGuard = document.getElementById('auth-guard');
       if (window.supabase) {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session) {
-          window.location.href = 'login.html';
-          return;
-        }
+        try {
+          const { data, error } = await supabase.auth.getSession();
+          if (error) throw error;
 
-        const logoutBtn = document.getElementById('nav-logout');
-        if (logoutBtn) {
-          logoutBtn.addEventListener('click', async (e) => {
-            e.preventDefault();
-            await supabase.auth.signOut();
-            window.location.href = 'login.html';
-          });
-        }
+          if (!data.session) {
+            window.location.replace('login.html');
+            return;
+          }
 
-        // Bonus: Fetch user role/class if needed here
+          // Unhide the body
+          if (authGuard) authGuard.remove();
+
+          const logoutBtn = document.getElementById('nav-logout');
+          if (logoutBtn) {
+            logoutBtn.addEventListener('click', async (e) => {
+              e.preventDefault();
+              await supabase.auth.signOut();
+              window.location.replace('login.html');
+            });
+          }
+        } catch (err) {
+          console.error("Auth verification failed:", err);
+          window.location.replace('login.html');
+        }
       } else {
         console.warn("Supabase not loaded. Skipping auth protection.");
+        if (authGuard) authGuard.remove();
       }
     });
   </script>

@@ -28,9 +28,14 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) {
-        window.location.href = 'login.html';
+        window.location.replace('login.html');
         return;
     }
+
+    // Remove auth-guard now that session is verified
+    const authGuard = document.getElementById('auth-guard');
+    if (authGuard) authGuard.remove();
+
     currentUser = session.user;
 
     function showAlert(message, type = 'error') {
