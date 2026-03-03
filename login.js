@@ -12,7 +12,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let currentMode = 'login'; // 'login', 'signup', 'magic-link', 'reset'
 
     // Check if Supabase loaded properly
-    if (!window.supabase) {
+    if (!window.supabaseClient) {
         showAlert('Supabase failed to load. Please check your internet connection or URL/Key configuration.', 'error');
         submitBtn.disabled = true;
     }
@@ -93,7 +93,7 @@ document.addEventListener('DOMContentLoaded', () => {
         e.preventDefault();
         clearAlert();
 
-        if (!window.supabase) {
+        if (!window.supabaseClient) {
             return showAlert('Supabase connection is not defined. Check config.js.');
         }
 
@@ -110,7 +110,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         try {
             if (currentMode === 'signup') {
-                const { data, error } = await supabase.auth.signUp({
+                const { data, error } = await window.supabaseClient.auth.signUp({
                     email,
                     password,
                     options: {
@@ -129,7 +129,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
             else if (currentMode === 'login') {
-                const { data, error } = await supabase.auth.signInWithPassword({
+                const { data, error } = await window.supabaseClient.auth.signInWithPassword({
                     email,
                     password
                 });
@@ -137,7 +137,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 window.location.href = 'index.html';
             }
             else if (currentMode === 'magic-link') {
-                const { error } = await supabase.auth.signInWithOtp({
+                const { error } = await window.supabaseClient.auth.signInWithOtp({
                     email,
                     options: {
                         emailRedirectTo: window.location.origin
@@ -147,7 +147,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 showAlert('Check your email for the magic link!', 'success');
             }
             else if (currentMode === 'reset') {
-                const { error } = await supabase.auth.resetPasswordForEmail(email, {
+                const { error } = await window.supabaseClient.auth.resetPasswordForEmail(email, {
                     redirectTo: window.location.origin + '/reset-password.html',
                 });
                 if (error) throw error;
@@ -163,14 +163,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // SSO Handlers
     document.getElementById('btn-google').addEventListener('click', async () => {
-        if (!window.supabase) return;
-        const { error } = await supabase.auth.signInWithOAuth({ provider: 'google' });
+        if (!window.supabaseClient) return;
+        const { error } = await window.supabaseClient.auth.signInWithOAuth({ provider: 'google' });
         if (error) showAlert(error.message);
     });
 
     document.getElementById('btn-microsoft').addEventListener('click', async () => {
-        if (!window.supabase) return;
-        const { error } = await supabase.auth.signInWithOAuth({ provider: 'azure' });
+        if (!window.supabaseClient) return;
+        const { error } = await window.supabaseClient.auth.signInWithOAuth({ provider: 'azure' });
         if (error) showAlert(error.message);
     });
 });

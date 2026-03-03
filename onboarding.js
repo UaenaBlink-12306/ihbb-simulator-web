@@ -22,11 +22,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     let currentUser = null;
 
     // Check auth status
-    if (!window.supabase) {
+    if (!window.supabaseClient) {
         return showAlert('Supabase connection failed.');
     }
 
-    const { data: { session } } = await supabase.auth.getSession();
+    const { data: { session } } = await window.supabaseClient.auth.getSession();
     if (!session) {
         window.location.replace('login.html');
         return;
@@ -77,7 +77,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         try {
             // Note: Since we don't have the table created yet in the DB, 
             // this is an optimistic update/insert.
-            const { error } = await supabase
+            const { error } = await window.supabaseClient
                 .from('profiles')
                 .upsert({
                     id: currentUser.id,
@@ -109,7 +109,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     async function saveTeacherProfile(className, inviteCode) {
         try {
-            await supabase
+            await window.supabaseClient
                 .from('profiles')
                 .upsert({
                     id: currentUser.id,
@@ -117,7 +117,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 });
 
             if (inviteCode) {
-                await supabase
+                await window.supabaseClient
                     .from('classes')
                     .insert({
                         teacher_id: currentUser.id,

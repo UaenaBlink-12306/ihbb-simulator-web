@@ -29,9 +29,9 @@
   <script>
     document.addEventListener("DOMContentLoaded", async () => {
       const authGuard = document.getElementById('auth-guard');
-      if (window.supabase) {
+      if (window.supabaseClient) {
         try {
-          const { data, error } = await supabase.auth.getSession();
+          const { data, error } = await window.supabaseClient.auth.getSession();
           if (error) throw error;
 
           if (!data.session) {
@@ -46,7 +46,7 @@
           if (logoutBtn) {
             logoutBtn.addEventListener('click', async (e) => {
               e.preventDefault();
-              await supabase.auth.signOut();
+              await window.supabaseClient.auth.signOut();
               window.location.replace('login.html');
             });
           }
