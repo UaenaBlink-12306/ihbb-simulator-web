@@ -85,7 +85,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     window.viewStudents = async (classId) => {
         const { data } = await sb.from('class_students').select('student_id, joined_at').eq('class_id', classId);
         if (!data || !data.length) { alert('No students enrolled yet.'); return; }
-        const lines = data.map((s, i) => `${i + 1}. Student ID: ${s.student_id.substring(0, 8)}... (joined ${new Date(s.joined_at).toLocaleDateString()})`);
+        // Fetch display names
+        const ids = data.map(s => s.student_id);
+        const { data: profiles } = await sb.from('profiles').select('id, display_name').in('id', ids);
+        const nameMap = {};
+        (profiles || []).forEach(p => nameMap[p.id] = p.display_name || 'Unnamed');
+        const lines = data.map((s, i) => `${i + 1}. ${nameMap[s.student_id] || 'Unnamed'} (joined ${new Date(s.joined_at).toLocaleDateString()})`);
         alert('Enrolled Students:\n' + lines.join('\n'));
     };
 
@@ -142,7 +147,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     window.viewScores = async (assignId) => {
         const { data } = await sb.from('assignment_submissions').select('*').eq('assignment_id', assignId);
         if (!data || !data.length) { alert('No submissions yet.'); return; }
-        const lines = data.map((s, i) => `${i + 1}. ${s.student_id.substring(0, 8)}... → ${s.correct}/${s.total} (${s.total ? Math.round(s.correct / s.total * 100) : 0}%)`);
+        // Fetch display names
+        const ids = data.map(s => s.student_id);
+        const { data: profiles } = await sb.from('profiles').select('id, display_name').in('id', ids);
+        const nameMap = {};
+        (profiles || []).forEach(p => nameMap[p.id] = p.display_name || 'Unnamed');
+        const lines = data.map((s, i) => `${i + 1}. ${nameMap[s.student_id] || 'Unnamed'} → ${s.correct}/${s.total} (${s.total ? Math.round(s.correct / s.total * 100) : 0}%)`);
         alert('Submissions:\n' + lines.join('\n'));
     };
 

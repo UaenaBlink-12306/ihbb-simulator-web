@@ -1329,3 +1329,80 @@ try {
   window.markWrong = function () { if (App.autoGrade) return; return __origMarkWrong(); };
 } catch { }
 
+/********************* Assignment Integration *********************/
+// When opened with ?assignment=<id>, load assignment questions from localStorage
+// and auto-submit the score back to Supabase when the session is done.
+(function assignmentHook() {
+  const params = new URLSearchParams(window.location.search);
+  const assignId = params.get('assignment');
+  if (!assignId) return;
+
+  const storageKey = 'ihbb_assignment_' + assignId;
+  const raw = localStorage.getItem(storageKey);
+  if (!raw) return;
+
+  try {
+    const assignData = JSON.parse(raw);
+    const items = (assignData.questions || []).map(q => ({
+      id: q.question_id || q.id || uid(),
+      question: q.question_text || q.question || q.q || '',
+      answer: q.answer_text || q.answer || q.a || '',
+      aliases: [],
+      meta: { category: q.category || '', era: q.era || '' }
+    }));
+
+    if (!items.length) return;
+
+    // Inject as a volatile library set
+    const set = { id: 'assignment_' + assignId, name: assignData.title || 'Assignment', items, volatile: true };
+    Library.sets.unshift(set);
+    Library.activeSetId = set.id;
+    renderLibrarySelectors();
+    updateSetMeta();
+
+    // Show a banner
+    toast('📝 Assignment loaded: ' + (assignData.title || 'Assignment'));
+
+    // Monitor for session end to submit score
+    const origFinishSession = window.finishSession;
+    if (typeof origFinishSession === 'function') {
+      window.finishSession = function () {
+        origFinishSession.apply(this, arguments);
+        submitAssignmentScore(assignId, items.length);
+      };
+    }
+
+    // Also hook into the review screen rendering as a fallback
+    const checkDone = setInterval(() => {
+      const reviewEl = document.getElementById('v-review');
+      if (reviewEl && reviewEl.classList.contains('active') && App.phase === 'idle') {
+        clearInterval(checkDone);
+        submitAssignmentScore(assignId, items.length);
+      }
+    }, 2000);
+
+  } catch (e) {
+    console.error('Assignment hook error:', e);
+  }
+
+  async function submitAssignmentScore(aId, total) {
+    if (window._assignmentSubmitted) return;
+    window._assignmentSubmitted = true;
+    try {
+      if (!window.supabaseClient) return;
+      const { data: { session } } = await window.supabaseClient.auth.getSession();
+      if (!session) return;
+      await window.supabaseClient.from('assignment_submissions').upsert({
+        assignment_id: aId,
+        student_id: session.user.id,
+        total: total,
+        correct: App.correct || 0
+      });
+      // Clean up localStorage
+      localStorage.removeItem(storageKey);
+      toast('✅ Assignment score submitted!');
+    } catch (e) {
+      console.error('Score submit error:', e);
+    }
+  }
+})();

@@ -102,6 +102,80 @@
             </div>
         </section>
     </div>
+
+    <!-- Name Entry Modal -->
+    <div id="name-modal" class="modal-overlay hidden">
+        <div class="modal-card">
+            <div class="dash-logo" style="margin-bottom:12px">IH</div>
+            <h2>What's your name?</h2>
+            <p class="muted" style="margin:8px 0 20px">Your teacher needs to know who you are.</p>
+            <div class="input-group">
+                <label for="modal-name">Full Name</label>
+                <input type="text" id="modal-name" placeholder="e.g. John Smith" autofocus>
+            </div>
+            <button id="btn-save-name" class="dash-btn primary full-width">Save & Continue</button>
+        </div>
+    </div>
+
+    <style>
+        .modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, .7);
+            backdrop-filter: blur(6px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000
+        }
+
+        .modal-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 32px;
+            max-width: 400px;
+            width: 90%;
+            text-align: center
+        }
+
+        .modal-card h2 {
+            font-size: 20px;
+            margin-bottom: 4px
+        }
+
+        .speech-indicator {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 10px;
+            border-radius: 6px;
+            background: rgba(88, 166, 255, .1);
+            color: var(--primary);
+            font-size: 12px;
+            margin-bottom: 8px
+        }
+
+        .speech-indicator .dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: var(--primary);
+            animation: pulse 1s infinite
+        }
+
+        @keyframes pulse {
+
+            0%,
+            100% {
+                opacity: .3
+            }
+
+            50% {
+                opacity: 1
+            }
+        }
+    </style>
 </body>
 
 </html>

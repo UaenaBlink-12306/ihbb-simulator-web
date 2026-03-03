@@ -5,10 +5,11 @@ Run **all** of the following SQL in your **Supabase SQL Editor** (Dashboard → 
 ## 1. Core Tables
 
 ```sql
--- Profiles: stores user role
+-- Profiles: stores user role and display name
 CREATE TABLE IF NOT EXISTS profiles (
   id UUID REFERENCES auth.users NOT NULL PRIMARY KEY,
   role VARCHAR(50) CHECK (role IN ('student', 'teacher')),
+  display_name VARCHAR(100) DEFAULT NULL,
   class_code VARCHAR(20) DEFAULT NULL,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc', NOW())
 );

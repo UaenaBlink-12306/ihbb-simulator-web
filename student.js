@@ -7,17 +7,26 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (!session) { window.location.replace('login.html'); return; }
     const uid = session.user.id;
 
-    const { data: profile } = await sb.from('profiles').select('role').eq('id', uid).single();
+    const { data: profile } = await sb.from('profiles').select('role, display_name').eq('id', uid).single();
     if (!profile || profile.role !== 'student') { window.location.replace('index.html'); return; }
     if (guard) guard.remove();
 
-    // State
-    let drillQuestions = [];
-    let drillIndex = 0;
-    let drillCorrect = 0;
-    let currentAssignmentId = null;
+    // ========== NAME CHECK ==========
+    if (!profile.display_name || !profile.display_name.trim()) {
+        document.getElementById('name-modal').classList.remove('hidden');
+    }
 
-    // Tab switching
+    document.getElementById('btn-save-name').addEventListener('click', async () => {
+        const name = document.getElementById('modal-name').value.trim();
+        if (!name) { showAlert('Please enter your name.', 'error'); return; }
+        const { error } = await sb.from('profiles').update({ display_name: name }).eq('id', uid);
+        if (error) { showAlert('Failed to save name: ' + error.message, 'error'); return; }
+        profile.display_name = name;
+        document.getElementById('name-modal').classList.add('hidden');
+        showAlert('Name saved!', 'success');
+    });
+
+    // ========== TAB SWITCHING ==========
     document.querySelectorAll('.dash-tab').forEach(tab => {
         tab.addEventListener('click', () => {
             document.querySelectorAll('.dash-tab').forEach(t => t.classList.remove('active'));
@@ -27,12 +36,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     });
 
-    // Logout
+    // ========== LOGOUT ==========
     document.getElementById('btn-logout').addEventListener('click', async (e) => {
         e.preventDefault(); await sb.auth.signOut(); window.location.replace('login.html');
     });
 
-    // Delete account
+    // ========== DELETE ACCOUNT ==========
     document.getElementById('btn-delete-account').addEventListener('click', async () => {
         if (!confirm('⚠️ Permanently delete your account and ALL data?')) return;
         if (!confirm('FINAL WARNING: This cannot be undone!')) return;
@@ -42,7 +51,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // ========== CLASSES ==========
     async function loadClasses() {
-        const { data } = await sb.from('class_students').select('class_id, classes(id, name, code, teacher_id)').eq('student_id', uid);
+        const { data } = await sb.from('class_students').select('class_id, classes(id, name, code)').eq('student_id', uid);
         renderClasses(data || []);
     }
 
@@ -62,6 +71,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('btn-join').addEventListener('click', async () => {
         const code = document.getElementById('join-code').value.trim().toUpperCase();
         if (!code) return;
+        // Name is required before joining
+        if (!profile.display_name || !profile.display_name.trim()) {
+            document.getElementById('name-modal').classList.remove('hidden');
+            return;
+        }
         const { data: cls } = await sb.from('classes').select('id').eq('code', code).single();
         if (!cls) { showAlert('Class not found. Check the code.', 'error'); return; }
         const { error } = await sb.from('class_students').insert({ class_id: cls.id, student_id: uid });
@@ -84,7 +98,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // ========== ASSIGNMENTS ==========
     async function loadAssignments() {
-        // Get all classes the student is in
         const { data: memberships } = await sb.from('class_students').select('class_id').eq('student_id', uid);
         if (!memberships || !memberships.length) {
             document.getElementById('student-assignments').innerHTML = '<p class="muted">Join a class to see assignments.</p>';
@@ -93,7 +106,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         const classIds = memberships.map(m => m.class_id);
         const { data: assignments } = await sb.from('assignments').select('*, classes(name)').in('class_id', classIds).order('due_date', { ascending: true });
 
-        // Check submissions
         const { data: subs } = await sb.from('assignment_submissions').select('assignment_id, correct, total').eq('student_id', uid);
         const subMap = {};
         (subs || []).forEach(s => subMap[s.assignment_id] = s);
@@ -113,7 +125,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const pct = sub.total ? Math.round(sub.correct / sub.total * 100) : 0;
                 statusHtml = `<span class="item-score ${pct >= 50 ? 'good' : 'bad'}">${sub.correct}/${sub.total} (${pct}%)</span>`;
             } else {
-                statusHtml = `<button class="dash-btn primary" onclick="startAssignment('${a.id}', '${esc(a.title)}')">Start</button>`;
+                statusHtml = `<button class="dash-btn primary" onclick="startAssignment('${a.id}', '${esc(a.title)}')">🎯 Start in Practice Hub</button>`;
             }
             return `<div class="list-item">
                 <span class="item-title">${esc(a.title)}</span>
@@ -123,100 +135,21 @@ document.addEventListener('DOMContentLoaded', async () => {
         }).join('');
     }
 
-    // ========== DRILL ==========
+    // ========== START ASSIGNMENT → PRACTICE HUB ==========
     window.startAssignment = async (assignId, title) => {
-        currentAssignmentId = assignId;
-        drillIndex = 0;
-        drillCorrect = 0;
+        // Fetch assignment questions from Supabase
+        const { data: questions } = await sb.from('assignment_questions').select('*').eq('assignment_id', assignId);
+        if (!questions || !questions.length) { showAlert('No questions in this assignment.', 'error'); return; }
 
-        const { data } = await sb.from('assignment_questions').select('*').eq('assignment_id', assignId);
-        drillQuestions = data || [];
-        if (!drillQuestions.length) { showAlert('No questions in this assignment.', 'error'); return; }
+        // Store in localStorage for the practice hub to pick up
+        const storageKey = 'ihbb_assignment_' + assignId;
+        localStorage.setItem(storageKey, JSON.stringify({ title, questions }));
 
-        document.getElementById('drill-title').textContent = title;
-
-        // Show drill tab
-        document.querySelectorAll('.dash-tab').forEach(t => t.classList.remove('active'));
-        document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-        document.getElementById('tab-drill').classList.add('active');
-
-        showDrillQuestion();
+        // Redirect to practice hub with assignment param
+        window.location.href = 'index.html?drill=1&assignment=' + assignId;
     };
 
-    function showDrillQuestion() {
-        if (drillIndex >= drillQuestions.length) { finishDrill(); return; }
-        const q = drillQuestions[drillIndex];
-        document.getElementById('drill-progress').textContent = `Question ${drillIndex + 1} of ${drillQuestions.length} · Correct: ${drillCorrect}`;
-        document.getElementById('drill-question').textContent = q.question_text;
-        document.getElementById('drill-answer').value = '';
-        document.getElementById('drill-feedback').textContent = '';
-        document.getElementById('btn-drill-next').classList.add('hidden');
-        document.getElementById('btn-drill-submit').classList.remove('hidden');
-        document.getElementById('drill-answer').focus();
-    }
-
-    document.getElementById('btn-drill-submit').addEventListener('click', () => {
-        checkAnswer();
-    });
-
-    document.getElementById('drill-answer').addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') {
-            if (!document.getElementById('btn-drill-next').classList.contains('hidden')) {
-                drillIndex++;
-                showDrillQuestion();
-            } else {
-                checkAnswer();
-            }
-        }
-    });
-
-    function checkAnswer() {
-        const q = drillQuestions[drillIndex];
-        const userAns = document.getElementById('drill-answer').value.trim().toLowerCase();
-        const correct = (q.answer_text || '').toLowerCase();
-        const isRight = userAns && correct.includes(userAns);
-
-        if (isRight) drillCorrect++;
-
-        const fb = document.getElementById('drill-feedback');
-        fb.innerHTML = isRight
-            ? `<span style="color:var(--success)">✔ Correct!</span>`
-            : `<span style="color:var(--error)">✖ Wrong.</span> Answer: <strong>${esc(q.answer_text)}</strong>`;
-
-        document.getElementById('btn-drill-submit').classList.add('hidden');
-        document.getElementById('btn-drill-next').classList.remove('hidden');
-    }
-
-    document.getElementById('btn-drill-next').addEventListener('click', () => {
-        drillIndex++;
-        showDrillQuestion();
-    });
-
-    async function finishDrill() {
-        document.getElementById('drill-question').textContent = '';
-        document.getElementById('drill-progress').textContent = `Done! Score: ${drillCorrect}/${drillQuestions.length} (${Math.round(drillCorrect / drillQuestions.length * 100)}%)`;
-        document.getElementById('drill-feedback').innerHTML = `<strong style="color:var(--success)">Assignment Complete!</strong>`;
-        document.getElementById('btn-drill-submit').classList.add('hidden');
-        document.getElementById('btn-drill-next').classList.add('hidden');
-
-        // Save submission
-        await sb.from('assignment_submissions').upsert({
-            assignment_id: currentAssignmentId,
-            student_id: uid,
-            total: drillQuestions.length,
-            correct: drillCorrect
-        });
-    }
-
-    document.getElementById('btn-back-assignments').addEventListener('click', () => {
-        document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-        document.querySelectorAll('.dash-tab').forEach(t => t.classList.remove('active'));
-        document.querySelector('[data-tab="assignments"]').classList.add('active');
-        document.getElementById('tab-assignments').classList.add('active');
-        loadAssignments();
-    });
-
-    // Helpers
+    // ========== HELPERS ==========
     function showAlert(msg, type = 'error') {
         const el = document.getElementById('alert-box');
         el.textContent = msg; el.className = `alert ${type}`; el.classList.remove('hidden');
