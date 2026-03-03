@@ -234,18 +234,11 @@ function updateFilterRow() {
   const row = $('filter-row'); if (row) row.style.display = hasMeta ? 'flex' : 'none';
 }
 
-// Meta-categories: name -> array of region sub-categories
+// Legacy meta-categories kept for backward-compatibility with old saved presets.
 const CATEGORY_GROUPS = {
   'Asian History': ['East Asia', 'South Asia', 'Southeast Asia', 'Central Asia'],
   'Americas': ['North America', 'Latin America'],
 };
-
-function getChipCategories(cats) {
-  const inMeta = new Set(Object.values(CATEGORY_GROUPS).flat());
-  const meta = Object.keys(CATEGORY_GROUPS).filter(g => CATEGORY_GROUPS[g].some(r => cats.includes(r)));
-  const standalone = cats.filter(c => !inMeta.has(c));
-  return [...meta, ...standalone];
-}
 
 function expandCategorySelection(selected) {
   const out = new Set();
@@ -272,21 +265,18 @@ function renderCategoryChips(cats) {
     renderCategoryChips(cats);
   };
   wrap.appendChild(all);
-  // Category chips (meta-groups first, then individual regions)
-  const expanded = expandCategorySelection(Array.isArray(App.filters.cats) ? App.filters.cats : []);
-  const chipCats = getChipCategories(cats);
+  // Category chips (every region directly selectable)
+  const expanded = new Set(expandCategorySelection(Array.isArray(App.filters.cats) ? App.filters.cats : []));
+  const chipCats = (cats || []).slice().sort((a, b) => String(a).localeCompare(String(b)));
   for (const c of chipCats) {
     const chip = document.createElement('div');
-    const subRegions = CATEGORY_GROUPS[c] || [c];
-    const isActive = subRegions.some(r => expanded.includes(r));
+    const isActive = expanded.has(c);
     chip.className = 'chip' + (isActive ? ' active' : '');
     chip.textContent = c;
     chip.dataset.cat = c;
     chip.onclick = () => {
       const sel = new Set(expandCategorySelection(App.filters.cats || []));
-      const toRemove = subRegions.filter(r => sel.has(r));
-      if (toRemove.length === subRegions.length) subRegions.forEach(r => sel.delete(r));
-      else subRegions.forEach(r => sel.add(r));
+      if (sel.has(c)) sel.delete(c); else sel.add(c);
       App.filters.cats = Array.from(sel);
       App.filters.cat = '';
       renderCategoryChips(cats);
