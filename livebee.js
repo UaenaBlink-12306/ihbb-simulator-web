@@ -31,6 +31,23 @@ document.addEventListener('DOMContentLoaded', async () => {
         el.textContent = msg; el.className = `alert ${type}`; el.classList.remove('hidden');
         setTimeout(() => el.classList.add('hidden'), 4000);
     }
+    function waitForSubscription(ch) {
+        return new Promise((resolve, reject) => {
+            let done = false;
+            ch.subscribe(status => {
+                if (done) return;
+                if (status === 'SUBSCRIBED') {
+                    done = true;
+                    resolve();
+                    return;
+                }
+                if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+                    done = true;
+                    reject(new Error('Realtime channel status: ' + status));
+                }
+            });
+        });
+    }
     function esc(s) { const d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; }
     function genCode() { return Math.random().toString(36).substring(2, 8).toUpperCase(); }
 
@@ -106,6 +123,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     let answerTimeout = null;
     let ttsAborted = false;
     let isReading = false;
+    let activeRoundId = null;
 
     // ==================== LOBBY ====================
     if (isHost) {
@@ -224,7 +242,22 @@ document.addEventListener('DOMContentLoaded', async () => {
             ttsAborted = true;
         });
 
-        await channel.subscribe();
+        if (isHost) {
+            channel.on('broadcast', { event: 'buzz' }, ({ payload }) => {
+                handleHostBuzz(payload);
+            });
+
+            channel.on('broadcast', { event: 'answer_submit' }, ({ payload }) => {
+                void handleHostAnswerSubmit(payload);
+            });
+        }
+
+        try {
+            await waitForSubscription(channel);
+        } catch {
+            showAlert('Realtime connection failed. Please refresh and rejoin the room.');
+            return;
+        }
 
         // Announce presence
         channel.send({ type: 'broadcast', event: 'player_join', payload: { userId: uid, name: myName } });
@@ -434,12 +467,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         buzzQueue = [];
         currentBuzzer = null;
         ttsAborted = false;
+        activeRoundId = `${questionIndex}:${Date.now()}`;
         clearTimeout(answerTimeout);
 
         // Broadcast question
         channel.send({
             type: 'broadcast', event: 'question',
-            payload: { index: questionIndex, total: gameQuestions.length, question: q.question }
+            payload: { index: questionIndex, total: gameQuestions.length, question: q.question, roundId: activeRoundId }
         });
 
         updateGameProgress();
@@ -469,6 +503,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         buzzQueue = [];
         currentBuzzer = null;
         ttsAborted = false;
+        activeRoundId = payload.roundId || `${payload.index}:fallback`;
 
         // Reset UI
         $('game-qi').textContent = payload.index + 1;
@@ -481,6 +516,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         $('correct-answer-reveal').classList.add('hidden');
         $('host-game-controls').classList.add('hidden');
         $('bee-answer-input').value = '';
+        clearInterval(answerTimerInterval);
+        $('answer-timer').textContent = '';
 
         // Enable buzz for students
         const buzzBtn = $('bee-buzz');
@@ -507,8 +544,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     function handleBuzzAck(payload) {
         // payload: { queue: [{userId, name}], currentBuzzer: userId }
-        buzzQueue = payload.queue;
-        currentBuzzer = payload.currentBuzzer;
+        if (payload.roundId && activeRoundId && payload.roundId !== activeRoundId) return;
+        buzzQueue = Array.isArray(payload.queue) ? payload.queue : [];
+        currentBuzzer = payload.currentBuzzer || null;
 
         // Stop TTS for everyone
         ttsStop();
@@ -565,17 +603,23 @@ document.addEventListener('DOMContentLoaded', async () => {
         // payload: { userId, correct, reason, answer }
         const display = $('answer-display');
         display.classList.remove('answer-grading', 'answer-correct', 'answer-incorrect');
+        clearInterval(answerTimerInterval);
+        $('answer-timer').textContent = '';
 
         if (payload.correct) {
             display.classList.add('answer-correct');
             $('answer-verdict').textContent = '✅ Correct!';
+            $('game-status').textContent = 'Correct answer!';
             dingCorrect();
             // Update local scores
             if (players[payload.userId]) players[payload.userId].score += 10;
             renderScoreboard();
         } else {
             display.classList.add('answer-incorrect');
-            $('answer-verdict').textContent = '❌ Incorrect';
+            $('answer-verdict').textContent = payload.reason === 'Time ran out' ? '⏱ Time ran out' : '❌ Incorrect';
+            $('game-status').textContent = payload.reason === 'Time ran out'
+                ? `${players[payload.userId]?.name || 'Player'} ran out of time.`
+                : 'Incorrect.';
             buzzWrong();
         }
 
@@ -638,11 +682,35 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     // ==================== BUZZ SYSTEM ====================
+    function handleHostBuzz(payload) {
+        if (!isHost || !payload?.userId) return;
+        if (payload.roundId && activeRoundId && payload.roundId !== activeRoundId) return;
+        // Lock after first accepted buzz.
+        if (currentBuzzer) return;
+
+        const name = payload.name || players[payload.userId]?.name || 'Player';
+        buzzQueue = [{ userId: payload.userId, name }];
+        currentBuzzer = payload.userId;
+
+        clearTimeout(answerTimeout);
+        channel.send({ type: 'broadcast', event: 'tts_stop', payload: {} });
+        channel.send({
+            type: 'broadcast',
+            event: 'buzz_ack',
+            payload: { queue: buzzQueue, currentBuzzer, roundId: activeRoundId }
+        });
+        startHostAnswerTimeout();
+    }
+
     // Student: click buzz
     $('bee-buzz')?.addEventListener('click', () => {
-        if ($('bee-buzz').disabled) return;
-        // Send buzz to channel (host will order by arrival)
-        channel.send({ type: 'broadcast', event: 'buzz', payload: { userId: uid, name: myName } });
+        if (isHost || $('bee-buzz').disabled || !activeRoundId) return;
+        // Send buzz to host for ordering and lockout.
+        channel.send({
+            type: 'broadcast',
+            event: 'buzz',
+            payload: { userId: uid, name: myName, roundId: activeRoundId }
+        });
         buzzInSound();
         $('bee-buzz').disabled = true;
         $('bee-buzz').classList.add('disabled');
@@ -659,44 +727,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         }
     });
-
-    // Host: receive buzz events and manage queue
-    if (isHost) {
-        // We need a separate listener for raw buzz events (host-side ordering)
-        // This is handled within the channel subscription
-        let buzzReceiveHandler = null;
-        // Override after channel subscribe
-        setTimeout(() => {
-            if (!channel) return;
-            channel.on('broadcast', { event: 'buzz' }, ({ payload }) => {
-                // Only host processes buzz ordering
-                if (!isHost) return;
-                // Ignore duplicate
-                if (buzzQueue.some(b => b.userId === payload.userId)) return;
-                // Add to queue in arrival order
-                buzzQueue.push({ userId: payload.userId, name: payload.name });
-
-                // If first buzz, set as current buzzer
-                if (buzzQueue.length === 1) {
-                    currentBuzzer = payload.userId;
-                    clearTimeout(answerTimeout); // Cancel any countdown
-                    // Broadcast stop TTS
-                    channel.send({ type: 'broadcast', event: 'tts_stop', payload: {} });
-                }
-
-                // Broadcast acknowledged queue to all
-                channel.send({
-                    type: 'broadcast', event: 'buzz_ack',
-                    payload: { queue: buzzQueue, currentBuzzer }
-                });
-
-                // Start answer timeout for current buzzer (10 seconds)
-                if (currentBuzzer === payload.userId) {
-                    startHostAnswerTimeout();
-                }
-            });
-        }, 100);
-    }
 
     function startHostAnswerTimeout() {
         clearTimeout(answerTimeout);
@@ -719,77 +749,80 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
 
     function submitBeeAnswer() {
+        if (uid !== currentBuzzer || !activeRoundId) return;
         const text = ($('bee-answer-input').value || '').trim();
         if (!text) return;
         clearTimeout(answerTimeout);
         $('answer-area').classList.add('hidden');
+        $('game-status').textContent = 'Answer submitted. Waiting for grading...';
 
         // Broadcast the answer text to everyone
         channel.send({
             type: 'broadcast', event: 'answer_submit',
-            payload: { userId: uid, name: myName, text }
+            payload: { userId: uid, name: myName, text, roundId: activeRoundId }
         });
     }
 
-    // Host: receive answer and grade
-    if (isHost) {
-        setTimeout(() => {
-            if (!channel) return;
-            channel.on('broadcast', { event: 'answer_submit' }, async ({ payload }) => {
-                if (!isHost) return;
-                clearTimeout(answerTimeout);
+    async function handleHostAnswerSubmit(payload) {
+        if (!isHost || !payload?.userId) return;
+        if (payload.roundId && activeRoundId && payload.roundId !== activeRoundId) return;
+        if (payload.userId !== currentBuzzer) return;
 
-                const q = gameQuestions[questionIndex];
-                if (!q) return;
+        const text = String(payload.text || '').trim();
+        if (!text) return;
 
-                // Show the answer to everyone
-                channel.send({ type: 'broadcast', event: 'answer_show', payload: payload });
+        clearTimeout(answerTimeout);
+        const q = gameQuestions[questionIndex];
+        if (!q) return;
 
-                // Phase 1: Quick regex match
-                const quickCorrect = quickMatch(payload.text, q.answer, q.aliases || []);
+        // Show the typed answer to everyone immediately.
+        channel.send({
+            type: 'broadcast',
+            event: 'answer_show',
+            payload: {
+                userId: payload.userId,
+                name: payload.name || players[payload.userId]?.name || 'Player',
+                text
+            }
+        });
 
-                if (quickCorrect) {
-                    // Instant correct
-                    channel.send({
-                        type: 'broadcast', event: 'result',
-                        payload: { userId: payload.userId, correct: true, reason: 'Exact match' }
-                    });
-                } else {
-                    // Phase 2: Don't show wrong yet, call DeepSeek
-                    // Show "grading" state to everyone
-                    let deepseekResult = false;
-                    try {
-                        const resp = await fetch('/api/grade', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                                question: q.question,
-                                answer: payload.text,
-                                expected: q.answer,
-                                aliases: q.aliases || [],
-                                strict: false
-                            })
-                        });
-                        const data = await resp.json();
-                        deepseekResult = !!data.correct;
-                    } catch { /* API failed, keep as wrong */ }
-
-                    if (deepseekResult) {
-                        // DeepSeek says correct — override
-                        channel.send({
-                            type: 'broadcast', event: 'result',
-                            payload: { userId: payload.userId, correct: true, reason: 'Confirmed by AI' }
-                        });
-                    } else {
-                        // Confirmed wrong
-                        channel.send({
-                            type: 'broadcast', event: 'result',
-                            payload: { userId: payload.userId, correct: false, reason: 'Incorrect' }
-                        });
-                    }
-                }
+        // Phase 1: fast local match.
+        const quickCorrect = quickMatch(text, q.answer, q.aliases || []);
+        if (quickCorrect) {
+            channel.send({
+                type: 'broadcast', event: 'result',
+                payload: { userId: payload.userId, correct: true, reason: 'Exact match' }
             });
-        }, 100);
+            return;
+        }
+
+        // Phase 2: DeepSeek grading.
+        let deepseekResult = false;
+        try {
+            const resp = await fetch('/api/grade', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    question: q.question,
+                    answer: text,
+                    expected: q.answer,
+                    aliases: q.aliases || [],
+                    strict: false
+                })
+            });
+            const data = await resp.json();
+            deepseekResult = !!data.correct;
+        } catch { /* API failed, keep as wrong */ }
+
+        channel.send({
+            type: 'broadcast',
+            event: 'result',
+            payload: {
+                userId: payload.userId,
+                correct: deepseekResult,
+                reason: deepseekResult ? 'Confirmed by AI' : 'Incorrect'
+            }
+        });
     }
 
     // Quick string match (case-insensitive, punctuation-stripped)
