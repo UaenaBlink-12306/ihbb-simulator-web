@@ -52,8 +52,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Role Selection
     roleCards.forEach(card => {
         card.addEventListener('click', () => {
-            roleCards.forEach(c => c.classList.remove('selected'));
-            card.classList.add('selected');
+            roleCards.forEach(c => c.classList.remove('active'));
+            card.classList.add('active');
             selectedRole = card.dataset.role;
             btnNextRole.disabled = false;
         });
@@ -62,13 +62,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     btnNextRole.addEventListener('click', () => {
         if (!selectedRole) return;
         stepRole.classList.add('hidden');
+        stepRole.classList.remove('active');
 
         if (selectedRole === 'student') {
             document.getElementById('onboarding-subtitle').textContent = "Join your Teacher's class";
             stepStudent.classList.remove('hidden');
+            stepStudent.classList.add('active');
         } else {
             document.getElementById('onboarding-subtitle').textContent = "Set up your virtual classroom";
             stepTeacher.classList.remove('hidden');
+            stepTeacher.classList.add('active');
         }
     });
 
