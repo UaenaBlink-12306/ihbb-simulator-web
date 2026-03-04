@@ -578,6 +578,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     function handleYourTurn(payload) {
+        if (payload.roundId && activeRoundId && payload.roundId !== activeRoundId) return;
         if (payload.userId !== uid) return;
         currentBuzzer = uid;
         $('game-status').innerHTML = '<div class="your-turn-banner">🔔 Your Turn! Type your answer:</div>';
@@ -843,8 +844,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (buzzQueue.length > 0) {
             // Next player in queue
             currentBuzzer = buzzQueue[0].userId;
-            channel.send({ type: 'broadcast', event: 'your_turn', payload: { userId: currentBuzzer } });
-            channel.send({ type: 'broadcast', event: 'buzz_ack', payload: { queue: buzzQueue, currentBuzzer } });
+            channel.send({ type: 'broadcast', event: 'your_turn', payload: { userId: currentBuzzer, roundId: activeRoundId } });
+            channel.send({ type: 'broadcast', event: 'buzz_ack', payload: { queue: buzzQueue, currentBuzzer, roundId: activeRoundId } });
             startHostAnswerTimeout();
         } else {
             // No more buzzers — reveal answer
