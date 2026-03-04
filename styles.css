@@ -1109,3 +1109,163 @@ tr:hover td {
     background: rgba(0, 0, 0, 0.02);
   }
 }
+
+/* ========== Live Bee Rooms ========== */
+.bee-view {
+  display: none;
+  animation: fadeIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.bee-view.active {
+  display: block;
+}
+
+.bee-layout {
+  display: grid;
+  gap: 20px;
+  grid-template-columns: 1fr;
+}
+
+@media (min-width: 860px) {
+  .bee-layout {
+    grid-template-columns: 1fr 280px;
+  }
+}
+
+.bee-main {
+  min-width: 0;
+}
+
+.bee-sidebar {
+  min-width: 0;
+}
+
+.bee-mode-panel {
+  margin-top: 12px;
+}
+
+.bee-mode-panel.hidden {
+  display: none;
+}
+
+/* Queue badges */
+.queue-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: 12px;
+  font-size: 13px;
+  font-weight: 700;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--line);
+}
+
+.queue-badge.buzzer {
+  background: rgba(248, 113, 113, 0.15);
+  border-color: rgba(248, 113, 113, 0.4);
+  color: var(--bad);
+}
+
+.queue-badge.waiting {
+  opacity: 0.6;
+}
+
+/* Your Turn notification */
+.your-turn-banner {
+  text-align: center;
+  padding: 16px;
+  border-radius: 16px;
+  background: rgba(96, 165, 250, 0.12);
+  border: 1px solid rgba(96, 165, 250, 0.3);
+  color: var(--accent);
+  font-size: 18px;
+  font-weight: 700;
+  animation: yourTurnPulse 1s ease-in-out infinite;
+  margin-bottom: 12px;
+}
+
+@keyframes yourTurnPulse {
+
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+
+  50% {
+    transform: scale(1.02);
+    opacity: 0.85;
+  }
+}
+
+/* Answer display states */
+.answer-correct {
+  background: rgba(52, 211, 153, 0.1);
+  border: 1px solid rgba(52, 211, 153, 0.3);
+}
+
+.answer-incorrect {
+  background: rgba(248, 113, 113, 0.1);
+  border: 1px solid rgba(248, 113, 113, 0.3);
+}
+
+.answer-grading {
+  background: rgba(251, 191, 36, 0.1);
+  border: 1px solid rgba(251, 191, 36, 0.3);
+}
+
+/* Scoreboard entries */
+.score-entry {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+.score-entry:last-child {
+  border-bottom: none;
+}
+
+.score-rank {
+  font-family: 'Outfit', sans-serif;
+  font-weight: 800;
+  font-size: 18px;
+  width: 28px;
+  text-align: center;
+  color: var(--muted);
+}
+
+.score-rank.gold {
+  color: #fbbf24;
+}
+
+.score-rank.silver {
+  color: #94a3b8;
+}
+
+.score-rank.bronze {
+  color: #d97706;
+}
+
+.score-name {
+  flex: 1;
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.score-points {
+  font-family: 'Outfit', monospace;
+  font-weight: 700;
+  font-size: 16px;
+  color: var(--accent);
+}
+
+/* Disabled buzz */
+.buzz.disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+  pointer-events: none;
+  filter: grayscale(0.8);
+}

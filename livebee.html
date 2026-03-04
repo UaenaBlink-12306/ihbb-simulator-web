@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live Bee Room - IHBB Premium Drill</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@400;600;700;800;900&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="config.js"></script>
+    <style id="auth-guard">
+        body {
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity .2s
+        }
+    </style>
+    <script src="livebee.js" defer></script>
+</head>
+
+<body>
+    <div class="shell">
+        <header class="brand" style="margin-bottom: 24px;">
+            <div class="logo">HB</div>
+            <h1 style="flex: 1;">Live Bee Room</h1>
+            <div class="row right" style="gap: 12px;">
+                <a href="#" id="btn-back" class="btn ghost" style="text-decoration: none;">← Back to Dashboard</a>
+                <a href="#" id="btn-leave" class="btn bad hidden" style="text-decoration: none;">Leave Room</a>
+            </div>
+        </header>
+
+        <div id="alert-box" class="alert hidden"></div>
+
+        <!-- ========== LOBBY VIEW ========== -->
+        <section id="view-lobby" class="bee-view active">
+            <div class="bee-layout">
+                <div class="bee-main">
+                    <!-- Teacher: Create Room -->
+                    <div id="lobby-host" class="card hidden">
+                        <h2 class="card-title" style="margin-bottom: 20px;">🏆 Host a Live Bee</h2>
+                        <p class="muted" style="margin-bottom: 24px;">Create a room and share the code with your
+                            students.</p>
+                        <button id="btn-create-room" class="btn pri"
+                            style="width: 100%; font-size: 16px; justify-content: center;">⚡ Create Room</button>
+                    </div>
+                    <!-- Student: Join Room -->
+                    <div id="lobby-join" class="card hidden">
+                        <h2 class="card-title" style="margin-bottom: 20px;">🏆 Join a Live Bee</h2>
+                        <p class="muted" style="margin-bottom: 24px;">Enter the room code your teacher shared.</p>
+                        <div class="row" style="gap: 12px;">
+                            <input type="text" id="join-code" placeholder="Room code (e.g. ABC123)" maxlength="6"
+                                style="flex: 1; text-transform: uppercase; font-family: 'Outfit', monospace; font-size: 20px; font-weight: 700; letter-spacing: 3px; text-align: center;">
+                            <button id="btn-join-room" class="btn pri" style="font-size: 16px;">Join</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ========== WAITING ROOM (after create/join) ========== -->
+        <section id="view-waiting" class="bee-view">
+            <div class="bee-layout">
+                <div class="bee-main">
+                    <div class="card" style="text-align: center;">
+                        <h2 class="card-title">Room: <span id="room-code-display"
+                                style="font-family: 'Outfit', monospace; letter-spacing: 3px; color: var(--accent);"></span>
+                        </h2>
+                        <p class="muted" id="waiting-status">Waiting for host to start...</p>
+
+                        <!-- HOST: Question Selection Panel -->
+                        <div id="host-controls" class="hidden" style="text-align: left; margin-top: 24px;">
+                            <div class="sep"></div>
+                            <h3 style="margin-bottom: 16px;">Select Questions</h3>
+                            <div class="chips" style="margin-bottom: 20px;">
+                                <div class="chip active bee-mode-btn" data-mode="random">🎲 Random</div>
+                                <div class="chip bee-mode-btn" data-mode="filter">🏷️ By Topic / Era</div>
+                                <div class="chip bee-mode-btn" data-mode="pick">✋ Hand Pick</div>
+                            </div>
+
+                            <!-- Random -->
+                            <div id="bee-mode-random" class="bee-mode-panel">
+                                <div class="row" style="align-items: flex-end; gap: 12px;">
+                                    <div class="input-group" style="margin: 0;">
+                                        <label>Number of questions</label>
+                                        <input type="number" id="bee-random-count" value="10" min="1" max="200"
+                                            style="width: 120px;">
+                                    </div>
+                                    <button id="btn-bee-random" class="btn ghost">Generate</button>
+                                </div>
+                            </div>
+
+                            <!-- Filter -->
+                            <div id="bee-mode-filter" class="bee-mode-panel hidden">
+                                <div class="row" style="align-items: flex-start; gap: 16px; flex-wrap: wrap;">
+                                    <div class="input-group" style="margin: 0; min-width: 200px; flex: 1;">
+                                        <label>Regions</label>
+                                        <div id="bee-filter-cats" class="chips"></div>
+                                    </div>
+                                    <div class="input-group" style="margin: 0; min-width: 200px; flex: 1;">
+                                        <label>Eras</label>
+                                        <div id="bee-filter-eras" class="chips"></div>
+                                    </div>
+                                </div>
+                                <div class="row" style="align-items: flex-end; gap: 12px; margin-top: 12px;">
+                                    <div class="input-group" style="margin: 0;">
+                                        <label>Count</label>
+                                        <input type="number" id="bee-filter-count" value="10" min="1" max="200"
+                                            style="width: 100px;">
+                                    </div>
+                                    <button id="btn-bee-filter" class="btn ghost">Generate</button>
+                                </div>
+                            </div>
+
+                            <!-- Hand Pick -->
+                            <div id="bee-mode-pick" class="bee-mode-panel hidden">
+                                <div class="input-group" style="margin: 0;">
+                                    <input type="text" id="bee-pick-search"
+                                        placeholder="Search questions by answer or text...">
+                                </div>
+                                <div id="bee-pick-results" class="pick-list"></div>
+                            </div>
+
+                            <!-- Selected Preview -->
+                            <div id="bee-preview" class="hidden" style="margin-top: 20px;">
+                                <h4>Selected: <span id="bee-preview-count">0</span> questions</h4>
+                                <div id="bee-preview-list" class="preview-list"
+                                    style="max-height: 200px; overflow-y: auto;"></div>
+                                <button id="btn-bee-clear" class="btn ghost" style="margin-top: 8px;">Clear</button>
+                            </div>
+
+                            <div class="sep"></div>
+                            <button id="btn-start-bee" class="btn pri" disabled
+                                style="width: 100%; font-size: 16px; justify-content: center;">🚀 Start the
+                                Bee!</button>
+                        </div>
+                    </div>
+                </div>
+                <!-- Player List Sidebar -->
+                <div class="bee-sidebar">
+                    <div class="card">
+                        <h3 class="card-title" style="font-size: 16px;">Players</h3>
+                        <div id="player-list" class="list-container">
+                            <p class="muted">Waiting for players...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ========== GAME VIEW ========== -->
+        <section id="view-game" class="bee-view">
+            <div class="bee-layout">
+                <div class="bee-main">
+                    <div class="card">
+                        <!-- Progress -->
+                        <div class="row" style="margin-bottom: 12px;">
+                            <div class="pill">Question <span id="game-qi">0</span> / <span id="game-qt">0</span></div>
+                            <div class="bar" style="flex: 1;"><span id="game-barfill"></span></div>
+                        </div>
+
+                        <!-- Status -->
+                        <div id="game-status" class="big" style="margin-bottom: 12px;">Listening...</div>
+
+                        <!-- Queue badges -->
+                        <div id="buzz-queue" class="row hidden" style="gap: 8px; margin-bottom: 12px; flex-wrap: wrap;">
+                        </div>
+
+                        <!-- The Big Red Buzz Button -->
+                        <div class="buzz-wrap" id="buzz-area">
+                            <button id="bee-buzz" class="buzz pulse" disabled>B U Z Z</button>
+                        </div>
+
+                        <!-- Answer Input (shown after buzzing) -->
+                        <div id="answer-area" class="hidden" style="margin-top: 16px;">
+                            <div class="row" style="gap: 12px;">
+                                <input type="text" id="bee-answer-input" placeholder="Type your answer..."
+                                    autocomplete="off" style="flex: 1; font-size: 18px; padding: 14px 18px;">
+                                <button id="btn-submit-bee-answer" class="btn pri"
+                                    style="font-size: 16px;">Submit</button>
+                            </div>
+                            <div id="answer-timer" class="muted" style="margin-top: 8px; text-align: center;"></div>
+                        </div>
+
+                        <!-- Answer Display (shown to everyone after submit) -->
+                        <div id="answer-display" class="hidden"
+                            style="margin-top: 16px; padding: 16px; border-radius: 16px; text-align: center;">
+                            <div id="answer-player-name" class="muted" style="font-size: 14px;"></div>
+                            <div id="answer-text" style="font-size: 22px; font-weight: 700; margin: 8px 0;"></div>
+                            <div id="answer-verdict" style="font-size: 16px; font-weight: 600;"></div>
+                        </div>
+
+                        <!-- Correct Answer Reveal -->
+                        <div id="correct-answer-reveal" class="hidden answer"
+                            style="margin-top: 16px; text-align: center;"></div>
+
+                        <!-- Host: Next Question Button -->
+                        <div id="host-game-controls" class="hidden" style="margin-top: 20px; text-align: center;">
+                            <button id="btn-next-question" class="btn pri" style="font-size: 16px;">Next Question
+                                →</button>
+                            <button id="btn-end-bee" class="btn ghost" style="margin-left: 12px;">End Bee</button>
+                        </div>
+                    </div>
+                </div>
+                <!-- Live Scoreboard Sidebar -->
+                <div class="bee-sidebar">
+                    <div class="card">
+                        <h3 class="card-title" style="font-size: 16px;">🏆 Scoreboard</h3>
+                        <div id="scoreboard" class="list-container"></div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ========== RESULTS VIEW ========== -->
+        <section id="view-results" class="bee-view">
+            <div class="bee-layout">
+                <div class="bee-main">
+                    <div class="card" style="text-align: center;">
+                        <div style="font-size: 64px; margin-bottom: 16px;">🏆</div>
+                        <h2 style="font-size: 32px; margin-bottom: 8px;">Bee Complete!</h2>
+                        <p class="muted" style="margin-bottom: 24px;">Final standings</p>
+                        <div id="final-scoreboard" class="list-container" style="max-width: 500px; margin: 0 auto;">
+                        </div>
+                        <div class="sep"></div>
+                        <a id="btn-back-dashboard" href="#" class="btn pri"
+                            style="text-decoration: none; font-size: 16px;">Back to Dashboard</a>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </div>
+</body>
+
+</html>

@@ -143,7 +143,45 @@ AS $$
 $$;
 ```
 
-## 4. Next Steps
+## 4. Live Bee Rooms
+
+```sql
+-- Bee Rooms: real-time multiplayer buzzer rooms
+CREATE TABLE IF NOT EXISTS bee_rooms (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  code VARCHAR(6) UNIQUE NOT NULL,
+  host_id UUID REFERENCES auth.users NOT NULL,
+  status VARCHAR(20) DEFAULT 'waiting',  -- waiting | active | finished
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc', NOW())
+);
+
+ALTER TABLE bee_rooms ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Anyone can read rooms" ON bee_rooms FOR SELECT USING (true);
+CREATE POLICY "Host creates rooms" ON bee_rooms FOR INSERT WITH CHECK (auth.uid() = host_id);
+CREATE POLICY "Host updates rooms" ON bee_rooms FOR UPDATE USING (auth.uid() = host_id);
+CREATE POLICY "Host deletes rooms" ON bee_rooms FOR DELETE USING (auth.uid() = host_id);
+
+-- Bee Participants: players in a room
+CREATE TABLE IF NOT EXISTS bee_participants (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  room_id UUID REFERENCES bee_rooms(id) ON DELETE CASCADE NOT NULL,
+  user_id UUID REFERENCES auth.users NOT NULL,
+  display_name VARCHAR(100),
+  score INTEGER DEFAULT 0,
+  UNIQUE(room_id, user_id)
+);
+
+ALTER TABLE bee_participants ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Anyone can read participants" ON bee_participants FOR SELECT USING (true);
+CREATE POLICY "Users join rooms" ON bee_participants FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "Users leave rooms" ON bee_participants FOR DELETE USING (auth.uid() = user_id);
+CREATE POLICY "Host updates scores" ON bee_participants FOR UPDATE USING (
+  auth.uid() = user_id
+  OR EXISTS (SELECT 1 FROM bee_rooms WHERE bee_rooms.id = bee_participants.room_id AND bee_rooms.host_id = auth.uid())
+);
+```
+
+## 5. Next Steps
 1. Run all SQL above in Supabase SQL Editor.
 2. Ensure `config.js` has your correct URL and Anon Key.
 3. Deploy to Vercel via GitHub push.
