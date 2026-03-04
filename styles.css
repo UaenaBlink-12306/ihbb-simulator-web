@@ -1005,6 +1005,242 @@ tr:hover td {
   display: block;
 }
 
+/* Student analytics dashboard */
+.analytics-shell {
+  display: flex;
+  flex-direction: column;
+}
+
+.analytics-empty {
+  border: 1px dashed var(--line);
+  border-radius: 16px;
+  padding: 24px;
+  text-align: center;
+  background:
+    radial-gradient(circle at 85% 20%, rgba(96, 165, 250, 0.14), transparent 45%),
+    radial-gradient(circle at 20% 80%, rgba(34, 197, 94, 0.1), transparent 42%),
+    rgba(255, 255, 255, 0.02);
+}
+
+.analytics-empty h3 {
+  margin: 0 0 10px;
+  font-size: 24px;
+  font-weight: 800;
+}
+
+.analytics-kpis {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+}
+
+.analytics-kpi {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 14px;
+  background:
+    linear-gradient(160deg, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0.01)),
+    rgba(8, 13, 20, 0.45);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.analytics-kpi-label {
+  font-size: 12px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 700;
+}
+
+.analytics-kpi-value {
+  margin-top: 8px;
+  font-family: 'Outfit', sans-serif;
+  font-size: clamp(22px, 2.8vw, 30px);
+  line-height: 1;
+  font-weight: 900;
+  color: var(--ink);
+}
+
+.analytics-chart-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 1fr;
+}
+
+.analytics-split-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 1fr;
+}
+
+@media (min-width: 980px) {
+  .analytics-split-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (min-width: 1300px) {
+  .analytics-chart-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+.analytics-panel {
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 14px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0.01)),
+    rgba(4, 9, 15, 0.6);
+}
+
+.analytics-panel h3 {
+  margin: 0 0 10px;
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.analytics-chart {
+  width: 100%;
+  min-height: 220px;
+  display: block;
+}
+
+.analytics-perf-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 360px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.analytics-perf-row {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 10px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.analytics-perf-top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.analytics-perf-name {
+  flex: 1;
+  font-weight: 700;
+  font-size: 13px;
+}
+
+.analytics-perf-meta {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.analytics-perf-bar {
+  margin-top: 8px;
+  width: 100%;
+  height: 9px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.2);
+  overflow: hidden;
+}
+
+.analytics-perf-fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--perf-color, linear-gradient(90deg, #ef4444, #22c55e));
+}
+
+.analytics-perf-bottom {
+  margin-top: 8px;
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.analytics-blind-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.analytics-blind-card {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.analytics-blind-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.analytics-blind-name {
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.analytics-blind-tag {
+  border-radius: 999px;
+  border: 1px solid rgba(248, 113, 113, 0.45);
+  background: rgba(248, 113, 113, 0.15);
+  color: #fda4af;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.analytics-heatmap {
+  display: grid;
+  grid-template-columns: repeat(10, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.analytics-heat-cell {
+  aspect-ratio: 1 / 1;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+}
+
+.analytics-heat-0 {
+  background: rgba(148, 163, 184, 0.12);
+}
+
+.analytics-heat-1 {
+  background: rgba(248, 113, 113, 0.28);
+}
+
+.analytics-heat-2 {
+  background: rgba(251, 191, 36, 0.3);
+}
+
+.analytics-heat-3 {
+  background: rgba(34, 197, 94, 0.3);
+}
+
+.analytics-heat-4 {
+  background: rgba(16, 185, 129, 0.45);
+}
+
+.analytics-delta-up {
+  color: var(--good);
+}
+
+.analytics-delta-down {
+  color: var(--bad);
+}
+
 /* Coming Soon Placeholder */
 .coming-soon {
   display: flex;

@@ -11,6 +11,19 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (!profile || profile.role !== 'student') { window.location.replace('index.html'); return; }
     if (guard) guard.remove();
 
+    const KEY_SESS = 'ihbb_v2_sessions';
+    const KEY_LIBRARY = 'ihbb_v2_library';
+    const DAY_MS = 24 * 60 * 60 * 1000;
+    const ERA_LABELS = {
+        "01": "8000 BCE – 600 BCE",
+        "02": "600 BCE – 600 CE",
+        "03": "600 CE – 1450 CE",
+        "04": "1450 CE – 1750 CE",
+        "05": "1750 – 1914",
+        "06": "1914 – 1991",
+        "07": "1991 – Present"
+    };
+
     // ========== NAME CHECK ==========
     if (!profile.display_name || !profile.display_name.trim()) {
         document.getElementById('name-modal').classList.remove('hidden');
@@ -32,7 +45,11 @@ document.addEventListener('DOMContentLoaded', async () => {
             document.querySelectorAll('.dash-tab').forEach(t => t.classList.remove('active'));
             document.querySelectorAll('.view').forEach(c => c.classList.remove('active'));
             tab.classList.add('active');
-            document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
+            const tabId = 'tab-' + tab.dataset.tab;
+            document.getElementById(tabId).classList.add('active');
+            if (tab.dataset.tab === 'analytics') {
+                loadAnalytics();
+            }
         });
     });
 
@@ -185,6 +202,462 @@ document.addEventListener('DOMContentLoaded', async () => {
         window.location.href = 'index.html?drill=1&assignment=' + assignId;
     };
 
+    // ========== ANALYTICS ==========
+    document.getElementById('btn-analytics-refresh')?.addEventListener('click', loadAnalytics);
+
+    function safeReadJson(key, fallback) {
+        try {
+            const raw = localStorage.getItem(key);
+            if (!raw) return fallback;
+            const parsed = JSON.parse(raw);
+            return parsed ?? fallback;
+        } catch {
+            return fallback;
+        }
+    }
+
+    function pad2(n) {
+        return String(n).padStart(2, '0');
+    }
+
+    function dayKeyFromDate(d) {
+        return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+    }
+
+    function dayKeyFromTs(ts) {
+        const d = new Date(ts);
+        d.setHours(0, 0, 0, 0);
+        return dayKeyFromDate(d);
+    }
+
+    function buildLast30Days() {
+        const out = [];
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        for (let i = 29; i >= 0; i--) {
+            const d = new Date(today);
+            d.setDate(d.getDate() - i);
+            out.push({
+                key: dayKeyFromDate(d),
+                label: `${d.getMonth() + 1}/${d.getDate()}`,
+                date: d,
+                attempts: 0,
+                correct: 0,
+                sessions: 0,
+                buzzSum: 0,
+                buzzN: 0,
+                accuracy: null,
+                avgBuzz: null
+            });
+        }
+        return out;
+    }
+
+    function normalizeRegion(region) {
+        const r = String(region || '').trim();
+        return r || 'Unknown Region';
+    }
+
+    function normalizeEra(era) {
+        const raw = String(era || '').trim();
+        if (!raw) return 'Unknown Era';
+        const maybeCode = raw.length === 1 ? `0${raw}` : raw;
+        return ERA_LABELS[maybeCode] || ERA_LABELS[raw] || raw;
+    }
+
+    function buildItemMetaIndex() {
+        const library = safeReadJson(KEY_LIBRARY, {});
+        const index = new Map();
+        for (const set of (library.sets || [])) {
+            for (const item of (set.items || [])) {
+                if (!item?.id || index.has(item.id)) continue;
+                index.set(item.id, {
+                    category: item.meta?.category || '',
+                    era: item.meta?.era || ''
+                });
+            }
+        }
+        return index;
+    }
+
+    function addDimStat(map, name, isCorrect, buzzValue) {
+        if (!map[name]) {
+            map[name] = { name, attempts: 0, correct: 0, buzzSum: 0, buzzN: 0 };
+        }
+        map[name].attempts++;
+        if (isCorrect) map[name].correct++;
+        if (Number.isFinite(buzzValue) && buzzValue > 0) {
+            map[name].buzzSum += buzzValue;
+            map[name].buzzN++;
+        }
+    }
+
+    function finalizeDimStats(mapObj) {
+        return Object.values(mapObj).map(s => ({
+            name: s.name,
+            attempts: s.attempts,
+            correct: s.correct,
+            accuracy: s.attempts ? Math.round((s.correct / s.attempts) * 100) : 0,
+            avgBuzz: s.buzzN ? (s.buzzSum / s.buzzN) : null
+        })).sort((a, b) => b.attempts - a.attempts || a.name.localeCompare(b.name));
+    }
+
+    function summarizeWindow(days) {
+        const attempts = days.reduce((sum, d) => sum + d.attempts, 0);
+        const correct = days.reduce((sum, d) => sum + d.correct, 0);
+        const buzzSum = days.reduce((sum, d) => sum + d.buzzSum, 0);
+        const buzzN = days.reduce((sum, d) => sum + d.buzzN, 0);
+        return {
+            attempts,
+            accuracy: attempts ? (correct / attempts * 100) : null,
+            avgBuzz: buzzN ? (buzzSum / buzzN) : null
+        };
+    }
+
+    function computeAnalyticsSnapshot() {
+        const sessionsRaw = safeReadJson(KEY_SESS, []);
+        const cutoff = Date.now() - (30 * DAY_MS);
+        const sessions = (Array.isArray(sessionsRaw) ? sessionsRaw : [])
+            .filter(s => Number(s?.ts) >= cutoff)
+            .sort((a, b) => Number(a.ts) - Number(b.ts));
+        const days = buildLast30Days();
+        const dayMap = new Map(days.map(d => [d.key, d]));
+        const itemMetaIndex = buildItemMetaIndex();
+        const eraAgg = {};
+        const regionAgg = {};
+
+        let totalAttempts = 0;
+        let totalCorrect = 0;
+        let totalBuzzSum = 0;
+        let totalBuzzN = 0;
+        let fastestBuzz = null;
+
+        for (const s of sessions) {
+            const total = Number(s.total) || 0;
+            const correct = Number(s.correct) || 0;
+            const day = dayMap.get(dayKeyFromTs(s.ts));
+
+            totalAttempts += total;
+            totalCorrect += correct;
+            if (day) {
+                day.sessions += 1;
+                day.attempts += total;
+                day.correct += correct;
+            }
+
+            const buzz = Array.isArray(s.buzz) ? s.buzz : [];
+            for (const tRaw of buzz) {
+                const t = Number(tRaw);
+                if (!Number.isFinite(t) || t <= 0) continue;
+                totalBuzzSum += t;
+                totalBuzzN += 1;
+                if (day) {
+                    day.buzzSum += t;
+                    day.buzzN += 1;
+                }
+                if (fastestBuzz === null || t < fastestBuzz) fastestBuzz = t;
+            }
+
+            const ids = Array.isArray(s.items) ? s.items : [];
+            const results = Array.isArray(s.results) ? s.results : [];
+            if (!ids.length || !results.length) continue;
+            const maxLen = Math.min(ids.length, results.length);
+            for (let i = 0; i < maxLen; i++) {
+                const itemId = ids[i];
+                const fromSession = Array.isArray(s.meta) ? s.meta[i] : null;
+                const fromLibrary = itemId ? itemMetaIndex.get(itemId) : null;
+                const category = normalizeRegion(fromSession?.category || fromLibrary?.category || '');
+                const era = normalizeEra(fromSession?.era || fromLibrary?.era || '');
+                const isCorrect = !!results[i];
+                const buzzValue = Number(buzz[i]);
+                addDimStat(regionAgg, category, isCorrect, buzzValue);
+                addDimStat(eraAgg, era, isCorrect, buzzValue);
+            }
+        }
+
+        for (const d of days) {
+            d.accuracy = d.attempts ? Math.round((d.correct / d.attempts) * 100) : null;
+            d.avgBuzz = d.buzzN ? (d.buzzSum / d.buzzN) : null;
+        }
+
+        const eraStats = finalizeDimStats(eraAgg);
+        const regionStats = finalizeDimStats(regionAgg);
+        const combined = [
+            ...eraStats.map(s => ({ ...s, dim: 'Era' })),
+            ...regionStats.map(s => ({ ...s, dim: 'Region' }))
+        ];
+        const blindSpots = combined
+            .filter(s => s.attempts >= 4)
+            .sort((a, b) => a.accuracy - b.accuracy || b.attempts - a.attempts)
+            .slice(0, 6);
+
+        const last7 = summarizeWindow(days.slice(-7));
+        const prev7 = summarizeWindow(days.slice(-14, -7));
+
+        return {
+            days,
+            sessionsCount: sessions.length,
+            totalAttempts,
+            totalCorrect,
+            totalAccuracy: totalAttempts ? Math.round((totalCorrect / totalAttempts) * 100) : 0,
+            avgBuzz: totalBuzzN ? (totalBuzzSum / totalBuzzN) : null,
+            fastestBuzz,
+            activeDays: days.filter(d => d.attempts > 0).length,
+            accDelta7d: (last7.accuracy === null || prev7.accuracy === null) ? null : (last7.accuracy - prev7.accuracy),
+            buzzDelta7d: (last7.avgBuzz === null || prev7.avgBuzz === null) ? null : (last7.avgBuzz - prev7.avgBuzz),
+            eraStats,
+            regionStats,
+            blindSpots
+        };
+    }
+
+    function svgEmpty(text) {
+        return `<text x="50%" y="50%" text-anchor="middle" dominant-baseline="middle" fill="currentColor" opacity=".55">${esc(text)}</text>`;
+    }
+
+    function renderLineChart(svgId, points, labels, options = {}) {
+        const svg = document.getElementById(svgId);
+        if (!svg) return;
+
+        const numeric = points.map(v => Number.isFinite(v) ? Number(v) : null);
+        const valid = numeric.filter(v => v !== null);
+        if (!valid.length) {
+            svg.innerHTML = svgEmpty(options.emptyText || 'No data yet');
+            return;
+        }
+
+        const w = 720, h = 220;
+        const pad = { l: 42, r: 16, t: 16, b: 32 };
+        const plotW = w - pad.l - pad.r;
+        const plotH = h - pad.t - pad.b;
+        const min = Number.isFinite(options.min) ? Number(options.min) : Math.min(...valid);
+        const max = Number.isFinite(options.max) ? Number(options.max) : Math.max(...valid);
+        const yMin = options.minZero ? Math.min(0, min) : min;
+        const yMax = max === yMin ? yMin + 1 : max;
+
+        const xFor = i => pad.l + (numeric.length <= 1 ? 0 : (i * plotW / (numeric.length - 1)));
+        const yFor = v => pad.t + ((yMax - v) * plotH / (yMax - yMin));
+
+        const gridTicks = 4;
+        const grids = [];
+        const yLabels = [];
+        for (let t = 0; t <= gridTicks; t++) {
+            const ratio = t / gridTicks;
+            const y = pad.t + ratio * plotH;
+            const value = yMax - ((yMax - yMin) * ratio);
+            const text = options.yLabelFn ? options.yLabelFn(value) : String(Math.round(value));
+            grids.push(`<line x1="${pad.l}" y1="${y.toFixed(2)}" x2="${w - pad.r}" y2="${y.toFixed(2)}" stroke="rgba(148,163,184,0.18)" stroke-width="1" />`);
+            yLabels.push(`<text x="${pad.l - 8}" y="${(y + 4).toFixed(2)}" text-anchor="end" fill="currentColor" opacity=".6" font-size="11">${esc(text)}</text>`);
+        }
+
+        let path = '';
+        let open = false;
+        const circles = [];
+        numeric.forEach((v, i) => {
+            if (v === null) {
+                open = false;
+                return;
+            }
+            const x = xFor(i);
+            const y = yFor(v);
+            path += open ? ` L ${x.toFixed(2)} ${y.toFixed(2)}` : ` M ${x.toFixed(2)} ${y.toFixed(2)}`;
+            open = true;
+            circles.push(`<circle cx="${x.toFixed(2)}" cy="${y.toFixed(2)}" r="3.2" fill="${options.color || 'var(--accent)'}" />`);
+        });
+
+        const mid = Math.floor((labels.length - 1) / 2);
+        const xLabels = [
+            { i: 0, txt: labels[0] || '' },
+            { i: mid, txt: labels[mid] || '' },
+            { i: labels.length - 1, txt: labels[labels.length - 1] || '' }
+        ].map(xl => `<text x="${xFor(xl.i).toFixed(2)}" y="${h - 8}" text-anchor="middle" fill="currentColor" opacity=".7" font-size="11">${esc(xl.txt)}</text>`);
+
+        svg.innerHTML = `
+            <rect x="0" y="0" width="${w}" height="${h}" fill="transparent"></rect>
+            ${grids.join('')}
+            ${yLabels.join('')}
+            <path d="${path}" fill="none" stroke="${options.color || 'var(--accent)'}" stroke-width="2.6" stroke-linejoin="round" stroke-linecap="round"></path>
+            ${circles.join('')}
+            ${xLabels.join('')}
+        `;
+    }
+
+    function renderBarChart(svgId, values, labels, options = {}) {
+        const svg = document.getElementById(svgId);
+        if (!svg) return;
+        const vals = values.map(v => Number(v) || 0);
+        const max = Math.max(...vals, 0);
+        if (max <= 0) {
+            svg.innerHTML = svgEmpty(options.emptyText || 'No data yet');
+            return;
+        }
+
+        const w = 720, h = 220;
+        const pad = { l: 20, r: 12, t: 16, b: 32 };
+        const plotW = w - pad.l - pad.r;
+        const plotH = h - pad.t - pad.b;
+        const bw = Math.max(3, plotW / vals.length * 0.72);
+        const gap = Math.max(1, plotW / vals.length * 0.28);
+
+        const bars = vals.map((v, i) => {
+            const x = pad.l + i * (bw + gap);
+            const hh = Math.max(2, (v / max) * plotH);
+            const y = h - pad.b - hh;
+            return `<rect x="${x.toFixed(2)}" y="${y.toFixed(2)}" width="${bw.toFixed(2)}" height="${hh.toFixed(2)}" rx="5" fill="${options.color || 'var(--accent2)'}" opacity="0.82" />`;
+        });
+
+        const mid = Math.floor((labels.length - 1) / 2);
+        const xLabelPos = i => pad.l + i * (bw + gap) + (bw / 2);
+        const xLabels = [
+            { i: 0, txt: labels[0] || '' },
+            { i: mid, txt: labels[mid] || '' },
+            { i: labels.length - 1, txt: labels[labels.length - 1] || '' }
+        ].map(xl => `<text x="${xLabelPos(xl.i).toFixed(2)}" y="${h - 8}" text-anchor="middle" fill="currentColor" opacity=".7" font-size="11">${esc(xl.txt)}</text>`);
+
+        svg.innerHTML = `
+            <rect x="0" y="0" width="${w}" height="${h}" fill="transparent"></rect>
+            ${bars.join('')}
+            ${xLabels.join('')}
+        `;
+    }
+
+    function perfGradient(accuracy) {
+        const clamped = Math.max(0, Math.min(100, accuracy));
+        const hue = Math.round((clamped / 100) * 120);
+        const hue2 = Math.min(140, hue + 18);
+        return `linear-gradient(90deg, hsl(${hue}, 78%, 52%), hsl(${hue2}, 78%, 44%))`;
+    }
+
+    function renderPerformanceList(elId, stats, emptyText) {
+        const el = document.getElementById(elId);
+        if (!el) return;
+        if (!stats.length) {
+            el.innerHTML = `<p class="muted">${esc(emptyText)}</p>`;
+            return;
+        }
+        el.innerHTML = stats.slice(0, 10).map(s => `
+            <div class="analytics-perf-row">
+                <div class="analytics-perf-top">
+                    <div class="analytics-perf-name">${esc(s.name)}</div>
+                    <div class="analytics-perf-meta">${s.attempts} q</div>
+                </div>
+                <div class="analytics-perf-bar">
+                    <span class="analytics-perf-fill" style="width:${Math.max(4, s.accuracy)}%; --perf-color:${perfGradient(s.accuracy)};"></span>
+                </div>
+                <div class="analytics-perf-bottom">
+                    <span>${s.accuracy}% accuracy</span>
+                    <span>${s.avgBuzz ? `${s.avgBuzz.toFixed(2)}s avg buzz` : 'No buzz speed'}</span>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    function renderBlindSpots(list) {
+        const el = document.getElementById('analytics-blind-spots');
+        if (!el) return;
+        if (!list.length) {
+            el.innerHTML = '<p class="muted">Not enough answered questions yet to identify blind spots.</p>';
+            return;
+        }
+        el.innerHTML = list.map(s => {
+            const severity = s.accuracy < 50 ? 'Critical' : (s.accuracy < 70 ? 'Watch' : 'Improve');
+            return `
+                <div class="analytics-blind-card">
+                    <div class="analytics-blind-head">
+                        <div class="analytics-blind-name">${esc(s.name)}</div>
+                        <div class="analytics-blind-tag">${severity}</div>
+                    </div>
+                    <div class="analytics-perf-bottom">
+                        <span>${esc(s.dim)} • ${s.attempts} attempts</span>
+                        <span>${s.accuracy}% accuracy</span>
+                    </div>
+                    <div class="analytics-perf-bottom">
+                        <span>${s.correct}/${s.attempts} correct</span>
+                        <span>${s.avgBuzz ? `${s.avgBuzz.toFixed(2)}s avg buzz` : 'No buzz speed'}</span>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    function renderHeatmap(days, activeDays, fastestBuzz) {
+        const wrap = document.getElementById('analytics-heatmap');
+        const caption = document.getElementById('analytics-heatmap-caption');
+        if (!wrap || !caption) return;
+
+        wrap.innerHTML = days.map(d => {
+            let intensity = 0;
+            if (d.attempts > 0) {
+                if (d.accuracy === null) intensity = 1;
+                else if (d.accuracy < 50) intensity = 1;
+                else if (d.accuracy < 65) intensity = 2;
+                else if (d.accuracy < 80) intensity = 3;
+                else intensity = 4;
+            }
+            const title = `${d.key}: ${d.attempts} q, ${d.accuracy === null ? 'n/a' : d.accuracy + '%'}`;
+            return `<div class="analytics-heat-cell analytics-heat-${intensity}" title="${esc(title)}"></div>`;
+        }).join('');
+
+        caption.textContent = `Active on ${activeDays}/30 days${fastestBuzz ? ` • Fastest buzz: ${fastestBuzz.toFixed(2)}s` : ''}.`;
+    }
+
+    function setDelta(elId, value, unit, higherIsBetter, digits = 1) {
+        const el = document.getElementById(elId);
+        if (!el) return;
+        el.classList.remove('analytics-delta-up', 'analytics-delta-down');
+        if (!Number.isFinite(value)) {
+            el.textContent = '—';
+            return;
+        }
+        const rounded = digits > 0 ? value.toFixed(digits) : String(Math.round(value));
+        const sign = value > 0 ? '+' : '';
+        el.textContent = `${sign}${rounded}${unit}`;
+        const improved = higherIsBetter ? value >= 0 : value <= 0;
+        el.classList.add(improved ? 'analytics-delta-up' : 'analytics-delta-down');
+    }
+
+    function loadAnalytics() {
+        const snapshot = computeAnalyticsSnapshot();
+        const emptyEl = document.getElementById('analytics-empty');
+        const contentEl = document.getElementById('analytics-content');
+        const hasData = snapshot.totalAttempts > 0;
+        if (emptyEl) emptyEl.classList.toggle('hidden', hasData);
+        if (contentEl) contentEl.classList.toggle('hidden', !hasData);
+        if (!hasData) return;
+
+        document.getElementById('analytics-kpi-attempts').textContent = snapshot.totalAttempts.toLocaleString();
+        document.getElementById('analytics-kpi-accuracy').textContent = `${snapshot.totalAccuracy}%`;
+        document.getElementById('analytics-kpi-buzz').textContent = snapshot.avgBuzz ? `${snapshot.avgBuzz.toFixed(2)}s` : '—';
+        document.getElementById('analytics-kpi-sessions').textContent = String(snapshot.sessionsCount);
+        setDelta('analytics-kpi-acc-delta', snapshot.accDelta7d, '%', true, 1);
+        setDelta('analytics-kpi-buzz-delta', snapshot.buzzDelta7d, 's', false, 2);
+
+        const labels = snapshot.days.map(d => d.label);
+        renderLineChart(
+            'analytics-chart-accuracy',
+            snapshot.days.map(d => d.accuracy),
+            labels,
+            { min: 0, max: 100, color: '#60a5fa', yLabelFn: v => `${Math.round(v)}%`, emptyText: 'No accuracy data' }
+        );
+        renderLineChart(
+            'analytics-chart-buzz',
+            snapshot.days.map(d => d.avgBuzz),
+            labels,
+            { minZero: true, color: '#22c55e', yLabelFn: v => `${v.toFixed(1)}s`, emptyText: 'No buzz speed data' }
+        );
+        renderBarChart(
+            'analytics-chart-volume',
+            snapshot.days.map(d => d.attempts),
+            labels,
+            { color: '#f59e0b', emptyText: 'No attempts yet' }
+        );
+
+        renderPerformanceList('analytics-era-list', snapshot.eraStats, 'No era-tagged questions yet.');
+        renderPerformanceList('analytics-region-list', snapshot.regionStats, 'No region-tagged questions yet.');
+        renderBlindSpots(snapshot.blindSpots);
+        renderHeatmap(snapshot.days, snapshot.activeDays, snapshot.fastestBuzz);
+    }
+
     // ========== HELPERS ==========
     function showAlert(msg, type = 'error') {
         const el = document.getElementById('alert-box');
@@ -196,4 +669,5 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Init
     loadClasses();
     loadAssignments();
+    loadAnalytics();
 });

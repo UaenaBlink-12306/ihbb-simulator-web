@@ -789,7 +789,25 @@ function pushSession(total, correct, durSec, buzzTimes, pool, order, results) {
   const arr = JSON.parse(localStorage.getItem(KEY_SESS) || '[]');
   const itemIds = order.map(i => pool[i]?.id).filter(Boolean);
   const res = results.slice(0, itemIds.length);
-  arr.unshift({ ts: Date.now(), total, correct, acc: total ? Math.round(correct / total * 100) : 0, dur: Math.round(durSec), buzz: buzzTimes, items: itemIds, results: res });
+  const meta = order.slice(0, itemIds.length).map(i => {
+    const it = pool[i] || {};
+    return {
+      category: it.meta?.category || '',
+      era: it.meta?.era || '',
+      source: it.meta?.source || ''
+    };
+  });
+  arr.unshift({
+    ts: Date.now(),
+    total,
+    correct,
+    acc: total ? Math.round(correct / total * 100) : 0,
+    dur: Math.round(durSec),
+    buzz: buzzTimes,
+    items: itemIds,
+    results: res,
+    meta
+  });
   localStorage.setItem(KEY_SESS, JSON.stringify(arr.slice(0, 200)));
 }
 

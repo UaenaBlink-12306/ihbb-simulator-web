@@ -140,19 +140,98 @@
             </div>
         </section>
 
-        <!-- Analytics Tab (Coming Soon) -->
+        <!-- Analytics Tab -->
         <section id="tab-analytics" class="view">
             <div class="card">
-                <div class="coming-soon">
-                    <div class="cs-icon">📊</div>
-                    <h2>Student Analytics</h2>
-                    <p class="cs-desc">Discover your strengths and blind spots with detailed performance heatmaps across
-                        eras and regions. Track accuracy and buzz speed over time.</p>
-                    <div class="cs-badge">🚀 Coming Soon</div>
-                    <div class="cs-features">
-                        <div class="cs-feature">🗺️ Era/Region Heatmap</div>
-                        <div class="cs-feature">📈 Progress Tracking</div>
-                        <div class="cs-feature">⏱️ Buzz Speed Trends</div>
+                <div class="analytics-shell">
+                    <div class="analytics-head row align-center" style="justify-content: space-between; gap: 10px;">
+                        <div>
+                            <h2 class="card-title" style="margin: 0;">Blind Spot Analytics</h2>
+                            <p class="muted" style="margin: 8px 0 0;">Last 30 days of accuracy, buzz speed, and topic
+                                mastery.</p>
+                        </div>
+                        <div class="row" style="gap: 8px;">
+                            <span class="pill">30-Day Window</span>
+                            <button id="btn-analytics-refresh" class="btn ghost" type="button">Refresh</button>
+                        </div>
+                    </div>
+
+                    <div id="analytics-empty" class="analytics-empty hidden" style="margin-top: 16px;">
+                        <h3>No activity yet</h3>
+                        <p class="muted">Start a few drills in the Practice Hub and this page will light up with your
+                            blind spots.</p>
+                        <a href="index.html?drill=1" class="btn pri" style="text-decoration: none;">Start Practice
+                            Drill</a>
+                    </div>
+
+                    <div id="analytics-content">
+                        <div class="analytics-kpis" style="margin-top: 18px;">
+                            <div class="analytics-kpi">
+                                <div class="analytics-kpi-label">Questions Answered</div>
+                                <div id="analytics-kpi-attempts" class="analytics-kpi-value">0</div>
+                            </div>
+                            <div class="analytics-kpi">
+                                <div class="analytics-kpi-label">Accuracy</div>
+                                <div id="analytics-kpi-accuracy" class="analytics-kpi-value">0%</div>
+                            </div>
+                            <div class="analytics-kpi">
+                                <div class="analytics-kpi-label">Avg Buzz Speed</div>
+                                <div id="analytics-kpi-buzz" class="analytics-kpi-value">0.00s</div>
+                            </div>
+                            <div class="analytics-kpi">
+                                <div class="analytics-kpi-label">Sessions</div>
+                                <div id="analytics-kpi-sessions" class="analytics-kpi-value">0</div>
+                            </div>
+                            <div class="analytics-kpi">
+                                <div class="analytics-kpi-label">7-Day Accuracy Δ</div>
+                                <div id="analytics-kpi-acc-delta" class="analytics-kpi-value">0%</div>
+                            </div>
+                            <div class="analytics-kpi">
+                                <div class="analytics-kpi-label">7-Day Buzz Δ</div>
+                                <div id="analytics-kpi-buzz-delta" class="analytics-kpi-value">0.00s</div>
+                            </div>
+                        </div>
+
+                        <div class="analytics-chart-grid" style="margin-top: 16px;">
+                            <div class="analytics-panel">
+                                <h3>Accuracy Trend</h3>
+                                <svg id="analytics-chart-accuracy" class="analytics-chart" viewBox="0 0 720 220"
+                                    aria-label="Accuracy trend over last 30 days"></svg>
+                            </div>
+                            <div class="analytics-panel">
+                                <h3>Buzz Speed Trend</h3>
+                                <svg id="analytics-chart-buzz" class="analytics-chart" viewBox="0 0 720 220"
+                                    aria-label="Average buzz speed trend over last 30 days"></svg>
+                            </div>
+                            <div class="analytics-panel">
+                                <h3>Daily Volume</h3>
+                                <svg id="analytics-chart-volume" class="analytics-chart" viewBox="0 0 720 220"
+                                    aria-label="Daily question volume over last 30 days"></svg>
+                            </div>
+                        </div>
+
+                        <div class="analytics-split-grid" style="margin-top: 16px;">
+                            <div class="analytics-panel">
+                                <h3>Era Performance</h3>
+                                <div id="analytics-era-list" class="analytics-perf-list"></div>
+                            </div>
+                            <div class="analytics-panel">
+                                <h3>Region Performance</h3>
+                                <div id="analytics-region-list" class="analytics-perf-list"></div>
+                            </div>
+                        </div>
+
+                        <div class="analytics-split-grid" style="margin-top: 16px;">
+                            <div class="analytics-panel">
+                                <h3>Blind Spot Radar</h3>
+                                <div id="analytics-blind-spots" class="analytics-blind-list"></div>
+                            </div>
+                            <div class="analytics-panel">
+                                <h3>Consistency Heatmap</h3>
+                                <div id="analytics-heatmap" class="analytics-heatmap"></div>
+                                <div id="analytics-heatmap-caption" class="muted" style="margin-top: 10px;"></div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
