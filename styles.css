@@ -1004,3 +1004,108 @@ tr:hover td {
   height: 200px;
   display: block;
 }
+
+/* Coming Soon Placeholder */
+.coming-soon {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 60px 24px;
+  gap: 20px;
+}
+
+.coming-soon .cs-icon {
+  font-size: 64px;
+  line-height: 1;
+  filter: grayscale(0.2);
+  animation: csFloat 3s ease-in-out infinite;
+}
+
+@keyframes csFloat {
+
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+
+  50% {
+    transform: translateY(-8px);
+  }
+}
+
+.coming-soon h2 {
+  font-size: 28px;
+  font-weight: 800;
+  margin: 0;
+  background: linear-gradient(135deg, var(--ink) 0%, var(--muted) 100%);
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.coming-soon .cs-desc {
+  color: var(--muted);
+  font-size: 15px;
+  font-weight: 500;
+  max-width: 420px;
+  line-height: 1.6;
+}
+
+.coming-soon .cs-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 20px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: #fff;
+  background: linear-gradient(135deg, var(--accent), var(--accent2));
+  box-shadow: 0 8px 24px var(--ring);
+  animation: csPulse 2.5s ease-in-out infinite;
+}
+
+@keyframes csPulse {
+
+  0%,
+  100% {
+    box-shadow: 0 8px 24px var(--ring);
+    transform: scale(1);
+  }
+
+  50% {
+    box-shadow: 0 12px 32px var(--ring);
+    transform: scale(1.04);
+  }
+}
+
+.coming-soon .cs-features {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: center;
+  margin-top: 8px;
+}
+
+.coming-soon .cs-feature {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 10px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+@media (prefers-color-scheme: light) {
+  .coming-soon .cs-feature {
+    background: rgba(0, 0, 0, 0.02);
+  }
+}
