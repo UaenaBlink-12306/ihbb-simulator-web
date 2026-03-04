@@ -882,6 +882,44 @@ tr:hover td {
   grid-column: 1 / -1;
 }
 
+@media (max-width: 760px) {
+  .form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .form-grid .full-width {
+    grid-column: auto;
+  }
+}
+
+.account-profile-card {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 14px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.account-danger {
+  margin-top: 6px;
+  padding: 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(248, 113, 113, 0.25);
+  background: rgba(248, 113, 113, 0.06);
+}
+
+.account-danger-confirm {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.account-danger-confirm input[type="checkbox"] {
+  margin-top: 3px;
+}
+
 .hidden {
   display: none !important;
 }

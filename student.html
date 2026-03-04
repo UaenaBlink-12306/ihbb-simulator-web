@@ -260,9 +260,57 @@
             <div class="card">
                 <h2 class="card-title" style="margin-bottom: 12px;">Account Settings</h2>
                 <p class="muted" style="margin-bottom:24px">Manage your account and data.</p>
-                <a href="profile.html" class="btn ghost" style="text-decoration: none; margin-bottom: 12px;">👤 View My
-                    Profile</a>
-                <button id="btn-delete-account" class="btn warn">🗑️ Delete My Account Permanently</button>
+
+                <div class="account-profile-card">
+                    <h3 style="margin: 0 0 12px 0;">My Profile</h3>
+                    <div class="form-grid">
+                        <div class="input-group">
+                            <label>Display Name</label>
+                            <input id="acc-display-name" type="text" readonly>
+                        </div>
+                        <div class="input-group">
+                            <label>Role</label>
+                            <input id="acc-role" type="text" readonly>
+                        </div>
+                        <div class="input-group">
+                            <label>Email</label>
+                            <input id="acc-email" type="text" readonly>
+                        </div>
+                        <div class="input-group">
+                            <label>Class Code</label>
+                            <input id="acc-class-code" type="text" readonly>
+                        </div>
+                        <div class="input-group">
+                            <label>Created At</label>
+                            <input id="acc-created-at" type="text" readonly>
+                        </div>
+                        <div class="input-group full-width">
+                            <label>User ID</label>
+                            <input id="acc-user-id" type="text" readonly>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="sep"></div>
+
+                <div class="account-danger">
+                    <div class="row align-center" style="justify-content: space-between; gap: 12px;">
+                        <h3 style="margin: 0;">Danger Zone</h3>
+                        <button id="btn-reveal-delete" type="button" class="btn ghost">Show Delete Option</button>
+                    </div>
+                    <p class="muted" style="margin: 10px 0 0;">
+                        Delete account is hidden to prevent accidental clicks.
+                    </p>
+
+                    <div id="account-danger-panel" class="hidden" style="margin-top: 12px;">
+                        <label class="account-danger-confirm">
+                            <input id="confirm-delete-reveal" type="checkbox">
+                            I understand this permanently deletes my account and all data.
+                        </label>
+                        <button id="btn-delete-account" class="btn warn" disabled style="margin-top: 12px;">🗑️ Delete
+                            My Account Permanently</button>
+                    </div>
+                </div>
             </div>
         </section>
     </div>

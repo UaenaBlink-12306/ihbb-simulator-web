@@ -7,13 +7,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (!session) { window.location.replace('login.html'); return; }
     const uid = session.user.id;
 
-    const { data: profile } = await sb.from('profiles').select('role, display_name').eq('id', uid).single();
+    const { data: profile } = await sb.from('profiles').select('role, display_name, class_code, created_at').eq('id', uid).single();
     if (!profile || profile.role !== 'student') { window.location.replace('index.html'); return; }
     if (guard) guard.remove();
 
     const KEY_SESS = 'ihbb_v2_sessions';
     const KEY_LIBRARY = 'ihbb_v2_library';
     const DAY_MS = 24 * 60 * 60 * 1000;
+    const USER_EMAIL = session.user?.email || '—';
     const ERA_LABELS = {
         "01": "8000 BCE – 600 BCE",
         "02": "600 BCE – 600 CE",
@@ -22,6 +23,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         "05": "1750 – 1914",
         "06": "1914 – 1991",
         "07": "1991 – Present"
+    };
+    const formatRole = (role) => {
+        const s = String(role || '').trim().toLowerCase();
+        if (!s) return 'Unknown';
+        return s.charAt(0).toUpperCase() + s.slice(1);
     };
 
     // ========== NAME CHECK ==========
@@ -35,6 +41,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const { error } = await sb.from('profiles').update({ display_name: name }).eq('id', uid);
         if (error) { showAlert('Failed to save name: ' + error.message, 'error'); return; }
         profile.display_name = name;
+        renderAccountProfile();
         document.getElementById('name-modal').classList.add('hidden');
         showAlert('Name saved!', 'success');
     });
@@ -58,8 +65,46 @@ document.addEventListener('DOMContentLoaded', async () => {
         e.preventDefault(); await sb.auth.signOut(); window.location.replace('login.html');
     });
 
+    // ========== ACCOUNT TAB ==========
+    const deleteBtn = document.getElementById('btn-delete-account');
+    const revealDeleteBtn = document.getElementById('btn-reveal-delete');
+    const dangerPanel = document.getElementById('account-danger-panel');
+    const confirmDeleteReveal = document.getElementById('confirm-delete-reveal');
+
+    function setInput(id, value) {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.value = value ?? '';
+    }
+
+    function renderAccountProfile() {
+        setInput('acc-display-name', profile.display_name || 'Unnamed');
+        setInput('acc-role', formatRole(profile.role));
+        setInput('acc-email', USER_EMAIL);
+        setInput('acc-class-code', profile.class_code || '—');
+        setInput('acc-created-at', profile.created_at ? new Date(profile.created_at).toLocaleString() : '—');
+        setInput('acc-user-id', uid);
+    }
+
+    renderAccountProfile();
+
+    revealDeleteBtn?.addEventListener('click', () => {
+        if (!dangerPanel) return;
+        const show = dangerPanel.classList.contains('hidden');
+        dangerPanel.classList.toggle('hidden', !show);
+        revealDeleteBtn.textContent = show ? 'Hide Delete Option' : 'Show Delete Option';
+        if (!show && confirmDeleteReveal) {
+            confirmDeleteReveal.checked = false;
+            if (deleteBtn) deleteBtn.disabled = true;
+        }
+    });
+
+    confirmDeleteReveal?.addEventListener('change', () => {
+        if (deleteBtn) deleteBtn.disabled = !confirmDeleteReveal.checked;
+    });
+
     // ========== DELETE ACCOUNT ==========
-    document.getElementById('btn-delete-account').addEventListener('click', async () => {
+    deleteBtn?.addEventListener('click', async () => {
         if (!confirm('⚠️ Permanently delete your account and ALL data?')) return;
         if (!confirm('FINAL WARNING: This cannot be undone!')) return;
         try { await sb.rpc('delete_user'); await sb.auth.signOut(); window.location.replace('login.html'); }
