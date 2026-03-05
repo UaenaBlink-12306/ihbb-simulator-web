@@ -100,6 +100,17 @@ module.exports = async function handler(req, res) {
       return regionIcons[r] || topicIcons[t] || '📘';
     }
 
+    function fallbackRelatedFacts(region, era, topic) {
+      const r = String(region || 'this region');
+      const e = String(era || 'this period');
+      const t = String(topic || 'General').toLowerCase();
+      return [
+        `Fact 1: [Timeline Anchor] - Place this in ${e}; similar clues in different eras often indicate different answers.`,
+        `Fact 2: [Regional Anchor] - Keep it tied to ${r}; cross-region lookalikes are a common trap.`,
+        `Fact 3: [Theme Link] - This is most testable through ${t} consequences, not isolated name recall.`
+      ];
+    }
+
     function isConceptCheckValid(nextCheck, originalQuestion, expectedAnswer) {
       const nq = normalize(nextCheck);
       const oq = normalize(originalQuestion);
@@ -127,27 +138,31 @@ module.exports = async function handler(req, res) {
       const region = String(meta.category || meta.region || 'World') || 'World';
       const era = String(meta.era || '');
       const topic = guessTopic(question);
+      const explanation = correct
+        ? 'The clue set points to a unique target, and your response matched that target within the right context.'
+        : 'The likely issue is conceptual overlap: your response may be related, but the clues narrow to a different target in this context.';
+      const relatedFacts = fallbackRelatedFacts(region, era, topic);
+      const nextCheck = fallbackNextCheck(question);
       return {
         summary: correct
           ? 'You got it right. Keep tying clues to the specific historical context.'
           : 'This was likely a near-miss in concept matching rather than total misunderstanding.',
-        error_diagnosis: correct
-          ? 'Your answer aligned with the required entity and context.'
-          : 'Your answer did not match the expected entity under strict identification, likely due to overlap with a related concept.',
-        overlap_explainer: reasonText || 'Focus on the clue combination that uniquely identifies the expected answer.',
+        explanation,
+        related_facts: relatedFacts,
         key_clues: [
-          'Identify which clue is unique rather than merely related.',
-          'Prioritize clues that narrow to one entity.',
-          'Cross-check timeframe and region before finalizing.'
+          'Identify the most specific clue that disambiguates lookalikes.',
+          'Lock the answer to a timeline or region anchor before committing.'
         ],
         memory_hook: 'Anchor one distinctive clue to one named entity.',
-        next_check_question: fallbackNextCheck(question),
         study_focus: {
           region,
           era,
           topic,
           icon: iconForFocus(region, topic)
         },
+        error_diagnosis: explanation,
+        overlap_explainer: reasonText || relatedFacts[0],
+        next_check_question: nextCheck,
         confidence: 'low'
       };
     }
@@ -164,18 +179,31 @@ module.exports = async function handler(req, res) {
       const keyClues = Array.isArray(rc.key_clues)
         ? rc.key_clues.map(x => String(x || '').trim()).filter(Boolean).slice(0, 4)
         : [];
+      const relatedFacts = Array.isArray(rc.related_facts)
+        ? rc.related_facts.map(x => String(x || '').trim()).filter(Boolean).slice(0, 3)
+        : [];
+      const fallbackFacts = fallbackRelatedFacts(region, era, topic);
+      const explanation = String(
+        rc.explanation ||
+        rc.error_diagnosis ||
+        (correct ? 'You identified the right entity and context.' : 'Your response likely overlapped with a related but different concept.')
+      ).trim();
+      const nextCheckRaw = String(rc.next_check_question || '').trim();
+      const nextCheck = nextCheckRaw || fallbackNextCheck(question);
+      const mergedRelatedFacts = relatedFacts.length ? relatedFacts : fallbackFacts;
 
       return {
         summary: String(rc.summary || (correct ? 'Correct answer with good clue alignment.' : 'This answer was not accepted; review clue disambiguation.')).trim(),
-        error_diagnosis: String(rc.error_diagnosis || (correct ? 'You identified the right entity.' : 'The response likely overlapped with a related but different concept.')).trim(),
-        overlap_explainer: String(rc.overlap_explainer || reasonText || 'Use the most specific clues to separate related answers.').trim(),
+        explanation,
+        related_facts: mergedRelatedFacts,
+        error_diagnosis: explanation,
+        overlap_explainer: String(rc.overlap_explainer || mergedRelatedFacts.join(' | ') || reasonText || 'Use the most specific clues to separate related answers.').trim(),
         key_clues: keyClues.length ? keyClues : [
           'Track clues that uniquely identify the expected answer.',
-          'Use era and region to eliminate close alternatives.',
-          'Prioritize proper nouns and named events.'
+          'Use era and region to eliminate close alternatives.'
         ],
         memory_hook: String(rc.memory_hook || 'Pair one unique clue with one canonical answer.').trim(),
-        next_check_question: String(rc.next_check_question || '').trim(),
+        next_check_question: nextCheck,
         study_focus: { region, era, topic, icon },
         confidence
       };
@@ -234,13 +262,17 @@ module.exports = async function handler(req, res) {
     }
 
     const coachSystem = [
-      'You are an IHBB grading + coaching assistant.',
-      'Be error-centric: do not just explain the right answer; explain why the user answer may feel plausible and where overlap/confusion happens.',
-      'Use only question-specific clues; avoid generic encyclopedia exposition.',
-      'The next_check_question must be a concept-check about causation/result/context, not a repetition of the original question.',
-      'Do not include the exact expected answer string inside next_check_question.',
-      'Return strict JSON with this shape:',
-      '{"correct":boolean,"reason":string,"coach":{"summary":string,"error_diagnosis":string,"overlap_explainer":string,"key_clues":string[],"memory_hook":string,"next_check_question":string,"study_focus":{"region":string,"era":string,"topic":string,"icon":string},"confidence":"high|medium|low"}}'
+      'Act as an expert polymath and memory architect. Your goal is to provide a high-density "Micro-Lesson" that helps a student not just memorize a fact, but understand its place in a broader system of knowledge.',
+      'First, grade the answer and return top-level fields: {"correct":boolean,"reason":string}. Use this grading verdict as is_correct when writing the coach content.',
+      'CONTEXT KEYS PROVIDED: question, expected_answer, user_answer, aliases, strict, category, meta, coach_depth.',
+      'INSTRUCTIONS:',
+      '1) THE "WHY": Explain the underlying logic or historical significance in 2-3 punchy sentences.',
+      '2) THE "DEEP SCAN" (3 RELATED FACTS): Provide three additional high-value facts contextually linked to the answer.',
+      '3) ERROR CORRECTION: If is_correct is false, briefly explain the specific difference between the user answer and the correct one.',
+      '4) MEMORY ANCHOR: Provide one vivid, strange, or rhythmic mnemonic.',
+      'Use question-specific clues and avoid generic encyclopedia dumps.',
+      'OUTPUT FORMAT (Strict JSON, no markdown):',
+      '{"correct":boolean,"reason":string,"coach":{"summary":"1-sentence definitive takeaway.","explanation":"Deep context explaining the logic of the answer.","related_facts":["Fact 1: [Connection Type] - [Data]","Fact 2: [Connection Type] - [Data]","Fact 3: [Connection Type] - [Data]"],"key_clues":["Specific word in the question that gives it away","A chronological or spatial anchor"],"memory_hook":"A short, sticky mnemonic or visual association.","study_focus":{"region":"String","era":"String","topic":"String"}}}'
     ].join('\n');
 
     const coachMessages = [
@@ -249,9 +281,10 @@ module.exports = async function handler(req, res) {
         role: 'user',
         content: JSON.stringify({
           question,
-          expected,
+          expected_answer: expected,
           aliases,
           user_answer: userAnswer,
+          category: String(meta.category || meta.region || ''),
           strict,
           coach_depth: coachDepth,
           meta

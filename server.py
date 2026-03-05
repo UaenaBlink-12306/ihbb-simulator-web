@@ -120,6 +120,17 @@ def icon_for_focus(region: str, topic: str) -> str:
     return region_icons.get(r) or topic_icons.get(t) or "📘"
 
 
+def fallback_related_facts(region: str, era: str, topic: str) -> List[str]:
+    r = str(region or "this region")
+    e = str(era or "this period")
+    t = str(topic or "General").lower()
+    return [
+        f"Fact 1: [Timeline Anchor] - Place this in {e}; similar clues in different eras often indicate different answers.",
+        f"Fact 2: [Regional Anchor] - Keep it tied to {r}; cross-region lookalikes are a common trap.",
+        f"Fact 3: [Theme Link] - This is most testable through {t} consequences, not isolated name recall.",
+    ]
+
+
 def fallback_next_check(question: str) -> str:
     q = normalize(question)
     if any(k in q for k in ["battle", "war", "campaign", "siege"]):
@@ -147,23 +158,31 @@ def fallback_coach(payload: Dict[str, Any], correct: bool, reason: str) -> Dict[
     region = str(meta.get("category") or meta.get("region") or "World")
     era = str(meta.get("era") or "")
     topic = guess_topic(str(payload.get("question", "")))
+    explanation = (
+        "The clue set points to a unique target, and your response matched that target within the right context."
+        if correct else
+        "The likely issue is conceptual overlap: your response may be related, but the clues narrow to a different target in this context."
+    )
+    related_facts = fallback_related_facts(region, era, topic)
+    next_check = fallback_next_check(str(payload.get("question", "")))
     return {
         "summary": "You got it right. Keep tying clues to the specific historical context." if correct else "This was likely a near-miss in concept matching rather than total misunderstanding.",
-        "error_diagnosis": "Your answer aligned with the required entity and context." if correct else "Your answer did not match the expected entity under strict identification, likely due to overlap with a related concept.",
-        "overlap_explainer": reason or "Focus on the clue combination that uniquely identifies the expected answer.",
+        "explanation": explanation,
+        "related_facts": related_facts,
         "key_clues": [
-            "Identify which clue is unique rather than merely related.",
-            "Prioritize clues that narrow to one entity.",
-            "Cross-check timeframe and region before finalizing."
+            "Identify the most specific clue that disambiguates lookalikes.",
+            "Lock the answer to a timeline or region anchor before committing."
         ],
         "memory_hook": "Anchor one distinctive clue to one named entity.",
-        "next_check_question": fallback_next_check(str(payload.get("question", ""))),
         "study_focus": {
             "region": region,
             "era": era,
             "topic": topic,
             "icon": icon_for_focus(region, topic),
         },
+        "error_diagnosis": explanation,
+        "overlap_explainer": reason or related_facts[0],
+        "next_check_question": next_check,
         "confidence": "low",
     }
 
@@ -179,20 +198,33 @@ def normalize_coach(raw: Any, payload: Dict[str, Any], correct: bool, reason: st
     key_clues = []
     if isinstance(rc.get("key_clues"), list):
         key_clues = [str(x).strip() for x in rc.get("key_clues") if str(x).strip()][:4]
+    related_facts = []
+    if isinstance(rc.get("related_facts"), list):
+        related_facts = [str(x).strip() for x in rc.get("related_facts") if str(x).strip()][:3]
+    fallback_facts = fallback_related_facts(region, era, topic)
+    explanation = str(
+        rc.get("explanation")
+        or rc.get("error_diagnosis")
+        or ("You identified the right entity and context." if correct else "Your response likely overlapped with a related but different concept.")
+    ).strip()
+    next_check_raw = str(rc.get("next_check_question") or "").strip()
+    next_check = next_check_raw or fallback_next_check(str(payload.get("question", "")))
+    merged_related_facts = related_facts or fallback_facts
     confidence = str(rc.get("confidence", "")).lower()
     if confidence not in ("high", "medium", "low"):
         confidence = "low"
     return {
         "summary": str(rc.get("summary") or ("Correct answer with good clue alignment." if correct else "This answer was not accepted; review clue disambiguation.")).strip(),
-        "error_diagnosis": str(rc.get("error_diagnosis") or ("You identified the right entity." if correct else "The response likely overlapped with a related but different concept.")).strip(),
-        "overlap_explainer": str(rc.get("overlap_explainer") or reason or "Use the most specific clues to separate related answers.").strip(),
+        "explanation": explanation,
+        "related_facts": merged_related_facts,
+        "error_diagnosis": explanation,
+        "overlap_explainer": str(rc.get("overlap_explainer") or " | ".join(merged_related_facts) or reason or "Use the most specific clues to separate related answers.").strip(),
         "key_clues": key_clues or [
             "Track clues that uniquely identify the expected answer.",
-            "Use era and region to eliminate close alternatives.",
-            "Prioritize proper nouns and named events."
+            "Use era and region to eliminate close alternatives."
         ],
         "memory_hook": str(rc.get("memory_hook") or "Pair one unique clue with one canonical answer.").strip(),
-        "next_check_question": str(rc.get("next_check_question") or "").strip(),
+        "next_check_question": next_check,
         "study_focus": {
             "region": region,
             "era": era,
@@ -267,23 +299,37 @@ def grade_with_deepseek(payload: Dict[str, Any]) -> Dict[str, Any]:
             return {"correct": bool(obj.get("correct")), "reason": str(obj.get("reason", ""))}
 
         coach_system = (
-            "You are an IHBB grading + coaching assistant.\n"
-            "Be error-centric: explain why the user answer may feel plausible and where overlap/confusion occurs.\n"
-            "Use question-specific clues only; avoid generic encyclopedia exposition.\n"
-            "next_check_question must be a concept-check about cause/effect/context, not a repetition.\n"
-            "Do not include the exact expected answer string inside next_check_question.\n"
-            "Return strict JSON:\n"
+            "Act as an expert polymath and memory architect. Your goal is to provide a high-density \"Micro-Lesson\" "
+            "that helps a student not just memorize a fact, but understand its place in a broader system of knowledge.\n"
+            "First, grade the answer and return top-level fields: {\"correct\": boolean, \"reason\": string}. "
+            "Use this grading verdict as is_correct when writing coach content.\n"
+            "CONTEXT KEYS PROVIDED: question, expected_answer, user_answer, aliases, strict, category, meta, coach_depth.\n"
+            "INSTRUCTIONS:\n"
+            "1) THE \"WHY\": Explain the underlying logic or historical significance in 2-3 punchy sentences.\n"
+            "2) THE \"DEEP SCAN\" (3 RELATED FACTS): Provide three additional high-value facts contextually linked to the answer.\n"
+            "3) ERROR CORRECTION: If is_correct is false, briefly explain the specific difference between the user answer and the correct one.\n"
+            "4) MEMORY ANCHOR: Provide one vivid, strange, or rhythmic mnemonic.\n"
+            "Use question-specific clues and avoid generic encyclopedia dumps.\n"
+            "OUTPUT FORMAT (Strict JSON, no markdown):\n"
             "{\"correct\": boolean, \"reason\": string, \"coach\": {"
-            "\"summary\": string, \"error_diagnosis\": string, \"overlap_explainer\": string, "
-            "\"key_clues\": string[], \"memory_hook\": string, \"next_check_question\": string, "
-            "\"study_focus\": {\"region\": string, \"era\": string, \"topic\": string, \"icon\": string}, "
-            "\"confidence\": \"high|medium|low\"}}"
+            "\"summary\": \"1-sentence definitive takeaway.\", "
+            "\"explanation\": \"Deep context explaining the logic of the answer.\", "
+            "\"related_facts\": ["
+            "\"Fact 1: [Connection Type] - [Data]\", "
+            "\"Fact 2: [Connection Type] - [Data]\", "
+            "\"Fact 3: [Connection Type] - [Data]\"], "
+            "\"key_clues\": ["
+            "\"Specific word in the question that gives it away\", "
+            "\"A chronological or spatial anchor\"], "
+            "\"memory_hook\": \"A short, sticky mnemonic or visual association.\", "
+            "\"study_focus\": {\"region\": \"String\", \"era\": \"String\", \"topic\": \"String\"}}}"
         )
         coach_user = {
             "question": question,
-            "expected": expected,
+            "expected_answer": expected,
             "aliases": aliases,
             "user_answer": user_answer,
+            "category": str((payload.get("meta", {}) or {}).get("category", "")) if isinstance(payload.get("meta"), dict) else "",
             "strict": strict,
             "coach_depth": coach_depth,
             "meta": payload.get("meta", {}),
