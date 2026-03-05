@@ -204,6 +204,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     let ttsAborted = false;
     let isReading = false;
     let activeRoundId = null;
+    let confettiCleanupTimer = null;
 
     // ==================== LOBBY ====================
     if (isHost) {
@@ -764,19 +765,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     function handleGameEnd(payload) {
         ttsStop();
         showView('view-results');
-        // Render final scoreboard
-        const sorted = Object.entries(players)
-            .filter(([id]) => id !== room?.host_id)
-            .sort((a, b) => b[1].score - a[1].score);
-        $('final-scoreboard').innerHTML = sorted.map(([id, p], i) => {
-            const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}.`;
-            const isMe = id === uid;
-            return `<div class="score-entry" style="${isMe ? 'background: rgba(96,165,250,0.1); border-radius: 12px;' : ''}">
-                <span class="score-rank">${medal}</span>
-                <span class="score-name" style="${isMe ? 'color: var(--accent);' : ''}">${esc(p.name)}${isMe ? ' (You)' : ''}</span>
-                <span class="score-points">${p.score} pts</span>
-            </div>`;
-        }).join('') || '<p class="muted">No players scored.</p>';
+        const standings = getFinalStandings();
+        renderResultsPodium(standings);
+        renderFinalScoreboard(standings);
+        launchResultsConfetti();
     }
 
     // ==================== BUZZ SYSTEM ====================
@@ -1043,6 +1035,92 @@ document.addEventListener('DOMContentLoaded', async () => {
                 <span class="score-points">${p.score}</span>
             </div>`;
         }).join('');
+    }
+
+    function getFinalStandings() {
+        return Object.entries(players)
+            .filter(([id]) => id !== room?.host_id)
+            .sort((a, b) => {
+                const delta = (Number(b[1]?.score) || 0) - (Number(a[1]?.score) || 0);
+                if (delta !== 0) return delta;
+                return String(a[1]?.name || '').localeCompare(String(b[1]?.name || ''));
+            })
+            .map(([id, p], idx) => ({
+                id,
+                rank: idx + 1,
+                name: p?.name || 'Player',
+                score: Number(p?.score) || 0,
+                isMe: id === uid
+            }));
+    }
+
+    function renderResultsPodium(standings) {
+        const el = $('results-podium');
+        if (!el) return;
+        const first = standings[0] || null;
+        const second = standings[1] || null;
+        const third = standings[2] || null;
+
+        const slotHtml = (player, cls, medal, label) => {
+            if (!player) {
+                return `<div class="podium-slot ${cls}">
+                    <div class="podium-medal">${medal}</div>
+                    <div class="podium-name muted">Open Spot</div>
+                    <div class="podium-points">—</div>
+                    <div class="podium-rank-label">${label}</div>
+                </div>`;
+            }
+            return `<div class="podium-slot ${cls}" style="${player.isMe ? 'box-shadow: 0 0 0 2px var(--ring), inset 0 1px 0 rgba(255,255,255,0.12);' : ''}">
+                <div class="podium-medal">${medal}</div>
+                <div class="podium-name">${esc(player.name)}${player.isMe ? ' (You)' : ''}</div>
+                <div class="podium-points">${player.score} pts</div>
+                <div class="podium-rank-label">${label}</div>
+            </div>`;
+        };
+
+        el.innerHTML =
+            slotHtml(second, 'second', '🥈', '2nd') +
+            slotHtml(first, 'first', '🥇', '1st') +
+            slotHtml(third, 'third', '🥉', '3rd');
+    }
+
+    function renderFinalScoreboard(standings) {
+        const el = $('final-scoreboard');
+        if (!el) return;
+        if (!standings.length) {
+            el.innerHTML = '<p class="muted">No players scored.</p>';
+            return;
+        }
+        el.innerHTML = standings.map((p, i) => {
+            const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}.`;
+            return `<div class="score-entry" style="${p.isMe ? 'background: rgba(96,165,250,0.1); border-radius: 12px;' : ''}">
+                <span class="score-rank">${medal}</span>
+                <span class="score-name" style="${p.isMe ? 'color: var(--accent);' : ''}">${esc(p.name)}${p.isMe ? ' (You)' : ''}</span>
+                <span class="score-points">${p.score} pts</span>
+            </div>`;
+        }).join('');
+    }
+
+    function launchResultsConfetti() {
+        const zone = $('results-confetti');
+        if (!zone) return;
+        zone.innerHTML = '';
+        const colors = ['#60a5fa', '#2dd4bf', '#fbbf24', '#f87171', '#34d399', '#ffffff'];
+        const pieces = 140;
+        for (let i = 0; i < pieces; i++) {
+            const piece = document.createElement('span');
+            piece.className = 'confetti-piece';
+            piece.style.left = `${(Math.random() * 100).toFixed(2)}%`;
+            piece.style.background = colors[Math.floor(Math.random() * colors.length)];
+            piece.style.opacity = String(0.62 + Math.random() * 0.38);
+            piece.style.animationDelay = `${(Math.random() * 0.9).toFixed(2)}s`;
+            piece.style.animationDuration = `${(2.8 + Math.random() * 2.4).toFixed(2)}s`;
+            piece.style.setProperty('--drift', `${Math.round((Math.random() * 2 - 1) * 220)}px`);
+            piece.style.setProperty('--spin', `${Math.round((Math.random() * 2 - 1) * 1100)}deg`);
+            zone.appendChild(piece);
+        }
+        if (confettiCleanupTimer) clearTimeout(confettiCleanupTimer);
+        confettiCleanupTimer = setTimeout(() => { zone.innerHTML = ''; }, 7600);
     }
 
     let answerTimerInterval = null;
