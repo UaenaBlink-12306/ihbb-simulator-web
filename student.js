@@ -14,7 +14,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const KEY_SESS = 'ihbb_v2_sessions';
     const SESSION_SYNC_TABLE = 'user_drill_sessions';
     const DAY_MS = 24 * 60 * 60 * 1000;
-    const USER_EMAIL = session.user?.email || '—';
+    let userEmail = String(session.user?.email || '').trim();
     const ERA_LABELS = {
         "01": "8000 BCE – 600 BCE",
         "02": "600 BCE – 600 CE",
@@ -29,6 +29,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (!s) return 'Unknown';
         return s.charAt(0).toUpperCase() + s.slice(1);
     };
+    const normalizeEmail = (value) => String(value || '').trim().toLowerCase();
+    const isValidEmail = (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || '').trim());
 
     // ========== NAME CHECK ==========
     if (!profile.display_name || !profile.display_name.trim()) {
@@ -67,6 +69,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // ========== ACCOUNT TAB ==========
     const deleteBtn = document.getElementById('btn-delete-account');
+    const saveAccountBtn = document.getElementById('btn-save-account');
     const revealDeleteBtn = document.getElementById('btn-reveal-delete');
     const dangerPanel = document.getElementById('account-danger-panel');
     const confirmDeleteReveal = document.getElementById('confirm-delete-reveal');
@@ -80,13 +83,83 @@ document.addEventListener('DOMContentLoaded', async () => {
     function renderAccountProfile() {
         setInput('acc-display-name', profile.display_name || 'Unnamed');
         setInput('acc-role', formatRole(profile.role));
-        setInput('acc-email', USER_EMAIL);
+        setInput('acc-email', userEmail || '');
         setInput('acc-class-code', profile.class_code || '—');
         setInput('acc-created-at', profile.created_at ? new Date(profile.created_at).toLocaleString() : '—');
         setInput('acc-user-id', uid);
     }
 
     renderAccountProfile();
+
+    saveAccountBtn?.addEventListener('click', async () => {
+        const nameInput = document.getElementById('acc-display-name');
+        const emailInput = document.getElementById('acc-email');
+        if (!nameInput || !emailInput) return;
+
+        const nextName = String(nameInput.value || '').trim();
+        const nextEmail = normalizeEmail(emailInput.value);
+        if (!nextName) {
+            showAlert('Display name cannot be empty.', 'error');
+            nameInput.focus();
+            return;
+        }
+        if (!nextEmail || !isValidEmail(nextEmail)) {
+            showAlert('Please enter a valid email address.', 'error');
+            emailInput.focus();
+            return;
+        }
+
+        const prevName = String(profile.display_name || '').trim();
+        const prevEmail = normalizeEmail(userEmail);
+        const changeName = nextName !== prevName;
+        const changeEmail = nextEmail !== prevEmail;
+        if (!changeName && !changeEmail) {
+            showAlert('No profile changes to save.', 'success');
+            return;
+        }
+
+        saveAccountBtn.disabled = true;
+        const originalText = saveAccountBtn.textContent;
+        saveAccountBtn.textContent = 'Saving...';
+
+        try {
+            const successMsgs = [];
+            const errorMsgs = [];
+
+            if (changeName) {
+                const { error } = await sb.from('profiles').update({ display_name: nextName }).eq('id', uid);
+                if (error) errorMsgs.push(`Name update failed: ${error.message}`);
+                else {
+                    profile.display_name = nextName;
+                    successMsgs.push('Display name updated');
+                }
+            }
+
+            if (changeEmail) {
+                const { data, error } = await sb.auth.updateUser({ email: nextEmail });
+                if (error) errorMsgs.push(`Email update failed: ${error.message}`);
+                else {
+                    userEmail = String(data?.user?.email || data?.user?.new_email || nextEmail).trim();
+                    successMsgs.push('Email change saved');
+                }
+            }
+
+            renderAccountProfile();
+            if (successMsgs.length && !errorMsgs.length) {
+                const emailNote = changeEmail ? ' Check your inbox if verification is required.' : '';
+                showAlert(`${successMsgs.join('. ')}.${emailNote}`, 'success');
+            } else if (successMsgs.length && errorMsgs.length) {
+                showAlert(`${successMsgs.join('. ')}. ${errorMsgs.join(' ')}`, 'error');
+            } else if (errorMsgs.length) {
+                showAlert(errorMsgs.join(' '), 'error');
+            }
+        } catch (err) {
+            showAlert(`Failed to save account changes: ${err?.message || err}`, 'error');
+        } finally {
+            saveAccountBtn.disabled = false;
+            saveAccountBtn.textContent = originalText;
+        }
+    });
 
     revealDeleteBtn?.addEventListener('click', () => {
         if (!dangerPanel) return;

@@ -266,7 +266,7 @@
                     <div class="form-grid">
                         <div class="input-group">
                             <label>Display Name</label>
-                            <input id="acc-display-name" type="text" readonly>
+                            <input id="acc-display-name" type="text" maxlength="80" placeholder="Your name">
                         </div>
                         <div class="input-group">
                             <label>Role</label>
@@ -274,7 +274,7 @@
                         </div>
                         <div class="input-group">
                             <label>Email</label>
-                            <input id="acc-email" type="text" readonly>
+                            <input id="acc-email" type="email" maxlength="160" placeholder="name@example.com">
                         </div>
                         <div class="input-group">
                             <label>Class Code</label>
@@ -289,6 +289,10 @@
                             <input id="acc-user-id" type="text" readonly>
                         </div>
                     </div>
+                    <div class="row" style="justify-content: flex-end; margin-top: 12px;">
+                        <button id="btn-save-account" class="btn pri">Save Profile Changes</button>
+                    </div>
+                    <p class="muted" style="margin: 8px 0 0;">Email changes may require inbox verification depending on your auth settings.</p>
                 </div>
 
                 <div class="sep"></div>

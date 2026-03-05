@@ -9,9 +9,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     const uid = session.user.id;
 
     // Profile check
-    const { data: profile } = await sb.from('profiles').select('role').eq('id', uid).single();
+    const { data: profile } = await sb
+        .from('profiles')
+        .select('role, display_name, class_code, created_at')
+        .eq('id', uid)
+        .single();
     if (!profile || profile.role !== 'teacher') { window.location.replace('index.html'); return; }
     if (guard) guard.remove();
+    let userEmail = String(session.user?.email || '').trim();
 
     // State
     let allQuestions = [];
@@ -30,6 +35,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         "06": "1914 – 1991",
         "07": "1991 – Present"
     };
+    const formatRole = (role) => {
+        const s = String(role || '').trim().toLowerCase();
+        if (!s) return 'Unknown';
+        return s.charAt(0).toUpperCase() + s.slice(1);
+    };
+    const normalizeEmail = (value) => String(value || '').trim().toLowerCase();
+    const isValidEmail = (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || '').trim());
     const getEraLabel = (era) => ERA_LABELS[era] || era;
     const sortEraCodes = (codes) => (codes || []).slice().sort((a, b) => {
         const na = Number.parseInt(String(a), 10);
@@ -105,6 +117,93 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Logout
     document.getElementById('btn-logout').addEventListener('click', async (e) => {
         e.preventDefault(); await sb.auth.signOut(); window.location.replace('login.html');
+    });
+
+    // Account profile
+    const saveAccountBtn = document.getElementById('btn-save-account');
+    function setInput(id, value) {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.value = value ?? '';
+    }
+    function renderAccountProfile() {
+        setInput('acc-display-name', profile.display_name || 'Unnamed');
+        setInput('acc-role', formatRole(profile.role));
+        setInput('acc-email', userEmail || '');
+        setInput('acc-class-code', profile.class_code || '—');
+        setInput('acc-created-at', profile.created_at ? new Date(profile.created_at).toLocaleString() : '—');
+        setInput('acc-user-id', uid);
+    }
+    renderAccountProfile();
+
+    saveAccountBtn?.addEventListener('click', async () => {
+        const nameInput = document.getElementById('acc-display-name');
+        const emailInput = document.getElementById('acc-email');
+        if (!nameInput || !emailInput) return;
+
+        const nextName = String(nameInput.value || '').trim();
+        const nextEmail = normalizeEmail(emailInput.value);
+        if (!nextName) {
+            showAlert('Display name cannot be empty.', 'error');
+            nameInput.focus();
+            return;
+        }
+        if (!nextEmail || !isValidEmail(nextEmail)) {
+            showAlert('Please enter a valid email address.', 'error');
+            emailInput.focus();
+            return;
+        }
+
+        const prevName = String(profile.display_name || '').trim();
+        const prevEmail = normalizeEmail(userEmail);
+        const changeName = nextName !== prevName;
+        const changeEmail = nextEmail !== prevEmail;
+        if (!changeName && !changeEmail) {
+            showAlert('No profile changes to save.', 'success');
+            return;
+        }
+
+        saveAccountBtn.disabled = true;
+        const originalText = saveAccountBtn.textContent;
+        saveAccountBtn.textContent = 'Saving...';
+
+        try {
+            const successMsgs = [];
+            const errorMsgs = [];
+
+            if (changeName) {
+                const { error } = await sb.from('profiles').update({ display_name: nextName }).eq('id', uid);
+                if (error) errorMsgs.push(`Name update failed: ${error.message}`);
+                else {
+                    profile.display_name = nextName;
+                    successMsgs.push('Display name updated');
+                }
+            }
+
+            if (changeEmail) {
+                const { data, error } = await sb.auth.updateUser({ email: nextEmail });
+                if (error) errorMsgs.push(`Email update failed: ${error.message}`);
+                else {
+                    userEmail = String(data?.user?.email || data?.user?.new_email || nextEmail).trim();
+                    successMsgs.push('Email change saved');
+                }
+            }
+
+            renderAccountProfile();
+            if (successMsgs.length && !errorMsgs.length) {
+                const emailNote = changeEmail ? ' Check your inbox if verification is required.' : '';
+                showAlert(`${successMsgs.join('. ')}.${emailNote}`, 'success');
+            } else if (successMsgs.length && errorMsgs.length) {
+                showAlert(`${successMsgs.join('. ')}. ${errorMsgs.join(' ')}`, 'error');
+            } else if (errorMsgs.length) {
+                showAlert(errorMsgs.join(' '), 'error');
+            }
+        } catch (err) {
+            showAlert(`Failed to save account changes: ${err?.message || err}`, 'error');
+        } finally {
+            saveAccountBtn.disabled = false;
+            saveAccountBtn.textContent = originalText;
+        }
     });
 
     // Delete account
