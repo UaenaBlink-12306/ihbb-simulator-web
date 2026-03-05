@@ -12,7 +12,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (guard) guard.remove();
 
     const KEY_SESS = 'ihbb_v2_sessions';
-    const KEY_LIBRARY = 'ihbb_v2_library';
+    const SESSION_SYNC_TABLE = 'user_drill_sessions';
     const DAY_MS = 24 * 60 * 60 * 1000;
     const USER_EMAIL = session.user?.email || '—';
     const ERA_LABELS = {
@@ -310,19 +310,48 @@ document.addEventListener('DOMContentLoaded', async () => {
         return ERA_LABELS[maybeCode] || ERA_LABELS[raw] || raw;
     }
 
-    function buildItemMetaIndex() {
-        const library = safeReadJson(KEY_LIBRARY, {});
-        const index = new Map();
-        for (const set of (library.sets || [])) {
-            for (const item of (set.items || [])) {
-                if (!item?.id || index.has(item.id)) continue;
-                index.set(item.id, {
-                    category: item.meta?.category || '',
-                    era: item.meta?.era || ''
-                });
-            }
-        }
-        return index;
+    let analyticsCloudReady = true;
+    let analyticsCloudWarned = false;
+
+    function isCloudAnalyticsSetupIssue(err) {
+        const code = String(err?.code || '');
+        const msg = String(err?.message || '').toLowerCase();
+        return (
+            code === '42P01' || code === 'PGRST205' || code === 'PGRST204' ||
+            msg.includes('does not exist') ||
+            msg.includes('permission denied') ||
+            msg.includes('policy')
+        );
+    }
+
+    function normalizeSessionForAnalytics(raw) {
+        const ts = Number(raw?.ts) || (raw?.created_at ? new Date(raw.created_at).getTime() : 0);
+        const items = Array.isArray(raw?.items) ? raw.items : [];
+        const results = Array.isArray(raw?.results) ? raw.results : [];
+        const buzz = Array.isArray(raw?.buzz) ? raw.buzz : [];
+        const meta = Array.isArray(raw?.meta) ? raw.meta : [];
+        return {
+            ts,
+            total: Number(raw?.total) || 0,
+            correct: Number(raw?.correct) || 0,
+            dur: Number(raw?.dur) || 0,
+            items,
+            results,
+            buzz,
+            meta
+        };
+    }
+
+    async function fetchAnalyticsSessionsFromCloud() {
+        const cutoff = Date.now() - (30 * DAY_MS);
+        const { data, error } = await sb
+            .from(SESSION_SYNC_TABLE)
+            .select('ts, total, correct, dur, buzz, items, results, meta, created_at')
+            .eq('user_id', uid)
+            .gte('ts', cutoff)
+            .order('ts', { ascending: true });
+        if (error) throw error;
+        return (Array.isArray(data) ? data : []).map(normalizeSessionForAnalytics);
     }
 
     function addDimStat(map, name, isCorrect, buzzValue) {
@@ -359,15 +388,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         };
     }
 
-    function computeAnalyticsSnapshot() {
-        const sessionsRaw = safeReadJson(KEY_SESS, []);
+    function computeAnalyticsSnapshot(sessionsRaw) {
         const cutoff = Date.now() - (30 * DAY_MS);
         const sessions = (Array.isArray(sessionsRaw) ? sessionsRaw : [])
-            .filter(s => Number(s?.ts) >= cutoff)
+            .map(normalizeSessionForAnalytics)
+            .filter(s => Number(s.ts) >= cutoff)
             .sort((a, b) => Number(a.ts) - Number(b.ts));
         const days = buildLast30Days();
         const dayMap = new Map(days.map(d => [d.key, d]));
-        const itemMetaIndex = buildItemMetaIndex();
         const eraAgg = {};
         const regionAgg = {};
 
@@ -408,11 +436,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (!ids.length || !results.length) continue;
             const maxLen = Math.min(ids.length, results.length);
             for (let i = 0; i < maxLen; i++) {
-                const itemId = ids[i];
                 const fromSession = Array.isArray(s.meta) ? s.meta[i] : null;
-                const fromLibrary = itemId ? itemMetaIndex.get(itemId) : null;
-                const category = normalizeRegion(fromSession?.category || fromLibrary?.category || '');
-                const era = normalizeEra(fromSession?.era || fromLibrary?.era || '');
+                const category = normalizeRegion(fromSession?.category || '');
+                const era = normalizeEra(fromSession?.era || '');
                 const isCorrect = !!results[i];
                 const buzzValue = Number(buzz[i]);
                 addDimStat(regionAgg, category, isCorrect, buzzValue);
@@ -661,8 +687,27 @@ document.addEventListener('DOMContentLoaded', async () => {
         el.classList.add(improved ? 'analytics-delta-up' : 'analytics-delta-down');
     }
 
-    function loadAnalytics() {
-        const snapshot = computeAnalyticsSnapshot();
+    async function loadAnalytics() {
+        let sessionsRaw = [];
+        if (analyticsCloudReady) {
+            try {
+                sessionsRaw = await fetchAnalyticsSessionsFromCloud();
+            } catch (err) {
+                console.warn('Analytics cloud fetch failed, using local fallback:', err);
+                sessionsRaw = safeReadJson(KEY_SESS, []);
+                if (isCloudAnalyticsSetupIssue(err)) {
+                    analyticsCloudReady = false;
+                    if (!analyticsCloudWarned) {
+                        analyticsCloudWarned = true;
+                        showAlert('Cloud analytics is not set up yet; using local data on this device.', 'error');
+                    }
+                }
+            }
+        } else {
+            sessionsRaw = safeReadJson(KEY_SESS, []);
+        }
+
+        const snapshot = computeAnalyticsSnapshot(sessionsRaw);
         const emptyEl = document.getElementById('analytics-empty');
         const contentEl = document.getElementById('analytics-content');
         const hasData = snapshot.totalAttempts > 0;

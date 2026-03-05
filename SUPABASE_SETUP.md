@@ -125,6 +125,56 @@ CREATE POLICY "Read own or teacher reads" ON assignment_submissions FOR SELECT U
 );
 ```
 
+## 2.5 Wrong-Bank Sync Table (Cross-Device)
+
+```sql
+-- Stores each user's wrong-question IDs so wrong bank follows the account across devices
+CREATE TABLE IF NOT EXISTS user_wrong_questions (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id UUID REFERENCES auth.users NOT NULL,
+  question_id TEXT NOT NULL,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc', NOW()),
+  UNIQUE(user_id, question_id)
+);
+
+ALTER TABLE user_wrong_questions ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Users read own wrong questions" ON user_wrong_questions
+  FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "Users insert own wrong questions" ON user_wrong_questions
+  FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "Users delete own wrong questions" ON user_wrong_questions
+  FOR DELETE USING (auth.uid() = user_id);
+```
+
+## 2.6 Drill Session Sync Table (Cross-Device Analytics)
+
+```sql
+-- Stores per-user drill sessions used by Student Dashboard analytics
+CREATE TABLE IF NOT EXISTS user_drill_sessions (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id UUID REFERENCES auth.users NOT NULL,
+  client_session_id TEXT NOT NULL,
+  ts BIGINT NOT NULL,
+  total INTEGER NOT NULL DEFAULT 0,
+  correct INTEGER NOT NULL DEFAULT 0,
+  dur INTEGER NOT NULL DEFAULT 0,
+  buzz JSONB NOT NULL DEFAULT '[]'::jsonb,
+  items JSONB NOT NULL DEFAULT '[]'::jsonb,
+  results JSONB NOT NULL DEFAULT '[]'::jsonb,
+  meta JSONB NOT NULL DEFAULT '[]'::jsonb,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc', NOW()),
+  UNIQUE(user_id, client_session_id)
+);
+
+ALTER TABLE user_drill_sessions ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Users read own drill sessions" ON user_drill_sessions
+  FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "Users insert own drill sessions" ON user_drill_sessions
+  FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "Users update own drill sessions" ON user_drill_sessions
+  FOR UPDATE USING (auth.uid() = user_id);
+```
+
 ## 3. Account Deletion RPC
 
 ```sql
@@ -133,6 +183,8 @@ RETURNS void
 LANGUAGE sql
 SECURITY DEFINER
 AS $$
+  DELETE FROM public.user_wrong_questions WHERE user_id = auth.uid();
+  DELETE FROM public.user_drill_sessions WHERE user_id = auth.uid();
   DELETE FROM public.assignment_submissions WHERE student_id = auth.uid();
   DELETE FROM public.assignment_questions WHERE assignment_id IN (SELECT id FROM public.assignments WHERE teacher_id = auth.uid());
   DELETE FROM public.assignments WHERE teacher_id = auth.uid();

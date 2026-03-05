@@ -25,6 +25,24 @@ const KEY_SESS = 'ihbb_v2_sessions';
 const KEY_WRONG = 'ihbb_v2_wrong_srs';   // { [id]: {box,dueAt,lastSeen,lapses,answer,aliases,q} }
 const KEY_LIBRARY = 'ihbb_v2_library';     // {sets:[{id,name,items:[]}], activeSetId}
 const KEY_PRESETS = 'ihbb_v2_presets';
+const KEY_WRONG_SYNC_SEEN = 'ihbb_v2_wrong_sync_seen'; // per-user marker: <prefix>_<userId>
+const KEY_SESS_SYNC_SEEN = 'ihbb_v2_session_sync_seen'; // per-user marker: <prefix>_<userId>
+const WRONG_SYNC_TABLE = 'user_wrong_questions';
+const SESSION_SYNC_TABLE = 'user_drill_sessions';
+
+const WrongSync = {
+  userId: null,
+  enabled: true,
+  ready: false,
+  warned: false,
+  queue: Promise.resolve()
+};
+const SessionSync = {
+  userId: null,
+  enabled: true,
+  warned: false,
+  queue: Promise.resolve()
+};
 
 /********************* Global State *********************/
 const Settings = {
@@ -44,6 +62,89 @@ const App = {
   rollingSentences: [], _cdIv: null,
   autoGrade: true
 };
+
+function normalizeQuestionId(id) {
+  const out = String(id || '').trim();
+  return out || null;
+}
+function normalizeQuestionIds(ids) {
+  const seen = new Set();
+  const out = [];
+  for (const raw of (ids || [])) {
+    const id = normalizeQuestionId(raw);
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    out.push(id);
+  }
+  return out;
+}
+function wrongSyncSeenKey(userId) { return `${KEY_WRONG_SYNC_SEEN}_${userId}`; }
+function getWrongSyncSeen(userId) {
+  try { return localStorage.getItem(wrongSyncSeenKey(userId)) === '1'; } catch { return false; }
+}
+function setWrongSyncSeen(userId) {
+  try { localStorage.setItem(wrongSyncSeenKey(userId), '1'); } catch { /* noop */ }
+}
+function sessSyncSeenKey(userId) { return `${KEY_SESS_SYNC_SEEN}_${userId}`; }
+function getSessSyncSeen(userId) {
+  try { return localStorage.getItem(sessSyncSeenKey(userId)) === '1'; } catch { return false; }
+}
+function setSessSyncSeen(userId) {
+  try { localStorage.setItem(sessSyncSeenKey(userId), '1'); } catch { /* noop */ }
+}
+function isWrongSyncSchemaIssue(err) {
+  const code = String(err?.code || '');
+  const msg = String(err?.message || '').toLowerCase();
+  return (
+    code === '42P01' || code === 'PGRST205' || code === 'PGRST204' ||
+    msg.includes('does not exist') ||
+    msg.includes('permission denied') ||
+    msg.includes('policy')
+  );
+}
+function handleWrongSyncError(err) {
+  console.warn('[WrongSync] disabled:', err);
+  WrongSync.enabled = false;
+  if (WrongSync.warned) return;
+  WrongSync.warned = true;
+  if (isWrongSyncSchemaIssue(err)) toast('Cloud wrong-bank sync unavailable (setup missing). Using local only.');
+}
+function queueWrongSync(task) {
+  if (!WrongSync.enabled || !WrongSync.userId || !window.supabaseClient) return;
+  WrongSync.queue = WrongSync.queue
+    .then(async () => {
+      if (!WrongSync.enabled || !WrongSync.userId || !window.supabaseClient) return;
+      await task(window.supabaseClient, WrongSync.userId);
+    })
+    .catch(handleWrongSyncError);
+}
+function handleSessionSyncError(err) {
+  console.warn('[SessionSync] disabled:', err);
+  SessionSync.enabled = false;
+  if (SessionSync.warned) return;
+  SessionSync.warned = true;
+  if (isWrongSyncSchemaIssue(err)) toast('Cloud session sync unavailable (setup missing). Analytics may be incomplete.');
+}
+async function ensureSessionSyncUserId() {
+  if (SessionSync.userId) return SessionSync.userId;
+  if (!window.supabaseClient) return null;
+  const { data, error } = await window.supabaseClient.auth.getSession();
+  if (error) throw error;
+  const userId = data?.session?.user?.id || null;
+  if (userId) SessionSync.userId = userId;
+  return userId;
+}
+function queueSessionSync(task) {
+  if (!SessionSync.enabled || !window.supabaseClient) return;
+  SessionSync.queue = SessionSync.queue
+    .then(async () => {
+      if (!SessionSync.enabled || !window.supabaseClient) return;
+      const userId = await ensureSessionSyncUserId();
+      if (!userId) return;
+      await task(window.supabaseClient, userId);
+    })
+    .catch(handleSessionSyncError);
+}
 
 // Detect assignment launch early so init can avoid overriding the assignment set.
 const URL_PARAMS = new URLSearchParams(window.location.search);
@@ -635,11 +736,90 @@ function setPracticeButtons({ buzz, next, right, wrong, replay, alias, flag }) {
 /********************* SRS *********************/
 function getSRS() { try { return JSON.parse(localStorage.getItem(KEY_WRONG) || '{}'); } catch { return {}; } }
 function setSRS(s) { localStorage.setItem(KEY_WRONG, JSON.stringify(s)); }
+function makeDefaultSRSRecord() {
+  const now = Date.now();
+  return { box: 1, dueAt: now, lastSeen: now, lapses: 0, answer: '', aliases: [], q: '' };
+}
+function syncWrongIdsAdd(ids) {
+  const qids = normalizeQuestionIds(ids);
+  if (!qids.length) return;
+  queueWrongSync(async (sb, userId) => {
+    const rows = qids.map(question_id => ({ user_id: userId, question_id }));
+    const { error } = await sb.from(WRONG_SYNC_TABLE).upsert(rows, { onConflict: 'user_id,question_id' });
+    if (error) throw error;
+  });
+}
+function syncWrongIdsDelete(ids) {
+  const qids = normalizeQuestionIds(ids);
+  if (!qids.length) return;
+  queueWrongSync(async (sb, userId) => {
+    const { error } = await sb.from(WRONG_SYNC_TABLE).delete().eq('user_id', userId).in('question_id', qids);
+    if (error) throw error;
+  });
+}
+function syncWrongIdsClearAll() {
+  queueWrongSync(async (sb, userId) => {
+    const { error } = await sb.from(WRONG_SYNC_TABLE).delete().eq('user_id', userId);
+    if (error) throw error;
+  });
+}
+async function initWrongBankSync() {
+  if (!window.supabaseClient || !WrongSync.enabled) return;
+  try {
+    const { data, error } = await window.supabaseClient.auth.getSession();
+    if (error) throw error;
+    const userId = data?.session?.user?.id || null;
+    if (!userId) return;
+    WrongSync.userId = userId;
+    SessionSync.userId = userId;
+
+    const { data: remoteRows, error: remoteErr } = await window.supabaseClient
+      .from(WRONG_SYNC_TABLE)
+      .select('question_id')
+      .eq('user_id', userId);
+    if (remoteErr) throw remoteErr;
+
+    let remoteIds = normalizeQuestionIds((remoteRows || []).map(r => r.question_id));
+    const local = getSRS();
+    const localIds = normalizeQuestionIds(Object.keys(local));
+    const seen = getWrongSyncSeen(userId);
+
+    // First successful sync on this device: migrate existing local wrong-bank if cloud is still empty.
+    if (!seen && !remoteIds.length && localIds.length) {
+      const rows = localIds.map(question_id => ({ user_id: userId, question_id }));
+      const { error: upErr } = await window.supabaseClient
+        .from(WRONG_SYNC_TABLE)
+        .upsert(rows, { onConflict: 'user_id,question_id' });
+      if (upErr) throw upErr;
+      remoteIds = localIds.slice();
+    }
+
+    // Cloud becomes source of truth after sync is enabled.
+    const remoteSet = new Set(remoteIds);
+    let changed = false;
+    for (const id of Object.keys(local)) {
+      if (!remoteSet.has(id)) { delete local[id]; changed = true; }
+    }
+    for (const id of remoteIds) {
+      if (!local[id]) { local[id] = makeDefaultSRSRecord(); changed = true; }
+    }
+    if (changed) setSRS(local);
+
+    setWrongSyncSeen(userId);
+    WrongSync.ready = true;
+    renderWrongBank();
+  } catch (err) {
+    handleWrongSyncError(err);
+  }
+}
 function srsAddWrong(item) {
+  const qid = normalizeQuestionId(item?.id);
+  if (!qid) return;
   const s = getSRS(); const now = Date.now();
-  if (!s[item.id]) s[item.id] = { box: 1, dueAt: now, lastSeen: now, lapses: 0, answer: item.answer, aliases: item.aliases || [], q: item.question };
-  else { s[item.id].box = 1; s[item.id].dueAt = now; s[item.id].lastSeen = now; s[item.id].lapses = (s[item.id].lapses || 0) + 1; s[item.id].answer = item.answer; s[item.id].q = item.question; }
+  if (!s[qid]) s[qid] = { box: 1, dueAt: now, lastSeen: now, lapses: 0, answer: item.answer, aliases: item.aliases || [], q: item.question };
+  else { s[qid].box = 1; s[qid].dueAt = now; s[qid].lastSeen = now; s[qid].lapses = (s[qid].lapses || 0) + 1; s[qid].answer = item.answer; s[qid].q = item.question; }
   setSRS(s);
+  syncWrongIdsAdd([qid]);
 }
 const BOX_DELAY = { 1: 0, 2: 24 * 3600 * 1000, 3: 3 * 24 * 3600 * 1000, 4: 7 * 24 * 3600 * 1000, 5: 14 * 24 * 3600 * 1000 };
 function srsMark(itemId, isRight) {
@@ -797,7 +977,8 @@ function pushSession(total, correct, durSec, buzzTimes, pool, order, results) {
       source: it.meta?.source || ''
     };
   });
-  arr.unshift({
+  const record = {
+    sid: `sess_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
     ts: Date.now(),
     total,
     correct,
@@ -807,8 +988,83 @@ function pushSession(total, correct, durSec, buzzTimes, pool, order, results) {
     items: itemIds,
     results: res,
     meta
-  });
+  };
+  arr.unshift(record);
   localStorage.setItem(KEY_SESS, JSON.stringify(arr.slice(0, 200)));
+  syncSessionRecord(record);
+}
+
+function normalizeSessionRecordForSync(record) {
+  const buzz = Array.isArray(record?.buzz) ? record.buzz.map(x => Number(x)).filter(x => Number.isFinite(x)) : [];
+  const items = Array.isArray(record?.items) ? record.items.map(x => String(x || '').trim()).filter(Boolean) : [];
+  const results = Array.isArray(record?.results) ? record.results.map(x => !!x).slice(0, items.length) : [];
+  const meta = Array.isArray(record?.meta) ? record.meta.slice(0, items.length).map(m => ({
+    category: String(m?.category || ''),
+    era: String(m?.era || ''),
+    source: String(m?.source || '')
+  })) : [];
+  const total = Number(record?.total) || 0;
+  const correct = Number(record?.correct) || 0;
+  return {
+    sid: String(record?.sid || '').trim() || `sess_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    ts: Number(record?.ts) || Date.now(),
+    total,
+    correct,
+    dur: Number(record?.dur) || 0,
+    buzz,
+    items,
+    results,
+    meta
+  };
+}
+
+function syncSessionRecord(record) {
+  const safe = normalizeSessionRecordForSync(record);
+  queueSessionSync(async (sb, userId) => {
+    const { error } = await sb
+      .from(SESSION_SYNC_TABLE)
+      .upsert({
+        user_id: userId,
+        client_session_id: safe.sid,
+        ts: safe.ts,
+        total: safe.total,
+        correct: safe.correct,
+        dur: safe.dur,
+        buzz: safe.buzz,
+        items: safe.items,
+        results: safe.results,
+        meta: safe.meta
+      }, { onConflict: 'user_id,client_session_id' });
+    if (error) throw error;
+  });
+}
+
+function backfillLocalSessionsToCloud() {
+  queueSessionSync(async (sb, userId) => {
+    if (getSessSyncSeen(userId)) return;
+    const raw = JSON.parse(localStorage.getItem(KEY_SESS) || '[]');
+    const arr = Array.isArray(raw) ? raw : [];
+    if (!arr.length) { setSessSyncSeen(userId); return; }
+    const rows = arr.slice(0, 200).map((rec, idx) => {
+      const safe = normalizeSessionRecordForSync(rec);
+      const sid = safe.sid || `legacy_${safe.ts}_${idx}`;
+      return {
+        user_id: userId,
+        client_session_id: sid,
+        ts: safe.ts,
+        total: safe.total,
+        correct: safe.correct,
+        dur: safe.dur,
+        buzz: safe.buzz,
+        items: safe.items,
+        results: safe.results,
+        meta: safe.meta
+      };
+    });
+    const { error } = await sb.from(SESSION_SYNC_TABLE).upsert(rows, { onConflict: 'user_id,client_session_id' });
+    if (error) throw error;
+    setSessSyncSeen(userId);
+  });
 }
 
 /********************* Review & Wrong bank *********************/
@@ -868,7 +1124,15 @@ function renderWrongBank() {
     tr.innerHTML = `<td>${ans}</td><td class='stat'>${rec.box || 1}</td><td>${dueTxt}</td><td>${(aliases || []).slice(0, 3).join(', ')}</td><td><button class='btn ghost' data-del='${id}'>Delete</button></td>`;
     tb.appendChild(tr);
   }
-  tb.querySelectorAll('button[data-del]').forEach(b => b.onclick = () => { const s = getSRS(); delete s[b.dataset.del]; setSRS(s); renderWrongBank(); });
+  tb.querySelectorAll('button[data-del]').forEach(b => b.onclick = () => {
+    const id = normalizeQuestionId(b.dataset.del);
+    if (!id) return;
+    const s = getSRS();
+    delete s[id];
+    setSRS(s);
+    syncWrongIdsDelete([id]);
+    renderWrongBank();
+  });
 }
 
 function reviewMissedNow() {
@@ -1098,10 +1362,18 @@ $('btn-flag')?.addEventListener('click', () => { toast('Flag noted (local only)'
 
 // Review actions
 $('btn-export-wrong')?.addEventListener('click', exportWrong);
-$('btn-clear-wrong')?.addEventListener('click', () => { localStorage.removeItem(KEY_WRONG); renderWrongBank(); toast('Wrong bank cleared'); });
+$('btn-clear-wrong')?.addEventListener('click', () => {
+  setSRS({});
+  syncWrongIdsClearAll();
+  renderWrongBank();
+  toast('Wrong bank cleared');
+});
 $('btn-review-misses')?.addEventListener('click', reviewMissedNow);
 $('btn-practice-due')?.addEventListener('click', reviewMissedNow);
-$('wrong-refresh')?.addEventListener('click', renderWrongBank);
+$('wrong-refresh')?.addEventListener('click', async () => {
+  await initWrongBankSync();
+  renderWrongBank();
+});
 $('wrong-search')?.addEventListener('input', renderWrongBank);
 $('btn-clear-history')?.addEventListener('click', () => { localStorage.removeItem(KEY_SESS); renderHistory(); toast('History cleared'); });
 
@@ -1272,12 +1544,14 @@ async function tryFetchDefault(force = false) {
       if (parsed.type === 'library') {
         Library.sets = parsed.sets; Library.activeSetId = parsed.activeSetId || (parsed.sets[0]?.id || null);
         saveLibrary(); renderLibrarySelectors(); renderLibraryTable(); updateSetMeta();
+        renderWrongBank();
         toast(`Loaded questions.json (${parsed.sets.length} sets)`);
         return true;
       }
       const set = parsed.set;
       Library.sets.unshift(set); Library.activeSetId = set.id;
       saveLibrary(); renderLibrarySelectors(); renderLibraryTable(); updateSetMeta();
+      renderWrongBank();
       const catCount = new Set(set.items.map(it => it.meta?.category || '').filter(Boolean)).size;
       toast(`Loaded ${set.items.length} questions${catCount ? ` • ${catCount} categories` : ''}`);
       return true;
@@ -1294,7 +1568,7 @@ async function tryFetchDefault(force = false) {
 }
 
 /********************* Init *********************/
-(function init() {
+(async function init() {
   loadAll(); populateVoices();
   const rr = $('rate'); if (rr) rr.value = Settings.rate || 1.0;
   const sm = $('strictMode'); if (sm) sm.checked = (Settings.strict ?? false);
@@ -1306,6 +1580,8 @@ async function tryFetchDefault(force = false) {
   renderPresets(); renderLibrarySelectors(); updateFilterRow();
   try { const p = document.querySelector('#lib-cats')?.parentElement; if (p) p.innerHTML = p.innerHTML.replace('Categories:', 'Regions:'); } catch { }
   renderHistory(); renderWrongBank();
+  await initWrongBankSync();
+  backfillLocalSessionsToCloud();
   // Auto-load questions.json on startup (from build_db.py)
   if (!(ASSIGNMENT_ID && HAS_ASSIGNMENT_PAYLOAD)) {
     tryFetchDefault(false);
