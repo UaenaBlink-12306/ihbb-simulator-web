@@ -52,24 +52,104 @@ document.addEventListener('DOMContentLoaded', async () => {
     function genCode() { return Math.random().toString(36).substring(2, 8).toUpperCase(); }
 
     // ==================== SOUND EFFECTS ====================
+    const beePrefs = (() => {
+        try { return JSON.parse(localStorage.getItem('ihbb_v2_settings') || '{}') || {}; } catch { return {}; }
+    })();
+    const BeeFeedback = {
+        sound: beePrefs.cueBeep !== false,
+        haptics: beePrefs.haptics !== false
+    };
+    const beeHapticPattern = Object.freeze({
+        tap: [8],
+        join: [10, 24, 10],
+        start: [14, 30, 14],
+        question: [10],
+        buzz: [18],
+        queue: [10, 24, 10],
+        your_turn: [16, 24, 24],
+        submit: [10],
+        grading: [8],
+        timer: [8],
+        timeout: [28, 36, 12],
+        correct: [14, 30, 20],
+        wrong: [40, 50, 16],
+        reveal: [10, 16, 10],
+        finish: [24, 30, 24]
+    });
+    function beeVibrate(pattern) {
+        try { if (BeeFeedback.haptics && navigator.vibrate) navigator.vibrate(pattern); } catch { }
+    }
     let audioCtx = null;
     function getAudioCtx() {
         if (!audioCtx) { try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch { } }
         return audioCtx;
     }
-    function playTone(freq, dur, type = 'sine') {
+    function playTone(freq, dur, type = 'sine', peak = 0.28) {
         const ctx = getAudioCtx(); if (!ctx) return;
         const o = ctx.createOscillator(); const g = ctx.createGain();
         o.connect(g); g.connect(ctx.destination);
         o.frequency.value = freq; o.type = type;
         g.gain.setValueAtTime(0.0001, ctx.currentTime);
-        g.gain.exponentialRampToValueAtTime(0.3, ctx.currentTime + 0.03);
+        g.gain.exponentialRampToValueAtTime(peak, ctx.currentTime + 0.03);
         g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + dur);
         o.start(); o.stop(ctx.currentTime + dur);
     }
-    function dingCorrect() { playTone(880, 0.15); setTimeout(() => playTone(1320, 0.2), 120); }
-    function buzzWrong() { playTone(150, 0.35, 'sawtooth'); }
-    function buzzInSound() { playTone(660, 0.08); }
+    function playBeeCue(name, opts = {}) {
+        const allowSound = (opts.sound !== false) && BeeFeedback.sound;
+        const allowHaptic = (opts.haptic !== false) && BeeFeedback.haptics;
+
+        if (allowSound) {
+            if (name === 'tap') {
+                playTone(980, 0.03, 'triangle', 0.07);
+            } else if (name === 'join') {
+                playTone(760, 0.06, 'triangle', 0.11);
+                setTimeout(() => playTone(980, 0.08, 'triangle', 0.12), 90);
+            } else if (name === 'start') {
+                playTone(620, 0.06, 'triangle', 0.11);
+                setTimeout(() => playTone(784, 0.07, 'triangle', 0.12), 80);
+                setTimeout(() => playTone(988, 0.1, 'triangle', 0.13), 160);
+            } else if (name === 'question') {
+                playTone(520, 0.05, 'triangle', 0.09);
+            } else if (name === 'buzz') {
+                playTone(640, 0.05, 'square', 0.13);
+                setTimeout(() => playTone(760, 0.06, 'square', 0.13), 70);
+            } else if (name === 'queue') {
+                playTone(700, 0.05, 'triangle', 0.1);
+            } else if (name === 'your_turn') {
+                playTone(760, 0.07, 'square', 0.13);
+                setTimeout(() => playTone(940, 0.08, 'square', 0.13), 90);
+            } else if (name === 'submit') {
+                playTone(560, 0.05, 'sine', 0.11);
+                setTimeout(() => playTone(620, 0.05, 'sine', 0.11), 65);
+            } else if (name === 'grading') {
+                playTone(480, 0.04, 'sine', 0.08);
+            } else if (name === 'timer') {
+                playTone(840, 0.04, 'triangle', 0.08);
+            } else if (name === 'timeout') {
+                playTone(230, 0.14, 'sawtooth', 0.15);
+                setTimeout(() => playTone(170, 0.16, 'sawtooth', 0.14), 120);
+            } else if (name === 'correct') {
+                playTone(880, 0.12, 'sine', 0.16);
+                setTimeout(() => playTone(1320, 0.15, 'sine', 0.16), 105);
+            } else if (name === 'wrong') {
+                playTone(170, 0.32, 'sawtooth', 0.14);
+            } else if (name === 'reveal') {
+                playTone(500, 0.06, 'triangle', 0.1);
+                setTimeout(() => playTone(650, 0.06, 'triangle', 0.1), 80);
+            } else if (name === 'finish') {
+                playTone(659, 0.08, 'triangle', 0.12);
+                setTimeout(() => playTone(784, 0.08, 'triangle', 0.12), 90);
+                setTimeout(() => playTone(988, 0.12, 'triangle', 0.13), 180);
+            }
+        }
+
+        if (!allowHaptic) return;
+        const pattern = beeHapticPattern[name];
+        if (pattern) beeVibrate(pattern);
+    }
+    function dingCorrect() { playBeeCue('correct'); }
+    function buzzWrong() { playBeeCue('wrong'); }
+    function buzzInSound() { playBeeCue('buzz'); }
 
     // ==================== TTS ====================
     const VOICE_PREF = [/Microsoft .* Online .*Natural/i, /Google US English/i, /en[-_]?US/i];
@@ -140,6 +220,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         room = data;
         players[uid] = { name: myName, score: 0 };
         await sb.from('bee_participants').insert({ room_id: room.id, user_id: uid, display_name: myName, score: 0 });
+        playBeeCue('join');
         enterWaitingRoom();
     });
 
@@ -162,6 +243,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         else if (error) { showAlert('Failed to join: ' + error.message); return; }
 
         room = r;
+        playBeeCue('join');
         enterWaitingRoom();
     });
 
@@ -182,23 +264,27 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         channel.on('broadcast', { event: 'player_join' }, ({ payload }) => {
             players[payload.userId] = { name: payload.name, score: 0 };
+            if (payload.userId !== uid) playBeeCue('tap', { sound: false });
             renderPlayerList();
         });
 
         channel.on('broadcast', { event: 'player_leave' }, ({ payload }) => {
             delete players[payload.userId];
+            if (payload.userId !== uid) playBeeCue('tap', { sound: false });
             renderPlayerList();
         });
 
         channel.on('broadcast', { event: 'game_start' }, ({ payload }) => {
             gameQuestions = payload.questions || [];
             questionIndex = -1;
+            playBeeCue('start');
             showView('view-game');
             updateGameProgress();
             renderScoreboard();
         });
 
         channel.on('broadcast', { event: 'question' }, ({ payload }) => {
+            playBeeCue('question', { haptic: false });
             handleNewQuestion(payload);
         });
 
@@ -230,10 +316,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
 
         channel.on('broadcast', { event: 'reveal' }, ({ payload }) => {
+            playBeeCue('reveal');
             handleReveal(payload);
         });
 
         channel.on('broadcast', { event: 'game_end' }, ({ payload }) => {
+            playBeeCue('finish');
             handleGameEnd(payload);
         });
 
@@ -292,6 +380,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Leave room
     $('btn-leave')?.addEventListener('click', async () => {
+        playBeeCue('tap', { sound: false });
         if (channel) {
             channel.send({ type: 'broadcast', event: 'player_leave', payload: { userId: uid } });
             sb.removeChannel(channel); channel = null;
@@ -324,6 +413,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             const n = Math.max(1, Math.min(200, parseInt($('bee-random-count').value) || 10));
             const shuffled = [...allQuestions].sort(() => Math.random() - 0.5);
             selectedQuestions = shuffled.slice(0, Math.min(n, allQuestions.length));
+            playBeeCue('tap');
             updatePreview();
         });
 
@@ -344,6 +434,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             });
             if (!pool.length) { showAlert('No questions match filters.'); return; }
             selectedQuestions = [...pool].sort(() => Math.random() - 0.5).slice(0, Math.min(n, pool.length));
+            playBeeCue('tap');
             updatePreview();
         });
 
@@ -387,10 +478,11 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (add) { selectedQuestions.push(item); }
             else { selectedQuestions = selectedQuestions.filter(s => !((s.answer || s.a) === (item.answer || item.a) && (s.question || s.q) === (item.question || item.q))); }
             if (el) el.classList.toggle('selected', add);
+            playBeeCue('tap', { sound: false });
             updatePreview();
         }
 
-        $('btn-bee-clear')?.addEventListener('click', () => { selectedQuestions = []; updatePreview(); });
+        $('btn-bee-clear')?.addEventListener('click', () => { selectedQuestions = []; playBeeCue('tap'); updatePreview(); });
 
         // Start
         $('btn-start-bee')?.addEventListener('click', startBee);
@@ -433,6 +525,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // ==================== HOST: START BEE ====================
     async function startBee() {
         if (!selectedQuestions.length) return;
+        playBeeCue('start');
 
         // Normalize questions
         gameQuestions = selectedQuestions.map(q => ({
@@ -562,11 +655,13 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         // If I'm the current buzzer, show answer input
         if (currentBuzzer === uid) {
+            playBeeCue('your_turn');
             $('game-status').textContent = 'You buzzed! Type your answer:';
             $('answer-area').classList.remove('hidden');
             $('bee-answer-input').focus();
             startAnswerTimer(10);
         } else {
+            playBeeCue('queue', { haptic: false });
             const buzzerName = players[currentBuzzer]?.name || 'Someone';
             $('game-status').textContent = `${buzzerName} buzzed in!`;
             // Show "Your Turn" potential
@@ -587,11 +682,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         $('bee-answer-input').value = '';
         $('bee-answer-input').focus();
         startAnswerTimer(10);
-        buzzInSound();
+        playBeeCue('your_turn');
     }
 
     function handleAnswerShow(payload) {
         // Show the answer a player typed to everyone
+        playBeeCue('grading', { haptic: false });
         const display = $('answer-display');
         display.classList.remove('hidden', 'answer-correct', 'answer-incorrect', 'answer-grading');
         display.classList.add('answer-grading');
@@ -621,7 +717,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             $('game-status').textContent = payload.reason === 'Time ran out'
                 ? `${players[payload.userId]?.name || 'Player'} ran out of time.`
                 : 'Incorrect.';
-            buzzWrong();
+            if (payload.reason === 'Time ran out') playBeeCue('timeout');
+            else buzzWrong();
         }
 
         $('answer-area').classList.add('hidden');
@@ -692,6 +789,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const name = payload.name || players[payload.userId]?.name || 'Player';
         buzzQueue = [{ userId: payload.userId, name }];
         currentBuzzer = payload.userId;
+        playBeeCue('queue');
 
         clearTimeout(answerTimeout);
         channel.send({ type: 'broadcast', event: 'tts_stop', payload: {} });
@@ -717,6 +815,19 @@ document.addEventListener('DOMContentLoaded', async () => {
         $('bee-buzz').classList.add('disabled');
         $('bee-buzz').classList.remove('pulse');
     });
+
+    // Lightweight haptics for most UI controls; key gameplay actions have dedicated cues.
+    document.addEventListener('click', e => {
+        const ctl = e.target && e.target.closest ? e.target.closest('button, .btn, .chip, .bee-mode-btn') : null;
+        if (!ctl || ctl.disabled) return;
+        const id = String(ctl.id || '');
+        if ([
+            'btn-create-room', 'btn-join-room', 'btn-leave',
+            'btn-bee-random', 'btn-bee-filter', 'btn-bee-clear', 'btn-start-bee',
+            'bee-buzz', 'btn-submit-bee-answer', 'btn-next-question', 'btn-end-bee'
+        ].includes(id)) return;
+        playBeeCue('tap', { sound: false, haptic: true });
+    }, true);
 
     // Keyboard: space to buzz
     document.addEventListener('keydown', e => {
@@ -753,6 +864,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (uid !== currentBuzzer || !activeRoundId) return;
         const text = ($('bee-answer-input').value || '').trim();
         if (!text) return;
+        playBeeCue('submit');
         clearTimeout(answerTimeout);
         $('answer-area').classList.add('hidden');
         $('game-status').textContent = 'Answer submitted. Waiting for grading...';
@@ -867,11 +979,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     $('btn-next-question')?.addEventListener('click', () => {
+        playBeeCue('tap');
         if (questionIndex >= gameQuestions.length - 1) { endBee(); }
         else { hostNextQuestion(); }
     });
 
-    $('btn-end-bee')?.addEventListener('click', endBee);
+    $('btn-end-bee')?.addEventListener('click', () => {
+        playBeeCue('finish');
+        endBee();
+    });
 
     async function endBee() {
         // Save final scores to DB
@@ -938,6 +1054,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         answerTimerInterval = setInterval(() => {
             remaining--;
             el.textContent = remaining > 0 ? `⏱ ${remaining}s` : '';
+            if (remaining > 0 && remaining <= 3) {
+                playBeeCue('timer', { haptic: remaining === 1 });
+            }
             if (remaining <= 0) clearInterval(answerTimerInterval);
         }, 1000);
     }

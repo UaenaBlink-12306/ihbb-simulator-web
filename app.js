@@ -435,15 +435,74 @@ document.addEventListener('visibilitychange', () => {
 /********************* Beeps (WebAudio) *********************/
 let ac = null;
 function AC() { if (!ac) { try { ac = new (window.AudioContext || window.webkitAudioContext)(); } catch { } } return ac; }
-function beep(freq = 880, dur = 0.11) {
+function beep(freq = 880, dur = 0.11, type = 'sine', peak = 0.25) {
   const ctx = AC(); if (!ctx) return;
   const o = ctx.createOscillator(); const g = ctx.createGain();
   o.connect(g); g.connect(ctx.destination);
-  o.frequency.value = freq; o.type = 'sine';
+  o.frequency.value = freq; o.type = type;
   g.gain.setValueAtTime(0.0001, ctx.currentTime);
-  g.gain.exponentialRampToValueAtTime(0.25, ctx.currentTime + 0.02);
+  g.gain.exponentialRampToValueAtTime(peak, ctx.currentTime + 0.02);
   g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + dur);
   o.start(); o.stop(ctx.currentTime + dur);
+}
+const FEEDBACK_HAPTICS = Object.freeze({
+  tap: [8],
+  nav: [10],
+  start: [12, 32, 12],
+  next: [9],
+  buzz: [20],
+  reveal: [10, 18, 10],
+  submit: [10],
+  correct: [14, 28, 20],
+  wrong: [38, 50, 16],
+  finish: [26, 34, 26],
+  mastered: [8, 20, 14],
+  unmastered: [18]
+});
+function playFeedbackCue(name, opts = {}) {
+  const allowSound = (opts.sound !== false) && !!Settings.cueBeep;
+  const allowHaptic = (opts.haptic !== false) && !!Settings.haptics;
+
+  if (allowSound) {
+    if (name === 'tap') {
+      beep(980, 0.03, 'triangle', 0.07);
+    } else if (name === 'nav') {
+      beep(700, 0.035, 'triangle', 0.08);
+    } else if (name === 'start') {
+      beep(740, 0.07, 'triangle', 0.12);
+      setTimeout(() => beep(988, 0.09, 'triangle', 0.13), 95);
+    } else if (name === 'next') {
+      beep(840, 0.04, 'sine', 0.09);
+    } else if (name === 'buzz') {
+      beep(620, 0.05, 'square', 0.12);
+      setTimeout(() => beep(760, 0.06, 'square', 0.12), 70);
+    } else if (name === 'reveal') {
+      beep(520, 0.06, 'triangle', 0.1);
+      setTimeout(() => beep(650, 0.07, 'triangle', 0.1), 85);
+    } else if (name === 'submit') {
+      beep(560, 0.05, 'sine', 0.1);
+      setTimeout(() => beep(620, 0.05, 'sine', 0.1), 70);
+    } else if (name === 'correct') {
+      beep(880, 0.08, 'sine', 0.16);
+      setTimeout(() => beep(1320, 0.11, 'sine', 0.16), 95);
+    } else if (name === 'wrong') {
+      beep(230, 0.14, 'sawtooth', 0.15);
+      setTimeout(() => beep(170, 0.16, 'sawtooth', 0.14), 130);
+    } else if (name === 'finish') {
+      beep(659, 0.08, 'triangle', 0.13);
+      setTimeout(() => beep(784, 0.08, 'triangle', 0.13), 85);
+      setTimeout(() => beep(988, 0.12, 'triangle', 0.14), 170);
+    } else if (name === 'mastered') {
+      beep(760, 0.06, 'triangle', 0.1);
+      setTimeout(() => beep(1010, 0.08, 'triangle', 0.12), 90);
+    } else if (name === 'unmastered') {
+      beep(340, 0.08, 'triangle', 0.09);
+    }
+  }
+
+  if (!allowHaptic) return;
+  const pattern = FEEDBACK_HAPTICS[name];
+  if (pattern) vibrate(pattern);
 }
 
 /********************* Library & Parsing *********************/
@@ -1086,6 +1145,7 @@ function startSession() {
   App.startTs = performance.now();
   updateHeader();
   navSet('nav-practice'); SHOW('view-practice');
+  playFeedbackCue('start');
   // Auto-scroll to the bottom of the practice view
   setTimeout(() => window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' }), 150);
   nextQuestion(true);
@@ -1102,6 +1162,7 @@ async function nextQuestion(first = false) {
 
   if (!first) App.i++;
   if (App.i >= App.order.length) { finishSession(); return; }
+  if (!first) playFeedbackCue('next', { haptic: false });
   updateHeader();
 
   const item = App.pool[App.order[App.i]]; App.curItem = item; App.phase = 'reading';
@@ -1144,6 +1205,7 @@ function buzz() {
   const ms = performance.now() - App.buzzStart; App.buzzAt = ms / 1000;
   const bt = $('buzz-time'); if (bt) bt.textContent = `${App.buzzAt.toFixed(2)}s`;
   const bz = $('btn-buzz'); if (bz) bz.classList.remove('pulse');
+  playFeedbackCue('buzz');
   startCountdown(5);
 }
 
@@ -1153,13 +1215,22 @@ function showAnswer() {
   const ansText = Settings.strict ? `标准答案：${item.answer}` :
     `标准答案：${item.answer}${(item.aliases?.length ? `  (aliases: ${item.aliases.slice(0, 3).join(' • ')})` : '')}`;
   const ans = $('answer'); if (ans) ans.textContent = ansText;
+  playFeedbackCue('reveal');
   speakOnce(`标准答案：${item.answer}`, curVoice(), rate(), 1.0, 12000);
   setPracticeButtons({ buzz: false, next: false, right: true, wrong: true, replay: true, alias: true, flag: true });
   const cp = $('btn-copy-answer'); if (cp) cp.disabled = false;
 }
 
-function markRight() { if (App.phase !== 'answering') return; App.correct++; App.resultsCorrect.push(true); App.sessionBuzzTimes.push(App.buzzAt || 0); finishMark(true); }
-function markWrong() { if (App.phase !== 'answering') return; srsAddWrong(App.curItem); App.resultsCorrect.push(false); App.sessionBuzzTimes.push(App.buzzAt || 0); finishMark(false); }
+function markRight() {
+  if (App.phase !== 'answering') return;
+  playFeedbackCue('correct');
+  App.correct++; App.resultsCorrect.push(true); App.sessionBuzzTimes.push(App.buzzAt || 0); finishMark(true);
+}
+function markWrong() {
+  if (App.phase !== 'answering') return;
+  playFeedbackCue('wrong');
+  srsAddWrong(App.curItem); App.resultsCorrect.push(false); App.sessionBuzzTimes.push(App.buzzAt || 0); finishMark(false);
+}
 
 function finishMark(isRight) {
   if (App.mode === 'srs') srsMark(App.curItem.id, isRight);
@@ -1177,6 +1248,7 @@ function finishMark(isRight) {
 function finishSession() {
   stopSpeech(); if (App._cdIv) { clearInterval(App._cdIv); App._cdIv = null; }
   App.phase = 'done';
+  playFeedbackCue('finish');
   const durSec = (performance.now() - App.startTs) / 1000;
   const total = App.order.length, correct = App.correct, acc = total ? Math.round(correct / total * 100) : 0;
   const st = $('status'); if (st) st.textContent = `Complete — ${correct}/${total} (${acc}%).`;
@@ -1478,6 +1550,7 @@ function toggleCoachMastered(attemptId, mastered) {
   CoachNotebook.records[idx].mastered = !!mastered;
   CoachNotebook.records[idx].mastered_at = mastered ? new Date().toISOString() : null;
   const updated = setCoachMasteredLocal(id, mastered);
+  playFeedbackCue(mastered ? 'mastered' : 'unmastered');
   renderCoachNotebook();
   if (!updated) return;
   syncCoachAttempt(updated);
@@ -1629,13 +1702,14 @@ function drawAccByCat() {
 
 /********************* Event wiring *********************/
 // Nav
-$('nav-setup')?.addEventListener('click', (e) => { e.preventDefault(); navSet('nav-setup'); SHOW('view-setup'); });
+$('nav-setup')?.addEventListener('click', (e) => { e.preventDefault(); playFeedbackCue('nav'); navSet('nav-setup'); SHOW('view-setup'); });
 $('nav-practice')?.addEventListener('click', (e) => {
-  e.preventDefault(); navSet('nav-practice'); SHOW('view-practice');
+  e.preventDefault(); playFeedbackCue('nav'); navSet('nav-practice'); SHOW('view-practice');
   setTimeout(() => window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' }), 150);
 });
 $('nav-review')?.addEventListener('click', async (e) => {
   e.preventDefault();
+  playFeedbackCue('nav');
   navSet('nav-review');
   SHOW('view-review');
   renderHistory();
@@ -1644,11 +1718,12 @@ $('nav-review')?.addEventListener('click', async (e) => {
   flushCoachPending();
   await refreshCoachNotebook(true);
 });
-$('nav-library')?.addEventListener('click', (e) => { e.preventDefault(); navSet('nav-library'); SHOW('view-library'); renderLibraryTable(); });
-$('nav-help')?.addEventListener('click', (e) => { e.preventDefault(); openHelp(); });
+$('nav-library')?.addEventListener('click', (e) => { e.preventDefault(); playFeedbackCue('nav'); navSet('nav-library'); SHOW('view-library'); renderLibraryTable(); });
+$('nav-help')?.addEventListener('click', (e) => { e.preventDefault(); playFeedbackCue('nav'); openHelp(); });
 
 // Advanced toggle
 $('advToggle')?.addEventListener('click', () => {
+  playFeedbackCue('tap', { sound: false });
   const wrapper = $('advBodyWrapper');
   const car = $('advCaret');
   if (!wrapper || !car) return;
@@ -1763,16 +1838,18 @@ $('btn-wrong')?.addEventListener('click', markWrong);
 $('btn-replay')?.addEventListener('click', replayLast);
 $('btn-copy-answer')?.addEventListener('click', async () => {
   if (!App.curItem) return;
-  try { await navigator.clipboard.writeText(App.curItem.answer); toast('Answer copied'); }
-  catch { toast('Copy failed'); }
+  try { await navigator.clipboard.writeText(App.curItem.answer); playFeedbackCue('mastered'); toast('Answer copied'); }
+  catch { playFeedbackCue('wrong'); toast('Copy failed'); }
 });
 $('btn-quit')?.addEventListener('click', () => {
   if (confirm('Quit this session? Progress will be lost for this run.')) {
+    playFeedbackCue('nav');
     stopSpeech(); App.phase = 'idle'; navSet('nav-setup'); SHOW('view-setup');
   }
 });
 $('btn-pause')?.addEventListener('click', () => {
   if (App.phase === 'reading') {
+    playFeedbackCue('tap', { sound: false });
     App.readingAbort = true; stopSpeech();
     const st = $('status'); if (st) st.textContent = 'Paused';
     const bz = $('btn-buzz'); if (bz) bz.classList.remove('pulse');
@@ -1781,15 +1858,16 @@ $('btn-pause')?.addEventListener('click', () => {
 });
 $('btn-alias')?.addEventListener('click', () => {
   if (!App.curItem) return; const v = prompt('Add an alias (accepted form) for this answer:', '');
-  if (!v) return; App.curItem.aliases = App.curItem.aliases || []; App.curItem.aliases.push(v.trim()); toast('Alias added (local)');
+  if (!v) return; App.curItem.aliases = App.curItem.aliases || []; App.curItem.aliases.push(v.trim()); playFeedbackCue('mastered'); toast('Alias added (local)');
 });
-$('btn-flag')?.addEventListener('click', () => { toast('Flag noted (local only)'); });
+$('btn-flag')?.addEventListener('click', () => { playFeedbackCue('tap', { sound: false }); toast('Flag noted (local only)'); });
 
 // Review actions
 $('btn-export-wrong')?.addEventListener('click', exportWrong);
 $('btn-clear-wrong')?.addEventListener('click', () => {
   setSRS({});
   syncWrongIdsClearAll();
+  playFeedbackCue('unmastered');
   renderWrongBank();
   toast('Wrong bank cleared');
 });
@@ -1800,8 +1878,9 @@ $('wrong-refresh')?.addEventListener('click', async () => {
   renderWrongBank();
 });
 $('wrong-search')?.addEventListener('input', renderWrongBank);
-$('btn-clear-history')?.addEventListener('click', () => { localStorage.removeItem(KEY_SESS); renderHistory(); toast('History cleared'); });
+$('btn-clear-history')?.addEventListener('click', () => { localStorage.removeItem(KEY_SESS); playFeedbackCue('unmastered'); renderHistory(); toast('History cleared'); });
 $('coach-refresh')?.addEventListener('click', async () => {
+  playFeedbackCue('tap', { sound: false });
   flushCoachPending();
   await refreshCoachNotebook(true);
 });
@@ -1941,6 +2020,21 @@ $('openHelp')?.addEventListener('click', openHelp);
 $('closeHelp')?.addEventListener('click', () => { const ov = $('overlay'); if (ov) ov.classList.remove('show'); });
 $('overlay')?.addEventListener('click', (e) => { if (e.target && e.target.id === 'overlay') { const ov = $('overlay'); if (ov) ov.classList.remove('show'); } });
 
+// Lightweight haptics for most clickable controls; major actions have dedicated cues.
+document.addEventListener('click', (e) => {
+  const ctl = e.target && e.target.closest ? e.target.closest('button, .btn, .chip, .buzz') : null;
+  if (!ctl || ctl.disabled) return;
+  if (ctl.classList && ctl.classList.contains('coach-toggle-mastered')) return;
+  const id = String(ctl.id || '');
+  if ([
+    'startSession', 'startLast',
+    'btn-buzz', 'btn-right', 'btn-wrong', 'btn-submit-answer', 'btn-next',
+    'btn-copy-answer', 'btn-quit', 'btn-pause', 'btn-alias', 'btn-flag',
+    'btn-clear-wrong', 'btn-clear-history', 'coach-refresh'
+  ].includes(id)) return;
+  playFeedbackCue('tap', { sound: false, haptic: true });
+}, true);
+
 // Keyboard shortcuts
 document.addEventListener('keydown', (e) => {
   if (e.key === '?') { e.preventDefault(); const ov = $('overlay'); if (ov?.classList.contains('show')) ov.classList.remove('show'); else openHelp(); return; }
@@ -2068,6 +2162,7 @@ async function submitAnswer(auto = false) {
   if (App.submitBusy) return;
   if (App.phase !== 'typing') return;
   App.submitBusy = true;
+  if (!auto) playFeedbackCue('submit');
   if (App._cdIv) { clearInterval(App._cdIv); App._cdIv = null; }
   const row = $('typing-row'); if (row) row.style.display = 'none';
   const inputEl = $('user-answer');
@@ -2154,7 +2249,13 @@ async function submitAnswer(auto = false) {
   upsertCoachLocal(coachRecord);
   syncCoachAttempt(coachRecord);
 
-  if (correct) { App.correct++; App.resultsCorrect.push(true); } else { srsAddWrong(item); App.resultsCorrect.push(false); }
+  if (correct) {
+    playFeedbackCue('correct');
+    App.correct++; App.resultsCorrect.push(true);
+  } else {
+    playFeedbackCue('wrong');
+    srsAddWrong(item); App.resultsCorrect.push(false);
+  }
   App.sessionBuzzTimes.push(App.buzzAt || 0);
   finishMark(correct);
   App.submitBusy = false;
