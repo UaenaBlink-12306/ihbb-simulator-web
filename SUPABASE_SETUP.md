@@ -175,6 +175,47 @@ CREATE POLICY "Users update own drill sessions" ON user_drill_sessions
   FOR UPDATE USING (auth.uid() = user_id);
 ```
 
+## 2.7 DeepSeek Coach Attempts (Cross-Device Coach Notebook)
+
+```sql
+CREATE TABLE IF NOT EXISTS user_coach_attempts (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id UUID REFERENCES auth.users NOT NULL,
+  client_attempt_id TEXT NOT NULL,
+  client_session_id TEXT,
+  question_id TEXT,
+  question_text TEXT NOT NULL,
+  expected_answer TEXT NOT NULL,
+  user_answer TEXT NOT NULL,
+  correct BOOLEAN NOT NULL,
+  reason TEXT NOT NULL DEFAULT '',
+  coach JSONB NOT NULL DEFAULT '{}'::jsonb,
+  category TEXT NOT NULL DEFAULT '',
+  era TEXT NOT NULL DEFAULT '',
+  source TEXT NOT NULL DEFAULT '',
+  focus_topic TEXT NOT NULL DEFAULT '',
+  mastered BOOLEAN NOT NULL DEFAULT false,
+  mastered_at TIMESTAMP WITH TIME ZONE,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc', NOW()),
+  UNIQUE(user_id, client_attempt_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_user_coach_attempts_user_created
+  ON user_coach_attempts(user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_user_coach_attempts_user_mastered_created
+  ON user_coach_attempts(user_id, mastered, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_user_coach_attempts_user_category_era
+  ON user_coach_attempts(user_id, category, era, created_at DESC);
+
+ALTER TABLE user_coach_attempts ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Users read own coach attempts" ON user_coach_attempts
+  FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "Users insert own coach attempts" ON user_coach_attempts
+  FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "Users update own coach attempts" ON user_coach_attempts
+  FOR UPDATE USING (auth.uid() = user_id);
+```
+
 ## 3. Account Deletion RPC
 
 ```sql
@@ -185,6 +226,7 @@ SECURITY DEFINER
 AS $$
   DELETE FROM public.user_wrong_questions WHERE user_id = auth.uid();
   DELETE FROM public.user_drill_sessions WHERE user_id = auth.uid();
+  DELETE FROM public.user_coach_attempts WHERE user_id = auth.uid();
   DELETE FROM public.assignment_submissions WHERE student_id = auth.uid();
   DELETE FROM public.assignment_questions WHERE assignment_id IN (SELECT id FROM public.assignments WHERE teacher_id = auth.uid());
   DELETE FROM public.assignments WHERE teacher_id = auth.uid();

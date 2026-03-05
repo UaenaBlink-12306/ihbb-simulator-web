@@ -27,8 +27,11 @@ const KEY_LIBRARY = 'ihbb_v2_library';     // {sets:[{id,name,items:[]}], active
 const KEY_PRESETS = 'ihbb_v2_presets';
 const KEY_WRONG_SYNC_SEEN = 'ihbb_v2_wrong_sync_seen'; // per-user marker: <prefix>_<userId>
 const KEY_SESS_SYNC_SEEN = 'ihbb_v2_session_sync_seen'; // per-user marker: <prefix>_<userId>
+const KEY_COACH_LOCAL = 'ihbb_v2_coach_attempts';
+const KEY_COACH_PENDING = 'ihbb_v2_coach_pending';
 const WRONG_SYNC_TABLE = 'user_wrong_questions';
 const SESSION_SYNC_TABLE = 'user_drill_sessions';
+const COACH_SYNC_TABLE = 'user_coach_attempts';
 
 const WrongSync = {
   userId: null,
@@ -38,6 +41,12 @@ const WrongSync = {
   queue: Promise.resolve()
 };
 const SessionSync = {
+  userId: null,
+  enabled: true,
+  warned: false,
+  queue: Promise.resolve()
+};
+const CoachSync = {
   userId: null,
   enabled: true,
   warned: false,
@@ -60,7 +69,9 @@ const App = {
   size: 10, mode: 'random', filters: { cat: '', cats: [], era: '', eras: [], src: '' },
   lastLines: [], readingAbort: false, buzzStart: 0, buzzAt: null,
   rollingSentences: [], _cdIv: null,
-  autoGrade: true
+  autoGrade: true,
+  sessionId: null,
+  submitBusy: false
 };
 
 function normalizeQuestionId(id) {
@@ -145,6 +156,209 @@ function queueSessionSync(task) {
     })
     .catch(handleSessionSyncError);
 }
+
+function handleCoachSyncError(err) {
+  console.warn('[CoachSync] sync error:', err);
+  if (!isWrongSyncSchemaIssue(err)) return;
+  CoachSync.enabled = false;
+  if (CoachSync.warned) return;
+  CoachSync.warned = true;
+  toast('Cloud coach sync unavailable (setup missing). Using local notebook.');
+}
+async function ensureCoachSyncUserId() {
+  if (CoachSync.userId) return CoachSync.userId;
+  if (!window.supabaseClient) return null;
+  const { data, error } = await window.supabaseClient.auth.getSession();
+  if (error) throw error;
+  const userId = data?.session?.user?.id || null;
+  if (userId) CoachSync.userId = userId;
+  return userId;
+}
+function queueCoachSync(task) {
+  if (!CoachSync.enabled || !window.supabaseClient) return;
+  CoachSync.queue = CoachSync.queue
+    .then(async () => {
+      if (!CoachSync.enabled || !window.supabaseClient) return;
+      const userId = await ensureCoachSyncUserId();
+      if (!userId) return;
+      await task(window.supabaseClient, userId);
+    })
+    .catch(handleCoachSyncError);
+}
+
+function safeReadJson(key, fallback) {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return fallback;
+    const parsed = JSON.parse(raw);
+    return parsed ?? fallback;
+  } catch {
+    return fallback;
+  }
+}
+function setJsonSafe(key, value) {
+  try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* noop */ }
+}
+function getCoachLocal() {
+  const arr = safeReadJson(KEY_COACH_LOCAL, []);
+  return Array.isArray(arr) ? arr : [];
+}
+function setCoachLocal(arr) { setJsonSafe(KEY_COACH_LOCAL, Array.isArray(arr) ? arr.slice(0, 300) : []); }
+function upsertCoachLocal(record) {
+  const arr = getCoachLocal();
+  const id = String(record?.client_attempt_id || '').trim();
+  if (!id) return;
+  const idx = arr.findIndex(x => String(x?.client_attempt_id || '') === id);
+  if (idx >= 0) arr[idx] = record;
+  else arr.unshift(record);
+  setCoachLocal(arr);
+}
+function getCoachPending() {
+  const arr = safeReadJson(KEY_COACH_PENDING, []);
+  return Array.isArray(arr) ? arr : [];
+}
+function setCoachPending(arr) { setJsonSafe(KEY_COACH_PENDING, Array.isArray(arr) ? arr.slice(0, 300) : []); }
+function enqueueCoachPending(record) {
+  const arr = getCoachPending();
+  const id = String(record?.client_attempt_id || '').trim();
+  if (!id) return;
+  const idx = arr.findIndex(x => String(x?.client_attempt_id || '') === id);
+  if (idx >= 0) arr[idx] = record;
+  else arr.unshift(record);
+  setCoachPending(arr);
+}
+function removeCoachPending(attemptId) {
+  const id = String(attemptId || '').trim();
+  if (!id) return;
+  const arr = getCoachPending().filter(x => String(x?.client_attempt_id || '') !== id);
+  setCoachPending(arr);
+}
+
+function escHtml(s) {
+  return String(s || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+function topicFromQuestion(q) {
+  const t = String(q || '').toLowerCase();
+  if (/(battle|war|campaign|siege|army|navy|admiral|military)/.test(t)) return 'Military';
+  if (/(treaty|law|constitution|election|parliament|policy|president|minister)/.test(t)) return 'Politics';
+  if (/(religion|church|pope|caliph|buddh|islam|hindu|christian)/.test(t)) return 'Religion';
+  if (/(econom|trade|bank|tax|industry|market|finance)/.test(t)) return 'Economy';
+  if (/(art|painting|novel|poem|literature|music|composer)/.test(t)) return 'Culture';
+  if (/(science|physics|chemistry|biology|medicine|theory|astronomy)/.test(t)) return 'Science';
+  return 'General';
+}
+function iconForStudyFocus(region, topic) {
+  const regionIcons = {
+    'africa': '🌍',
+    'europe': '🏰',
+    'north america': '🦅',
+    'latin america': '🗿',
+    'middle east': '🕌',
+    'east asia': '🏯',
+    'south asia': '🪷',
+    'southeast asia': '🌴',
+    'central asia': '🐎',
+    'oceania': '🌊',
+    'world': '🌐'
+  };
+  const topicIcons = {
+    'military': '⚔️',
+    'politics': '🏛️',
+    'religion': '🕯️',
+    'economy': '💰',
+    'culture': '🎭',
+    'science': '🧪',
+    'general': '📘'
+  };
+  const r = String(region || '').toLowerCase();
+  const t = String(topic || '').toLowerCase();
+  return regionIcons[r] || topicIcons[t] || '📘';
+}
+function fallbackCoachForItem(item, correct, reason) {
+  const region = String(item?.meta?.category || 'World') || 'World';
+  const era = String(item?.meta?.era || '');
+  const topic = topicFromQuestion(item?.question || '');
+  return {
+    summary: correct
+      ? 'You got it right. Keep tying clues to specific context.'
+      : 'This looks like a near miss from overlapping concepts.',
+    error_diagnosis: correct
+      ? 'Your response matched the required entity.'
+      : 'Your response likely overlapped with a related but different answer.',
+    overlap_explainer: reason || 'Use uniquely identifying clues to separate close answers.',
+    key_clues: [
+      'Look for clues that uniquely identify one entity.',
+      'Use era and region to narrow options.',
+      'Prioritize named events and proper nouns.'
+    ],
+    memory_hook: 'One distinctive clue -> one canonical answer.',
+    next_check_question: 'What cause-and-effect relationship best explains this answer in context?',
+    study_focus: { region, era, topic, icon: iconForStudyFocus(region, topic) },
+    confidence: 'low'
+  };
+}
+function normalizeCoach(coach, item, correct, reason) {
+  const c = (coach && typeof coach === 'object') ? coach : {};
+  const sf = (c.study_focus && typeof c.study_focus === 'object') ? c.study_focus : {};
+  const region = String(sf.region || item?.meta?.category || 'World').trim() || 'World';
+  const era = String(sf.era || item?.meta?.era || '').trim();
+  const topic = String(sf.topic || topicFromQuestion(item?.question || '')).trim() || 'General';
+  const icon = String(sf.icon || iconForStudyFocus(region, topic)).trim() || iconForStudyFocus(region, topic);
+  const clues = Array.isArray(c.key_clues) ? c.key_clues.map(x => String(x || '').trim()).filter(Boolean).slice(0, 4) : [];
+  const confidence = ['high', 'medium', 'low'].includes(String(c.confidence || '').toLowerCase()) ? String(c.confidence).toLowerCase() : 'low';
+  return {
+    summary: String(c.summary || (correct ? 'Correct answer with good clue alignment.' : 'Answer not accepted; review clue disambiguation.')).trim(),
+    error_diagnosis: String(c.error_diagnosis || (correct ? 'You identified the right entity.' : 'This answer likely mixed with a related concept.')).trim(),
+    overlap_explainer: String(c.overlap_explainer || reason || 'Focus on clues that uniquely identify the expected answer.').trim(),
+    key_clues: clues.length ? clues : [
+      'Track the clue that uniquely identifies the answer.',
+      'Use era and region to eliminate close alternatives.',
+      'Prioritize named events and figures.'
+    ],
+    memory_hook: String(c.memory_hook || 'Anchor one unique clue to one canonical answer.').trim(),
+    next_check_question: String(c.next_check_question || 'What consequence or context best confirms this answer?').trim(),
+    study_focus: { region, era, topic, icon },
+    confidence
+  };
+}
+function clearCoachCard() {
+  const el = $('coach-card');
+  if (!el) return;
+  el.innerHTML = '';
+  el.style.display = 'none';
+}
+function renderCoachCard(coach) {
+  const el = $('coach-card');
+  if (!el) return;
+  if (!coach) { clearCoachCard(); return; }
+  const focus = coach.study_focus || {};
+  const clues = Array.isArray(coach.key_clues) ? coach.key_clues : [];
+  el.innerHTML = `
+    <div class="coach-head">
+      <div class="coach-icon">${escHtml(focus.icon || '📘')}</div>
+      <div>
+        <div class="coach-title">DeepSeek Coach</div>
+        <div class="coach-focus">${escHtml(focus.region || 'World')} ${focus.era ? '• ' + escHtml(focus.era) : ''} ${focus.topic ? '• ' + escHtml(focus.topic) : ''}</div>
+      </div>
+      <div class="grow"></div>
+      <div class="coach-confidence">${escHtml(String(coach.confidence || 'low').toUpperCase())}</div>
+    </div>
+    <div class="coach-section"><b>Summary:</b> ${escHtml(coach.summary || '')}</div>
+    <div class="coach-section"><b>Error Diagnosis:</b> ${escHtml(coach.error_diagnosis || '')}</div>
+    <div class="coach-section"><b>Overlap Explainer:</b> ${escHtml(coach.overlap_explainer || '')}</div>
+    <div class="coach-section"><b>Key Clues:</b><ul>${clues.map(c => `<li>${escHtml(c)}</li>`).join('')}</ul></div>
+    <div class="coach-section"><b>Memory Hook:</b> ${escHtml(coach.memory_hook || '')}</div>
+    <div class="coach-section"><b>Next Check:</b> ${escHtml(coach.next_check_question || '')}</div>
+  `;
+  el.style.display = 'block';
+}
+
+const CoachNotebook = { records: [], loaded: false };
 
 // Detect assignment launch early so init can avoid overriding the assignment set.
 const URL_PARAMS = new URLSearchParams(window.location.search);
@@ -772,6 +986,7 @@ async function initWrongBankSync() {
     if (!userId) return;
     WrongSync.userId = userId;
     SessionSync.userId = userId;
+    CoachSync.userId = userId;
 
     const { data: remoteRows, error: remoteErr } = await window.supabaseClient
       .from(WRONG_SYNC_TABLE)
@@ -835,6 +1050,9 @@ function srsBuildPseudoItems(ids) { const s = getSRS(); return ids.map(id => ({ 
 function startSession() {
   const set = getActiveSet(); if (!set && App.mode !== 'srs') { toast('No active set'); return; }
   App.correct = 0; App.sessionBuzzTimes = []; App.resultsCorrect = []; App.i = 0; App.phase = 'idle';
+  App.sessionId = `sess_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  App.submitBusy = false;
+  clearCoachCard();
   const ans = $('answer'); if (ans) ans.textContent = '';
   const cd = $('countdown'); if (cd) cd.textContent = '';
   const st = $('status'); if (st) st.textContent = 'Preparing…';
@@ -875,6 +1093,8 @@ function startSession() {
 
 async function nextQuestion(first = false) {
   stopSpeech(); App.readingAbort = false;
+  App.submitBusy = false;
+  clearCoachCard();
   const ans = $('answer'); if (ans) ans.textContent = '';
   const cd = $('countdown'); if (cd) cd.textContent = '';
   const bt = $('buzz-time'); if (bt) bt.textContent = '—';
@@ -961,11 +1181,11 @@ function finishSession() {
   const total = App.order.length, correct = App.correct, acc = total ? Math.round(correct / total * 100) : 0;
   const st = $('status'); if (st) st.textContent = `Complete — ${correct}/${total} (${acc}%).`;
   setPracticeButtons({ buzz: false, next: false, right: false, wrong: false, replay: false, alias: false, flag: false });
-  pushSession(total, correct, durSec, App.sessionBuzzTimes, App.pool, App.order, App.resultsCorrect);
-  navSet('nav-review'); SHOW('view-review'); renderHistory(); renderWrongBank(); drawCharts();
+  pushSession(total, correct, durSec, App.sessionBuzzTimes, App.pool, App.order, App.resultsCorrect, App.sessionId);
+  navSet('nav-review'); SHOW('view-review'); renderHistory(); renderWrongBank(); drawCharts(); refreshCoachNotebook(false);
 }
 
-function pushSession(total, correct, durSec, buzzTimes, pool, order, results) {
+function pushSession(total, correct, durSec, buzzTimes, pool, order, results, sessionId = null) {
   const arr = JSON.parse(localStorage.getItem(KEY_SESS) || '[]');
   const itemIds = order.map(i => pool[i]?.id).filter(Boolean);
   const res = results.slice(0, itemIds.length);
@@ -978,7 +1198,7 @@ function pushSession(total, correct, durSec, buzzTimes, pool, order, results) {
     };
   });
   const record = {
-    sid: `sess_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    sid: String(sessionId || `sess_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`),
     ts: Date.now(),
     total,
     correct,
@@ -1065,6 +1285,202 @@ function backfillLocalSessionsToCloud() {
     if (error) throw error;
     setSessSyncSeen(userId);
   });
+}
+
+function normalizeCoachAttemptRecord(record) {
+  const coach = normalizeCoach(record?.coach, {
+    question: record?.question_text || '',
+    meta: {
+      category: record?.category || '',
+      era: record?.era || '',
+      source: record?.source || ''
+    }
+  }, !!record?.correct, String(record?.reason || ''));
+  return {
+    client_attempt_id: String(record?.client_attempt_id || '').trim() || `att_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    client_session_id: String(record?.client_session_id || '').trim(),
+    question_id: String(record?.question_id || '').trim(),
+    question_text: String(record?.question_text || '').trim(),
+    expected_answer: String(record?.expected_answer || '').trim(),
+    user_answer: String(record?.user_answer || '').trim(),
+    correct: !!record?.correct,
+    reason: String(record?.reason || '').trim(),
+    coach,
+    category: String(record?.category || coach?.study_focus?.region || ''),
+    era: String(record?.era || coach?.study_focus?.era || ''),
+    source: String(record?.source || ''),
+    focus_topic: String(record?.focus_topic || coach?.study_focus?.topic || ''),
+    mastered: !!record?.mastered,
+    mastered_at: record?.mastered_at || null,
+    created_at: record?.created_at || new Date().toISOString()
+  };
+}
+
+function syncCoachAttempt(record) {
+  const safe = normalizeCoachAttemptRecord(record);
+  enqueueCoachPending(safe);
+  queueCoachSync(async (sb, userId) => {
+    const { error } = await sb.from(COACH_SYNC_TABLE).upsert({
+      user_id: userId,
+      client_attempt_id: safe.client_attempt_id,
+      client_session_id: safe.client_session_id || null,
+      question_id: safe.question_id || null,
+      question_text: safe.question_text,
+      expected_answer: safe.expected_answer,
+      user_answer: safe.user_answer,
+      correct: safe.correct,
+      reason: safe.reason,
+      coach: safe.coach,
+      category: safe.category,
+      era: safe.era,
+      source: safe.source,
+      focus_topic: safe.focus_topic,
+      mastered: safe.mastered,
+      mastered_at: safe.mastered_at
+    }, { onConflict: 'user_id,client_attempt_id' });
+    if (error) throw error;
+    removeCoachPending(safe.client_attempt_id);
+  });
+}
+
+function flushCoachPending() {
+  const pending = getCoachPending();
+  if (!pending.length) return;
+  queueCoachSync(async (sb, userId) => {
+    const rows = pending.map(x => {
+      const safe = normalizeCoachAttemptRecord(x);
+      return {
+        user_id: userId,
+        client_attempt_id: safe.client_attempt_id,
+        client_session_id: safe.client_session_id || null,
+        question_id: safe.question_id || null,
+        question_text: safe.question_text,
+        expected_answer: safe.expected_answer,
+        user_answer: safe.user_answer,
+        correct: safe.correct,
+        reason: safe.reason,
+        coach: safe.coach,
+        category: safe.category,
+        era: safe.era,
+        source: safe.source,
+        focus_topic: safe.focus_topic,
+        mastered: safe.mastered,
+        mastered_at: safe.mastered_at
+      };
+    });
+    const { error } = await sb.from(COACH_SYNC_TABLE).upsert(rows, { onConflict: 'user_id,client_attempt_id' });
+    if (error) throw error;
+    setCoachPending([]);
+  });
+}
+
+async function fetchCoachNotebookRecords(forceCloud = false) {
+  if (window.supabaseClient && CoachSync.enabled) {
+    try {
+      const userId = await ensureCoachSyncUserId();
+      if (userId) {
+        const { data, error } = await window.supabaseClient
+          .from(COACH_SYNC_TABLE)
+          .select('client_attempt_id,client_session_id,question_id,question_text,expected_answer,user_answer,correct,reason,coach,category,era,source,focus_topic,mastered,mastered_at,created_at')
+          .eq('user_id', userId)
+          .order('created_at', { ascending: false })
+          .limit(200);
+        if (error) throw error;
+        const recs = (Array.isArray(data) ? data : []).map(normalizeCoachAttemptRecord);
+        CoachNotebook.records = recs;
+        setCoachLocal(recs);
+        CoachNotebook.loaded = true;
+        return recs;
+      }
+    } catch (err) {
+      if (forceCloud) handleCoachSyncError(err);
+      console.warn('Coach notebook cloud fetch failed; using local.', err);
+    }
+  }
+  const local = getCoachLocal().map(normalizeCoachAttemptRecord);
+  CoachNotebook.records = local;
+  CoachNotebook.loaded = true;
+  return local;
+}
+
+function renderCoachNotebook() {
+  const listEl = $('coach-list');
+  if (!listEl) return;
+  const countEl = $('coach-count');
+  const q = (($('coach-search') && $('coach-search').value) || '').trim().toLowerCase();
+  const filter = (($('coach-filter') && $('coach-filter').value) || 'all').toLowerCase();
+  const rows = (CoachNotebook.records || []).filter(r => {
+    if (filter === 'todo' && r.mastered) return false;
+    if (filter === 'mastered' && !r.mastered) return false;
+    if (!q) return true;
+    const hay = `${r.question_text} ${r.expected_answer} ${r.user_answer} ${r.reason} ${r.focus_topic} ${r.category} ${r.era}`.toLowerCase();
+    return hay.includes(q);
+  });
+  if (countEl) countEl.textContent = String(rows.length);
+  if (!rows.length) {
+    listEl.innerHTML = `<div class="coach-empty">No coach lessons found.</div>`;
+    return;
+  }
+  listEl.innerHTML = rows.map(r => {
+    const coach = normalizeCoach(r.coach, { question: r.question_text, meta: { category: r.category, era: r.era, source: r.source } }, r.correct, r.reason);
+    const focus = coach.study_focus || {};
+    const created = r.created_at ? new Date(r.created_at).toLocaleString() : '—';
+    return `
+      <div class="coach-note ${r.mastered ? 'mastered' : ''}" data-attempt="${escHtml(r.client_attempt_id)}">
+        <div class="coach-note-head">
+          <div class="coach-note-icon">${escHtml(focus.icon || '📘')}</div>
+          <div class="coach-note-meta">
+            <div><b>${r.correct ? '✓ Correct' : '✗ Incorrect'}</b> • ${escHtml(created)}</div>
+            <div class="muted">${escHtml(focus.region || 'World')} ${focus.era ? '• ' + escHtml(focus.era) : ''} ${focus.topic ? '• ' + escHtml(focus.topic) : ''}</div>
+          </div>
+          <div class="grow"></div>
+          <button class="btn ghost coach-toggle-mastered" data-mastered="${r.mastered ? '1' : '0'}" data-attempt="${escHtml(r.client_attempt_id)}">${r.mastered ? 'Unmark Mastered' : 'Mark Mastered'}</button>
+        </div>
+        <details>
+          <summary>${escHtml((r.question_text || '').slice(0, 180))}${(r.question_text || '').length > 180 ? '…' : ''}</summary>
+          <div class="coach-note-body">
+            <div><b>Your answer:</b> ${escHtml(r.user_answer || '(blank)')}</div>
+            <div><b>Expected:</b> ${escHtml(r.expected_answer || '')}</div>
+            <div><b>Summary:</b> ${escHtml(coach.summary || '')}</div>
+            <div><b>Error Diagnosis:</b> ${escHtml(coach.error_diagnosis || '')}</div>
+            <div><b>Overlap Explainer:</b> ${escHtml(coach.overlap_explainer || '')}</div>
+            <div><b>Memory Hook:</b> ${escHtml(coach.memory_hook || '')}</div>
+            <div><b>Next Check:</b> ${escHtml(coach.next_check_question || '')}</div>
+          </div>
+        </details>
+      </div>
+    `;
+  }).join('');
+}
+
+async function refreshCoachNotebook(forceCloud = false) {
+  await fetchCoachNotebookRecords(forceCloud);
+  renderCoachNotebook();
+}
+
+function setCoachMasteredLocal(attemptId, mastered) {
+  const id = String(attemptId || '');
+  if (!id) return null;
+  const local = getCoachLocal();
+  const idx = local.findIndex(x => String(x?.client_attempt_id || '') === id);
+  if (idx === -1) return null;
+  local[idx].mastered = !!mastered;
+  local[idx].mastered_at = mastered ? new Date().toISOString() : null;
+  setCoachLocal(local);
+  return local[idx];
+}
+
+function toggleCoachMastered(attemptId, mastered) {
+  const id = String(attemptId || '');
+  if (!id) return;
+  const idx = CoachNotebook.records.findIndex(x => String(x?.client_attempt_id || '') === id);
+  if (idx === -1) return;
+  CoachNotebook.records[idx].mastered = !!mastered;
+  CoachNotebook.records[idx].mastered_at = mastered ? new Date().toISOString() : null;
+  const updated = setCoachMasteredLocal(id, mastered);
+  renderCoachNotebook();
+  if (!updated) return;
+  syncCoachAttempt(updated);
 }
 
 /********************* Review & Wrong bank *********************/
@@ -1218,7 +1634,16 @@ $('nav-practice')?.addEventListener('click', (e) => {
   e.preventDefault(); navSet('nav-practice'); SHOW('view-practice');
   setTimeout(() => window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' }), 150);
 });
-$('nav-review')?.addEventListener('click', (e) => { e.preventDefault(); navSet('nav-review'); SHOW('view-review'); renderHistory(); renderWrongBank(); drawCharts(); });
+$('nav-review')?.addEventListener('click', async (e) => {
+  e.preventDefault();
+  navSet('nav-review');
+  SHOW('view-review');
+  renderHistory();
+  renderWrongBank();
+  drawCharts();
+  flushCoachPending();
+  await refreshCoachNotebook(true);
+});
 $('nav-library')?.addEventListener('click', (e) => { e.preventDefault(); navSet('nav-library'); SHOW('view-library'); renderLibraryTable(); });
 $('nav-help')?.addEventListener('click', (e) => { e.preventDefault(); openHelp(); });
 
@@ -1376,6 +1801,19 @@ $('wrong-refresh')?.addEventListener('click', async () => {
 });
 $('wrong-search')?.addEventListener('input', renderWrongBank);
 $('btn-clear-history')?.addEventListener('click', () => { localStorage.removeItem(KEY_SESS); renderHistory(); toast('History cleared'); });
+$('coach-refresh')?.addEventListener('click', async () => {
+  flushCoachPending();
+  await refreshCoachNotebook(true);
+});
+$('coach-search')?.addEventListener('input', renderCoachNotebook);
+$('coach-filter')?.addEventListener('change', renderCoachNotebook);
+$('coach-list')?.addEventListener('click', (e) => {
+  const btn = e.target.closest('.coach-toggle-mastered');
+  if (!btn) return;
+  const id = btn.dataset.attempt || '';
+  const next = (btn.dataset.mastered || '0') !== '1';
+  toggleCoachMastered(id, next);
+});
 
 // Library actions
 $('lib-set-sel')?.addEventListener('change', (e) => { Library.activeSetId = e.target.value || null; saveLibrary(); renderLibrarySelectors(); renderLibraryTable(); });
@@ -1582,6 +2020,8 @@ async function tryFetchDefault(force = false) {
   renderHistory(); renderWrongBank();
   await initWrongBankSync();
   backfillLocalSessionsToCloud();
+  flushCoachPending();
+  refreshCoachNotebook(false);
   // Auto-load questions.json on startup (from build_db.py)
   if (!(ASSIGNMENT_ID && HAS_ASSIGNMENT_PAYLOAD)) {
     tryFetchDefault(false);
@@ -1598,8 +2038,10 @@ startCountdown = function (sec) {
 function startTypingPhase(sec) {
   const st = $('status'); if (st) st.textContent = `Type your answer (${sec}s)`;
   App.phase = 'typing';
+  App.submitBusy = false;
   const row = $('typing-row'); if (row) row.style.display = 'flex';
-  const inp = $('user-answer'); if (inp) { inp.value = ''; setTimeout(() => inp.focus(), 0); }
+  const inp = $('user-answer'); if (inp) { inp.disabled = false; inp.value = ''; setTimeout(() => inp.focus(), 0); }
+  const sb = $('btn-submit-answer'); if (sb) sb.disabled = false;
 
   let t = 10; // fixed 10 seconds
   const cd = $('countdown'); if (cd) cd.textContent = `${t}`;
@@ -1623,13 +2065,20 @@ function startTypingPhase(sec) {
 }
 
 async function submitAnswer(auto = false) {
+  if (App.submitBusy) return;
   if (App.phase !== 'typing') return;
+  App.submitBusy = true;
   if (App._cdIv) { clearInterval(App._cdIv); App._cdIv = null; }
   const row = $('typing-row'); if (row) row.style.display = 'none';
-  const userAns = ($('user-answer') && $('user-answer').value) || '';
+  const inputEl = $('user-answer');
+  const submitBtn = $('btn-submit-answer');
+  if (inputEl) inputEl.disabled = true;
+  if (submitBtn) submitBtn.disabled = true;
+  const userAns = (inputEl && inputEl.value) || '';
 
   const item = App.curItem || { question: '', answer: '', aliases: [] };
   const st = $('status'); if (st) st.textContent = 'Grading…';
+  const clientAttemptId = `att_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
   // Fallback matcher
   const normalize = (s) => (s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
@@ -1641,20 +2090,32 @@ async function submitAnswer(auto = false) {
   };
 
   let correct = false, reason = '';
+  let coach = null;
   try {
     const res = await fetch('/api/grade', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         question: item.question,
+        question_id: item.id,
         expected: item.answer,
         aliases: item.aliases || [],
         answer: userAns,
-        strict: !!Settings.strict
+        user_answer: userAns,
+        strict: !!Settings.strict,
+        client_attempt_id: clientAttemptId,
+        coach_enabled: true,
+        coach_depth: 'full',
+        meta: {
+          category: item.meta?.category || '',
+          era: item.meta?.era || '',
+          source: item.meta?.source || ''
+        }
       })
     });
     if (res.ok) {
       const data = await res.json();
       correct = !!data.correct; reason = data.reason || '';
+      coach = normalizeCoach(data.coach, item, correct, reason);
     } else {
       reason = `Server error ${res.status}`;
       correct = basicMatch(userAns, item.answer, item.aliases);
@@ -1663,16 +2124,40 @@ async function submitAnswer(auto = false) {
     reason = 'Offline grading fallback used';
     correct = basicMatch(userAns, item.answer, item.aliases);
   }
+  if (!coach) coach = fallbackCoachForItem(item, correct, reason);
 
   // Reveal canonical answer and finalize
   App.phase = 'answering';
   const ansText = Settings.strict ? `标准答案：${item.answer}` : `标准答案：${item.answer}${(item.aliases?.length ? `  (aliases: ${item.aliases.slice(0, 3).join(', ')})` : '')}`;
   const ans = $('answer'); if (ans) ans.textContent = ansText + (reason ? `  — ${correct ? '✓' : '✗'} ${reason}` : `  — ${correct ? '✓' : '✗'}`);
+  renderCoachCard(coach);
   speakOnce(`标准答案：${item.answer}`, curVoice(), rate(), 1.0, 12000);
+
+  const coachRecord = {
+    client_attempt_id: clientAttemptId,
+    client_session_id: String(App.sessionId || ''),
+    question_id: String(item.id || ''),
+    question_text: String(item.question || ''),
+    expected_answer: String(item.answer || ''),
+    user_answer: String(userAns || ''),
+    correct: !!correct,
+    reason: String(reason || ''),
+    coach,
+    category: String(item.meta?.category || ''),
+    era: String(item.meta?.era || ''),
+    source: String(item.meta?.source || ''),
+    focus_topic: String(coach?.study_focus?.topic || ''),
+    mastered: false,
+    mastered_at: null,
+    created_at: new Date().toISOString()
+  };
+  upsertCoachLocal(coachRecord);
+  syncCoachAttempt(coachRecord);
 
   if (correct) { App.correct++; App.resultsCorrect.push(true); } else { srsAddWrong(item); App.resultsCorrect.push(false); }
   App.sessionBuzzTimes.push(App.buzzAt || 0);
   finishMark(correct);
+  App.submitBusy = false;
 }
 
 // Hook up UI for manual submit (optional early submit)

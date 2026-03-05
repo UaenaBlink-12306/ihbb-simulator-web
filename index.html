@@ -269,6 +269,7 @@
         <button id="btn-submit-answer" class="btn pri">Submit</button>
       </div>
       <div class="answer" id="answer"></div>
+      <div id="coach-card" class="coach-card" style="display:none"></div>
 
       <div class="row practice-bottom" style="margin-top:14px">
         <button id="btn-replay" class="btn ghost" disabled>Replay last line (L)</button>
@@ -362,6 +363,22 @@
       <div class="row">
         <button id="btn-clear-history" class="btn ghost">Clear history</button>
       </div>
+    </div>
+
+    <div class="card" style="margin-top:14px">
+      <div class="card-title">Coach Notebook</div>
+      <div class="row" style="margin-bottom:8px">
+        <div class="pill">Saved lessons: <span id="coach-count">0</span></div>
+        <div class="grow"></div>
+        <select id="coach-filter" style="min-width:140px">
+          <option value="all">All</option>
+          <option value="todo">To Learn</option>
+          <option value="mastered">Mastered</option>
+        </select>
+        <input id="coach-search" type="text" placeholder="Search coach notes…" style="flex:1 1 260px" />
+        <button id="coach-refresh" class="btn ghost">Refresh</button>
+      </div>
+      <div id="coach-list" class="coach-list"></div>
     </div>
   </section>
 
