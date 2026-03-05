@@ -330,6 +330,7 @@ function clearCoachCard() {
   const el = $('coach-card');
   if (!el) return;
   el.innerHTML = '';
+  try { delete el.dataset.attempt; } catch { /* noop */ }
   el.style.display = 'none';
 }
 function renderCoachCard(coach) {
@@ -2172,7 +2173,7 @@ async function submitAnswer(auto = false) {
   const userAns = (inputEl && inputEl.value) || '';
 
   const item = App.curItem || { question: '', answer: '', aliases: [] };
-  const st = $('status'); if (st) st.textContent = 'Grading…';
+  const st = $('status'); if (st) st.textContent = 'Grading...';
   const clientAttemptId = `att_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
   // Fallback matcher
@@ -2184,8 +2185,9 @@ async function submitAnswer(auto = false) {
     return false;
   };
 
-  let correct = false, reason = '';
-  let coach = null;
+  const coachLoadingText = 'Incorrect — building your coach micro-lesson...';
+  let correct = false;
+  let reason = '';
   try {
     const res = await fetch('/api/grade', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -2198,8 +2200,7 @@ async function submitAnswer(auto = false) {
         user_answer: userAns,
         strict: !!Settings.strict,
         client_attempt_id: clientAttemptId,
-        coach_enabled: true,
-        coach_depth: 'full',
+        coach_enabled: false,
         meta: {
           category: item.meta?.category || '',
           era: item.meta?.era || '',
@@ -2210,7 +2211,6 @@ async function submitAnswer(auto = false) {
     if (res.ok) {
       const data = await res.json();
       correct = !!data.correct; reason = data.reason || '';
-      coach = normalizeCoach(data.coach, item, correct, reason);
     } else {
       reason = `Server error ${res.status}`;
       correct = basicMatch(userAns, item.answer, item.aliases);
@@ -2219,13 +2219,36 @@ async function submitAnswer(auto = false) {
     reason = 'Offline grading fallback used';
     correct = basicMatch(userAns, item.answer, item.aliases);
   }
-  if (!coach) coach = fallbackCoachForItem(item, correct, reason);
+  const quickCoach = fallbackCoachForItem(item, correct, reason);
 
   // Reveal canonical answer and finalize
   App.phase = 'answering';
   const ansText = Settings.strict ? `标准答案：${item.answer}` : `标准答案：${item.answer}${(item.aliases?.length ? `  (aliases: ${item.aliases.slice(0, 3).join(', ')})` : '')}`;
   const ans = $('answer'); if (ans) ans.textContent = ansText + (reason ? `  — ${correct ? '✓' : '✗'} ${reason}` : `  — ${correct ? '✓' : '✗'}`);
-  renderCoachCard(coach);
+  const coachEl = $('coach-card');
+  if (coachEl) coachEl.dataset.attempt = clientAttemptId;
+  if (correct) {
+    if (st) st.textContent = 'Correct.';
+    renderCoachCard(quickCoach);
+  } else {
+    if (st) st.textContent = coachLoadingText;
+    const loadingCoach = normalizeCoach({
+      summary: 'Incorrect. Generating targeted DeepSeek coaching...',
+      error_diagnosis: 'Analyzing your answer against the expected concept...',
+      overlap_explainer: 'Preparing a focused misconception breakdown...',
+      key_clues: ['Reviewing clues that disambiguate this question.', 'Generating timeline/region anchors.'],
+      memory_hook: 'Building memory anchor...',
+      next_check_question: 'Preparing concept-check...',
+      study_focus: {
+        region: item.meta?.category || 'World',
+        era: item.meta?.era || '',
+        topic: topicFromQuestion(item.question),
+        icon: iconForStudyFocus(item.meta?.category || 'World', topicFromQuestion(item.question))
+      },
+      confidence: 'low'
+    }, item, correct, reason);
+    renderCoachCard(loadingCoach);
+  }
   speakOnce(`标准答案：${item.answer}`, curVoice(), rate(), 1.0, 12000);
 
   const coachRecord = {
@@ -2237,11 +2260,11 @@ async function submitAnswer(auto = false) {
     user_answer: String(userAns || ''),
     correct: !!correct,
     reason: String(reason || ''),
-    coach,
+    coach: quickCoach,
     category: String(item.meta?.category || ''),
     era: String(item.meta?.era || ''),
     source: String(item.meta?.source || ''),
-    focus_topic: String(coach?.study_focus?.topic || ''),
+    focus_topic: String(quickCoach?.study_focus?.topic || ''),
     mastered: false,
     mastered_at: null,
     created_at: new Date().toISOString()
@@ -2259,6 +2282,64 @@ async function submitAnswer(auto = false) {
   App.sessionBuzzTimes.push(App.buzzAt || 0);
   finishMark(correct);
   App.submitBusy = false;
+
+  // Wrong answers get a second, separate coach request after grading is already returned.
+  if (!correct) {
+    const fetchCoachAsync = async () => {
+      try {
+        const coachRes = await fetch('/api/grade', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            question: item.question,
+            question_id: item.id,
+            expected: item.answer,
+            expected_answer: item.answer,
+            aliases: item.aliases || [],
+            answer: userAns,
+            user_answer: userAns,
+            strict: !!Settings.strict,
+            coach_enabled: true,
+            coach_only: true,
+            coach_depth: 'full',
+            correct: !!correct,
+            reason: String(reason || ''),
+            client_attempt_id: clientAttemptId,
+            meta: {
+              category: item.meta?.category || '',
+              era: item.meta?.era || '',
+              source: item.meta?.source || ''
+            }
+          })
+        });
+        if (!coachRes.ok) throw new Error(`Server error ${coachRes.status}`);
+        const coachData = await coachRes.json();
+        const finalCoach = normalizeCoach(coachData?.coach, item, correct, reason);
+        coachRecord.coach = finalCoach;
+        coachRecord.focus_topic = String(finalCoach?.study_focus?.topic || '');
+        upsertCoachLocal(coachRecord);
+        syncCoachAttempt(coachRecord);
+
+        const liveCoachEl = $('coach-card');
+        if (liveCoachEl && liveCoachEl.dataset.attempt === clientAttemptId) {
+          renderCoachCard(finalCoach);
+          if (st) st.textContent = 'Incorrect — coach lesson ready.';
+        }
+      } catch (err) {
+        const fallback = fallbackCoachForItem(item, correct, reason || 'Coach unavailable.');
+        coachRecord.coach = fallback;
+        coachRecord.focus_topic = String(fallback?.study_focus?.topic || '');
+        upsertCoachLocal(coachRecord);
+        syncCoachAttempt(coachRecord);
+        const liveCoachEl = $('coach-card');
+        if (liveCoachEl && liveCoachEl.dataset.attempt === clientAttemptId) {
+          renderCoachCard(fallback);
+          if (st) st.textContent = 'Incorrect — quick coaching shown (network issue).';
+        }
+      }
+    };
+    void fetchCoachAsync();
+  }
 }
 
 // Hook up UI for manual submit (optional early submit)

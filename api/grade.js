@@ -6,12 +6,15 @@ module.exports = async function handler(req, res) {
   try {
     const payload = req.body || {};
     const question = String(payload.question || '');
-    const expected = String(payload.expected || '');
+    const expected = String(payload.expected ?? payload.expected_answer ?? '');
     const aliases = Array.isArray(payload.aliases) ? payload.aliases : [];
     const userAnswer = String(payload.user_answer ?? payload.answer ?? '');
     const strict = !!payload.strict;
     const coachEnabled = !!payload.coach_enabled;
+    const coachOnly = !!payload.coach_only;
     const coachDepth = String(payload.coach_depth || 'full');
+    const suppliedCorrect = (typeof payload.correct === 'boolean') ? !!payload.correct : null;
+    const suppliedReason = String(payload.reason || payload.grade_reason || '');
     const meta = (payload.meta && typeof payload.meta === 'object') ? payload.meta : {};
 
     function normalize(str) {
@@ -235,8 +238,10 @@ module.exports = async function handler(req, res) {
     const noKeyReason = 'DeepSeek API key not set, using basic match.';
 
     if (!process.env.DEEPSEEK_API_KEY) {
-      const output = { correct: fallbackCorrect, reason: noKeyReason };
-      if (coachEnabled) output.coach = buildFallbackCoach(fallbackCorrect, noKeyReason);
+      const lockedCorrect = (coachOnly && suppliedCorrect !== null) ? suppliedCorrect : fallbackCorrect;
+      const lockedReason = coachOnly ? (suppliedReason || noKeyReason) : noKeyReason;
+      const output = { correct: lockedCorrect, reason: lockedReason };
+      if (coachEnabled) output.coach = buildFallbackCoach(lockedCorrect, lockedReason);
       return res.status(200).json(output);
     }
 
@@ -259,6 +264,69 @@ module.exports = async function handler(req, res) {
         correct: !!result.correct,
         reason: String(result.reason || '')
       });
+    }
+
+    if (coachOnly) {
+      const lockedCorrect = suppliedCorrect === null ? fallbackCorrect : suppliedCorrect;
+      const lockedReason = suppliedReason || (lockedCorrect ? 'Correct by prior grading pass.' : 'Incorrect by prior grading pass.');
+      const coachOnlySystem = [
+        'Act as an expert polymath and memory architect. Generate only coaching content for an already-graded answer.',
+        'Do not re-grade. Respect provided is_correct and reason as the locked verdict.',
+        'INSTRUCTIONS:',
+        '1) Explain the underlying logic/significance in 2-3 punchy sentences.',
+        '2) Provide 3 related high-value facts linked to the correct answer.',
+        '3) If is_correct is false, clearly separate user answer vs expected answer.',
+        '4) Provide one vivid mnemonic.',
+        'Return strict JSON with this shape only:',
+        '{"coach":{"summary":"1-sentence definitive takeaway.","explanation":"Deep context explaining the logic of the answer.","related_facts":["Fact 1: [Connection Type] - [Data]","Fact 2: [Connection Type] - [Data]","Fact 3: [Connection Type] - [Data]"],"key_clues":["Specific word in the question that gives it away","A chronological or spatial anchor"],"memory_hook":"A short, sticky mnemonic or visual association.","study_focus":{"region":"String","era":"String","topic":"String"}}}'
+      ].join('\n');
+      const coachOnlyMessages = [
+        { role: 'system', content: coachOnlySystem },
+        {
+          role: 'user',
+          content: JSON.stringify({
+            question,
+            expected_answer: expected,
+            user_answer: userAnswer,
+            aliases,
+            is_correct: lockedCorrect,
+            reason: lockedReason,
+            category: String(meta.category || meta.region || ''),
+            strict,
+            coach_depth: coachDepth,
+            meta
+          })
+        }
+      ];
+      const coached = await callDeepSeek(coachOnlyMessages, 760);
+      if (!coached || typeof coached !== 'object') {
+        return res.status(200).json({
+          correct: lockedCorrect,
+          reason: lockedReason,
+          coach: buildFallbackCoach(lockedCorrect, lockedReason)
+        });
+      }
+      let coach = normalizeCoach(coached.coach || coached, lockedCorrect, lockedReason);
+      if (!isConceptCheckValid(coach.next_check_question, question, expected)) {
+        const fixMessages = [
+          {
+            role: 'system',
+            content: 'Rewrite only next_check_question as a concept-check (cause/effect/context), not a repetition, and do not include the expected answer string. Return JSON: {"next_check_question":string}.'
+          },
+          {
+            role: 'user',
+            content: JSON.stringify({
+              original_question: question,
+              expected_answer: expected,
+              bad_next_check_question: coach.next_check_question
+            })
+          }
+        ];
+        const fixed = await callDeepSeek(fixMessages, 140);
+        const nextQ = String(fixed?.next_check_question || '').trim();
+        coach.next_check_question = isConceptCheckValid(nextQ, question, expected) ? nextQ : fallbackNextCheck(question);
+      }
+      return res.status(200).json({ correct: lockedCorrect, reason: lockedReason, coach });
     }
 
     const coachSystem = [

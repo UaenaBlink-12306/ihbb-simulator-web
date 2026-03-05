@@ -256,22 +256,27 @@ def call_deepseek(messages: List[Dict[str, str]], max_tokens: int = 300) -> Dict
 
 def grade_with_deepseek(payload: Dict[str, Any]) -> Dict[str, Any]:
     question = str(payload.get("question", ""))
-    expected = str(payload.get("expected", ""))
+    expected = str(payload.get("expected", payload.get("expected_answer", "")))
     aliases = payload.get("aliases", []) if isinstance(payload.get("aliases"), list) else []
     user_answer = str(payload.get("user_answer", payload.get("answer", "")))
     strict = bool(payload.get("strict", True))
     coach_enabled = bool(payload.get("coach_enabled", False))
+    coach_only = bool(payload.get("coach_only", False))
     coach_depth = str(payload.get("coach_depth", "full"))
+    supplied_correct = payload.get("correct") if isinstance(payload.get("correct"), bool) else None
+    supplied_reason = str(payload.get("reason", payload.get("grade_reason", "")))
 
     fallback_correct = basic_match(user_answer, expected, aliases)
 
     if not DEEPSEEK_API_KEY:
+        locked_correct = supplied_correct if (coach_only and supplied_correct is not None) else fallback_correct
+        locked_reason = supplied_reason if coach_only and supplied_reason else "DEEPSEEK_API_KEY not set; used fallback matcher"
         out = {
-            "correct": fallback_correct,
-            "reason": "DEEPSEEK_API_KEY not set; used fallback matcher"
+            "correct": locked_correct,
+            "reason": locked_reason
         }
         if coach_enabled:
-            out["coach"] = fallback_coach(payload, fallback_correct, out["reason"])
+            out["coach"] = fallback_coach(payload, locked_correct, out["reason"])
         return out
 
     try:
@@ -297,6 +302,73 @@ def grade_with_deepseek(payload: Dict[str, Any]) -> Dict[str, Any]:
                     "reason": "Could not parse DeepSeek response; used fallback matcher"
                 }
             return {"correct": bool(obj.get("correct")), "reason": str(obj.get("reason", ""))}
+
+        if coach_only:
+            locked_correct = fallback_correct if supplied_correct is None else bool(supplied_correct)
+            locked_reason = supplied_reason or ("Correct by prior grading pass." if locked_correct else "Incorrect by prior grading pass.")
+            coach_only_system = (
+                "Act as an expert polymath and memory architect. Generate only coaching content for an already-graded answer.\n"
+                "Do not re-grade. Respect provided is_correct and reason as the locked verdict.\n"
+                "INSTRUCTIONS:\n"
+                "1) Explain the underlying logic/significance in 2-3 punchy sentences.\n"
+                "2) Provide 3 related high-value facts linked to the correct answer.\n"
+                "3) If is_correct is false, clearly separate user answer vs expected answer.\n"
+                "4) Provide one vivid mnemonic.\n"
+                "Return strict JSON with this shape only:\n"
+                "{\"coach\": {"
+                "\"summary\": \"1-sentence definitive takeaway.\", "
+                "\"explanation\": \"Deep context explaining the logic of the answer.\", "
+                "\"related_facts\": ["
+                "\"Fact 1: [Connection Type] - [Data]\", "
+                "\"Fact 2: [Connection Type] - [Data]\", "
+                "\"Fact 3: [Connection Type] - [Data]\"], "
+                "\"key_clues\": ["
+                "\"Specific word in the question that gives it away\", "
+                "\"A chronological or spatial anchor\"], "
+                "\"memory_hook\": \"A short, sticky mnemonic or visual association.\", "
+                "\"study_focus\": {\"region\": \"String\", \"era\": \"String\", \"topic\": \"String\"}}}"
+            )
+            coach_only_user = {
+                "question": question,
+                "expected_answer": expected,
+                "aliases": aliases,
+                "user_answer": user_answer,
+                "is_correct": locked_correct,
+                "reason": locked_reason,
+                "category": str((payload.get("meta", {}) or {}).get("category", "")) if isinstance(payload.get("meta"), dict) else "",
+                "strict": strict,
+                "coach_depth": coach_depth,
+                "meta": payload.get("meta", {}),
+            }
+            coach_obj = call_deepseek([
+                {"role": "system", "content": coach_only_system},
+                {"role": "user", "content": json.dumps(coach_only_user, ensure_ascii=False)},
+            ], max_tokens=760)
+            if not isinstance(coach_obj, dict):
+                return {
+                    "correct": locked_correct,
+                    "reason": locked_reason,
+                    "coach": fallback_coach(payload, locked_correct, locked_reason)
+                }
+            coach = normalize_coach(coach_obj.get("coach", coach_obj), payload, locked_correct, locked_reason)
+            if not is_concept_check_valid(str(coach.get("next_check_question", "")), question, expected):
+                fix = call_deepseek([
+                    {
+                        "role": "system",
+                        "content": "Rewrite only next_check_question as a concept-check (cause/effect/context), not a repetition, and do not include expected answer text. Return JSON: {\"next_check_question\": string}."
+                    },
+                    {
+                        "role": "user",
+                        "content": json.dumps({
+                            "original_question": question,
+                            "expected_answer": expected,
+                            "bad_next_check_question": coach.get("next_check_question", "")
+                        }, ensure_ascii=False)
+                    }
+                ], max_tokens=140)
+                fixed_q = str(fix.get("next_check_question", "")).strip() if isinstance(fix, dict) else ""
+                coach["next_check_question"] = fixed_q if is_concept_check_valid(fixed_q, question, expected) else fallback_next_check(question)
+            return {"correct": locked_correct, "reason": locked_reason, "coach": coach}
 
         coach_system = (
             "Act as an expert polymath and memory architect. Your goal is to provide a high-density \"Micro-Lesson\" "
