@@ -4,6 +4,10 @@
         {
             "source": "/api/grade",
             "destination": "/api/grade.js"
+        },
+        {
+            "source": "/api/analytics-insights",
+            "destination": "/api/analytics-insights.js"
         }
     ]
 }

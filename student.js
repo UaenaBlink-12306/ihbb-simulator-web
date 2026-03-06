@@ -13,6 +13,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     const KEY_SESS = 'ihbb_v2_sessions';
     const SESSION_SYNC_TABLE = 'user_drill_sessions';
+    const ANALYTICS_INSIGHTS_CACHE_KEY = `ihbb_student_analytics_insights_${uid}`;
     const DAY_MS = 24 * 60 * 60 * 1000;
     let userEmail = String(session.user?.email || '').trim();
     const ERA_LABELS = {
@@ -347,6 +348,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // ========== ANALYTICS ==========
     document.getElementById('btn-analytics-refresh')?.addEventListener('click', loadAnalytics);
+    document.getElementById('btn-analytics-ai')?.addEventListener('click', () => generateAnalyticsInsights(true));
 
     function safeReadJson(key, fallback) {
         try {
@@ -410,6 +412,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     let analyticsCloudReady = true;
     let analyticsCloudWarned = false;
+    let analyticsSnapshotCurrent = null;
 
     function isCloudAnalyticsSetupIssue(err) {
         const code = String(err?.code || '');
@@ -578,6 +581,374 @@ document.addEventListener('DOMContentLoaded', async () => {
             regionStats,
             blindSpots
         };
+    }
+
+    function roundedMetric(value, digits = 2) {
+        return Number.isFinite(value) ? Number(value.toFixed(digits)) : null;
+    }
+
+    function weakStatsForInsight(stats, dim) {
+        return (Array.isArray(stats) ? stats : [])
+            .filter(s => s && s.attempts >= 3)
+            .sort((a, b) => a.accuracy - b.accuracy || b.attempts - a.attempts || a.name.localeCompare(b.name))
+            .slice(0, 5)
+            .map(s => ({ ...s, dim }));
+    }
+
+    function strongStatsForInsight(stats, dim) {
+        return (Array.isArray(stats) ? stats : [])
+            .filter(s => s && s.attempts >= 4)
+            .sort((a, b) => b.accuracy - a.accuracy || b.attempts - a.attempts || a.name.localeCompare(b.name))
+            .slice(0, 6)
+            .map(s => ({ ...s, dim }));
+    }
+
+    function dedupeInsightAreas(list) {
+        const out = [];
+        const seen = new Set();
+        for (const area of Array.isArray(list) ? list : []) {
+            const dim = String(area?.dim || area?.dimension || 'Focus').trim();
+            const name = String(area?.name || area?.title || '').trim();
+            if (!name) continue;
+            const key = `${dim}|${name}`;
+            if (seen.has(key)) continue;
+            seen.add(key);
+            out.push({ ...area, dim, name });
+        }
+        return out;
+    }
+
+    function buildAnalyticsInsightPayload(snapshot) {
+        if (!snapshot) return null;
+        const weakEras = weakStatsForInsight(snapshot.eraStats, 'Era');
+        const weakRegions = weakStatsForInsight(snapshot.regionStats, 'Region');
+        const strengths = dedupeInsightAreas([
+            ...strongStatsForInsight(snapshot.eraStats, 'Era'),
+            ...strongStatsForInsight(snapshot.regionStats, 'Region')
+        ]).slice(0, 4);
+
+        const mapArea = area => ({
+            name: area.name,
+            dim: area.dim,
+            attempts: area.attempts,
+            correct: area.correct,
+            accuracy: area.accuracy,
+            avg_buzz: roundedMetric(area.avgBuzz, 2)
+        });
+
+        return {
+            window_days: 30,
+            summary: {
+                total_attempts: snapshot.totalAttempts,
+                total_accuracy: snapshot.totalAccuracy,
+                avg_buzz_seconds: roundedMetric(snapshot.avgBuzz, 2),
+                sessions: snapshot.sessionsCount,
+                active_days: snapshot.activeDays,
+                fastest_buzz_seconds: roundedMetric(snapshot.fastestBuzz, 2),
+                accuracy_delta_7d: roundedMetric(snapshot.accDelta7d, 1),
+                buzz_delta_7d: roundedMetric(snapshot.buzzDelta7d, 2)
+            },
+            blind_spots: (Array.isArray(snapshot.blindSpots) ? snapshot.blindSpots : []).slice(0, 6).map(mapArea),
+            weak_eras: weakEras.map(mapArea),
+            weak_regions: weakRegions.map(mapArea),
+            strengths: strengths.map(mapArea)
+        };
+    }
+
+    function analyticsInsightSignature(snapshot) {
+        const payload = buildAnalyticsInsightPayload(snapshot);
+        return payload ? JSON.stringify(payload) : '';
+    }
+
+    function readAnalyticsInsightsCache() {
+        return safeReadJson(ANALYTICS_INSIGHTS_CACHE_KEY, null);
+    }
+
+    function writeAnalyticsInsightsCache(signature, result) {
+        try {
+            localStorage.setItem(ANALYTICS_INSIGHTS_CACHE_KEY, JSON.stringify({
+                signature,
+                result,
+                ts: Date.now()
+            }));
+        } catch {
+            // Ignore storage quota or serialization issues.
+        }
+    }
+
+    function insightPriority(area) {
+        if ((area.accuracy || 0) < 50 || (area.attempts || 0) >= 10) return 'high';
+        if ((area.accuracy || 0) < 70) return 'medium';
+        return 'low';
+    }
+
+    function insightAction(area) {
+        const dim = String(area?.dim || area?.dimension || '').trim().toLowerCase();
+        const name = String(area?.name || area?.title || 'this area').trim();
+        if (dim === 'era') {
+            return `Run two short drills in ${name} and write down three timeline anchors before buzzing.`;
+        }
+        if (dim === 'region') {
+            return `Practice ${name} in mixed-region sets and wait for one uniquely regional clue before buzzing in.`;
+        }
+        return `Build one short focused set on ${name} and slow your buzz until the disambiguating clue appears.`;
+    }
+
+    function buildLocalAnalyticsInsights(snapshot) {
+        const payload = buildAnalyticsInsightPayload(snapshot) || {
+            summary: {},
+            blind_spots: [],
+            weak_eras: [],
+            weak_regions: [],
+            strengths: []
+        };
+        const candidates = dedupeInsightAreas([
+            ...(payload.blind_spots || []),
+            ...(payload.weak_eras || []),
+            ...(payload.weak_regions || [])
+        ]);
+        const weakAreas = candidates.slice(0, 3).map(area => ({
+            title: `${area.dim}: ${area.name}`,
+            dimension: area.dim,
+            why: area.accuracy < 55
+                ? 'You are missing too many questions in this slice for it to stay in mixed practice.'
+                : 'This segment is trailing the rest of your chart and is likely dragging overall accuracy down.',
+            evidence: `${area.accuracy}% accuracy over ${area.attempts} questions${area.avg_buzz ? ` with a ${area.avg_buzz.toFixed(2)}s average buzz.` : '.'}`,
+            action: insightAction(area),
+            priority: insightPriority(area)
+        }));
+        const wins = (payload.strengths || []).slice(0, 2).map(area =>
+            `${area.dim}: ${area.name} is holding at ${area.accuracy}% across ${area.attempts} questions.`
+        );
+        const nextSteps = [];
+        if (weakAreas[0]) nextSteps.push(weakAreas[0].action);
+        if (weakAreas[1]) nextSteps.push(weakAreas[1].action);
+        if ((payload.summary?.active_days || 0) < 5) {
+            nextSteps.push('Add three shorter practice days this week so weak-area review is repeated instead of crammed.');
+        }
+        if (Number.isFinite(payload.summary?.accuracy_delta_7d) && payload.summary.accuracy_delta_7d < 0) {
+            nextSteps.push('Pause mixed drilling for one session and rebuild accuracy with targeted review before speeding up again.');
+        }
+        if (!nextSteps.length) {
+            nextSteps.push('Keep one mixed drill and one targeted weak-area drill in the same week to stabilize gains.');
+        }
+
+        const headline = weakAreas[0]
+            ? `${weakAreas[0].title} is the clearest weak area to improve next.`
+            : 'Your analytics are starting to show a few workable study patterns.';
+        const overview = `Over the last 30 days you answered ${payload.summary?.total_attempts || 0} questions at ${payload.summary?.total_accuracy || 0}% accuracy across ${payload.summary?.sessions || 0} sessions and ${payload.summary?.active_days || 0} active days.`;
+        const confidence = (payload.summary?.total_attempts || 0) >= 40 ? 'high' : ((payload.summary?.total_attempts || 0) >= 15 ? 'medium' : 'low');
+
+        return {
+            headline,
+            overview,
+            weak_areas: weakAreas,
+            wins,
+            next_steps: nextSteps.slice(0, 4),
+            confidence
+        };
+    }
+
+    function normalizeAnalyticsInsightsResult(raw, snapshot) {
+        const fallback = buildLocalAnalyticsInsights(snapshot);
+        const wrapper = raw && typeof raw === 'object' ? raw : {};
+        const candidate = wrapper.insights && typeof wrapper.insights === 'object' ? wrapper.insights : wrapper;
+        const fallbackWeakAreas = Array.isArray(fallback.weak_areas) ? fallback.weak_areas : [];
+
+        const weakAreas = Array.isArray(candidate.weak_areas)
+            ? candidate.weak_areas.map((item, index) => {
+                const title = String(item?.title || item?.name || '').trim();
+                if (!title) return null;
+                const fb = fallbackWeakAreas[index] || fallbackWeakAreas[0] || {
+                    why: 'This slice is underperforming compared with the rest of your recent practice.',
+                    evidence: 'Recent drill results show this area needs more attention.',
+                    action: 'Run one short focused drill on this area before returning to mixed practice.',
+                    priority: 'medium'
+                };
+                const priorityRaw = String(item?.priority || '').trim().toLowerCase();
+                return {
+                    title,
+                    dimension: String(item?.dimension || item?.dim || 'Focus').trim() || 'Focus',
+                    why: String(item?.why || item?.diagnosis || '').trim() || fb.why,
+                    evidence: String(item?.evidence || '').trim() || fb.evidence,
+                    action: String(item?.action || item?.recommendation || '').trim() || fb.action,
+                    priority: ['high', 'medium', 'low'].includes(priorityRaw) ? priorityRaw : fb.priority
+                };
+            }).filter(Boolean).slice(0, 3)
+            : [];
+
+        const wins = Array.isArray(candidate.wins)
+            ? candidate.wins.map(x => String(x || '').trim()).filter(Boolean).slice(0, 3)
+            : [];
+        const nextSteps = Array.isArray(candidate.next_steps)
+            ? candidate.next_steps.map(x => String(x || '').trim()).filter(Boolean).slice(0, 4)
+            : [];
+        const confidenceRaw = String(candidate.confidence || '').trim().toLowerCase();
+
+        return {
+            source: String(wrapper.source || '').trim().toLowerCase() === 'deepseek' ? 'deepseek' : 'fallback',
+            insights: {
+                headline: String(candidate.headline || '').trim() || fallback.headline,
+                overview: String(candidate.overview || '').trim() || fallback.overview,
+                weak_areas: weakAreas.length ? weakAreas : fallback.weak_areas,
+                wins: wins.length ? wins : fallback.wins,
+                next_steps: nextSteps.length ? nextSteps : fallback.next_steps,
+                confidence: ['high', 'medium', 'low'].includes(confidenceRaw) ? confidenceRaw : fallback.confidence
+            }
+        };
+    }
+
+    function setAnalyticsInsightsButton(label, disabled) {
+        const btn = document.getElementById('btn-analytics-ai');
+        if (!btn) return;
+        btn.textContent = label;
+        btn.disabled = !!disabled;
+    }
+
+    function renderAnalyticsInsightsPlaceholder(title, copy, badge = 'Ready', statusText = copy) {
+        const badgeEl = document.getElementById('analytics-ai-badge');
+        const statusEl = document.getElementById('analytics-ai-status');
+        const contentEl = document.getElementById('analytics-ai-content');
+        if (badgeEl) badgeEl.textContent = badge;
+        if (statusEl) statusEl.textContent = statusText;
+        if (contentEl) {
+            contentEl.innerHTML = `
+                <div class="analytics-ai-placeholder">
+                    <h4>${esc(title)}</h4>
+                    <p class="muted">${esc(copy)}</p>
+                </div>
+            `;
+        }
+    }
+
+    function renderAnalyticsInsights(result, cached = false) {
+        const normalized = normalizeAnalyticsInsightsResult(result, analyticsSnapshotCurrent);
+        const { source, insights } = normalized;
+        const badgeEl = document.getElementById('analytics-ai-badge');
+        const statusEl = document.getElementById('analytics-ai-status');
+        const contentEl = document.getElementById('analytics-ai-content');
+        if (badgeEl) {
+            badgeEl.textContent = cached
+                ? (source === 'deepseek' ? 'Cached AI' : 'Cached plan')
+                : (source === 'deepseek' ? 'DeepSeek AI' : 'Local fallback');
+        }
+        if (statusEl) {
+            statusEl.textContent = source === 'deepseek'
+                ? 'DeepSeek analyzed your current 30-day snapshot and highlighted the biggest weak areas to target next.'
+                : 'DeepSeek was unavailable, so this plan was generated from your analytics snapshot locally.';
+        }
+        if (contentEl) {
+            const weakAreasHtml = (Array.isArray(insights.weak_areas) ? insights.weak_areas : []).map(area => `
+                <div class="analytics-ai-focus">
+                    <div class="analytics-ai-focus-head">
+                        <div class="analytics-ai-focus-title">${esc(area.title)}</div>
+                        <span class="analytics-ai-priority ${esc(area.priority)}">${esc(area.priority)}</span>
+                    </div>
+                    <p>${esc(area.why)}</p>
+                    <p>${esc(area.evidence)}</p>
+                    <p><strong>Next move:</strong> ${esc(area.action)}</p>
+                </div>
+            `).join('');
+            const winsHtml = (Array.isArray(insights.wins) ? insights.wins : []).map(item => `<li>${esc(item)}</li>`).join('');
+            const stepsHtml = (Array.isArray(insights.next_steps) ? insights.next_steps : []).map(item => `<li>${esc(item)}</li>`).join('');
+
+            contentEl.innerHTML = `
+                <div class="analytics-ai-block">
+                    <h4>${esc(insights.headline)}</h4>
+                    <p class="analytics-ai-overview">${esc(insights.overview)}</p>
+                </div>
+                <div class="analytics-ai-grid">
+                    <div class="analytics-ai-block">
+                        <h4>Priority Weak Areas</h4>
+                        <div class="analytics-ai-list">${weakAreasHtml || '<p class="muted">No major weak area has emerged yet.</p>'}</div>
+                    </div>
+                    <div class="analytics-ai-block">
+                        <h4>What Is Holding Up</h4>
+                        <ul class="analytics-ai-compact-list">${winsHtml || '<li>Keep building attempts so the model can separate true strengths from noise.</li>'}</ul>
+                    </div>
+                    <div class="analytics-ai-block">
+                        <h4>Next Study Moves</h4>
+                        <ul class="analytics-ai-compact-list">${stepsHtml || '<li>Run one targeted drill and one mixed drill this week.</li>'}</ul>
+                    </div>
+                </div>
+            `;
+        }
+        setAnalyticsInsightsButton('Refresh Insights', false);
+    }
+
+    function prepareAnalyticsInsights(snapshot, hasData) {
+        analyticsSnapshotCurrent = hasData ? snapshot : null;
+        if (!hasData || !snapshot) {
+            setAnalyticsInsightsButton('Generate Insights', true);
+            renderAnalyticsInsightsPlaceholder(
+                'AI insights are waiting for data',
+                'Complete a few drill questions first so weak-area recommendations have real evidence behind them.',
+                'No data',
+                'Answer a few questions and refresh analytics to unlock AI insights.'
+            );
+            return;
+        }
+
+        const signature = analyticsInsightSignature(snapshot);
+        const cache = readAnalyticsInsightsCache();
+        if (cache?.signature === signature && cache?.result) {
+            renderAnalyticsInsights(cache.result, true);
+            return;
+        }
+
+        setAnalyticsInsightsButton('Generate Insights', false);
+        renderAnalyticsInsightsPlaceholder(
+            'Generate a focused study plan',
+            'Use DeepSeek to summarize your weakest eras and regions from the current 30-day snapshot.',
+            'Ready',
+            'Generate a DeepSeek summary to translate this analytics snapshot into targeted study moves.'
+        );
+    }
+
+    async function generateAnalyticsInsights(force = false) {
+        if (!analyticsSnapshotCurrent || analyticsSnapshotCurrent.totalAttempts <= 0) {
+            showAlert('Complete a few drill questions before generating AI insights.', 'error');
+            return;
+        }
+
+        const signature = analyticsInsightSignature(analyticsSnapshotCurrent);
+        const cache = readAnalyticsInsightsCache();
+        if (!force && cache?.signature === signature && cache?.result) {
+            renderAnalyticsInsights(cache.result, true);
+            return;
+        }
+
+        setAnalyticsInsightsButton('Analyzing...', true);
+        renderAnalyticsInsightsPlaceholder(
+            'DeepSeek is reviewing your analytics',
+            'Scanning recent weak areas, trend shifts, and consistency patterns to build a short study plan.',
+            'Analyzing',
+            'DeepSeek is reviewing your latest 30-day history now.'
+        );
+
+        try {
+            const response = await fetch('/api/analytics-insights', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(buildAnalyticsInsightPayload(analyticsSnapshotCurrent))
+            });
+            const raw = await response.json().catch(() => ({}));
+            if (!response.ok) {
+                throw new Error(String(raw?.error || `Analytics request failed (${response.status})`));
+            }
+            const normalized = normalizeAnalyticsInsightsResult(raw, analyticsSnapshotCurrent);
+            writeAnalyticsInsightsCache(signature, normalized);
+            renderAnalyticsInsights(normalized, false);
+            if (normalized.source !== 'deepseek') {
+                showAlert('DeepSeek is unavailable right now, so a local fallback study plan was used.', 'error');
+            }
+        } catch (err) {
+            console.warn('Analytics insights request failed:', err);
+            const fallback = { source: 'fallback', insights: buildLocalAnalyticsInsights(analyticsSnapshotCurrent) };
+            writeAnalyticsInsightsCache(signature, fallback);
+            renderAnalyticsInsights(fallback, false);
+            showAlert('Analytics AI request failed, so a local fallback study plan was generated.', 'error');
+        }
     }
 
     function svgEmpty(text) {
@@ -811,6 +1182,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const hasData = snapshot.totalAttempts > 0;
         if (emptyEl) emptyEl.classList.toggle('hidden', hasData);
         if (contentEl) contentEl.classList.toggle('hidden', !hasData);
+        prepareAnalyticsInsights(snapshot, hasData);
         if (!hasData) return;
 
         document.getElementById('analytics-kpi-attempts').textContent = snapshot.totalAttempts.toLocaleString();
