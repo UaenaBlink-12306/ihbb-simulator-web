@@ -75,6 +75,20 @@ const App = {
   submitBusy: false
 };
 
+const EXPLICIT_NO_ATTEMPT_ANSWERS = new Set([
+  "I don't know",
+  'IDK',
+  'idk',
+  'I have no idea'
+]);
+
+function isExplicitNoAttemptAnswer(text, { allowBlank = false } = {}) {
+  const trimmed = String(text || '').trim();
+  if (!trimmed) return allowBlank;
+  if (trimmed === 'just not attempting to answer') return true;
+  return EXPLICIT_NO_ATTEMPT_ANSWERS.has(trimmed);
+}
+
 function normalizeQuestionId(id) {
   const out = String(id || '').trim();
   return out || null;
@@ -2785,35 +2799,43 @@ async function submitAnswer(auto = false) {
     return false;
   };
 
-  const coachLoadingText = 'Incorrect — building your coach micro-lesson...';
+  const skipDeepSeekForNoAttempt = isExplicitNoAttemptAnswer(userAns, { allowBlank: true });
+  const coachLoadingText = skipDeepSeekForNoAttempt
+    ? 'No attempt submitted — building a quick study note...'
+    : 'Incorrect — building your coach micro-lesson...';
   let correct = false;
   let reason = '';
   try {
-    const res = await fetch('/api/grade', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        question: item.question,
-        question_id: item.id,
-        expected: item.answer,
-        aliases: item.aliases || [],
-        answer: userAns,
-        user_answer: userAns,
-        strict: !!Settings.strict,
-        client_attempt_id: clientAttemptId,
-        coach_enabled: false,
-        meta: {
-          category: item.meta?.category || '',
-          era: item.meta?.era || '',
-          source: item.meta?.source || ''
-        }
-      })
-    });
-    if (res.ok) {
-      const data = await res.json();
-      correct = !!data.correct; reason = data.reason || '';
+    if (skipDeepSeekForNoAttempt) {
+      correct = false;
+      reason = 'No attempt submitted.';
     } else {
-      reason = `Server error ${res.status}`;
-      correct = basicMatch(userAns, item.answer, item.aliases);
+      const res = await fetch('/api/grade', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          question: item.question,
+          question_id: item.id,
+          expected: item.answer,
+          aliases: item.aliases || [],
+          answer: userAns,
+          user_answer: userAns,
+          strict: !!Settings.strict,
+          client_attempt_id: clientAttemptId,
+          coach_enabled: false,
+          meta: {
+            category: item.meta?.category || '',
+            era: item.meta?.era || '',
+            source: item.meta?.source || ''
+          }
+        })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        correct = !!data.correct; reason = data.reason || '';
+      } else {
+        reason = `Server error ${res.status}`;
+        correct = basicMatch(userAns, item.answer, item.aliases);
+      }
     }
   } catch (e) {
     reason = 'Offline grading fallback used';
@@ -2840,12 +2862,22 @@ async function submitAnswer(auto = false) {
     App.phase = 'coach-loading';
     if (st) st.textContent = coachLoadingText;
     const loadingCoach = normalizeCoach({
-      summary: 'Incorrect. Generating personalized DeepSeek coaching...',
-      error_diagnosis: 'Analyzing your answer against the expected concept...',
-      overlap_explainer: 'Preparing a focused misconception breakdown...',
+      summary: skipDeepSeekForNoAttempt
+        ? 'No attempt submitted. Preparing a quick study note without AI grading...'
+        : 'Incorrect. Generating personalized DeepSeek coaching...',
+      error_diagnosis: skipDeepSeekForNoAttempt
+        ? 'This answer was marked as a no-attempt and skipped AI grading.'
+        : 'Analyzing your answer against the expected concept...',
+      overlap_explainer: skipDeepSeekForNoAttempt
+        ? 'Preparing a concise explanation so you can study the right concept immediately.'
+        : 'Preparing a focused misconception breakdown...',
       explanation_bullets: [
-        'Grading is complete and the coach is now building a personalized explanation.',
-        'This lesson will compare your answer directly against the accepted answer.',
+        skipDeepSeekForNoAttempt
+          ? 'The response matched a no-attempt phrase, so AI grading was skipped.'
+          : 'Grading is complete and the coach is now building a personalized explanation.',
+        skipDeepSeekForNoAttempt
+          ? 'You will still get a study note anchored to the accepted answer.'
+          : 'This lesson will compare your answer directly against the accepted answer.',
         'High-value facts and clue anchors are being assembled now.'
       ],
       related_facts: ['Collecting supporting facts for this answer.', 'Building timeline and region anchors.'],
@@ -2914,6 +2946,11 @@ async function submitAnswer(auto = false) {
       finishMark(false);
     };
     const fetchCoachAsync = async () => {
+      if (skipDeepSeekForNoAttempt) {
+        const fallback = fallbackCoachForItem(item, false, reason || 'No attempt submitted.', userAns);
+        finalizeIncorrectCoach(fallback, 'No attempt submitted — quick coaching ready.');
+        return;
+      }
       try {
         const coachRes = await fetch('/api/grade', {
           method: 'POST',

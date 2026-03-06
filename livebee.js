@@ -178,6 +178,18 @@ document.addEventListener('DOMContentLoaded', async () => {
         return (text.replace(/\s+/g, ' ').match(/[^.!?;—]+[.!?;—]?/g) || [text]).map(s => s.trim()).filter(Boolean);
     }
 
+    const EXPLICIT_NO_ATTEMPT_ANSWERS = new Set([
+        "I don't know",
+        'IDK',
+        'idk',
+        'I have no idea',
+        'just not attempting to answer'
+    ]);
+
+    function isExplicitNoAttemptAnswer(text) {
+        return EXPLICIT_NO_ATTEMPT_ANSWERS.has(String(text || '').trim());
+    }
+
     // ==================== QUESTIONS ====================
     let allQuestions = [];
     let selectedQuestions = [];
@@ -897,6 +909,19 @@ document.addEventListener('DOMContentLoaded', async () => {
             channel.send({
                 type: 'broadcast', event: 'result',
                 payload: { userId: payload.userId, correct: true, reason: 'Exact match' }
+            });
+            return;
+        }
+
+        if (isExplicitNoAttemptAnswer(text)) {
+            channel.send({
+                type: 'broadcast',
+                event: 'result',
+                payload: {
+                    userId: payload.userId,
+                    correct: false,
+                    reason: 'No attempt submitted'
+                }
             });
             return;
         }
