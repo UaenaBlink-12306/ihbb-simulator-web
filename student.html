@@ -52,6 +52,11 @@
                         <div id="student-hero-done" class="metric-value">0</div>
                         <div class="metric-note">Finished assignments you can revisit anytime.</div>
                     </div>
+                    <div class="metric-card">
+                        <div class="metric-label">Coach notes</div>
+                        <div id="student-hero-coach" class="metric-value">0</div>
+                        <div class="metric-note">DeepSeek lessons still worth reviewing.</div>
+                    </div>
                 </div>
             </div>
             <div class="hero-actions">
@@ -66,6 +71,7 @@
         <nav class="tab-strip dashboard-tabs">
             <button class="dash-tab active" data-tab="classes">My Classes</button>
             <button class="dash-tab" data-tab="assignments">Assignments</button>
+            <button class="dash-tab" data-tab="coach">Coach</button>
             <button class="dash-tab" data-tab="livebee">Live Bee</button>
             <button class="dash-tab" data-tab="analytics">Analytics</button>
             <button class="dash-tab" data-tab="leaderboard">Leaderboard</button>
@@ -103,6 +109,22 @@
                     </div>
                 </div>
 
+                <div id="assignments-coach-brief" class="coach-brief-card">
+                    <div class="coach-brief-head">
+                        <div>
+                            <div class="eyebrow">Coach prep</div>
+                            <h3>DeepSeek assignment support</h3>
+                        </div>
+                        <div class="inline-actions">
+                            <button id="btn-assignments-coach-drill" class="btn pri" type="button">Open Guided Drill</button>
+                            <button id="btn-assignments-coach-tab" class="btn ghost" type="button">Open Coach Workspace</button>
+                        </div>
+                    </div>
+                    <div id="assignments-coach-summary" class="coach-brief-copy muted">DeepSeek prep suggestions will
+                        appear here once you build up some coach notes or analytics history.</div>
+                    <div id="assignments-coach-focuses" class="coach-focus-grid"></div>
+                </div>
+
                 <div class="tab-strip subtab-strip">
                     <button class="assign-sub-tab active" data-sub="todo">To Do</button>
                     <button class="assign-sub-tab" data-sub="completed">Completed</button>
@@ -138,6 +160,37 @@
                 <div id="drill-feedback" class="card-muted-box" style="margin-top: 16px;"></div>
                 <div class="form-actions" style="margin-top: 16px;">
                     <button id="btn-drill-next" class="btn ghost hidden">Next Question</button>
+                </div>
+            </div>
+        </section>
+
+        <section id="tab-coach" class="view">
+            <div class="stack">
+                <div class="card section-card">
+                    <div class="section-head">
+                        <div>
+                            <h2 class="card-title">Coach Workspace</h2>
+                            <p class="section-subtitle">Reuse DeepSeek lesson notes across drills, assignments, and your
+                                broader study plan.</p>
+                        </div>
+                        <div class="inline-actions">
+                            <span id="coach-workspace-badge" class="pill">Loading</span>
+                            <button id="btn-coach-refresh" class="btn ghost" type="button">Refresh Coach</button>
+                        </div>
+                    </div>
+                    <div id="coach-workspace-summary" class="coach-brief-copy muted">Loading coach guidance...</div>
+                    <div id="coach-focus-list" class="coach-focus-grid" style="margin-top: 16px;"></div>
+                </div>
+
+                <div class="card section-card">
+                    <div class="section-head">
+                        <div>
+                            <h2 class="card-title">Saved DeepSeek Lessons</h2>
+                            <p class="section-subtitle">Review incorrect answers, keep what matters, and mark lessons
+                                mastered once they stop showing up as blind spots.</p>
+                        </div>
+                    </div>
+                    <div id="coach-note-list" class="coach-list"></div>
                 </div>
             </div>
         </section>
