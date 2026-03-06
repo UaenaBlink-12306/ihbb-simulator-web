@@ -533,6 +533,7 @@ function renderLibrarySelectors() {
     const lc = $('lib-count'); if (lc) lc.textContent = '0';
     const lca = $('lib-cats'); if (lca) lca.textContent = '—';
     const le = $('lib-eras'); if (le) le.textContent = '—';
+    updateSetupOverview();
     return;
   }
   for (const s of Library.sets) {
@@ -575,6 +576,7 @@ function updateSetMeta() {
   updateFilterRow();
   renderCategoryChips(cats);
   renderEraChips(eras);
+  updateSetupOverview();
 }
 
 const ERA_NAMES = {
@@ -628,7 +630,7 @@ function expandCategorySelection(selected) {
 function renderCategoryChips(cats) {
   const wrap = $('cat-chips'); if (!wrap) return;
   wrap.innerHTML = '';
-  if (!cats.length) { wrap.appendChild(document.createTextNode('(No categories — run build_db.py)')); return; }
+  if (!cats.length) { wrap.appendChild(document.createTextNode('(No categories — run build_db.py)')); updateSetupOverview(); return; }
   // All chip
   const all = document.createElement('div');
   all.className = 'chip' + ((Array.isArray(App.filters.cats) && App.filters.cats.length) ? '' : ' active');
@@ -658,6 +660,7 @@ function renderCategoryChips(cats) {
     };
     wrap.appendChild(chip);
   }
+  updateSetupOverview();
 }
 
 // Setup screen: render multi-select era chips
@@ -665,7 +668,7 @@ function renderEraChips(eras) {
   const wrap = $('era-chips'); if (!wrap) return;
   const eraList = sortEraCodes((eras || []).slice());
   wrap.innerHTML = '';
-  if (!eraList.length) { wrap.appendChild(document.createTextNode('(No eras — run build_db.py)')); return; }
+  if (!eraList.length) { wrap.appendChild(document.createTextNode('(No eras — run build_db.py)')); updateSetupOverview(); return; }
 
   // Backward compatibility with old presets that stored only filters.era
   if (!Array.isArray(App.filters.eras)) App.filters.eras = [];
@@ -700,6 +703,7 @@ function renderEraChips(eras) {
     };
     wrap.appendChild(chip);
   }
+  updateSetupOverview();
 }
 
 // Parser & Sanitizer
@@ -969,6 +973,7 @@ function applyPreset(p) {
       renderCategoryChips(cats);
       renderEraChips(eras);
     } catch { }
+    updateSetupOverview();
   } catch { /* noop */ }
 }
 
@@ -995,6 +1000,76 @@ function updateHeader() {
   const a = $('drill-acc'); if (a) a.textContent = acc;
   const p = $('drill-progress'); if (p) p.textContent = `${Math.min(App.i, App.order.length)} / ${App.order.length}`;
   const bf = $('barfill'); if (bf) bf.style.width = (App.order.length ? (App.i / App.order.length * 100) : 0) + '%';
+}
+function modeLabel(mode) {
+  if (mode === 'sequential') return 'Sequential';
+  if (mode === 'srs') return 'Wrong-bank (SRS)';
+  return 'Random';
+}
+function sessionLengthLabel(size, set) {
+  if (size === 'all') {
+    const total = Number(set?.items?.length || App.pool.length || 0);
+    return total ? `All ${total} questions` : 'All available questions';
+  }
+  const n = Number(size || 10);
+  return `${n} question${n === 1 ? '' : 's'}`;
+}
+function compactVoiceName(name) {
+  const raw = String(name || '').trim();
+  if (!raw) return 'Auto voice';
+  return raw
+    .replace(/\s*•.*$/, '')
+    .replace(/^Microsoft\s+/i, '')
+    .replace(/\s+Online.*$/i, '')
+    .trim() || raw;
+}
+function updateSetupOverview() {
+  const set = getActiveSet();
+  const cats = Array.isArray(App.filters.cats) ? App.filters.cats.filter(Boolean) : [];
+  const eras = Array.isArray(App.filters.eras) ? App.filters.eras.filter(Boolean) : [];
+  const setText = set ? `${set.name} (${set.items.length} items)` : 'No set loaded';
+  const filterCats = cats.length
+    ? `${cats.length} region${cats.length === 1 ? '' : 's'}`
+    : (App.filters.cat ? App.filters.cat : 'All regions');
+  const filterEras = eras.length
+    ? `${eras.length} era${eras.length === 1 ? '' : 's'}`
+    : (App.filters.era ? getEraName(App.filters.era) : 'All eras');
+  const filterSrc = App.filters.src ? App.filters.src : 'All sources';
+  const advancedSummary = [
+    Settings.strict ? 'Strict spelling' : 'Flexible grading',
+    Settings.autoAdvance ? `Auto-advance ${Settings.autoAdvanceDelay || 1}s` : 'Manual pacing',
+    Settings.haptics ? 'Haptics on' : 'Haptics off'
+  ].join(' • ');
+
+  const setEl = $('setup-summary-set'); if (setEl) setEl.textContent = setText;
+  const modeEl = $('setup-summary-mode'); if (modeEl) modeEl.textContent = modeLabel(App.mode);
+  const lengthEl = $('setup-summary-length'); if (lengthEl) lengthEl.textContent = sessionLengthLabel(App.size, set);
+  const filtersEl = $('setup-summary-filters'); if (filtersEl) filtersEl.textContent = `${filterCats} • ${filterEras} • ${filterSrc}`;
+  const advEl = $('setup-summary-advanced'); if (advEl) advEl.textContent = advancedSummary;
+
+  const pills = $('setup-summary-advanced-pills');
+  if (pills) {
+    const voiceLabel = compactVoiceName(Settings.voice || ($('voiceSel') && $('voiceSel').value));
+    const rateLabel = `Rate ${rate().toFixed(2)}x`;
+    const tickLabel = Settings.cueTicks ? 'Countdown ticks' : 'Silent countdown';
+    const cueLabel = Settings.cueBeep ? 'Feedback cues on' : 'Feedback cues off';
+    pills.innerHTML = [voiceLabel, rateLabel, tickLabel, cueLabel]
+      .map(label => `<div class="summary-pill">${escHtml(label)}</div>`)
+      .join('');
+  }
+
+  const nextEl = $('setup-summary-next');
+  if (nextEl) {
+    let nextText = 'Choose a set and tighten filters only if you want a more focused drill.';
+    if (!set) {
+      nextText = 'Upload or reload questions.json to unlock the full drill builder.';
+    } else if (App.mode === 'srs' && !wrongRecords().length) {
+      nextText = 'Wrong-bank mode becomes useful after you miss questions in a regular session.';
+    } else if (cats.length || App.filters.cat || eras.length || App.filters.era || App.filters.src) {
+      nextText = 'This session is ready. Start now or save the combination as a preset for later.';
+    }
+    nextEl.textContent = nextText;
+  }
 }
 function setPracticeButtons({ buzz, next, right, wrong, replay, alias, flag }) {
   const bz = $('btn-buzz'); if (bz) bz.disabled = !buzz;
@@ -1768,7 +1843,7 @@ $('qs-preview')?.addEventListener('click', () => {
   const set = getActiveSet(); if (!set) { toast('No set'); return; }
   const samp = set.items.slice(0, 5).map((it, i) => `${i + 1}. ${it.question.slice(0, 100)}…\nAnswer: ${it.answer}`).join('\n\n'); alert(samp);
 });
-$('qs-picker')?.addEventListener('change', (e) => { Library.activeSetId = e.target.value || null; saveLibrary(); updateSetMeta(); });
+$('qs-picker')?.addEventListener('change', (e) => { Library.activeSetId = e.target.value || null; saveLibrary(); updateSetMeta(); updateSetupOverview(); });
 $('btn-upload-json')?.addEventListener('click', () => { const fi = $('fileInput'); if (fi) fi.click(); });
 $('btn-demo-fetch')?.addEventListener('click', () => { tryFetchDefault(true); });
 
@@ -1777,6 +1852,7 @@ $('mode-chips')?.addEventListener('click', (e) => {
   const chip = e.target.closest('.chip'); if (!chip) return;
   document.querySelectorAll('#mode-chips .chip').forEach(c => c.classList.remove('active'));
   chip.classList.add('active'); App.mode = chip.dataset.mode;
+  updateSetupOverview();
 });
 // Length chips
 $('len-chips')?.addEventListener('click', (e) => {
@@ -1786,15 +1862,18 @@ $('len-chips')?.addEventListener('click', (e) => {
   const lc = $('len-custom');
   if (v === 'custom') { if (lc) { lc.style.display = 'inline-block'; lc.focus(); } }
   else { if (lc) lc.style.display = 'none'; App.size = (v === 'all') ? 'all' : Number(v || 10); }
+  updateSetupOverview();
 });
 $('len-custom')?.addEventListener('input', () => {
   const lc = $('len-custom'); const n = parseInt((lc && lc.value) || '10', 10);
   App.size = isNaN(n) ? 10 : clamp(n, 1, 500);
+  updateSetupOverview();
 });
 
 // Filters
 ['filter-cat', 'filter-src'].forEach(id => $(id)?.addEventListener('change', (e) => {
   const k = id.split('-')[1]; App.filters[k] = e.target.value;
+  updateSetupOverview();
 }));
 
 // Presets
@@ -1816,16 +1895,16 @@ $('presetSel')?.addEventListener('change', (e) => { const n = e.target.value; if
 $('delPreset')?.addEventListener('click', () => { const sel = $('presetSel'); if (!sel || !sel.value) return; delete Presets[sel.value]; savePresets(); renderPresets(); toast('Preset deleted'); });
 
 // Voice & advanced
-$('voiceSel')?.addEventListener('change', () => { Settings.voice = $('voiceSel').value; saveSettings(); });
-$('rate')?.addEventListener('input', () => { Settings.rate = rate(); saveSettings(); });
+$('voiceSel')?.addEventListener('change', () => { Settings.voice = $('voiceSel').value; saveSettings(); updateSetupOverview(); });
+$('rate')?.addEventListener('input', () => { Settings.rate = rate(); saveSettings(); updateSetupOverview(); });
 $('testVoice')?.addEventListener('click', () => speakOnce("Pronunciation test: Yelü Abaoji, Sforza, Shapur, Tenochtitlan, Samarkand.", curVoice(), rate()));
 ['strictMode', 'autoAdvance', 'cueTicks', 'cueBeep', 'haptics'].forEach(id => $(id)?.addEventListener('change', () => {
   const el = $(id); if (!el) return;
   const key = id === 'strictMode' ? 'strict' : id;
-  Settings[key] = el.checked; saveSettings();
+  Settings[key] = el.checked; saveSettings(); updateSetupOverview();
 }));
 $('autoAdvanceDelay')?.addEventListener('input', () => {
-  const el = $('autoAdvanceDelay'); Settings.autoAdvanceDelay = parseInt((el && el.value) || '1', 10) || 1; saveSettings();
+  const el = $('autoAdvanceDelay'); Settings.autoAdvanceDelay = parseInt((el && el.value) || '1', 10) || 1; saveSettings(); updateSetupOverview();
 });
 
 $('startSession')?.addEventListener('click', startSession);
@@ -2121,6 +2200,7 @@ async function tryFetchDefault(force = false) {
   if (!(ASSIGNMENT_ID && HAS_ASSIGNMENT_PAYLOAD)) {
     tryFetchDefault(false);
   }
+  updateSetupOverview();
 })();
 
 /*** Auto-grade overrides and typing phase ***/

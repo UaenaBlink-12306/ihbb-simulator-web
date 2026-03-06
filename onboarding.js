@@ -17,6 +17,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     const btnFinishTeacher = document.getElementById('btn-finish-teacher');
 
     const alertBox = document.getElementById('alert-box');
+    const progressRole = document.getElementById('progress-step-role');
+    const progressSetup = document.getElementById('progress-step-setup');
 
     let selectedRole = null;
     let currentUser = null;
@@ -49,6 +51,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         alertBox.textContent = '';
     }
 
+    function setWizardStep(step) {
+        const isRole = step === 'role';
+        if (progressRole) progressRole.classList.toggle('active', isRole);
+        if (progressSetup) progressSetup.classList.toggle('active', !isRole);
+    }
+
     // Role Selection
     roleCards.forEach(card => {
         card.addEventListener('click', () => {
@@ -63,6 +71,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (!selectedRole) return;
         stepRole.classList.add('hidden');
         stepRole.classList.remove('active');
+        setWizardStep('setup');
 
         if (selectedRole === 'student') {
             document.getElementById('onboarding-subtitle').textContent = "Join your Teacher's class";
@@ -142,4 +151,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (!code) return showAlert('Please generate an invite code first.');
         saveTeacherProfile(cName, code);
     });
+
+    setWizardStep('role');
 });

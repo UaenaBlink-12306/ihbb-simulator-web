@@ -24,23 +24,35 @@
 </head>
 
 <body>
-    <div class="shell">
-        <header class="brand" style="margin-bottom: 24px;">
-            <div class="logo">HB</div>
-            <h1 id="profile-heading" style="flex: 1;">Profile</h1>
-            <div class="row right" style="gap: 12px;">
-                <a id="btn-back-dashboard" href="index.html" class="btn ghost" style="text-decoration: none;">←
-                    Dashboard</a>
-                <a href="#" id="btn-logout" class="btn bad" style="text-decoration: none;">Logout</a>
+    <div class="shell page-shell">
+        <header class="page-hero">
+            <div class="hero-copy">
+                <div class="hero-brand">
+                    <div class="logo">HB</div>
+                    <div>
+                        <div class="hero-kicker">Profile</div>
+                        <h1 id="profile-heading">Profile</h1>
+                        <p class="hero-blurb">Review the basic account details the dashboards use across classes,
+                            assignments, and live competition.</p>
+                    </div>
+                </div>
+            </div>
+            <div class="hero-actions">
+                <a id="btn-back-dashboard" href="index.html" class="btn ghost">Back to Dashboard</a>
+                <a href="#" id="btn-logout" class="btn bad">Logout</a>
             </div>
         </header>
 
         <div id="alert-box" class="alert hidden"></div>
 
         <section id="profile-main" class="view active">
-            <div class="card">
-                <h2 id="profile-title" class="card-title" style="margin-bottom: 10px;">Loading profile...</h2>
-                <p id="profile-subtitle" class="muted" style="margin-bottom: 22px;">Please wait.</p>
+            <div class="card section-card">
+                <div class="section-head">
+                    <div>
+                        <h2 id="profile-title" class="card-title">Loading profile...</h2>
+                        <p id="profile-subtitle" class="section-subtitle">Please wait.</p>
+                    </div>
+                </div>
 
                 <div class="form-grid">
                     <div class="input-group">
@@ -66,9 +78,13 @@
                 </div>
 
                 <div class="sep"></div>
-                <h3 style="margin: 0 0 8px 0;">Student Data</h3>
-                <p class="muted" style="margin: 0;">Coming soon. We can add additional student data fields here later.
-                </p>
+
+                <div class="card-muted-box">
+                    <div class="eyebrow">Placeholder</div>
+                    <h3 style="margin: 10px 0 6px;">Student data</h3>
+                    <p class="muted" style="margin: 0;">Additional academic profile details can be added here later
+                        without changing the current account flow.</p>
+                </div>
             </div>
         </section>
     </div>

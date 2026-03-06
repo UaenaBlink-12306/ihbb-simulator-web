@@ -8,6 +8,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const passwordInput = document.getElementById('password');
     const forgotPasswordLink = document.getElementById('forgot-password');
     const alertBox = document.getElementById('alert-box');
+    const authTitle = document.getElementById('auth-title');
+    const authSubtitle = document.getElementById('auth-subtitle');
+    const authModeNote = document.getElementById('auth-mode-note');
 
     let currentMode = 'login'; // 'login', 'signup', 'magic-link', 'reset'
 
@@ -31,35 +34,40 @@ document.addEventListener('DOMContentLoaded', () => {
     function setMode(mode) {
         currentMode = mode;
         clearAlert();
+        document.body.dataset.authMode = mode;
 
         if (mode === 'login') {
             submitBtn.textContent = 'Sign In';
             classCodeGroup.classList.add('hidden');
             passwordGroup.classList.remove('hidden');
             passwordInput.required = true;
-            document.querySelector('.auth-header h1').textContent = 'Welcome Back';
-            document.querySelector('.auth-header p').textContent = 'Sign in to access IHBB Premium Drill';
+            if (authTitle) authTitle.textContent = 'Welcome Back';
+            if (authSubtitle) authSubtitle.textContent = 'Sign in to access drills, assignments, analytics, and live rooms.';
+            if (authModeNote) authModeNote.textContent = 'Use your email and password to return to your dashboard and continue where you left off.';
         } else if (mode === 'signup') {
             submitBtn.textContent = 'Create Account';
             classCodeGroup.classList.remove('hidden');
             passwordGroup.classList.remove('hidden');
             passwordInput.required = true;
-            document.querySelector('.auth-header h1').textContent = 'Join Us';
-            document.querySelector('.auth-header p').textContent = 'Create an account to start drilling';
+            if (authTitle) authTitle.textContent = 'Create Your Account';
+            if (authSubtitle) authSubtitle.textContent = 'Set up your account now, then pick your role and workspace on the next screen.';
+            if (authModeNote) authModeNote.textContent = 'Students can paste a class code now, while teachers can finish setup after signup.';
         } else if (mode === 'magic-link') {
             submitBtn.textContent = 'Send Magic Link';
             classCodeGroup.classList.add('hidden');
             passwordGroup.classList.add('hidden');
             passwordInput.required = false;
-            document.querySelector('.auth-header h1').textContent = 'Passwordless';
-            document.querySelector('.auth-header p').textContent = 'We will email you a secure link to log in';
+            if (authTitle) authTitle.textContent = 'Passwordless Access';
+            if (authSubtitle) authSubtitle.textContent = 'We will email you a secure sign-in link so you can return without a password.';
+            if (authModeNote) authModeNote.textContent = 'Magic links are useful when you need a quick sign-in from a new device.';
         } else if (mode === 'reset') {
             submitBtn.textContent = 'Send Reset Instructions';
             classCodeGroup.classList.add('hidden');
             passwordGroup.classList.add('hidden');
             passwordInput.required = false;
-            document.querySelector('.auth-header h1').textContent = 'Reset Password';
-            document.querySelector('.auth-header p').textContent = 'Enter your email to receive a password reset link';
+            if (authTitle) authTitle.textContent = 'Reset Password';
+            if (authSubtitle) authSubtitle.textContent = 'Enter your email and we will send password reset instructions.';
+            if (authModeNote) authModeNote.textContent = 'Password reset emails may take a moment to arrive depending on your provider.';
         }
     }
 
@@ -76,6 +84,8 @@ document.addEventListener('DOMContentLoaded', () => {
         tabs.forEach(t => t.classList.remove('active'));
         setMode('magic-link');
     });
+
+    setMode('login');
 
     function showAlert(message, type = 'error') {
         alertBox.textContent = message;

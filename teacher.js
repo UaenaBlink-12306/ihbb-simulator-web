@@ -77,6 +77,17 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (!Number.isFinite(v)) return fallback;
         return Math.max(1, Math.min(200, v));
     };
+    const setMetric = (id, value) => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = String(value);
+    };
+    const emptyStateHtml = (kicker, title, copy) => `
+        <div class="empty-state">
+            <div class="empty-kicker">${esc(kicker)}</div>
+            <h3 class="empty-title">${esc(title)}</h3>
+            <p class="empty-copy">${esc(copy)}</p>
+        </div>
+    `;
 
     // Load questions from questions.json
     try {
@@ -224,14 +235,20 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     function renderClasses() {
         const el = document.getElementById('classes-list');
-        if (!myClasses.length) { el.innerHTML = '<p class="muted">No classes yet. Create one to get started!</p>'; return; }
+        setMetric('teacher-hero-classes', myClasses.length);
+        if (!myClasses.length) {
+            el.innerHTML = emptyStateHtml('Classes', 'No classes yet', 'Create your first class to generate an invite code and start assigning work.');
+            return;
+        }
         el.innerHTML = myClasses.map(c => `
             <div class="list-item">
                 <span class="item-title">${esc(c.name)}</span>
                 <span class="item-badge">${c.code}</span>
-                <button class="btn ghost" onclick="copyCode('${c.code}')">Copy Code</button>
-                <button class="btn ghost" onclick="viewStudents('${c.id}')">Students</button>
-                <button class="btn bad" onclick="deleteClass('${c.id}')">Delete</button>
+                <div class="item-actions">
+                    <button class="btn ghost" onclick="copyCode('${c.code}')">Copy Code</button>
+                    <button class="btn ghost" onclick="viewStudents('${c.id}')">Students</button>
+                    <button class="btn bad" onclick="deleteClass('${c.id}')">Delete</button>
+                </div>
             </div>
         `).join('');
     }
@@ -295,7 +312,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     function populateClassDropdown() {
         const sel = document.getElementById('assign-class');
-        sel.innerHTML = myClasses.map(c => `<option value="${c.id}">${esc(c.name)} (${c.code})</option>`).join('');
+        sel.innerHTML = myClasses.length
+            ? myClasses.map(c => `<option value="${c.id}">${esc(c.name)} (${c.code})</option>`).join('')
+            : '<option value="">Create a class first</option>';
     }
 
     // ========== ASSIGNMENTS ==========
@@ -306,15 +325,21 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     function renderAssignments(list) {
         const el = document.getElementById('assignments-list');
-        if (!list.length) { el.innerHTML = '<p class="muted">No assignments created yet.</p>'; return; }
+        setMetric('teacher-hero-assignments', list.length);
+        if (!list.length) {
+            el.innerHTML = emptyStateHtml('Assignments', 'No assignments yet', 'Use the builder to create your first assignment and publish it to a class.');
+            return;
+        }
         el.innerHTML = list.map(a => {
             const due = a.due_date ? new Date(a.due_date).toLocaleDateString() : 'No due date';
             const cls = a.classes ? a.classes.name : '';
             return `<div class="list-item">
                 <span class="item-title">${esc(a.title)}</span>
                 <span class="item-meta">${esc(cls)} · Due: ${due}</span>
-                <button class="btn ghost" onclick="viewScores('${a.id}')">View Scores</button>
-                <button class="btn bad" onclick="deleteAssignment('${a.id}')">Delete</button>
+                <div class="item-actions">
+                    <button class="btn ghost" onclick="viewScores('${a.id}')">View Scores</button>
+                    <button class="btn bad" onclick="deleteAssignment('${a.id}')">Delete</button>
+                </div>
             </div>`;
         }).join('');
     }
@@ -433,6 +458,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const area = document.getElementById('preview-area');
         const count = document.getElementById('preview-count');
         const list = document.getElementById('preview-list');
+        setMetric('teacher-hero-selected', selectedQuestions.length);
         if (!selectedQuestions.length) { area.classList.add('hidden'); return; }
         area.classList.remove('hidden');
         count.textContent = selectedQuestions.length;

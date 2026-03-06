@@ -31,6 +31,17 @@ document.addEventListener('DOMContentLoaded', async () => {
     };
     const normalizeEmail = (value) => String(value || '').trim().toLowerCase();
     const isValidEmail = (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || '').trim());
+    const setMetric = (id, value) => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = String(value);
+    };
+    const emptyStateHtml = (kicker, title, copy) => `
+        <div class="empty-state">
+            <div class="empty-kicker">${esc(kicker)}</div>
+            <h3 class="empty-title">${esc(title)}</h3>
+            <p class="empty-copy">${esc(copy)}</p>
+        </div>
+    `;
 
     // ========== NAME CHECK ==========
     if (!profile.display_name || !profile.display_name.trim()) {
@@ -192,13 +203,19 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     function renderClasses(list) {
         const el = document.getElementById('student-classes');
-        if (!list.length) { el.innerHTML = '<p class="muted">You haven\'t joined any classes yet. Enter a code above!</p>'; return; }
+        setMetric('student-hero-classes', list.length);
+        if (!list.length) {
+            el.innerHTML = emptyStateHtml('Classes', 'No classes yet', 'Use the invite code above to join your first classroom.');
+            return;
+        }
         el.innerHTML = list.map(cs => {
             const c = cs.classes;
             return `<div class="list-item">
                 <span class="item-title">${esc(c.name)}</span>
                 <span class="item-badge">${c.code}</span>
-                <button class="btn bad" onclick="leaveClass('${cs.class_id}')">Leave</button>
+                <div class="item-actions">
+                    <button class="btn bad" onclick="leaveClass('${cs.class_id}')">Leave</button>
+                </div>
             </div>`;
         }).join('');
     }
@@ -245,8 +262,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     async function loadAssignments() {
         const { data: memberships } = await sb.from('class_students').select('class_id').eq('student_id', uid);
         if (!memberships || !memberships.length) {
-            document.getElementById('student-assignments-todo').innerHTML = '<p class="muted">Join a class to see assignments.</p>';
-            document.getElementById('student-assignments-completed').innerHTML = '<p class="muted">No completed assignments.</p>';
+            setMetric('student-hero-todo', 0);
+            setMetric('student-hero-done', 0);
+            document.getElementById('student-assignments-todo').innerHTML = emptyStateHtml('Assignments', 'Join a class first', 'Assignments will appear here once you are enrolled in at least one classroom.');
+            document.getElementById('student-assignments-completed').innerHTML = emptyStateHtml('Completed', 'Nothing completed yet', 'Finished assignments and redo links will appear here after your first drill.');
             return;
         }
         const classIds = memberships.map(m => m.class_id);
@@ -265,10 +284,12 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         const todoList = list.filter(a => !subMap[a.id]);
         const doneList = list.filter(a => subMap[a.id]);
+        setMetric('student-hero-todo', todoList.length);
+        setMetric('student-hero-done', doneList.length);
 
         // Render To Do
         if (!todoList.length) {
-            todoEl.innerHTML = '<p class="muted">🎉 All caught up! No pending assignments.</p>';
+            todoEl.innerHTML = emptyStateHtml('To do', 'All caught up', 'You do not have any pending assignments right now.');
         } else {
             todoEl.innerHTML = todoList.map(a => {
                 const due = a.due_date ? new Date(a.due_date).toLocaleDateString() : 'No deadline';
@@ -276,14 +297,16 @@ document.addEventListener('DOMContentLoaded', async () => {
                 return `<div class="list-item">
                     <span class="item-title">${esc(a.title)}</span>
                     <span class="item-meta">${esc(cls)} · Due: ${due}</span>
-                    <button class="btn pri" onclick="startAssignment('${a.id}', '${esc(a.title)}')">🎯 Start</button>
+                    <div class="item-actions">
+                        <button class="btn pri" onclick="startAssignment('${a.id}', '${esc(a.title)}')">Start</button>
+                    </div>
                 </div>`;
             }).join('');
         }
 
         // Render Completed
         if (!doneList.length) {
-            doneEl.innerHTML = '<p class="muted">No completed assignments yet.</p>';
+            doneEl.innerHTML = emptyStateHtml('Completed', 'No completed assignments yet', 'Completed work and redo shortcuts will appear here.');
         } else {
             doneEl.innerHTML = doneList.map(a => {
                 const due = a.due_date ? new Date(a.due_date).toLocaleDateString() : 'No deadline';
@@ -294,7 +317,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                     <span class="item-title">${esc(a.title)}</span>
                     <span class="item-meta">${esc(cls)} · Due: ${due}</span>
                     <span class="item-score ${pct >= 50 ? 'good' : 'bad'}">${sub.correct}/${sub.total} (${pct}%)</span>
-                    <button class="btn ghost" onclick="startAssignment('${a.id}', '${esc(a.title)}')">🔄 Redo</button>
+                    <div class="item-actions">
+                        <button class="btn ghost" onclick="startAssignment('${a.id}', '${esc(a.title)}')">Redo</button>
+                    </div>
                 </div>`;
             }).join('');
         }

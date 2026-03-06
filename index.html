@@ -26,14 +26,6 @@
       transition: opacity 0.2s ease-in;
     }
   </style>
-  <style>
-    /* Keep practice-hub tab labels black in all states */
-    .nav a,
-    .nav a:hover,
-    .nav a.active {
-      color: #000 !important;
-    }
-  </style>
   <script>
     document.addEventListener("DOMContentLoaded", async () => {
       const authGuard = document.getElementById('auth-guard');
@@ -93,151 +85,223 @@
 </head>
 
 <body>
-  <div class="shell">
-    <div class="brand">
-      <div class="logo">HB</div>
-      <div>
-        <h1>IHBB Practice Hub</h1>
-        <div class="sub">Buzz early, train fast. <b>Space</b> to Buzz → 5-sec timer → answer → mark → <b>N</b>ext.</div>
-        <nav class="nav">
-          <a href="index.html" id="nav-setup" class="active">Setup</a>
-          <a href="#" id="nav-practice">Practice</a>
-          <a href="#" id="nav-review">Review</a>
-          <a href="#" id="nav-library">Library</a>
-          <a href="#" id="nav-help">Shortcuts ?</a>
-          <a href="index.html" style="margin-left:auto;">📊 Dashboard</a>
-          <a href="#" id="nav-logout" style="color:var(--error-color, #f85149); font-weight:600;">Logout</a>
-        </nav>
+  <div class="shell page-shell">
+    <header class="page-hero">
+      <div class="hero-copy">
+        <div class="hero-brand">
+          <div class="logo">HB</div>
+          <div>
+            <div class="hero-kicker">Practice hub</div>
+            <h1>IHBB Practice Hub</h1>
+            <p class="hero-blurb">Build a session, buzz quickly, and turn every round into something you can review
+              later. The drill flow stays fast, but the setup is now easier to scan and adjust.</p>
+          </div>
+        </div>
+        <div class="hero-metrics">
+          <div class="metric-card">
+            <div class="metric-label">Buzz flow</div>
+            <div class="metric-value">Space → 5s</div>
+            <div class="metric-note">Read, buzz, answer, mark, and move on without extra clicks.</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">Review loop</div>
+            <div class="metric-value">Wrong-bank</div>
+            <div class="metric-note">Missed questions feed SRS review and post-session analysis.</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">Session control</div>
+            <div class="metric-value">Saved presets</div>
+            <div class="metric-note">Lock favorite voices, pacing, filters, and pool sizes once.</div>
+          </div>
+        </div>
       </div>
-    </div>
+      <div class="hero-actions">
+        <a href="index.html" class="btn ghost">Back to Dashboard</a>
+        <a href="#" id="nav-logout" class="btn bad">Logout</a>
+      </div>
+    </header>
 
-    <!-- SETUP -->
+    <nav class="nav tab-strip">
+      <a href="index.html" id="nav-setup" class="active">Setup</a>
+      <a href="#" id="nav-practice">Practice</a>
+      <a href="#" id="nav-review">Review</a>
+      <a href="#" id="nav-library">Library</a>
+      <a href="#" id="nav-help">Shortcuts</a>
+    </nav>
+
     <section id="view-setup" class="view active">
-      <div class="grid grid-2">
-        <!-- Quick Start -->
-        <div class="card">
-          <div class="card-title">Quick Start</div>
-          <div class="col">
-            <div class="row" style="align-items:flex-end">
-              <div class="col" style="flex:1 1 320px">
-                <label class="muted">Question set</label>
-                <div class="row">
-                  <select id="qs-picker" style="min-width:260px"></select>
-                  <button class="btn ghost" id="qs-preview">Preview 5</button>
-                  <input id="fileInput" type="file" accept=".json,application/json,text/json" style="display:none" />
-                </div>
-                <div class="muted" id="qs-meta">—</div>
-              </div>
-              <div class="right">
-                <button id="btn-upload-json" class="btn ghost">Upload questions.json</button>
-                <button id="btn-demo-fetch" class="btn ghost">Reload questions.json</button>
+      <div class="setup-shell">
+        <div class="setup-main">
+          <div class="card section-card">
+            <div class="section-head">
+              <div>
+                <div class="eyebrow">Session builder</div>
+                <h2 class="card-title">Build your drill</h2>
+                <p class="section-subtitle">Choose a source, narrow the pool, then lock the mode and session length
+                  before you start.</p>
               </div>
             </div>
 
-            <!-- Category filter — click to practice specific regions (East Asia, European History, etc.) -->
-            <div class="row" id="cat-row">
-              <div class="col" style="flex:1 1 320px">
-                <label class="muted">Practice by category (click to toggle)</label><br>
+            <div class="stack">
+              <div class="card-muted-box">
+                <div class="setup-grid">
+                  <div class="input-group" style="margin: 0;">
+                    <label class="muted">Question set</label>
+                    <select id="qs-picker"></select>
+                    <div class="muted" id="qs-meta">—</div>
+                  </div>
+                  <div class="stack">
+                    <button class="btn ghost" id="qs-preview">Preview 5</button>
+                    <button id="btn-upload-json" class="btn ghost">Upload questions.json</button>
+                    <button id="btn-demo-fetch" class="btn ghost">Reload questions.json</button>
+                    <input id="fileInput" type="file" accept=".json,application/json,text/json" style="display:none" />
+                  </div>
+                </div>
+              </div>
+
+              <div id="cat-row" class="setup-group">
+                <label class="muted">Practice by region</label>
                 <div id="cat-chips" class="chips"></div>
               </div>
-            </div>
 
-            <div class="row">
-              <div>
-                <label class="muted">Mode</label><br>
-                <div class="chips" id="mode-chips">
-                  <div class="chip active" data-mode="random">Random</div>
-                  <div class="chip" data-mode="sequential">Sequential</div>
-                  <div class="chip" data-mode="srs">Wrong-bank (SRS)</div>
+              <div class="setup-grid">
+                <div class="setup-group">
+                  <label class="muted">Mode</label>
+                  <div class="chips" id="mode-chips">
+                    <div class="chip active" data-mode="random">Random</div>
+                    <div class="chip" data-mode="sequential">Sequential</div>
+                    <div class="chip" data-mode="srs">Wrong-bank (SRS)</div>
+                  </div>
+                </div>
+                <div class="setup-group">
+                  <label class="muted">Session length</label>
+                  <div class="chips" id="len-chips">
+                    <div class="chip active" data-n="10">10</div>
+                    <div class="chip" data-n="15">15</div>
+                    <div class="chip" data-n="20">20</div>
+                    <div class="chip" data-n="50">50</div>
+                    <div class="chip" data-n="all">All</div>
+                    <div class="chip" data-n="custom">Custom</div>
+                    <input id="len-custom" type="number" min="1" max="500" placeholder="#" style="width:90px; display:none">
+                  </div>
                 </div>
               </div>
-              <div>
-                <label class="muted">Session length</label><br>
-                <div class="chips" id="len-chips">
-                  <div class="chip active" data-n="10">10</div>
-                  <div class="chip" data-n="15">15</div>
-                  <div class="chip" data-n="20">20</div>
-                  <div class="chip" data-n="50">50</div>
-                  <div class="chip" data-n="all">All</div>
-                  <div class="chip" data-n="custom">Custom</div>
-                  <input id="len-custom" type="number" min="1" max="500" placeholder="#"
-                    style="width:90px; display:none">
+
+              <div id="filter-row" class="setup-grid">
+                <div class="setup-group">
+                  <label class="muted">Eras (multi-select)</label>
+                  <div id="era-chips" class="chips"></div>
+                </div>
+                <div class="setup-group">
+                  <label class="muted">Source</label>
+                  <select id="filter-src">
+                    <option value="">All</option>
+                  </select>
                 </div>
               </div>
-            </div>
 
-            <div class="row" id="filter-row">
-              <div>
-                <label class="muted">Eras (multi-select)</label><br>
-                <div id="era-chips" class="chips"></div>
-              </div>
-              <div>
-                <label class="muted">Source</label><br>
-                <select id="filter-src" style="min-width:180px">
-                  <option value="">All</option>
+              <div class="form-actions">
+                <button id="startSession" class="btn pri">Start Session</button>
+                <button id="startLast" class="btn ghost">Start last settings</button>
+                <button id="savePreset" class="btn ghost">Save preset</button>
+                <select id="presetSel">
+                  <option value="">Load preset…</option>
                 </select>
-              </div>
-            </div>
-
-            <div class="row" style="margin-top:8px">
-              <button id="startSession" class="btn pri icon">▶ Start Session</button>
-              <button id="startLast" class="btn ghost">Start last settings</button>
-              <div class="grow"></div>
-              <button id="savePreset" class="btn ghost">Save preset</button>
-              <select id="presetSel" style="min-width:200px">
-                <option value="">Load preset…</option>
-              </select>
-              <button id="delPreset" class="btn ghost">Delete</button>
-            </div>
-          </div>
-        </div>
-
-        <!-- Advanced -->
-        <div class="card">
-          <div class="row" style="align-items:center">
-            <div class="card-title" style="margin:0">Advanced</div>
-            <div class="muted">(voice, buzz, cues, strict mode, auto-advance)</div>
-            <div class="grow"></div>
-            <button id="advToggle" class="btn ghost icon"><span id="advCaret" class="caret">▾</span> Toggle</button>
-          </div>
-          <div id="advBodyWrapper" class="adv-wrapper">
-            <div id="advBody" class="adv-inner">
-              <div class="sep"></div>
-              <div class="col">
-                <div class="row">
-                  <div class="col" style="min-width:260px">
-                    <label class="muted">Voice</label>
-                    <select id="voiceSel" style="min-width:260px"></select>
-                  </div>
-                  <label class="muted">Rate
-                    <input id="rate" type="range" min="0.8" max="1.25" step="0.05" value="1.0"
-                      style="vertical-align:middle;">
-                  </label>
-                  <button id="testVoice" class="btn ghost">Pronunciation test</button>
-                </div>
-
-                <div class="row">
-                  <div class="pill"><input id="strictMode" type="checkbox"> Strict Mode (Requires Correct Spelling)
-                  </div>
-                  <div class="pill"><input id="autoAdvance" type="checkbox"> Auto-advance after mark</div>
-                  <div class="pill"><label>Delay <input id="autoAdvanceDelay" type="number" min="0" max="5" value="1"
-                        style="width:70px"></label>s</div>
-                </div>
-
-                <div class="pill"><input id="haptics" type="checkbox" checked> Haptics (mobile)</div>
-              </div>
-
-              <div class="row">
-                <div class="pill">Shortcuts: Space=Buzz • R=Right • W=Wrong • N=Next • L=Replay • ?=Help</div>
-                <div class="grow"></div>
-                <button id="openHelp" class="btn ghost">Open help</button>
+                <button id="delPreset" class="btn ghost">Delete</button>
               </div>
             </div>
           </div>
         </div>
+
+        <aside class="setup-side stack">
+          <div class="card section-card">
+            <div class="section-head">
+              <div>
+                <div class="eyebrow">Session overview</div>
+                <h2 class="card-title">Ready to drill</h2>
+                <p class="section-subtitle">This side panel stays synced with your current selections.</p>
+              </div>
+            </div>
+
+            <div class="summary-list">
+              <div class="summary-item">
+                <span>Set</span>
+                <strong id="setup-summary-set">No set loaded</strong>
+              </div>
+              <div class="summary-item">
+                <span>Mode</span>
+                <strong id="setup-summary-mode">Random</strong>
+              </div>
+              <div class="summary-item">
+                <span>Length</span>
+                <strong id="setup-summary-length">10 questions</strong>
+              </div>
+              <div class="summary-item">
+                <span>Filters</span>
+                <strong id="setup-summary-filters">All regions, all eras, all sources</strong>
+              </div>
+              <div class="summary-item">
+                <span>Advanced</span>
+                <strong id="setup-summary-advanced">Flexible grading, manual pacing, haptics on</strong>
+              </div>
+            </div>
+
+            <div class="card-muted-box summary-note">
+              <div class="empty-kicker">Next step</div>
+              <p id="setup-summary-next" class="empty-copy">Choose a set and tighten filters only if you want a more
+                focused drill.</p>
+            </div>
+          </div>
+
+          <div class="card section-card">
+            <div class="section-head">
+              <div>
+                <div class="eyebrow">Session controls</div>
+                <h2 class="card-title">Advanced settings</h2>
+                <p class="section-subtitle">Voice, pacing, feedback, and grading controls live here.</p>
+              </div>
+              <button id="advToggle" class="btn ghost"><span id="advCaret" class="caret rotate">▾</span> Toggle</button>
+            </div>
+
+            <div id="setup-summary-advanced-pills" class="settings-summary"></div>
+
+            <div id="advBodyWrapper" class="adv-wrapper">
+              <div id="advBody" class="adv-inner">
+                <div class="sep"></div>
+                <div class="stack">
+                  <div class="setup-grid">
+                    <div class="input-group" style="margin: 0;">
+                      <label class="muted">Voice</label>
+                      <select id="voiceSel"></select>
+                    </div>
+                    <div class="input-group" style="margin: 0;">
+                      <label class="muted">Rate</label>
+                      <input id="rate" type="range" min="0.8" max="1.25" step="0.05" value="1.0">
+                    </div>
+                  </div>
+
+                  <div class="inline-actions">
+                    <button id="testVoice" class="btn ghost">Pronunciation test</button>
+                    <button id="openHelp" class="btn ghost">Open help</button>
+                  </div>
+
+                  <div class="chips">
+                    <label class="pill"><input id="strictMode" type="checkbox"> Strict Mode</label>
+                    <label class="pill"><input id="autoAdvance" type="checkbox"> Auto-advance</label>
+                    <label class="pill"><input id="cueTicks" type="checkbox" checked> Countdown ticks</label>
+                    <label class="pill"><input id="cueBeep" type="checkbox" checked> Feedback cues</label>
+                    <label class="pill"><input id="haptics" type="checkbox" checked> Haptics</label>
+                    <label class="pill">Delay <input id="autoAdvanceDelay" type="number" min="0" max="5" value="1" style="width:70px">s</label>
+                  </div>
+
+                  <div class="pill">Shortcuts: Space = Buzz • R = Right • W = Wrong • N = Next • L = Replay • ? = Help</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </aside>
       </div>
-  </div>
-  </section>
+    </section>
 
   <!-- PRACTICE -->
   <section id="view-practice" class="view">
