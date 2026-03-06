@@ -164,7 +164,7 @@ function handleCoachSyncError(err) {
   CoachSync.enabled = false;
   if (CoachSync.warned) return;
   CoachSync.warned = true;
-  toast('Cloud coach sync unavailable (setup missing). Using local notebook.');
+  toast('Cloud AI notebook sync unavailable. Using local notebook on this device.');
 }
 async function ensureCoachSyncUserId() {
   if (CoachSync.userId) return CoachSync.userId;
@@ -532,7 +532,7 @@ function coachFocusCardHtml(focus, index, actionClass) {
       </div>
       <div class="coach-focus-actions">
         <button class="btn pri ${actionClass}" type="button" data-focus-index="${index}">Apply Focus</button>
-        ${focus.attemptId ? `<button class="btn ghost coach-jump-note" type="button" data-attempt="${escHtml(focus.attemptId)}">Open Lesson</button>` : `<button class="btn ghost coach-open-notebook" type="button">Open Notebook</button>`}
+        ${focus.attemptId ? `<button class="btn ghost coach-jump-note" type="button" data-attempt="${escHtml(focus.attemptId)}">Open Lesson</button>` : `<button class="btn ghost coach-open-notebook" type="button">Open AI Notebook</button>`}
       </div>
     </div>
   `;
@@ -549,19 +549,56 @@ function coachEraToCode(rawEra, set) {
   return fuzzy || '';
 }
 
+function coachFocusMatchInSet(focus, set) {
+  const categories = new Set((set?.items || []).map(it => String(it.meta?.category || '').trim()).filter(Boolean));
+  const region = categories.has(String(focus?.region || '').trim()) ? String(focus.region).trim() : '';
+  const eraCode = coachEraToCode(focus?.era, set);
+  const score = (region ? 1 : 0) + (eraCode ? 1 : 0);
+  return { region, eraCode, score };
+}
+
+function resolveCoachFocusSet(focus) {
+  const activeSet = getActiveSet();
+  const activeMatch = activeSet ? coachFocusMatchInSet(focus, activeSet) : { region: '', eraCode: '', score: 0 };
+  const needsStructuredMatch = !!String(focus?.region || '').trim() || !!String(focus?.era || '').trim();
+  if (!needsStructuredMatch && activeSet) {
+    return { set: activeSet, match: activeMatch };
+  }
+  if (activeSet && activeMatch.score > 0) {
+    return { set: activeSet, match: activeMatch };
+  }
+  let best = null;
+  for (const set of (Library.sets || [])) {
+    const match = coachFocusMatchInSet(focus, set);
+    if (!best || match.score > best.match.score) {
+      best = { set, match };
+    }
+  }
+  if (best && (best.match.score > 0 || !needsStructuredMatch)) return best;
+  return { set: activeSet, match: activeMatch };
+}
+
 function applyCoachFocusToSetup(focus, showToast = true) {
-  const set = getActiveSet();
+  const resolved = resolveCoachFocusSet(focus);
+  const set = resolved?.set || getActiveSet();
   if (!set || !focus) {
     if (showToast) toast('Load a set before applying a coach focus');
     return false;
   }
-  const categories = new Set((set.items || []).map(it => String(it.meta?.category || '').trim()).filter(Boolean));
-  const region = categories.has(focus.region) ? focus.region : '';
-  const eraCode = coachEraToCode(focus.era, set);
-  if (!region && !eraCode) {
-    if (showToast) toast('Coach focus does not match this set');
+  const hasFilterTarget = !!String(focus.region || '').trim() || !!String(focus.era || '').trim();
+  const region = String(resolved?.match?.region || '').trim();
+  const eraCode = String(resolved?.match?.eraCode || '').trim();
+  if (hasFilterTarget && !region && !eraCode) {
+    if (showToast) toast('No loaded question set matches this focus yet');
     return false;
   }
+  if (set.id !== Library.activeSetId) {
+    Library.activeSetId = set.id;
+    saveLibrary();
+    renderLibrarySelectors();
+    updateSetMeta();
+  }
+  const categories = new Set((set.items || []).map(it => String(it.meta?.category || '').trim()).filter(Boolean));
   App.filters.cat = region;
   App.filters.cats = region ? [region] : [];
   App.filters.era = eraCode;
@@ -571,7 +608,10 @@ function applyCoachFocusToSetup(focus, showToast = true) {
   renderEraChips(sortEraCodes([...new Set((set.items || []).map(it => String(it.meta?.era || '').trim()).filter(Boolean))]));
   updateSetupOverview();
   renderSetupCoachGuide();
-  if (showToast) toast(`Coach focus applied: ${focus.title}`);
+  if (showToast) {
+    if (region || eraCode) toast(`Coach focus applied: ${focus.title}`);
+    else toast(`Opened setup for ${focus.title}. No region or era filter was needed.`);
+  }
   return true;
 }
 
@@ -609,19 +649,49 @@ function applyPendingCoachGuidedDrill() {
 
 function renderSetupCoachGuide() {
   CoachFocusSuggestions = buildCoachFocusSuggestions(CoachNotebook.records);
-  const focusWrap = $('setup-coach-focuses');
-  const noteEl = $('setup-coach-note');
-  const applyBtn = $('btn-setup-coach-apply');
-  if (!focusWrap || !noteEl || !applyBtn) return;
-  applyBtn.disabled = !CoachFocusSuggestions.length;
-  if (!CoachFocusSuggestions.length) {
-    focusWrap.innerHTML = `<div class="coach-empty">Miss a few questions in practice and DeepSeek will start surfacing reusable focus areas here.</div>`;
-    noteEl.textContent = 'Miss a few questions in practice and DeepSeek will start surfacing reusable focus areas here.';
+  const notebookApplyBtn = $('btn-coach-apply-top');
+  if (notebookApplyBtn) notebookApplyBtn.disabled = !CoachFocusSuggestions.length;
+}
+
+async function clearCoachNotebook() {
+  const total = Array.isArray(CoachNotebook.records) ? CoachNotebook.records.length : 0;
+  if (!total) {
+    toast('AI notebook is already empty');
     return;
   }
-  const lead = CoachFocusSuggestions[0];
-  noteEl.textContent = `Top focus: ${lead.title}. Use this lane to turn recent DeepSeek lessons into a clean targeted drill.`;
-  focusWrap.innerHTML = CoachFocusSuggestions.slice(0, 2).map((focus, index) => coachFocusCardHtml(focus, index, 'coach-apply-focus')).join('');
+  const firstWarning = confirm(`Clear ${total} saved AI notebook lesson${total === 1 ? '' : 's'}? This cannot be undone.`);
+  if (!firstWarning) return;
+  const secondWarning = confirm('This will remove your saved AI notebook lessons from this device and, if available, from cloud sync as well. Continue?');
+  if (!secondWarning) return;
+
+  CoachNotebook.records = [];
+  CoachNotebook.loaded = true;
+  setCoachLocal([]);
+  setCoachPending([]);
+  clearPendingCoachDrill();
+  renderCoachNotebook();
+  renderSessionCoachDebrief();
+
+  let cloudCleared = false;
+  if (CoachSync.enabled && window.supabaseClient) {
+    try {
+      await CoachSync.queue.catch(() => {});
+      const userId = await ensureCoachSyncUserId();
+      if (userId) {
+        const { error } = await window.supabaseClient
+          .from(COACH_SYNC_TABLE)
+          .delete()
+          .eq('user_id', userId);
+        if (error) throw error;
+        cloudCleared = true;
+      }
+    } catch (err) {
+      handleCoachSyncError(err);
+    }
+  }
+
+  playFeedbackCue('unmastered');
+  toast(cloudCleared ? 'AI notebook cleared locally and in the cloud' : 'AI notebook cleared on this device');
 }
 
 function renderSessionCoachDebrief() {
@@ -1900,12 +1970,14 @@ function renderCoachNotebook() {
   const countEl = $('coach-count');
   const openCountEl = $('coach-open-count');
   const masteredCountEl = $('coach-mastered-count');
+  const clearBtn = $('btn-coach-clear');
   const q = (($('coach-search') && $('coach-search').value) || '').trim().toLowerCase();
   const filter = (($('coach-filter') && $('coach-filter').value) || 'all').toLowerCase();
   const allRows = Array.isArray(CoachNotebook.records) ? CoachNotebook.records : [];
   if (countEl) countEl.textContent = String(allRows.length);
   if (openCountEl) openCountEl.textContent = String(allRows.filter(r => !r.mastered).length);
   if (masteredCountEl) masteredCountEl.textContent = String(allRows.filter(r => !!r.mastered).length);
+  if (clearBtn) clearBtn.disabled = !allRows.length;
   const rows = allRows.filter(r => {
     if (filter === 'todo' && r.mastered) return false;
     if (filter === 'mastered' && !r.mastered) return false;
@@ -2326,13 +2398,6 @@ $('coach-refresh')?.addEventListener('click', async () => {
   flushCoachPending();
   await refreshCoachNotebook(true);
 });
-$('btn-setup-coach-apply')?.addEventListener('click', () => {
-  const focus = CoachFocusSuggestions[0] || null;
-  if (!applyCoachFocusToSetup(focus)) return;
-  navSet('nav-setup');
-  SHOW('view-setup');
-});
-$('btn-setup-coach-review')?.addEventListener('click', () => openCoachNotebook());
 $('btn-review-coach-apply')?.addEventListener('click', () => {
   const focus = ReviewCoachFocusSuggestions[0] || CoachFocusSuggestions[0] || null;
   if (!applyCoachFocusToSetup(focus)) return;
@@ -2346,6 +2411,7 @@ $('btn-coach-apply-top')?.addEventListener('click', () => {
   navSet('nav-setup');
   SHOW('view-setup');
 });
+$('btn-coach-clear')?.addEventListener('click', () => { void clearCoachNotebook(); });
 $('btn-coach-back-review')?.addEventListener('click', async () => {
   playFeedbackCue('nav');
   navSet('nav-review');
