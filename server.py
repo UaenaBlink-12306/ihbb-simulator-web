@@ -2,10 +2,11 @@ import logging
 import os
 import json
 import math
+import re
 from typing import List, Dict, Any
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import socket
-from urllib.parse import urlparse
+from urllib.parse import urlparse, quote
 
 import requests
 
@@ -132,26 +133,39 @@ def fallback_related_facts(region: str, era: str, topic: str) -> List[str]:
     ]
 
 
-def fallback_next_check(question: str) -> str:
-    q = normalize(question)
-    if any(k in q for k in ["battle", "war", "campaign", "siege"]):
-        return "What broader political or territorial change followed that conflict?"
-    if any(k in q for k in ["treaty", "law", "constitution"]):
-        return "What long-term political effect did that decision produce?"
-    return "What cause-and-effect relationship best explains this answer in its historical context?"
+def canonical_answer_text(answer: str) -> str:
+    txt = str(answer or "").strip()
+    if not txt:
+        return ""
+    txt = re.sub(r"\s*\([^)]*\)", "", txt)
+    txt = re.sub(r"\s*\[[^\]]*\]", "", txt)
+    txt = re.sub(r"\s+", " ", txt).strip(" ,;:.")
+    return txt or str(answer or "").strip()
 
 
-def is_concept_check_valid(next_q: str, question: str, expected: str) -> bool:
-    nq = normalize(next_q)
-    oq = normalize(question)
-    ex = normalize(expected)
-    if len(nq) < 18:
-        return False
-    if nq == oq:
-        return False
-    if len(ex) >= 4 and ex in nq:
-        return False
-    return token_overlap_ratio(nq, oq) < 0.72
+def wiki_link_for_answer(answer: str) -> str:
+    canonical = canonical_answer_text(answer)
+    if not canonical:
+        return ""
+    slug = canonical.replace(" ", "_")
+    return f"https://en.wikipedia.org/wiki/{quote(slug, safe='()_')}"
+
+
+def fallback_explanation_bullets(payload: Dict[str, Any], correct: bool, reason: str, region: str, era: str, topic: str) -> List[str]:
+    user_answer = str(payload.get("user_answer", payload.get("answer", ""))).strip()
+    comparison = (
+        "Your answer already matched the expected target, so the job now is to remember which clues made it uniquely correct."
+        if correct else
+        (f"Your answer '{user_answer}' was in the same topic neighborhood, but the clue set narrowed to a different answer." if user_answer else "Your response was close to the topic area, but the clue set narrowed to a different answer.")
+    )
+    anchors = f"Use {era or 'the era'} and {region or 'the region'} as elimination anchors before committing to an answer."
+    topic_note = f"Prioritize {topic.lower()} clues such as names, titles, offices, or signature events that point to only one target."
+    reason_note = reason or "Focus on the clue that uniquely separates the expected answer from nearby lookalikes."
+    return [comparison, anchors, topic_note, reason_note]
+
+
+def fallback_study_tip(region: str, era: str, topic: str) -> str:
+    return f"Run a short drill on {region or 'this region'} {('in ' + era) if era else ''} and stop on the first clue that rules out the closest lookalike. Focus especially on {topic.lower()} triggers.".strip()
 
 
 def fallback_coach(payload: Dict[str, Any], correct: bool, reason: str) -> Dict[str, Any]:
@@ -159,31 +173,30 @@ def fallback_coach(payload: Dict[str, Any], correct: bool, reason: str) -> Dict[
     region = str(meta.get("category") or meta.get("region") or "World")
     era = str(meta.get("era") or "")
     topic = guess_topic(str(payload.get("question", "")))
-    explanation = (
-        "The clue set points to a unique target, and your response matched that target within the right context."
-        if correct else
-        "The likely issue is conceptual overlap: your response may be related, but the clues narrow to a different target in this context."
-    )
+    explanation_bullets = fallback_explanation_bullets(payload, correct, reason, region, era, topic)
     related_facts = fallback_related_facts(region, era, topic)
-    next_check = fallback_next_check(str(payload.get("question", "")))
+    canonical_answer = canonical_answer_text(str(payload.get("expected", payload.get("expected_answer", ""))))
     return {
         "summary": "You got it right. Keep tying clues to the specific historical context." if correct else "This was likely a near-miss in concept matching rather than total misunderstanding.",
-        "explanation": explanation,
+        "explanation": " ".join(explanation_bullets),
+        "explanation_bullets": explanation_bullets,
         "related_facts": related_facts,
         "key_clues": [
             "Identify the most specific clue that disambiguates lookalikes.",
-            "Lock the answer to a timeline or region anchor before committing."
+            "Lock the answer to a timeline or region anchor before committing.",
+            "Prefer named events, titles, and offices over broad topic similarity."
         ],
-        "memory_hook": "Anchor one distinctive clue to one named entity.",
+        "study_tip": fallback_study_tip(region, era, topic),
+        "canonical_answer": canonical_answer,
+        "wiki_link": wiki_link_for_answer(canonical_answer),
         "study_focus": {
             "region": region,
             "era": era,
             "topic": topic,
             "icon": icon_for_focus(region, topic),
         },
-        "error_diagnosis": explanation,
+        "error_diagnosis": reason or explanation_bullets[0],
         "overlap_explainer": reason or related_facts[0],
-        "next_check_question": next_check,
         "confidence": "low",
     }
 
@@ -201,31 +214,35 @@ def normalize_coach(raw: Any, payload: Dict[str, Any], correct: bool, reason: st
         key_clues = [str(x).strip() for x in rc.get("key_clues") if str(x).strip()][:4]
     related_facts = []
     if isinstance(rc.get("related_facts"), list):
-        related_facts = [str(x).strip() for x in rc.get("related_facts") if str(x).strip()][:3]
+        related_facts = [str(x).strip() for x in rc.get("related_facts") if str(x).strip()][:5]
+    explanation_bullets = []
+    if isinstance(rc.get("explanation_bullets"), list):
+        explanation_bullets = [str(x).strip() for x in rc.get("explanation_bullets") if str(x).strip()][:5]
+    elif str(rc.get("explanation") or "").strip():
+        explanation_bullets = [str(rc.get("explanation")).strip()]
     fallback_facts = fallback_related_facts(region, era, topic)
-    explanation = str(
-        rc.get("explanation")
-        or rc.get("error_diagnosis")
-        or ("You identified the right entity and context." if correct else "Your response likely overlapped with a related but different concept.")
-    ).strip()
-    next_check_raw = str(rc.get("next_check_question") or "").strip()
-    next_check = next_check_raw or fallback_next_check(str(payload.get("question", "")))
+    merged_explanation = explanation_bullets or fallback_explanation_bullets(payload, correct, reason, region, era, topic)
     merged_related_facts = related_facts or fallback_facts
+    canonical_answer = canonical_answer_text(str(rc.get("canonical_answer") or payload.get("expected") or payload.get("expected_answer") or ""))
+    wiki_link = str(rc.get("wiki_link") or wiki_link_for_answer(canonical_answer)).strip()
     confidence = str(rc.get("confidence", "")).lower()
     if confidence not in ("high", "medium", "low"):
         confidence = "low"
     return {
         "summary": str(rc.get("summary") or ("Correct answer with good clue alignment." if correct else "This answer was not accepted; review clue disambiguation.")).strip(),
-        "explanation": explanation,
+        "explanation": " ".join(merged_explanation).strip(),
+        "explanation_bullets": merged_explanation,
         "related_facts": merged_related_facts,
-        "error_diagnosis": explanation,
+        "error_diagnosis": str(rc.get("error_diagnosis") or reason or merged_explanation[0]).strip(),
         "overlap_explainer": str(rc.get("overlap_explainer") or " | ".join(merged_related_facts) or reason or "Use the most specific clues to separate related answers.").strip(),
         "key_clues": key_clues or [
             "Track clues that uniquely identify the expected answer.",
-            "Use era and region to eliminate close alternatives."
+            "Use era and region to eliminate close alternatives.",
+            "Prefer named events, titles, and offices over broad topic overlap."
         ],
-        "memory_hook": str(rc.get("memory_hook") or "Pair one unique clue with one canonical answer.").strip(),
-        "next_check_question": next_check,
+        "study_tip": str(rc.get("study_tip") or rc.get("memory_hook") or rc.get("next_check_question") or fallback_study_tip(region, era, topic)).strip(),
+        "canonical_answer": canonical_answer,
+        "wiki_link": wiki_link,
         "study_focus": {
             "region": region,
             "era": era,
@@ -277,7 +294,7 @@ def grade_with_deepseek(payload: Dict[str, Any]) -> Dict[str, Any]:
             "reason": locked_reason
         }
         if coach_enabled:
-            out["coach"] = fallback_coach(payload, locked_correct, out["reason"])
+            out["coach"] = None if locked_correct else fallback_coach(payload, locked_correct, out["reason"])
         return out
 
     try:
@@ -307,27 +324,44 @@ def grade_with_deepseek(payload: Dict[str, Any]) -> Dict[str, Any]:
         if coach_only:
             locked_correct = fallback_correct if supplied_correct is None else bool(supplied_correct)
             locked_reason = supplied_reason or ("Correct by prior grading pass." if locked_correct else "Incorrect by prior grading pass.")
+            if locked_correct:
+                return {"correct": locked_correct, "reason": locked_reason, "coach": None}
             coach_only_system = (
-                "Act as an expert polymath and memory architect. Generate only coaching content for an already-graded answer.\n"
+                "Act as a personalized IHBB coach. Generate only coaching content for an already-graded incorrect answer.\n"
                 "Do not re-grade. Respect provided is_correct and reason as the locked verdict.\n"
+                "Address the student directly and use their wrong answer to explain the mismatch.\n"
+                "Do not write a paragraph block; use bullet-style strings in arrays.\n"
                 "INSTRUCTIONS:\n"
-                "1) Explain the underlying logic/significance in 2-3 punchy sentences.\n"
-                "2) Provide 3 related high-value facts linked to the correct answer.\n"
-                "3) If is_correct is false, clearly separate user answer vs expected answer.\n"
-                "4) Provide one vivid mnemonic.\n"
+                "1) summary: one concise personalized takeaway.\n"
+                "2) error_diagnosis: explicitly state why the student's answer missed.\n"
+                "3) overlap_explainer: explain the distinction between the student's answer and the correct answer.\n"
+                "4) explanation_bullets: 3 to 4 short bullet strings that teach the answer in context.\n"
+                "5) related_facts: 3 to 5 short bullet strings with valuable adjacent facts.\n"
+                "6) key_clues: 2 to 4 short bullet strings quoting or paraphrasing the best giveaway clues.\n"
+                "7) study_tip: one concrete next study move.\n"
+                "8) canonical_answer: the clean answer only, with parenthetical grading notes removed.\n"
+                "9) wiki_link: https://en.wikipedia.org/wiki/{canonical_answer_with_spaces_replaced_by_underscores}.\n"
                 "Return strict JSON with this shape only:\n"
                 "{\"coach\": {"
                 "\"summary\": \"1-sentence definitive takeaway.\", "
-                "\"explanation\": \"Deep context explaining the logic of the answer.\", "
+                "\"error_diagnosis\": \"Why the student's answer was not accepted.\", "
+                "\"overlap_explainer\": \"How the wrong answer overlaps with but differs from the right one.\", "
+                "\"explanation_bullets\": ["
+                "\"Personalized teaching bullet 1\", "
+                "\"Personalized teaching bullet 2\", "
+                "\"Personalized teaching bullet 3\"], "
                 "\"related_facts\": ["
-                "\"Fact 1: [Connection Type] - [Data]\", "
-                "\"Fact 2: [Connection Type] - [Data]\", "
-                "\"Fact 3: [Connection Type] - [Data]\"], "
+                "\"Fact bullet 1\", "
+                "\"Fact bullet 2\", "
+                "\"Fact bullet 3\"], "
                 "\"key_clues\": ["
-                "\"Specific word in the question that gives it away\", "
+                "\"Specific clue that gives it away\", "
                 "\"A chronological or spatial anchor\"], "
-                "\"memory_hook\": \"A short, sticky mnemonic or visual association.\", "
-                "\"study_focus\": {\"region\": \"String\", \"era\": \"String\", \"topic\": \"String\"}}}"
+                "\"study_tip\": \"A concrete next drill or recall move.\", "
+                "\"canonical_answer\": \"Clean canonical answer only\", "
+                "\"wiki_link\": \"https://en.wikipedia.org/wiki/Clean_Canonical_Answer\", "
+                "\"study_focus\": {\"region\": \"String\", \"era\": \"String\", \"topic\": \"String\"}, "
+                "\"confidence\": \"low|medium|high\"}}"
             )
             coach_only_user = {
                 "question": question,
@@ -352,50 +386,44 @@ def grade_with_deepseek(payload: Dict[str, Any]) -> Dict[str, Any]:
                     "coach": fallback_coach(payload, locked_correct, locked_reason)
                 }
             coach = normalize_coach(coach_obj.get("coach", coach_obj), payload, locked_correct, locked_reason)
-            if not is_concept_check_valid(str(coach.get("next_check_question", "")), question, expected):
-                fix = call_deepseek([
-                    {
-                        "role": "system",
-                        "content": "Rewrite only next_check_question as a concept-check (cause/effect/context), not a repetition, and do not include expected answer text. Return JSON: {\"next_check_question\": string}."
-                    },
-                    {
-                        "role": "user",
-                        "content": json.dumps({
-                            "original_question": question,
-                            "expected_answer": expected,
-                            "bad_next_check_question": coach.get("next_check_question", "")
-                        }, ensure_ascii=False)
-                    }
-                ], max_tokens=140)
-                fixed_q = str(fix.get("next_check_question", "")).strip() if isinstance(fix, dict) else ""
-                coach["next_check_question"] = fixed_q if is_concept_check_valid(fixed_q, question, expected) else fallback_next_check(question)
             return {"correct": locked_correct, "reason": locked_reason, "coach": coach}
 
         coach_system = (
-            "Act as an expert polymath and memory architect. Your goal is to provide a high-density \"Micro-Lesson\" "
+            "Act as a personalized IHBB coach. Your goal is to provide a high-density \"Micro-Lesson\" "
             "that helps a student not just memorize a fact, but understand its place in a broader system of knowledge.\n"
             "First, grade the answer and return top-level fields: {\"correct\": boolean, \"reason\": string}. "
-            "Use this grading verdict as is_correct when writing coach content.\n"
+            "If the answer is correct, return coach as null. Only generate coach content for incorrect answers.\n"
             "CONTEXT KEYS PROVIDED: question, expected_answer, user_answer, aliases, strict, category, meta, coach_depth.\n"
             "INSTRUCTIONS:\n"
-            "1) THE \"WHY\": Explain the underlying logic or historical significance in 2-3 punchy sentences.\n"
-            "2) THE \"DEEP SCAN\" (3 RELATED FACTS): Provide three additional high-value facts contextually linked to the answer.\n"
-            "3) ERROR CORRECTION: If is_correct is false, briefly explain the specific difference between the user answer and the correct one.\n"
-            "4) MEMORY ANCHOR: Provide one vivid, strange, or rhythmic mnemonic.\n"
+            "1) Personalize the lesson to the student's wrong answer.\n"
+            "2) Do not write one large paragraph; use bullet-style strings in arrays.\n"
+            "3) explanation_bullets: 3 to 4 short bullets teaching why the correct answer fits.\n"
+            "4) related_facts: 3 to 5 short bullets with valuable adjacent facts.\n"
+            "5) key_clues: 2 to 4 short bullets identifying the best giveaway clues.\n"
+            "6) canonical_answer must be the clean answer only, with parenthetical grading notes removed.\n"
+            "7) wiki_link must be https://en.wikipedia.org/wiki/{canonical_answer_with_spaces_replaced_by_underscores}.\n"
             "Use question-specific clues and avoid generic encyclopedia dumps.\n"
             "OUTPUT FORMAT (Strict JSON, no markdown):\n"
             "{\"correct\": boolean, \"reason\": string, \"coach\": {"
             "\"summary\": \"1-sentence definitive takeaway.\", "
-            "\"explanation\": \"Deep context explaining the logic of the answer.\", "
+            "\"error_diagnosis\": \"Why the student's answer was not accepted.\", "
+            "\"overlap_explainer\": \"How the wrong answer overlaps with but differs from the right one.\", "
+            "\"explanation_bullets\": ["
+            "\"Personalized teaching bullet 1\", "
+            "\"Personalized teaching bullet 2\", "
+            "\"Personalized teaching bullet 3\"], "
             "\"related_facts\": ["
-            "\"Fact 1: [Connection Type] - [Data]\", "
-            "\"Fact 2: [Connection Type] - [Data]\", "
-            "\"Fact 3: [Connection Type] - [Data]\"], "
+            "\"Fact bullet 1\", "
+            "\"Fact bullet 2\", "
+            "\"Fact bullet 3\"], "
             "\"key_clues\": ["
-            "\"Specific word in the question that gives it away\", "
+            "\"Specific clue that gives it away\", "
             "\"A chronological or spatial anchor\"], "
-            "\"memory_hook\": \"A short, sticky mnemonic or visual association.\", "
-            "\"study_focus\": {\"region\": \"String\", \"era\": \"String\", \"topic\": \"String\"}}}"
+            "\"study_tip\": \"A concrete next drill or recall move.\", "
+            "\"canonical_answer\": \"Clean canonical answer only\", "
+            "\"wiki_link\": \"https://en.wikipedia.org/wiki/Clean_Canonical_Answer\", "
+            "\"study_focus\": {\"region\": \"String\", \"era\": \"String\", \"topic\": \"String\"}, "
+            "\"confidence\": \"low|medium|high\"}}"
         )
         coach_user = {
             "question": question,
@@ -416,29 +444,14 @@ def grade_with_deepseek(payload: Dict[str, Any]) -> Dict[str, Any]:
             return {
                 "correct": fallback_correct,
                 "reason": reason,
-                "coach": fallback_coach(payload, fallback_correct, reason)
+                "coach": None if fallback_correct else fallback_coach(payload, fallback_correct, reason)
             }
 
         correct = bool(obj.get("correct"))
         reason = str(obj.get("reason", ""))
+        if correct:
+            return {"correct": correct, "reason": reason, "coach": None}
         coach = normalize_coach(obj.get("coach", obj), payload, correct, reason)
-        if not is_concept_check_valid(str(coach.get("next_check_question", "")), question, expected):
-            fix = call_deepseek([
-                {
-                    "role": "system",
-                    "content": "Rewrite only next_check_question as a concept-check (cause/effect/context), not a repetition, and do not include expected answer text. Return JSON: {\"next_check_question\": string}."
-                },
-                {
-                    "role": "user",
-                    "content": json.dumps({
-                        "original_question": question,
-                        "expected_answer": expected,
-                        "bad_next_check_question": coach.get("next_check_question", "")
-                    }, ensure_ascii=False)
-                }
-            ], max_tokens=140)
-            fixed_q = str(fix.get("next_check_question", "")).strip() if isinstance(fix, dict) else ""
-            coach["next_check_question"] = fixed_q if is_concept_check_valid(fixed_q, question, expected) else fallback_next_check(question)
         return {"correct": correct, "reason": reason, "coach": coach}
 
     except requests.exceptions.Timeout as e:
@@ -453,7 +466,7 @@ def grade_with_deepseek(payload: Dict[str, Any]) -> Dict[str, Any]:
     reason = "LLM grading unavailable; used fallback matcher"
     out = {"correct": fallback_correct, "reason": reason}
     if coach_enabled:
-        out["coach"] = fallback_coach(payload, fallback_correct, reason)
+        out["coach"] = None if fallback_correct else fallback_coach(payload, fallback_correct, reason)
     return out
 
 

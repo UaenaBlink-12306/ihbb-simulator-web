@@ -280,10 +280,65 @@ function iconForStudyFocus(region, topic) {
   const t = String(topic || '').toLowerCase();
   return regionIcons[r] || topicIcons[t] || '📘';
 }
-function fallbackCoachForItem(item, correct, reason) {
+function canonicalAnswerText(raw) {
+  const value = String(raw || '').trim();
+  if (!value) return '';
+  const cleaned = value
+    .replace(/\s*\([^)]*\)/g, '')
+    .replace(/\s*\[[^\]]*\]/g, '')
+    .replace(/\s+/g, ' ')
+    .replace(/[ ,;:.]+$/g, '')
+    .trim();
+  return cleaned || value;
+}
+function coachWikiLinkForAnswer(raw) {
+  const canonical = canonicalAnswerText(raw);
+  if (!canonical) return '';
+  return `https://en.wikipedia.org/wiki/${encodeURIComponent(canonical.replace(/\s+/g, '_'))}`;
+}
+function fallbackCoachFacts(region, era, topic) {
+  const r = String(region || 'this region');
+  const e = String(era || 'this period');
+  const t = String(topic || 'General').toLowerCase();
+  return [
+    `Place this answer in ${e}; similar clues in different eras often point somewhere else.`,
+    `Keep it tied to ${r}; cross-region lookalikes are a common trap.`,
+    `This is most testable through ${t} consequences, titles, and signature events rather than isolated name recall.`
+  ];
+}
+function normalizeCoachList(items, fallback = [], max = 4) {
+  const list = Array.isArray(items) ? items : [];
+  const normalized = list.map(x => String(x || '').trim()).filter(Boolean).slice(0, max);
+  if (normalized.length) return normalized;
+  return (Array.isArray(fallback) ? fallback : []).map(x => String(x || '').trim()).filter(Boolean).slice(0, max);
+}
+function coachListHtml(items) {
+  const list = Array.isArray(items) ? items : [];
+  if (!list.length) return '';
+  return `<ul>${list.map(item => `<li>${escHtml(item)}</li>`).join('')}</ul>`;
+}
+function coachWikiHtml(coach) {
+  const canonical = String(coach?.canonical_answer || '').trim();
+  const wikiLink = String(coach?.wiki_link || '').trim();
+  if (!wikiLink) return '';
+  const linkText = canonical || 'Wikipedia';
+  return `<div class="coach-section"><b>Read More:</b> <a class="coach-link" href="${escHtml(wikiLink)}" target="_blank" rel="noopener noreferrer">${escHtml(linkText)}</a></div>`;
+}
+function fallbackCoachForItem(item, correct, reason, userAnswer = '') {
   const region = String(item?.meta?.category || 'World') || 'World';
   const era = String(item?.meta?.era || '');
   const topic = topicFromQuestion(item?.question || '');
+  const explanationBullets = [
+    correct
+      ? 'Your answer already matched the expected target, so the main job is remembering the exact clue pattern that made it uniquely right.'
+      : (userAnswer
+        ? `Your answer "${userAnswer}" was in the same topic neighborhood, but the clue set narrowed to a different answer.`
+        : 'Your response was close to the topic area, but the clue set narrowed to a different answer.'),
+    `Use ${era || 'the era'} and ${region || 'the region'} as elimination anchors before you commit.`,
+    `Prioritize ${topic.toLowerCase()} clues such as names, titles, offices, or signature events that point to only one target.`,
+    reason || 'Focus on the clue that uniquely separates the expected answer from nearby lookalikes.'
+  ].filter(Boolean);
+  const canonicalAnswer = canonicalAnswerText(item?.answer || '');
   return {
     summary: correct
       ? 'You got it right. Keep tying clues to specific context.'
@@ -292,13 +347,18 @@ function fallbackCoachForItem(item, correct, reason) {
       ? 'Your response matched the required entity.'
       : 'Your response likely overlapped with a related but different answer.',
     overlap_explainer: reason || 'Use uniquely identifying clues to separate close answers.',
+    explanation: explanationBullets.join(' '),
+    explanation_bullets: explanationBullets,
+    related_facts: fallbackCoachFacts(region, era, topic),
     key_clues: [
       'Look for clues that uniquely identify one entity.',
       'Use era and region to narrow options.',
-      'Prioritize named events and proper nouns.'
+      'Prioritize named events and proper nouns.',
+      'Prefer titles and offices over broad topic similarity.'
     ],
-    memory_hook: 'One distinctive clue -> one canonical answer.',
-    next_check_question: 'What cause-and-effect relationship best explains this answer in context?',
+    study_tip: `Run a short drill on ${region}${era ? ` in ${era}` : ''} and stop on the first clue that rules out the closest lookalike.`,
+    canonical_answer: canonicalAnswer,
+    wiki_link: coachWikiLinkForAnswer(canonicalAnswer),
     study_focus: { region, era, topic, icon: iconForStudyFocus(region, topic) },
     confidence: 'low'
   };
@@ -311,18 +371,33 @@ function normalizeCoach(coach, item, correct, reason) {
   const topic = String(sf.topic || topicFromQuestion(item?.question || '')).trim() || 'General';
   const icon = String(sf.icon || iconForStudyFocus(region, topic)).trim() || iconForStudyFocus(region, topic);
   const clues = Array.isArray(c.key_clues) ? c.key_clues.map(x => String(x || '').trim()).filter(Boolean).slice(0, 4) : [];
+  const explanationBullets = normalizeCoachList(c.explanation_bullets || (c.explanation ? [c.explanation] : []), [
+    correct
+      ? 'You identified the right entity and context.'
+      : 'Your answer overlapped with a related but different concept.',
+    `Use ${era || 'the era'} and ${region || 'the region'} to eliminate close alternatives.`,
+    `Prioritize ${topic.toLowerCase()} clues that point to one specific target.`
+  ], 5);
+  const relatedFacts = normalizeCoachList(c.related_facts, fallbackCoachFacts(region, era, topic), 5);
+  const canonicalAnswer = canonicalAnswerText(c.canonical_answer || item?.answer || '');
+  const wikiLink = String(c.wiki_link || coachWikiLinkForAnswer(canonicalAnswer)).trim();
   const confidence = ['high', 'medium', 'low'].includes(String(c.confidence || '').toLowerCase()) ? String(c.confidence).toLowerCase() : 'low';
   return {
     summary: String(c.summary || (correct ? 'Correct answer with good clue alignment.' : 'Answer not accepted; review clue disambiguation.')).trim(),
+    explanation: String(c.explanation || explanationBullets.join(' ')).trim(),
+    explanation_bullets: explanationBullets,
+    related_facts: relatedFacts,
     error_diagnosis: String(c.error_diagnosis || (correct ? 'You identified the right entity.' : 'This answer likely mixed with a related concept.')).trim(),
     overlap_explainer: String(c.overlap_explainer || reason || 'Focus on clues that uniquely identify the expected answer.').trim(),
     key_clues: clues.length ? clues : [
       'Track the clue that uniquely identifies the answer.',
       'Use era and region to eliminate close alternatives.',
-      'Prioritize named events and figures.'
+      'Prioritize named events and figures.',
+      'Prefer titles and offices over broad topic similarity.'
     ],
-    memory_hook: String(c.memory_hook || 'Anchor one unique clue to one canonical answer.').trim(),
-    next_check_question: String(c.next_check_question || 'What consequence or context best confirms this answer?').trim(),
+    study_tip: String(c.study_tip || c.memory_hook || c.next_check_question || `Run a short drill on ${region}${era ? ` in ${era}` : ''} and stop on the first clue that rules out the closest lookalike.`).trim(),
+    canonical_answer: canonicalAnswer,
+    wiki_link: wikiLink,
     study_focus: { region, era, topic, icon },
     confidence
   };
@@ -339,6 +414,8 @@ function renderCoachCard(coach) {
   if (!el) return;
   if (!coach) { clearCoachCard(); return; }
   const focus = coach.study_focus || {};
+  const explanationBullets = Array.isArray(coach.explanation_bullets) ? coach.explanation_bullets : [];
+  const relatedFacts = Array.isArray(coach.related_facts) ? coach.related_facts : [];
   const clues = Array.isArray(coach.key_clues) ? coach.key_clues : [];
   el.innerHTML = `
     <div class="coach-head">
@@ -353,9 +430,11 @@ function renderCoachCard(coach) {
     <div class="coach-section"><b>Summary:</b> ${escHtml(coach.summary || '')}</div>
     <div class="coach-section"><b>Error Diagnosis:</b> ${escHtml(coach.error_diagnosis || '')}</div>
     <div class="coach-section"><b>Overlap Explainer:</b> ${escHtml(coach.overlap_explainer || '')}</div>
-    <div class="coach-section"><b>Key Clues:</b><ul>${clues.map(c => `<li>${escHtml(c)}</li>`).join('')}</ul></div>
-    <div class="coach-section"><b>Memory Hook:</b> ${escHtml(coach.memory_hook || '')}</div>
-    <div class="coach-section"><b>Next Check:</b> ${escHtml(coach.next_check_question || '')}</div>
+    <div class="coach-section"><b>Why This Answer Fits:</b>${coachListHtml(explanationBullets)}</div>
+    <div class="coach-section"><b>Key Clues:</b>${coachListHtml(clues)}</div>
+    <div class="coach-section"><b>Related Facts:</b>${coachListHtml(relatedFacts)}</div>
+    <div class="coach-section"><b>Study Tip:</b> ${escHtml(coach.study_tip || '')}</div>
+    ${coachWikiHtml(coach)}
   `;
   el.style.display = 'block';
 }
@@ -426,7 +505,7 @@ function buildCoachFocusSuggestions(records = CoachNotebook.records) {
         icon: entry.icon,
         meta: `${entry.unresolved} open lesson${entry.unresolved === 1 ? '' : 's'} • ${entry.incorrect} incorrect`,
         reason: entry.coach?.summary || entry.coach?.error_diagnosis || entry.sample?.reason || 'DeepSeek has highlighted this area repeatedly in recent practice.',
-        action: entry.coach?.next_check_question || entry.coach?.memory_hook || 'Run a targeted drill on this focus.',
+        action: entry.coach?.study_tip || entry.coach?.key_clues?.[0] || entry.coach?.related_facts?.[0] || 'Run a targeted drill on this focus.',
         priority,
         attemptId: String(entry.sample?.client_attempt_id || '').trim()
       };
@@ -1320,7 +1399,19 @@ function setPracticeButtons({ buzz, next, right, wrong, replay, alias, flag }) {
   const rp = $('btn-replay'); if (rp) rp.disabled = !replay;
   const al = $('btn-alias'); if (al) al.disabled = !alias;
   const fl = $('btn-flag'); if (fl) fl.disabled = !flag;
-  const cp = $('btn-copy-answer'); if (cp && App.phase !== 'answering') cp.disabled = true;
+}
+function setPracticeAuxControlsDisabled(disabled) {
+  const pause = $('btn-pause'); if (pause) pause.disabled = !!disabled;
+  const quit = $('btn-quit'); if (quit) quit.disabled = !!disabled;
+  const copy = $('btn-copy-answer'); if (copy) copy.disabled = !!disabled;
+}
+function lockPracticeDuringGrade() {
+  const bz = $('btn-buzz'); if (bz) bz.classList.remove('pulse');
+  setPracticeButtons({ buzz: false, next: false, right: false, wrong: false, replay: false, alias: false, flag: false });
+  setPracticeAuxControlsDisabled(true);
+}
+function unlockPracticeAfterGrade() {
+  setPracticeAuxControlsDisabled(false);
 }
 
 /********************* SRS *********************/
@@ -1433,6 +1524,8 @@ function startSession() {
   const cd = $('countdown'); if (cd) cd.textContent = '';
   const st = $('status'); if (st) st.textContent = 'Preparing…';
   const bt = $('buzz-time'); if (bt) bt.textContent = '—';
+  unlockPracticeAfterGrade();
+  const cp = $('btn-copy-answer'); if (cp) cp.disabled = true;
   if (App._cdIv) { clearInterval(App._cdIv); App._cdIv = null; }
 
   if (App.mode === 'srs') {
@@ -1475,6 +1568,8 @@ async function nextQuestion(first = false) {
   const ans = $('answer'); if (ans) ans.textContent = '';
   const cd = $('countdown'); if (cd) cd.textContent = '';
   const bt = $('buzz-time'); if (bt) bt.textContent = '—';
+  unlockPracticeAfterGrade();
+  const cp = $('btn-copy-answer'); if (cp) cp.disabled = true;
   if (App._cdIv) { clearInterval(App._cdIv); App._cdIv = null; }
 
   if (!first) App.i++;
@@ -1534,6 +1629,7 @@ function showAnswer() {
   const ans = $('answer'); if (ans) ans.textContent = ansText;
   playFeedbackCue('reveal');
   speakOnce(`标准答案：${item.answer}`, curVoice(), rate(), 1.0, 12000);
+  unlockPracticeAfterGrade();
   setPracticeButtons({ buzz: false, next: false, right: true, wrong: true, replay: true, alias: true, flag: true });
   const cp = $('btn-copy-answer'); if (cp) cp.disabled = false;
 }
@@ -1550,6 +1646,7 @@ function markWrong() {
 }
 
 function finishMark(isRight) {
+  unlockPracticeAfterGrade();
   if (App.mode === 'srs') srsMark(App.curItem.id, isRight);
   if (Settings.autoAdvance) {
     setPracticeButtons({ buzz: false, next: false, right: false, wrong: false, replay: true, alias: true, flag: true });
@@ -1833,8 +1930,11 @@ function renderCoachNotebook() {
             <div><b>Summary:</b> ${escHtml(coach.summary || '')}</div>
             <div><b>Error Diagnosis:</b> ${escHtml(coach.error_diagnosis || '')}</div>
             <div><b>Overlap Explainer:</b> ${escHtml(coach.overlap_explainer || '')}</div>
-            <div><b>Memory Hook:</b> ${escHtml(coach.memory_hook || '')}</div>
-            <div><b>Next Check:</b> ${escHtml(coach.next_check_question || '')}</div>
+            <div><b>Why This Answer Fits:</b>${coachListHtml(coach.explanation_bullets || [])}</div>
+            <div><b>Key Clues:</b>${coachListHtml(coach.key_clues || [])}</div>
+            <div><b>Related Facts:</b>${coachListHtml(coach.related_facts || [])}</div>
+            <div><b>Study Tip:</b> ${escHtml(coach.study_tip || '')}</div>
+            ${coachWikiHtml(coach)}
             <div class="coach-note-actions">
               <button class="btn pri coach-apply-note-focus" type="button" data-attempt="${escHtml(r.client_attempt_id)}">Practice this focus</button>
               <button class="btn ghost coach-toggle-mastered" data-mastered="${r.mastered ? '1' : '0'}" data-attempt="${escHtml(r.client_attempt_id)}">${r.mastered ? 'Unmark Mastered' : 'Mark Mastered'}</button>
@@ -2419,7 +2519,7 @@ document.addEventListener('keydown', (e) => {
     if (e.key === 'r' || e.key === 'R') { e.preventDefault(); markRight(); }
     if (e.key === 'w' || e.key === 'W') { e.preventDefault(); markWrong(); }
     if (e.key === 'n' || e.key === 'N') { e.preventDefault(); const nx = $('btn-next'); if (nx && !nx.disabled) nextQuestion(false); }
-    if (e.key === 'l' || e.key === 'L') { e.preventDefault(); replayLast(); }
+    if (e.key === 'l' || e.key === 'L') { e.preventDefault(); const rp = $('btn-replay'); if (rp && !rp.disabled) replayLast(); }
     if (e.key === 'c' || e.key === 'C') { e.preventDefault(); const b = $('btn-copy-answer'); if (b && !b.disabled) b.click(); }
   }
 });
@@ -2512,6 +2612,8 @@ function startTypingPhase(sec) {
   const row = $('typing-row'); if (row) row.style.display = 'flex';
   const inp = $('user-answer'); if (inp) { inp.disabled = false; inp.value = ''; setTimeout(() => inp.focus(), 0); }
   const sb = $('btn-submit-answer'); if (sb) sb.disabled = false;
+  unlockPracticeAfterGrade();
+  const cp = $('btn-copy-answer'); if (cp) cp.disabled = true;
 
   let t = 10; // fixed 10 seconds
   const cd = $('countdown'); if (cd) cd.textContent = `${t}`;
@@ -2545,10 +2647,14 @@ async function submitAnswer(auto = false) {
   const submitBtn = $('btn-submit-answer');
   if (inputEl) inputEl.disabled = true;
   if (submitBtn) submitBtn.disabled = true;
+  lockPracticeDuringGrade();
   const userAns = (inputEl && inputEl.value) || '';
 
   const item = App.curItem || { question: '', answer: '', aliases: [] };
+  App.phase = 'grading';
   const st = $('status'); if (st) st.textContent = 'Grading...';
+  const ans = $('answer'); if (ans) ans.textContent = 'Grading...';
+  clearCoachCard();
   const clientAttemptId = `att_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
   // Fallback matcher
@@ -2594,26 +2700,40 @@ async function submitAnswer(auto = false) {
     reason = 'Offline grading fallback used';
     correct = basicMatch(userAns, item.answer, item.aliases);
   }
-  const quickCoach = fallbackCoachForItem(item, correct, reason);
+  const quickCoach = fallbackCoachForItem(item, correct, reason, userAns);
 
   // Reveal canonical answer and finalize
-  App.phase = 'answering';
   const ansText = Settings.strict ? `标准答案：${item.answer}` : `标准答案：${item.answer}${(item.aliases?.length ? `  (aliases: ${item.aliases.slice(0, 3).join(', ')})` : '')}`;
-  const ans = $('answer'); if (ans) ans.textContent = ansText + (reason ? `  — ${correct ? '✓' : '✗'} ${reason}` : `  — ${correct ? '✓' : '✗'}`);
+  if (ans) ans.textContent = ansText + (reason ? `  — ${correct ? '✓' : '✗'} ${reason}` : `  — ${correct ? '✓' : '✗'}`);
   const coachEl = $('coach-card');
-  if (coachEl) coachEl.dataset.attempt = clientAttemptId;
+  if (coachEl) {
+    if (correct) {
+      try { delete coachEl.dataset.attempt; } catch { /* noop */ }
+    } else {
+      coachEl.dataset.attempt = clientAttemptId;
+    }
+  }
   if (correct) {
+    App.phase = 'graded';
     if (st) st.textContent = 'Correct.';
-    renderCoachCard(quickCoach);
+    clearCoachCard();
   } else {
+    App.phase = 'coach-loading';
     if (st) st.textContent = coachLoadingText;
     const loadingCoach = normalizeCoach({
-      summary: 'Incorrect. Generating targeted DeepSeek coaching...',
+      summary: 'Incorrect. Generating personalized DeepSeek coaching...',
       error_diagnosis: 'Analyzing your answer against the expected concept...',
       overlap_explainer: 'Preparing a focused misconception breakdown...',
-      key_clues: ['Reviewing clues that disambiguate this question.', 'Generating timeline/region anchors.'],
-      memory_hook: 'Building memory anchor...',
-      next_check_question: 'Preparing concept-check...',
+      explanation_bullets: [
+        'Grading is complete and the coach is now building a personalized explanation.',
+        'This lesson will compare your answer directly against the accepted answer.',
+        'High-value facts and clue anchors are being assembled now.'
+      ],
+      related_facts: ['Collecting supporting facts for this answer.', 'Building timeline and region anchors.'],
+      key_clues: ['Reviewing clues that disambiguate this question.', 'Generating timeline and region anchors.'],
+      study_tip: 'Preparing your next study move...',
+      canonical_answer: canonicalAnswerText(item.answer),
+      wiki_link: coachWikiLinkForAnswer(item.answer),
       study_focus: {
         region: item.meta?.category || 'World',
         era: item.meta?.era || '',
@@ -2626,40 +2746,54 @@ async function submitAnswer(auto = false) {
   }
   speakOnce(`标准答案：${item.answer}`, curVoice(), rate(), 1.0, 12000);
 
-  const coachRecord = {
-    client_attempt_id: clientAttemptId,
-    client_session_id: String(App.sessionId || ''),
-    question_id: String(item.id || ''),
-    question_text: String(item.question || ''),
-    expected_answer: String(item.answer || ''),
-    user_answer: String(userAns || ''),
-    correct: !!correct,
-    reason: String(reason || ''),
-    coach: quickCoach,
-    category: String(item.meta?.category || ''),
-    era: String(item.meta?.era || ''),
-    source: String(item.meta?.source || ''),
-    focus_topic: String(quickCoach?.study_focus?.topic || ''),
-    mastered: false,
-    mastered_at: null,
-    created_at: new Date().toISOString()
-  };
-  upsertCoachLocal(coachRecord);
-  syncCoachAttempt(coachRecord);
-
   if (correct) {
     playFeedbackCue('correct');
     App.correct++; App.resultsCorrect.push(true);
+    App.sessionBuzzTimes.push(App.buzzAt || 0);
+    App.submitBusy = false;
+    finishMark(true);
   } else {
     playFeedbackCue('wrong');
     srsAddWrong(item); App.resultsCorrect.push(false);
+    App.sessionBuzzTimes.push(App.buzzAt || 0);
   }
-  App.sessionBuzzTimes.push(App.buzzAt || 0);
-  finishMark(correct);
-  App.submitBusy = false;
 
   // Wrong answers get a second, separate coach request after grading is already returned.
   if (!correct) {
+    const coachRecord = {
+      client_attempt_id: clientAttemptId,
+      client_session_id: String(App.sessionId || ''),
+      question_id: String(item.id || ''),
+      question_text: String(item.question || ''),
+      expected_answer: String(item.answer || ''),
+      user_answer: String(userAns || ''),
+      correct: false,
+      reason: String(reason || ''),
+      coach: quickCoach,
+      category: String(item.meta?.category || ''),
+      era: String(item.meta?.era || ''),
+      source: String(item.meta?.source || ''),
+      focus_topic: String(quickCoach?.study_focus?.topic || ''),
+      mastered: false,
+      mastered_at: null,
+      created_at: new Date().toISOString()
+    };
+    upsertCoachLocal(coachRecord);
+    syncCoachAttempt(coachRecord);
+    const finalizeIncorrectCoach = (finalCoach, statusText) => {
+      coachRecord.coach = finalCoach;
+      coachRecord.focus_topic = String(finalCoach?.study_focus?.topic || '');
+      upsertCoachLocal(coachRecord);
+      syncCoachAttempt(coachRecord);
+      const liveCoachEl = $('coach-card');
+      if (liveCoachEl && liveCoachEl.dataset.attempt === clientAttemptId) {
+        renderCoachCard(finalCoach);
+      }
+      App.phase = 'graded';
+      if (st) st.textContent = statusText;
+      App.submitBusy = false;
+      finishMark(false);
+    };
     const fetchCoachAsync = async () => {
       try {
         const coachRes = await fetch('/api/grade', {
@@ -2690,27 +2824,10 @@ async function submitAnswer(auto = false) {
         if (!coachRes.ok) throw new Error(`Server error ${coachRes.status}`);
         const coachData = await coachRes.json();
         const finalCoach = normalizeCoach(coachData?.coach, item, correct, reason);
-        coachRecord.coach = finalCoach;
-        coachRecord.focus_topic = String(finalCoach?.study_focus?.topic || '');
-        upsertCoachLocal(coachRecord);
-        syncCoachAttempt(coachRecord);
-
-        const liveCoachEl = $('coach-card');
-        if (liveCoachEl && liveCoachEl.dataset.attempt === clientAttemptId) {
-          renderCoachCard(finalCoach);
-          if (st) st.textContent = 'Incorrect — coach lesson ready.';
-        }
+        finalizeIncorrectCoach(finalCoach, 'Incorrect — coach lesson ready.');
       } catch (err) {
-        const fallback = fallbackCoachForItem(item, correct, reason || 'Coach unavailable.');
-        coachRecord.coach = fallback;
-        coachRecord.focus_topic = String(fallback?.study_focus?.topic || '');
-        upsertCoachLocal(coachRecord);
-        syncCoachAttempt(coachRecord);
-        const liveCoachEl = $('coach-card');
-        if (liveCoachEl && liveCoachEl.dataset.attempt === clientAttemptId) {
-          renderCoachCard(fallback);
-          if (st) st.textContent = 'Incorrect — quick coaching shown (network issue).';
-        }
+        const fallback = fallbackCoachForItem(item, correct, reason || 'Coach unavailable.', userAns);
+        finalizeIncorrectCoach(fallback, 'Incorrect — quick coaching shown (network issue).');
       }
     };
     void fetchCoachAsync();

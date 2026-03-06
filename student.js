@@ -46,6 +46,34 @@ document.addEventListener('DOMContentLoaded', async () => {
             <p class="empty-copy">${esc(copy)}</p>
         </div>
     `;
+    const canonicalCoachAnswer = (value) => String(value || '')
+        .trim()
+        .replace(/\s*\([^)]*\)/g, '')
+        .replace(/\s*\[[^\]]*\]/g, '')
+        .replace(/\s+/g, ' ')
+        .replace(/[ ,;:.]+$/g, '')
+        .trim();
+    const coachWikiLink = (value) => {
+        const canonical = canonicalCoachAnswer(value);
+        return canonical ? `https://en.wikipedia.org/wiki/${encodeURIComponent(canonical.replace(/\s+/g, '_'))}` : '';
+    };
+    const normalizeCoachList = (items, fallback = [], max = 5) => {
+        const source = Array.isArray(items) ? items : [];
+        const list = source.map(x => String(x || '').trim()).filter(Boolean).slice(0, max);
+        if (list.length) return list;
+        return (Array.isArray(fallback) ? fallback : []).map(x => String(x || '').trim()).filter(Boolean).slice(0, max);
+    };
+    const coachListHtml = (items) => {
+        const list = Array.isArray(items) ? items : [];
+        if (!list.length) return '';
+        return `<ul class="coach-inline-list">${list.map(item => `<li>${esc(item)}</li>`).join('')}</ul>`;
+    };
+    const coachWikiHtml = (coach) => {
+        const wiki = String(coach?.wiki_link || '').trim();
+        if (!wiki) return '';
+        const label = String(coach?.canonical_answer || 'Wikipedia').trim() || 'Wikipedia';
+        return `<div><b>Read More:</b> <a class="coach-link" href="${esc(wiki)}" target="_blank" rel="noopener noreferrer">${esc(label)}</a></div>`;
+    };
 
     // ========== NAME CHECK ==========
     if (!profile.display_name || !profile.display_name.trim()) {
@@ -418,8 +446,15 @@ document.addEventListener('DOMContentLoaded', async () => {
                 summary: String(coach.summary || '').trim(),
                 error_diagnosis: String(coach.error_diagnosis || coach.explanation || '').trim(),
                 overlap_explainer: String(coach.overlap_explainer || '').trim(),
-                memory_hook: String(coach.memory_hook || '').trim(),
-                next_check_question: String(coach.next_check_question || '').trim(),
+                explanation_bullets: normalizeCoachList(coach.explanation_bullets || (coach.explanation ? [coach.explanation] : [])),
+                related_facts: normalizeCoachList(coach.related_facts || []),
+                key_clues: normalizeCoachList(coach.key_clues || [], [
+                    'Track the clue that uniquely identifies the expected answer.',
+                    'Use the era and region to eliminate close alternatives.'
+                ], 4),
+                study_tip: String(coach.study_tip || coach.memory_hook || coach.next_check_question || '').trim(),
+                canonical_answer: canonicalCoachAnswer(coach.canonical_answer || source.expected_answer || ''),
+                wiki_link: String(coach.wiki_link || coachWikiLink(coach.canonical_answer || source.expected_answer || '')).trim(),
                 study_focus: {
                     region: String(focus.region || source.category || '').trim(),
                     era: String(focus.era || source.era || '').trim(),
@@ -550,7 +585,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     icon: recordFocus.icon,
                     meta: `${entry.unresolved} open lesson${entry.unresolved === 1 ? '' : 's'} • ${entry.incorrect} incorrect`,
                     reason: sample?.coach?.summary || sample?.coach?.error_diagnosis || sample?.reason || 'DeepSeek highlighted this area repeatedly in your recent lessons.',
-                    action: sample?.coach?.next_check_question || sample?.coach?.memory_hook || 'Start a targeted drill around this focus.',
+                    action: sample?.coach?.study_tip || sample?.coach?.key_clues?.[0] || sample?.coach?.related_facts?.[0] || 'Start a targeted drill around this focus.',
                     priority,
                     source: 'coach',
                     attemptId: sample?.client_attempt_id || ''
@@ -685,8 +720,12 @@ document.addEventListener('DOMContentLoaded', async () => {
                                     <div><b>Expected:</b> ${esc(record.expected_answer || '')}</div>
                                     <div><b>Summary:</b> ${esc(coach.summary || '')}</div>
                                     <div><b>Error Diagnosis:</b> ${esc(coach.error_diagnosis || '')}</div>
-                                    <div><b>Memory Hook:</b> ${esc(coach.memory_hook || '')}</div>
-                                    <div><b>Next Check:</b> ${esc(coach.next_check_question || '')}</div>
+                                    <div><b>Overlap Explainer:</b> ${esc(coach.overlap_explainer || '')}</div>
+                                    <div><b>Why This Answer Fits:</b>${coachListHtml(coach.explanation_bullets || [])}</div>
+                                    <div><b>Key Clues:</b>${coachListHtml(coach.key_clues || [])}</div>
+                                    <div><b>Related Facts:</b>${coachListHtml(coach.related_facts || [])}</div>
+                                    <div><b>Study Tip:</b> ${esc(coach.study_tip || '')}</div>
+                                    ${coachWikiHtml(coach)}
                                     <div class="coach-note-actions">
                                         <button class="btn pri coach-note-drill" type="button" data-attempt="${esc(record.client_attempt_id)}">Use in Guided Drill</button>
                                         <button class="btn ghost coach-toggle-mastered" type="button" data-attempt="${esc(record.client_attempt_id)}" data-mastered="${record.mastered ? '1' : '0'}">${record.mastered ? 'Unmark Mastered' : 'Mark Mastered'}</button>

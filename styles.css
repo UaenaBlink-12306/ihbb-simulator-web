@@ -1878,6 +1878,21 @@ tr:hover td {
   padding: 0;
 }
 
+.coach-inline-list {
+  margin: 6px 0 0 18px;
+  padding: 0;
+}
+
+.coach-link {
+  color: var(--accent-2);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.coach-link:hover {
+  color: var(--text);
+}
+
 .coach-list {
   display: flex;
   flex-direction: column;
@@ -1936,6 +1951,11 @@ tr:hover td {
   flex-direction: column;
   gap: 6px;
   font-size: 13px;
+}
+
+.coach-note-body ul {
+  margin: 6px 0 0 18px;
+  padding: 0;
 }
 
 .coach-brief-card {

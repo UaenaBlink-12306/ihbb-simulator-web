@@ -114,58 +114,74 @@ module.exports = async function handler(req, res) {
       ];
     }
 
-    function isConceptCheckValid(nextCheck, originalQuestion, expectedAnswer) {
-      const nq = normalize(nextCheck);
-      const oq = normalize(originalQuestion);
-      const ex = normalize(expectedAnswer);
-      if (!nq || nq.length < 18) return false;
-      if (oq && nq === oq) return false;
-      if (ex && ex.length >= 4 && nq.includes(ex)) return false;
-      const nqWords = new Set(nq.split(' ').filter(Boolean));
-      const oqWords = new Set(oq.split(' ').filter(Boolean));
-      if (!nqWords.size || !oqWords.size) return true;
-      let overlap = 0;
-      for (const w of nqWords) if (oqWords.has(w)) overlap++;
-      const ratio = overlap / Math.max(1, Math.min(nqWords.size, oqWords.size));
-      return ratio < 0.72;
+    function canonicalAnswerText(answer) {
+      const raw = String(answer || '').trim();
+      if (!raw) return '';
+      const cleaned = raw
+        .replace(/\s*\([^)]*\)/g, '')
+        .replace(/\s*\[[^\]]*\]/g, '')
+        .replace(/\s+/g, ' ')
+        .replace(/[ ,;:.]+$/g, '')
+        .trim();
+      return cleaned || raw;
     }
 
-    function fallbackNextCheck(originalQuestion) {
-      const q = normalize(originalQuestion);
-      if (/(battle|war|campaign|siege)/.test(q)) return 'What broader political or territorial change followed that conflict?';
-      if (/(treaty|law|constitution)/.test(q)) return 'What long-term political effect did that decision produce?';
-      return 'What cause-and-effect relationship best explains this answer in its historical context?';
+    function wikiLinkForAnswer(answer) {
+      const canonical = canonicalAnswerText(answer);
+      if (!canonical) return '';
+      return `https://en.wikipedia.org/wiki/${encodeURIComponent(canonical.replace(/\s+/g, '_'))}`;
+    }
+
+    function fallbackExplanationBullets(correct, reasonText, region, era, topic) {
+      const user = String(userAnswer || '').trim();
+      const comparison = correct
+        ? 'Your answer already matched the expected target, so focus on remembering the exact clue pattern that made it uniquely right.'
+        : (user
+          ? `Your answer "${user}" lived near the right topic, but the clue set narrowed to a different answer.`
+          : 'Your response was close to the topic area, but the clue set narrowed to a different answer.');
+      const anchors = `Use ${era || 'the era'} and ${region || 'the region'} as elimination anchors before you commit.`;
+      const topicNote = `Prioritize ${String(topic || 'General').toLowerCase()} clues such as named events, titles, offices, or signature works that point to one target only.`;
+      const reasonNote = String(reasonText || 'Focus on the clue that uniquely separates the expected answer from nearby lookalikes.').trim();
+      return [comparison, anchors, topicNote, reasonNote].filter(Boolean);
+    }
+
+    function fallbackStudyTip(region, era, topic) {
+      const place = String(region || 'this region');
+      const when = String(era || '').trim();
+      const theme = String(topic || 'General').toLowerCase();
+      return `Run a short drill on ${place}${when ? ` in ${when}` : ''} and stop on the first clue that rules out the closest lookalike. Focus especially on ${theme} triggers.`;
     }
 
     function buildFallbackCoach(correct, reasonText) {
       const region = String(meta.category || meta.region || 'World') || 'World';
       const era = String(meta.era || '');
       const topic = guessTopic(question);
-      const explanation = correct
-        ? 'The clue set points to a unique target, and your response matched that target within the right context.'
-        : 'The likely issue is conceptual overlap: your response may be related, but the clues narrow to a different target in this context.';
+      const explanationBullets = fallbackExplanationBullets(correct, reasonText, region, era, topic);
       const relatedFacts = fallbackRelatedFacts(region, era, topic);
-      const nextCheck = fallbackNextCheck(question);
+      const canonicalAnswer = canonicalAnswerText(expected);
       return {
         summary: correct
           ? 'You got it right. Keep tying clues to the specific historical context.'
           : 'This was likely a near-miss in concept matching rather than total misunderstanding.',
-        explanation,
+        explanation: explanationBullets.join(' '),
+        explanation_bullets: explanationBullets,
         related_facts: relatedFacts,
         key_clues: [
           'Identify the most specific clue that disambiguates lookalikes.',
-          'Lock the answer to a timeline or region anchor before committing.'
+          'Lock the answer to a timeline or region anchor before committing.',
+          'Prefer named events, titles, and offices over broad topic similarity.'
         ],
-        memory_hook: 'Anchor one distinctive clue to one named entity.',
+        study_tip: fallbackStudyTip(region, era, topic),
+        canonical_answer: canonicalAnswer,
+        wiki_link: wikiLinkForAnswer(canonicalAnswer),
         study_focus: {
           region,
           era,
           topic,
           icon: iconForFocus(region, topic)
         },
-        error_diagnosis: explanation,
+        error_diagnosis: String(reasonText || explanationBullets[0]).trim(),
         overlap_explainer: reasonText || relatedFacts[0],
-        next_check_question: nextCheck,
         confidence: 'low'
       };
     }
@@ -183,30 +199,34 @@ module.exports = async function handler(req, res) {
         ? rc.key_clues.map(x => String(x || '').trim()).filter(Boolean).slice(0, 4)
         : [];
       const relatedFacts = Array.isArray(rc.related_facts)
-        ? rc.related_facts.map(x => String(x || '').trim()).filter(Boolean).slice(0, 3)
+        ? rc.related_facts.map(x => String(x || '').trim()).filter(Boolean).slice(0, 5)
         : [];
+      const explanationBullets = Array.isArray(rc.explanation_bullets)
+        ? rc.explanation_bullets.map(x => String(x || '').trim()).filter(Boolean).slice(0, 5)
+        : (String(rc.explanation || '').trim() ? [String(rc.explanation).trim()] : []);
       const fallbackFacts = fallbackRelatedFacts(region, era, topic);
-      const explanation = String(
-        rc.explanation ||
-        rc.error_diagnosis ||
-        (correct ? 'You identified the right entity and context.' : 'Your response likely overlapped with a related but different concept.')
-      ).trim();
-      const nextCheckRaw = String(rc.next_check_question || '').trim();
-      const nextCheck = nextCheckRaw || fallbackNextCheck(question);
+      const mergedExplanationBullets = explanationBullets.length
+        ? explanationBullets
+        : fallbackExplanationBullets(correct, reasonText, region, era, topic);
       const mergedRelatedFacts = relatedFacts.length ? relatedFacts : fallbackFacts;
+      const canonicalAnswer = canonicalAnswerText(rc.canonical_answer || expected);
+      const wikiLink = String(rc.wiki_link || wikiLinkForAnswer(canonicalAnswer)).trim();
 
       return {
         summary: String(rc.summary || (correct ? 'Correct answer with good clue alignment.' : 'This answer was not accepted; review clue disambiguation.')).trim(),
-        explanation,
+        explanation: mergedExplanationBullets.join(' ').trim(),
+        explanation_bullets: mergedExplanationBullets,
         related_facts: mergedRelatedFacts,
-        error_diagnosis: explanation,
+        error_diagnosis: String(rc.error_diagnosis || reasonText || mergedExplanationBullets[0]).trim(),
         overlap_explainer: String(rc.overlap_explainer || mergedRelatedFacts.join(' | ') || reasonText || 'Use the most specific clues to separate related answers.').trim(),
         key_clues: keyClues.length ? keyClues : [
           'Track clues that uniquely identify the expected answer.',
-          'Use era and region to eliminate close alternatives.'
+          'Use era and region to eliminate close alternatives.',
+          'Prefer named events, titles, and offices over broad topic overlap.'
         ],
-        memory_hook: String(rc.memory_hook || 'Pair one unique clue with one canonical answer.').trim(),
-        next_check_question: nextCheck,
+        study_tip: String(rc.study_tip || rc.memory_hook || rc.next_check_question || fallbackStudyTip(region, era, topic)).trim(),
+        canonical_answer: canonicalAnswer,
+        wiki_link: wikiLink,
         study_focus: { region, era, topic, icon },
         confidence
       };
@@ -241,7 +261,7 @@ module.exports = async function handler(req, res) {
       const lockedCorrect = (coachOnly && suppliedCorrect !== null) ? suppliedCorrect : fallbackCorrect;
       const lockedReason = coachOnly ? (suppliedReason || noKeyReason) : noKeyReason;
       const output = { correct: lockedCorrect, reason: lockedReason };
-      if (coachEnabled) output.coach = buildFallbackCoach(lockedCorrect, lockedReason);
+      if (coachEnabled) output.coach = lockedCorrect ? null : buildFallbackCoach(lockedCorrect, lockedReason);
       return res.status(200).json(output);
     }
 
@@ -269,16 +289,26 @@ module.exports = async function handler(req, res) {
     if (coachOnly) {
       const lockedCorrect = suppliedCorrect === null ? fallbackCorrect : suppliedCorrect;
       const lockedReason = suppliedReason || (lockedCorrect ? 'Correct by prior grading pass.' : 'Incorrect by prior grading pass.');
+      if (lockedCorrect) {
+        return res.status(200).json({ correct: lockedCorrect, reason: lockedReason, coach: null });
+      }
       const coachOnlySystem = [
-        'Act as an expert polymath and memory architect. Generate only coaching content for an already-graded answer.',
+        'Act as a personalized IHBB coach. Generate only coaching content for an already-graded incorrect answer.',
         'Do not re-grade. Respect provided is_correct and reason as the locked verdict.',
+        'Address the student directly and use their wrong answer to explain the mismatch.',
+        'Do not write one large paragraph; use bullet-style strings in arrays.',
         'INSTRUCTIONS:',
-        '1) Explain the underlying logic/significance in 2-3 punchy sentences.',
-        '2) Provide 3 related high-value facts linked to the correct answer.',
-        '3) If is_correct is false, clearly separate user answer vs expected answer.',
-        '4) Provide one vivid mnemonic.',
+        '1) summary: one concise personalized takeaway.',
+        '2) error_diagnosis: clearly explain why the student answer missed.',
+        '3) overlap_explainer: explain the distinction between the student answer and the correct answer.',
+        '4) explanation_bullets: 3 to 4 short bullet strings teaching the answer in context.',
+        '5) related_facts: 3 to 5 short bullet strings with valuable adjacent facts.',
+        '6) key_clues: 2 to 4 short bullet strings for the best giveaway clues.',
+        '7) study_tip: one concrete next study move.',
+        '8) canonical_answer: the clean answer only, with parenthetical grading notes removed.',
+        '9) wiki_link: https://en.wikipedia.org/wiki/{canonical_answer_with_spaces_replaced_by_underscores}.',
         'Return strict JSON with this shape only:',
-        '{"coach":{"summary":"1-sentence definitive takeaway.","explanation":"Deep context explaining the logic of the answer.","related_facts":["Fact 1: [Connection Type] - [Data]","Fact 2: [Connection Type] - [Data]","Fact 3: [Connection Type] - [Data]"],"key_clues":["Specific word in the question that gives it away","A chronological or spatial anchor"],"memory_hook":"A short, sticky mnemonic or visual association.","study_focus":{"region":"String","era":"String","topic":"String"}}}'
+        '{"coach":{"summary":"1-sentence definitive takeaway.","error_diagnosis":"Why the student answer was not accepted.","overlap_explainer":"How the wrong answer overlaps with but differs from the right one.","explanation_bullets":["Personalized teaching bullet 1","Personalized teaching bullet 2","Personalized teaching bullet 3"],"related_facts":["Fact bullet 1","Fact bullet 2","Fact bullet 3"],"key_clues":["Specific clue that gives it away","A chronological or spatial anchor"],"study_tip":"A concrete next drill or recall move.","canonical_answer":"Clean canonical answer only","wiki_link":"https://en.wikipedia.org/wiki/Clean_Canonical_Answer","study_focus":{"region":"String","era":"String","topic":"String"},"confidence":"low|medium|high"}}'
       ].join('\n');
       const coachOnlyMessages = [
         { role: 'system', content: coachOnlySystem },
@@ -306,41 +336,25 @@ module.exports = async function handler(req, res) {
           coach: buildFallbackCoach(lockedCorrect, lockedReason)
         });
       }
-      let coach = normalizeCoach(coached.coach || coached, lockedCorrect, lockedReason);
-      if (!isConceptCheckValid(coach.next_check_question, question, expected)) {
-        const fixMessages = [
-          {
-            role: 'system',
-            content: 'Rewrite only next_check_question as a concept-check (cause/effect/context), not a repetition, and do not include the expected answer string. Return JSON: {"next_check_question":string}.'
-          },
-          {
-            role: 'user',
-            content: JSON.stringify({
-              original_question: question,
-              expected_answer: expected,
-              bad_next_check_question: coach.next_check_question
-            })
-          }
-        ];
-        const fixed = await callDeepSeek(fixMessages, 140);
-        const nextQ = String(fixed?.next_check_question || '').trim();
-        coach.next_check_question = isConceptCheckValid(nextQ, question, expected) ? nextQ : fallbackNextCheck(question);
-      }
+      const coach = normalizeCoach(coached.coach || coached, lockedCorrect, lockedReason);
       return res.status(200).json({ correct: lockedCorrect, reason: lockedReason, coach });
     }
 
     const coachSystem = [
-      'Act as an expert polymath and memory architect. Your goal is to provide a high-density "Micro-Lesson" that helps a student not just memorize a fact, but understand its place in a broader system of knowledge.',
-      'First, grade the answer and return top-level fields: {"correct":boolean,"reason":string}. Use this grading verdict as is_correct when writing the coach content.',
+      'Act as a personalized IHBB coach. Your goal is to provide a high-density "Micro-Lesson" that helps a student not just memorize a fact, but understand its place in a broader system of knowledge.',
+      'First, grade the answer and return top-level fields: {"correct":boolean,"reason":string}. If the answer is correct, return coach as null.',
       'CONTEXT KEYS PROVIDED: question, expected_answer, user_answer, aliases, strict, category, meta, coach_depth.',
       'INSTRUCTIONS:',
-      '1) THE "WHY": Explain the underlying logic or historical significance in 2-3 punchy sentences.',
-      '2) THE "DEEP SCAN" (3 RELATED FACTS): Provide three additional high-value facts contextually linked to the answer.',
-      '3) ERROR CORRECTION: If is_correct is false, briefly explain the specific difference between the user answer and the correct one.',
-      '4) MEMORY ANCHOR: Provide one vivid, strange, or rhythmic mnemonic.',
+      '1) Personalize the lesson to the student wrong answer.',
+      '2) Do not write one large paragraph; use bullet-style strings in arrays.',
+      '3) explanation_bullets: 3 to 4 short bullets teaching why the correct answer fits.',
+      '4) related_facts: 3 to 5 short bullets with valuable adjacent facts.',
+      '5) key_clues: 2 to 4 short bullets identifying the best giveaway clues.',
+      '6) canonical_answer must be the clean answer only, with parenthetical grading notes removed.',
+      '7) wiki_link must be https://en.wikipedia.org/wiki/{canonical_answer_with_spaces_replaced_by_underscores}.',
       'Use question-specific clues and avoid generic encyclopedia dumps.',
       'OUTPUT FORMAT (Strict JSON, no markdown):',
-      '{"correct":boolean,"reason":string,"coach":{"summary":"1-sentence definitive takeaway.","explanation":"Deep context explaining the logic of the answer.","related_facts":["Fact 1: [Connection Type] - [Data]","Fact 2: [Connection Type] - [Data]","Fact 3: [Connection Type] - [Data]"],"key_clues":["Specific word in the question that gives it away","A chronological or spatial anchor"],"memory_hook":"A short, sticky mnemonic or visual association.","study_focus":{"region":"String","era":"String","topic":"String"}}}'
+      '{"correct":boolean,"reason":string,"coach":{"summary":"1-sentence definitive takeaway.","error_diagnosis":"Why the student answer was not accepted.","overlap_explainer":"How the wrong answer overlaps with but differs from the right one.","explanation_bullets":["Personalized teaching bullet 1","Personalized teaching bullet 2","Personalized teaching bullet 3"],"related_facts":["Fact bullet 1","Fact bullet 2","Fact bullet 3"],"key_clues":["Specific clue that gives it away","A chronological or spatial anchor"],"study_tip":"A concrete next drill or recall move.","canonical_answer":"Clean canonical answer only","wiki_link":"https://en.wikipedia.org/wiki/Clean_Canonical_Answer","study_focus":{"region":"String","era":"String","topic":"String"},"confidence":"low|medium|high"}}'
     ].join('\n');
 
     const coachMessages = [
@@ -365,33 +379,16 @@ module.exports = async function handler(req, res) {
       return res.status(200).json({
         correct: fallbackCorrect,
         reason: 'Could not parse DeepSeek response, used basic match instead.',
-        coach: buildFallbackCoach(fallbackCorrect, 'Could not parse DeepSeek response, used fallback coach.')
+        coach: fallbackCorrect ? null : buildFallbackCoach(fallbackCorrect, 'Could not parse DeepSeek response, used fallback coach.')
       });
     }
 
     const correct = !!graded.correct;
     const reason = String(graded.reason || '');
-    let coach = normalizeCoach(graded.coach || graded, correct, reason);
-
-    if (!isConceptCheckValid(coach.next_check_question, question, expected)) {
-      const fixMessages = [
-        {
-          role: 'system',
-          content: 'Rewrite only next_check_question as a concept-check (cause/effect/context), not a repetition, and do not include the expected answer string. Return JSON: {"next_check_question":string}.'
-        },
-        {
-          role: 'user',
-          content: JSON.stringify({
-            original_question: question,
-            expected_answer: expected,
-            bad_next_check_question: coach.next_check_question
-          })
-        }
-      ];
-      const fixed = await callDeepSeek(fixMessages, 140);
-      const nextQ = String(fixed?.next_check_question || '').trim();
-      coach.next_check_question = isConceptCheckValid(nextQ, question, expected) ? nextQ : fallbackNextCheck(question);
+    if (correct) {
+      return res.status(200).json({ correct, reason, coach: null });
     }
+    const coach = normalizeCoach(graded.coach || graded, correct, reason);
 
     return res.status(200).json({ correct, reason, coach });
   } catch (err) {
