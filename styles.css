@@ -1808,7 +1808,7 @@ tr:hover td {
   --accent: #63a8ff;
   --accent2: #28d2b0;
   --ring: rgba(99, 168, 255, 0.28);
-  --shadow: 0 24px 64px -28px rgba(0, 0, 0, 0.8);
+  --shadow: 0 18px 42px -30px rgba(0, 0, 0, 0.56);
   --glass: linear-gradient(180deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.015));
   --glass-border: inset 0 1px 0 rgba(255, 255, 255, 0.08);
   --page-max: 1280px;
@@ -1829,7 +1829,7 @@ tr:hover td {
     --accent: #1f6fff;
     --accent2: #0d9a83;
     --ring: rgba(31, 111, 255, 0.18);
-    --shadow: 0 28px 50px -28px rgba(15, 23, 42, 0.18);
+    --shadow: 0 20px 38px -30px rgba(15, 23, 42, 0.12);
     --glass: linear-gradient(180deg, rgba(255, 255, 255, 0.95), rgba(255, 255, 255, 0.78));
     --glass-border: inset 0 1px 0 rgba(255, 255, 255, 0.85);
   }
@@ -1841,8 +1841,10 @@ body {
     radial-gradient(circle at 86% 16%, rgba(40, 210, 176, 0.08), transparent 34%),
     radial-gradient(circle at 78% 84%, rgba(16, 185, 129, 0.06), transparent 26%),
     linear-gradient(135deg, #0a121d 0%, #101a27 48%, #0c131d 100%);
-  background-size: 160% 160%;
-  animation-duration: 42s;
+  background-size: 100% 100%;
+  background-repeat: no-repeat;
+  animation: none;
+  text-rendering: auto;
 }
 
 @media (prefers-color-scheme: light) {
@@ -1979,17 +1981,43 @@ body {
 }
 
 .card {
-  background: var(--surface);
-  background-image: var(--glass);
+  background: var(--surface-elevated);
+  background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.015));
   border: 1px solid var(--line);
   box-shadow: var(--glass-border), var(--shadow);
-  backdrop-filter: blur(18px);
-  -webkit-backdrop-filter: blur(18px);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  transition: border-color 0.2s ease, background-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .card:hover {
   transform: none;
-  box-shadow: var(--glass-border), 0 28px 64px -30px rgba(0, 0, 0, 0.78);
+  box-shadow: var(--glass-border), 0 20px 44px -32px rgba(0, 0, 0, 0.62);
+}
+
+.section-card,
+.metric-card,
+.card-muted-box,
+.summary-item,
+.empty-state,
+.list-empty,
+.list-item,
+.question-surface,
+.preview-area {
+  contain: paint;
+}
+
+@supports (content-visibility: auto) {
+  .section-card,
+  .metric-card,
+  .list-item,
+  .empty-state,
+  .list-empty,
+  .question-surface,
+  .preview-area {
+    content-visibility: auto;
+    contain-intrinsic-size: 1px 280px;
+  }
 }
 
 .section-card {
@@ -2521,7 +2549,7 @@ input[type=datetime-local]:focus {
   justify-content: center;
   padding: 24px;
   background: rgba(3, 8, 14, 0.78);
-  backdrop-filter: blur(12px);
+  backdrop-filter: blur(4px);
   z-index: 1000;
 }
 
@@ -2669,4 +2697,28 @@ input[type=datetime-local]:focus {
   font-weight: 800;
   letter-spacing: 0.14em;
   text-transform: uppercase;
+  animation: none;
+}
+
+.coming-soon .cs-badge {
+  animation: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body {
+    animation: none;
+  }
+
+  .btn,
+  .card,
+  .tab-strip a,
+  .tab-strip button,
+  .dash-tab,
+  .assign-sub-tab,
+  .coming-soon .cs-icon,
+  .coming-soon .cs-badge,
+  .buzz.pulse::after {
+    animation: none !important;
+    transition: none !important;
+  }
 }
