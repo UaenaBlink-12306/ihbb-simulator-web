@@ -74,6 +74,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const label = String(coach?.canonical_answer || 'Wikipedia').trim() || 'Wikipedia';
         return `<div><b>Read More:</b> <a class="coach-link" href="${esc(wiki)}" target="_blank" rel="noopener noreferrer">${esc(label)}</a></div>`;
     };
+    const isNotebookCoachRecord = (record) => !!record && !record.correct;
 
     // ========== NAME CHECK ==========
     if (!profile.display_name || !profile.display_name.trim()) {
@@ -425,6 +426,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     function normalizeCoachRecord(raw) {
         const source = raw && typeof raw === 'object' ? raw : {};
+        if (!isNotebookCoachRecord(source)) return null;
         const coach = source.coach && typeof source.coach === 'object' ? source.coach : {};
         const focus = coach.study_focus && typeof coach.study_focus === 'object' ? coach.study_focus : {};
         return {
@@ -466,12 +468,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     function readCoachLocalRecords() {
-        return safeReadJson(KEY_COACH_LOCAL, []).map(normalizeCoachRecord);
+        const raw = safeReadJson(KEY_COACH_LOCAL, []);
+        const safe = (Array.isArray(raw) ? raw : []).filter(isNotebookCoachRecord).map(normalizeCoachRecord).filter(Boolean);
+        if (Array.isArray(raw) && safe.length !== raw.length) writeCoachLocalRecords(safe);
+        return safe;
     }
 
     function writeCoachLocalRecords(records) {
         try {
-            localStorage.setItem(KEY_COACH_LOCAL, JSON.stringify((Array.isArray(records) ? records : []).slice(0, 300)));
+            localStorage.setItem(KEY_COACH_LOCAL, JSON.stringify((Array.isArray(records) ? records : []).filter(isNotebookCoachRecord).slice(0, 300)));
         } catch {
             // Ignore local storage failures.
         }
@@ -485,7 +490,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             .order('created_at', { ascending: false })
             .limit(200);
         if (error) throw error;
-        const records = (Array.isArray(data) ? data : []).map(normalizeCoachRecord);
+        const records = (Array.isArray(data) ? data : []).filter(isNotebookCoachRecord).map(normalizeCoachRecord).filter(Boolean);
         writeCoachLocalRecords(records);
         return records;
     }

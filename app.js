@@ -200,12 +200,21 @@ function safeReadJson(key, fallback) {
 function setJsonSafe(key, value) {
   try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* noop */ }
 }
+function isNotebookAttemptRecord(record) {
+  return !!record && !record.correct;
+}
 function getCoachLocal() {
   const arr = safeReadJson(KEY_COACH_LOCAL, []);
-  return Array.isArray(arr) ? arr : [];
+  const safe = Array.isArray(arr) ? arr.filter(isNotebookAttemptRecord) : [];
+  if (Array.isArray(arr) && safe.length !== arr.length) setJsonSafe(KEY_COACH_LOCAL, safe.slice(0, 300));
+  return safe;
 }
-function setCoachLocal(arr) { setJsonSafe(KEY_COACH_LOCAL, Array.isArray(arr) ? arr.slice(0, 300) : []); }
+function setCoachLocal(arr) {
+  const safe = Array.isArray(arr) ? arr.filter(isNotebookAttemptRecord).slice(0, 300) : [];
+  setJsonSafe(KEY_COACH_LOCAL, safe);
+}
 function upsertCoachLocal(record) {
+  if (!isNotebookAttemptRecord(record)) return;
   const arr = getCoachLocal();
   const id = String(record?.client_attempt_id || '').trim();
   if (!id) return;
@@ -216,10 +225,16 @@ function upsertCoachLocal(record) {
 }
 function getCoachPending() {
   const arr = safeReadJson(KEY_COACH_PENDING, []);
-  return Array.isArray(arr) ? arr : [];
+  const safe = Array.isArray(arr) ? arr.filter(isNotebookAttemptRecord) : [];
+  if (Array.isArray(arr) && safe.length !== arr.length) setJsonSafe(KEY_COACH_PENDING, safe.slice(0, 300));
+  return safe;
 }
-function setCoachPending(arr) { setJsonSafe(KEY_COACH_PENDING, Array.isArray(arr) ? arr.slice(0, 300) : []); }
+function setCoachPending(arr) {
+  const safe = Array.isArray(arr) ? arr.filter(isNotebookAttemptRecord).slice(0, 300) : [];
+  setJsonSafe(KEY_COACH_PENDING, safe);
+}
 function enqueueCoachPending(record) {
+  if (!isNotebookAttemptRecord(record)) return;
   const arr = getCoachPending();
   const id = String(record?.client_attempt_id || '').trim();
   if (!id) return;
@@ -1849,6 +1864,7 @@ function backfillLocalSessionsToCloud() {
 }
 
 function normalizeCoachAttemptRecord(record) {
+  if (!isNotebookAttemptRecord(record)) return null;
   const coach = normalizeCoach(record?.coach, {
     question: record?.question_text || '',
     meta: {
@@ -1879,6 +1895,7 @@ function normalizeCoachAttemptRecord(record) {
 
 function syncCoachAttempt(record) {
   const safe = normalizeCoachAttemptRecord(record);
+  if (!safe) return;
   enqueueCoachPending(safe);
   queueCoachSync(async (sb, userId) => {
     const { error } = await sb.from(COACH_SYNC_TABLE).upsert({
@@ -1910,6 +1927,7 @@ function flushCoachPending() {
   queueCoachSync(async (sb, userId) => {
     const rows = pending.map(x => {
       const safe = normalizeCoachAttemptRecord(x);
+      if (!safe) return null;
       return {
         user_id: userId,
         client_attempt_id: safe.client_attempt_id,
@@ -1928,7 +1946,11 @@ function flushCoachPending() {
         mastered: safe.mastered,
         mastered_at: safe.mastered_at
       };
-    });
+    }).filter(Boolean);
+    if (!rows.length) {
+      setCoachPending([]);
+      return;
+    }
     const { error } = await sb.from(COACH_SYNC_TABLE).upsert(rows, { onConflict: 'user_id,client_attempt_id' });
     if (error) throw error;
     setCoachPending([]);
@@ -1947,7 +1969,7 @@ async function fetchCoachNotebookRecords(forceCloud = false) {
           .order('created_at', { ascending: false })
           .limit(200);
         if (error) throw error;
-        const recs = (Array.isArray(data) ? data : []).map(normalizeCoachAttemptRecord);
+        const recs = (Array.isArray(data) ? data : []).map(normalizeCoachAttemptRecord).filter(Boolean);
         CoachNotebook.records = recs;
         setCoachLocal(recs);
         CoachNotebook.loaded = true;
@@ -1958,7 +1980,7 @@ async function fetchCoachNotebookRecords(forceCloud = false) {
       console.warn('Coach notebook cloud fetch failed; using local.', err);
     }
   }
-  const local = getCoachLocal().map(normalizeCoachAttemptRecord);
+  const local = getCoachLocal().map(normalizeCoachAttemptRecord).filter(Boolean);
   CoachNotebook.records = local;
   CoachNotebook.loaded = true;
   return local;
