@@ -666,10 +666,15 @@ function coachFocusFromAttemptId(attemptId) {
   };
 }
 
-function openCoachNotebook(attemptId = '') {
-  navSet('nav-review');
-  SHOW('view-review');
-  renderCoachNotebook();
+async function showCoachView(forceCloud = true) {
+  navSet('nav-coach');
+  SHOW('view-coach');
+  flushCoachPending();
+  await refreshCoachNotebook(forceCloud);
+}
+
+async function openCoachNotebook(attemptId = '') {
+  await showCoachView(true);
   if (!attemptId) return;
   setTimeout(() => {
     const target = Array.from(document.querySelectorAll('.coach-note'))
@@ -1893,16 +1898,21 @@ function renderCoachNotebook() {
   const listEl = $('coach-list');
   if (!listEl) return;
   const countEl = $('coach-count');
+  const openCountEl = $('coach-open-count');
+  const masteredCountEl = $('coach-mastered-count');
   const q = (($('coach-search') && $('coach-search').value) || '').trim().toLowerCase();
   const filter = (($('coach-filter') && $('coach-filter').value) || 'all').toLowerCase();
-  const rows = (CoachNotebook.records || []).filter(r => {
+  const allRows = Array.isArray(CoachNotebook.records) ? CoachNotebook.records : [];
+  if (countEl) countEl.textContent = String(allRows.length);
+  if (openCountEl) openCountEl.textContent = String(allRows.filter(r => !r.mastered).length);
+  if (masteredCountEl) masteredCountEl.textContent = String(allRows.filter(r => !!r.mastered).length);
+  const rows = allRows.filter(r => {
     if (filter === 'todo' && r.mastered) return false;
     if (filter === 'mastered' && !r.mastered) return false;
     if (!q) return true;
     const hay = `${r.question_text} ${r.expected_answer} ${r.user_answer} ${r.reason} ${r.focus_topic} ${r.category} ${r.era}`.toLowerCase();
     return hay.includes(q);
   });
-  if (countEl) countEl.textContent = String(rows.length);
   if (!rows.length) {
     listEl.innerHTML = `<div class="coach-empty">No coach lessons found.</div>`;
     renderSetupCoachGuide();
@@ -2141,6 +2151,11 @@ $('nav-review')?.addEventListener('click', async (e) => {
   flushCoachPending();
   await refreshCoachNotebook(true);
 });
+$('nav-coach')?.addEventListener('click', async (e) => {
+  e.preventDefault();
+  playFeedbackCue('nav');
+  await showCoachView(true);
+});
 $('nav-library')?.addEventListener('click', (e) => { e.preventDefault(); playFeedbackCue('nav'); navSet('nav-library'); SHOW('view-library'); renderLibraryTable(); });
 $('nav-help')?.addEventListener('click', (e) => { e.preventDefault(); playFeedbackCue('nav'); openHelp(); });
 
@@ -2325,6 +2340,22 @@ $('btn-review-coach-apply')?.addEventListener('click', () => {
   SHOW('view-setup');
 });
 $('btn-review-coach-notebook')?.addEventListener('click', () => openCoachNotebook());
+$('btn-coach-apply-top')?.addEventListener('click', () => {
+  const focus = CoachFocusSuggestions[0] || null;
+  if (!applyCoachFocusToSetup(focus)) return;
+  navSet('nav-setup');
+  SHOW('view-setup');
+});
+$('btn-coach-back-review')?.addEventListener('click', async () => {
+  playFeedbackCue('nav');
+  navSet('nav-review');
+  SHOW('view-review');
+  renderHistory();
+  renderWrongBank();
+  drawCharts();
+  flushCoachPending();
+  await refreshCoachNotebook(true);
+});
 $('coach-search')?.addEventListener('input', renderCoachNotebook);
 $('coach-filter')?.addEventListener('change', renderCoachNotebook);
 $('coach-list')?.addEventListener('click', (e) => {

@@ -125,6 +125,7 @@
       <a href="index.html" id="nav-setup" class="active">Setup</a>
       <a href="#" id="nav-practice">Practice</a>
       <a href="#" id="nav-review">Review</a>
+      <a href="#" id="nav-coach">AI Notebook</a>
       <a href="#" id="nav-library">Library</a>
       <a href="#" id="nav-help">Shortcuts</a>
     </nav>
@@ -318,7 +319,7 @@
 
             <div class="form-actions" style="margin-top: 16px;">
               <button id="btn-setup-coach-apply" class="btn pri" type="button">Apply Top Focus</button>
-              <button id="btn-setup-coach-review" class="btn ghost" type="button">Open Coach Notebook</button>
+              <button id="btn-setup-coach-review" class="btn ghost" type="button">Open AI Notebook</button>
             </div>
           </div>
         </aside>
@@ -428,22 +429,22 @@
       </div>
     </div>
 
-    <div class="card" style="margin-top:14px">
-      <div class="card-title">DeepSeek session debrief</div>
-      <div id="review-coach-summary" class="card-muted-box summary-note" style="margin-top: 12px;">
+      <div class="card" style="margin-top:14px">
+        <div class="card-title">DeepSeek session debrief</div>
+        <div id="review-coach-summary" class="card-muted-box summary-note" style="margin-top: 12px;">
         <div class="empty-kicker">Session coach</div>
         <p id="review-coach-note" class="empty-copy">Finish a session and the review page will surface the coach lesson patterns worth drilling next.</p>
       </div>
       <div id="review-coach-focuses" class="coach-focus-grid" style="margin-top: 16px;"></div>
       <div class="row" style="margin-top: 16px">
         <button id="btn-review-coach-apply" class="btn pri" type="button">Practice Top Focus</button>
-        <button id="btn-review-coach-notebook" class="btn ghost" type="button">Jump to Coach Notebook</button>
+        <button id="btn-review-coach-notebook" class="btn ghost" type="button">Jump to AI Notebook</button>
       </div>
     </div>
 
-    <div class="card" style="margin-top:14px">
-      <div class="card-title">History</div>
-      <div style="overflow:auto">
+      <div class="card" style="margin-top:14px">
+        <div class="card-title">History</div>
+        <div style="overflow:auto">
         <table id="tbl-history">
           <thead>
             <tr>
@@ -462,24 +463,49 @@
       <div class="row">
         <button id="btn-clear-history" class="btn ghost">Clear history</button>
       </div>
-    </div>
-
-    <div class="card" style="margin-top:14px">
-      <div class="card-title">Coach Notebook</div>
-      <div class="row" style="margin-bottom:8px">
-        <div class="pill">Saved lessons: <span id="coach-count">0</span></div>
-        <div class="grow"></div>
-        <select id="coach-filter" style="min-width:140px">
-          <option value="all">All</option>
-          <option value="todo">To Learn</option>
-          <option value="mastered">Mastered</option>
-        </select>
-        <input id="coach-search" type="text" placeholder="Search coach notes…" style="flex:1 1 260px" />
-        <button id="coach-refresh" class="btn ghost">Refresh</button>
       </div>
-      <div id="coach-list" class="coach-list"></div>
-    </div>
-  </section>
+    </section>
+
+    <section id="view-coach" class="view">
+      <div class="stack">
+        <div class="card section-card">
+          <div class="section-head">
+            <div>
+              <div class="eyebrow">Saved AI coaching</div>
+              <h2 class="card-title">AI Notebook</h2>
+              <p class="section-subtitle">Every DeepSeek lesson generated during practice lives here, so you can search it, mark it mastered, and turn it back into a targeted drill without digging through Review.</p>
+            </div>
+          </div>
+
+          <div class="row">
+            <div class="pill">Saved lessons: <span id="coach-count">0</span></div>
+            <div class="pill">To learn: <span id="coach-open-count">0</span></div>
+            <div class="pill">Mastered: <span id="coach-mastered-count">0</span></div>
+            <div class="grow"></div>
+            <button id="btn-coach-apply-top" class="btn pri" type="button">Apply Top Focus</button>
+            <button id="btn-coach-back-review" class="btn ghost" type="button">Back to Review</button>
+          </div>
+
+          <div class="card-muted-box summary-note" style="margin-top: 12px;">
+            <div class="empty-kicker">Stored here</div>
+            <p class="empty-copy">Saved coach lessons, mastery tracking, and notebook search now live in this dedicated tab instead of the bottom of Review.</p>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="row" style="margin-bottom:8px">
+            <select id="coach-filter" style="min-width:140px">
+              <option value="all">All</option>
+              <option value="todo">To Learn</option>
+              <option value="mastered">Mastered</option>
+            </select>
+            <input id="coach-search" type="text" placeholder="Search AI notebook…" style="flex:1 1 260px" />
+            <button id="coach-refresh" class="btn ghost">Refresh</button>
+          </div>
+          <div id="coach-list" class="coach-list"></div>
+        </div>
+      </div>
+    </section>
 
   <!-- LIBRARY -->
   <section id="view-library" class="view">
