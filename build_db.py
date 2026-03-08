@@ -36,7 +36,7 @@ def mk_item(q: str, a: str, meta: Optional[Dict[str, str]] = None) -> Dict[str, 
         "meta": {
             "category": (meta or {}).get("category", ""),  # used as Region in UI
             "era": (meta or {}).get("era", ""),
-            "source": (meta or {}).get("source", ""),
+            "source": (meta or {}).get("source", "original") or "original",
         },
     }
 

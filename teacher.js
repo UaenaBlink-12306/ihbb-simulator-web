@@ -25,6 +25,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     let currentMode = 'random';
     let selectedFilterCategories = [];
     let selectedFilterEras = [];
+    let generatedDraftQuestions = [];
+    const GENERATED_QUESTIONS_TABLE = 'generated_questions';
 
     const ERA_LABELS = {
         "01": "8000 BCE – 600 BCE",
@@ -77,6 +79,64 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (!Number.isFinite(v)) return fallback;
         return Math.max(1, Math.min(200, v));
     };
+    const normalizeQuestionRecord = (raw) => {
+        if (!raw || typeof raw !== 'object') return null;
+        const question = String(raw.question || raw.q || raw.question_text || '').trim();
+        const answer = String(raw.answer || raw.a || raw.answer_text || '').trim();
+        if (!question || !answer) return null;
+        return {
+            id: String(raw.id || raw.question_id || '').trim() || questionKey(raw),
+            question,
+            answer,
+            aliases: Array.isArray(raw.aliases) ? raw.aliases.map(a => String(a || '').trim()).filter(Boolean) : [],
+            topic: String(raw.topic || '').trim(),
+            meta: {
+                category: String(raw.meta?.category || raw.category || '').trim(),
+                era: String(raw.meta?.era || raw.era || '').trim(),
+                source: String(raw.meta?.source || raw.source || '').trim()
+            }
+        };
+    };
+    const updateGeneratorStatus = (message, type = 'muted') => {
+        const el = document.getElementById('teacher-gen-status');
+        if (!el) return;
+        el.className = `section-subtitle ${type === 'error' ? 'text-bad' : ''}`.trim();
+        el.textContent = message;
+    };
+    const renderGeneratedDraftPreview = () => {
+        const wrap = document.getElementById('teacher-gen-preview');
+        const addBtn = document.getElementById('btn-teacher-add-draft');
+        if (!wrap || !addBtn) return;
+        addBtn.disabled = !generatedDraftQuestions.length;
+        if (!generatedDraftQuestions.length) {
+            wrap.classList.add('hidden');
+            wrap.innerHTML = '';
+            return;
+        }
+        wrap.classList.remove('hidden');
+        wrap.innerHTML = generatedDraftQuestions.map((q, index) => `
+            <div class="generator-item">
+                <div class="generator-item-head">
+                    <strong>${esc(q.answer || '')}</strong>
+                    <span class="pill">${esc(q.meta?.category || 'World')}${q.meta?.era ? ` • ${esc(getEraLabel(q.meta.era))}` : ''}${q.meta?.source ? ` • ${esc(q.meta.source)}` : ''}</span>
+                </div>
+                <p>${esc(q.question || '')}</p>
+                <div class="generator-item-meta">Draft ${index + 1}${q.topic ? ` • ${esc(q.topic)}` : ''}</div>
+            </div>
+        `).join('');
+    };
+    const populateGeneratorControls = () => {
+        const regionSel = document.getElementById('teacher-gen-region');
+        const eraSel = document.getElementById('teacher-gen-era');
+        if (regionSel) {
+            const categories = [...new Set(allQuestions.map(q => q.meta?.category || q.category || '').filter(Boolean))].sort((a, b) => a.localeCompare(b));
+            regionSel.innerHTML = '<option value="">World / Mixed</option>' + categories.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join('');
+        }
+        if (eraSel) {
+            const eras = sortEraCodes([...new Set(allQuestions.map(q => q.meta?.era || q.era || '').filter(Boolean))]);
+            eraSel.innerHTML = '<option value="">Any era</option>' + eras.map(e => `<option value="${esc(e)}">${esc(getEraLabel(e))}</option>`).join('');
+        }
+    };
     const setMetric = (id, value) => {
         const el = document.getElementById(id);
         if (el) el.textContent = String(value);
@@ -93,8 +153,36 @@ document.addEventListener('DOMContentLoaded', async () => {
     try {
         const res = await fetch('questions.json');
         const json = await res.json();
-        allQuestions = Array.isArray(json) ? json : (json.items || json.questions || json.sets?.[0]?.items || []);
+        allQuestions = (Array.isArray(json) ? json : (json.items || json.questions || json.sets?.[0]?.items || []))
+            .map(item => normalizeQuestionRecord(item))
+            .filter(Boolean)
+            .map(item => {
+                item.meta.source = item.meta.source || 'original';
+                return item;
+            });
     } catch { console.warn('Could not load questions.json'); }
+    try {
+        const { data, error } = await sb
+            .from(GENERATED_QUESTIONS_TABLE)
+            .select('id, question_text, answer_text, aliases, category, era, source, topic, created_at')
+            .eq('user_id', uid)
+            .order('created_at', { ascending: false });
+        if (error) throw error;
+        const generated = (data || []).map(row => normalizeQuestionRecord({
+            id: row.id,
+            question_text: row.question_text,
+            answer_text: row.answer_text,
+            aliases: row.aliases,
+            category: row.category,
+            era: row.era,
+            source: row.source,
+            topic: row.topic
+        })).filter(Boolean);
+        allQuestions = dedupeQuestions([...generated, ...allQuestions]);
+    } catch (err) {
+        console.warn('[Teacher Generated Questions] unavailable', err);
+    }
+    populateGeneratorControls();
 
     // Tab switching
     document.querySelectorAll('.dash-tab').forEach(tab => {
@@ -453,6 +541,102 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     renderCategoryFilterChips();
     renderEraFilterChips();
+    renderGeneratedDraftPreview();
+
+    async function persistGeneratedQuestions(items, { topic = '' } = {}) {
+        if (!Array.isArray(items) || !items.length) return;
+        const rows = items.map(item => ({
+            id: String(item.id || questionKey(item)).trim(),
+            user_id: uid,
+            question_text: String(item.question || '').trim(),
+            answer_text: String(item.answer || '').trim(),
+            aliases: Array.isArray(item.aliases) ? item.aliases : [],
+            category: String(item.meta?.category || '').trim(),
+            era: String(item.meta?.era || '').trim(),
+            source: String(item.meta?.source || 'generated').trim() || 'generated',
+            topic: String(item.topic || topic || '').trim(),
+            created_by_role: 'teacher',
+            created_from: 'teacher-assignment'
+        }));
+        const { error } = await sb.from(GENERATED_QUESTIONS_TABLE).upsert(rows, { onConflict: 'id' });
+        if (error) throw error;
+    }
+
+    async function requestGeneratedQuestions() {
+        const region = String(document.getElementById('teacher-gen-region')?.value || '').trim()
+            || (selectedFilterCategories.length === 1 ? selectedFilterCategories[0] : 'World');
+        const era = String(document.getElementById('teacher-gen-era')?.value || '').trim()
+            || (selectedFilterEras.length === 1 ? selectedFilterEras[0] : '');
+        const topic = String(document.getElementById('teacher-gen-topic')?.value || '').trim();
+        const count = Math.max(1, Math.min(12, Number.parseInt(String(document.getElementById('teacher-gen-count')?.value || '5'), 10) || 5));
+        const avoidAnswers = allQuestions.map(q => String(q.answer || '').trim()).filter(Boolean).slice(0, 60);
+
+        const response = await fetch('/api/generate-questions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                count,
+                region,
+                era,
+                topic,
+                creator_role: 'teacher',
+                created_from: 'teacher-assignment',
+                avoid_answers: avoidAnswers
+            })
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || data?.error) {
+            throw new Error(data?.error || `Question generation failed (${response.status})`);
+        }
+        return (data.items || []).map(item => normalizeQuestionRecord(item)).filter(Boolean);
+    }
+
+    document.getElementById('btn-teacher-generate')?.addEventListener('click', async () => {
+        const btn = document.getElementById('btn-teacher-generate');
+        if (!btn) return;
+        btn.disabled = true;
+        const originalText = btn.textContent;
+        btn.textContent = 'Generating...';
+        updateGeneratorStatus('DeepSeek is drafting a fresh assignment set...', 'muted');
+        try {
+            const items = await requestGeneratedQuestions();
+            if (!items.length) throw new Error('No valid generated questions came back.');
+            generatedDraftQuestions = items.map(item => {
+                item.meta.source = item.meta.source || 'generated';
+                return item;
+            });
+            allQuestions = dedupeQuestions([...generatedDraftQuestions, ...allQuestions]);
+            let persistenceNote = '';
+            try {
+                await persistGeneratedQuestions(generatedDraftQuestions, {
+                    topic: String(document.getElementById('teacher-gen-topic')?.value || '').trim()
+                });
+            } catch (persistErr) {
+                console.warn('[Teacher Generated Questions] persist failed', persistErr);
+                persistenceNote = ' They were added to this draft only.';
+            }
+            populateGeneratorControls();
+            renderGeneratedDraftPreview();
+            updateGeneratorStatus(`Generated ${generatedDraftQuestions.length} draft question${generatedDraftQuestions.length === 1 ? '' : 's'}. Review them below, then add them into the assignment draft.${persistenceNote}`, 'muted');
+        } catch (err) {
+            generatedDraftQuestions = [];
+            renderGeneratedDraftPreview();
+            updateGeneratorStatus(err?.message || 'Question generation failed.', 'error');
+            showAlert(err?.message || 'Question generation failed.', 'error');
+        } finally {
+            btn.disabled = false;
+            btn.textContent = originalText;
+        }
+    });
+
+    document.getElementById('btn-teacher-add-draft')?.addEventListener('click', () => {
+        if (!generatedDraftQuestions.length) {
+            showAlert('Generate a draft first.', 'error');
+            return;
+        }
+        setSelectedQuestions([...generatedDraftQuestions, ...selectedQuestions]);
+        showAlert(`${generatedDraftQuestions.length} generated question${generatedDraftQuestions.length === 1 ? '' : 's'} added to the assignment draft.`, 'success');
+    });
 
     function updatePreview() {
         const area = document.getElementById('preview-area');
@@ -588,10 +772,18 @@ document.addEventListener('DOMContentLoaded', async () => {
                 question_id: questionKey(q),
                 question_text: q.question || q.q || '',
                 answer_text: q.answer || q.a || '',
+                aliases: Array.isArray(q.aliases) ? q.aliases : [],
                 category: q.meta?.category || q.category || '',
-                era: q.meta?.era || q.era || ''
+                era: q.meta?.era || q.era || '',
+                source: q.meta?.source || q.source || ''
             }));
-            await sb.from('assignment_questions').insert(questions);
+            let { error: questionInsertError } = await sb.from('assignment_questions').insert(questions);
+            if (questionInsertError && /aliases|source/i.test(String(questionInsertError.message || ''))) {
+                const legacyRows = questions.map(({ aliases, source, ...rest }) => rest);
+                const { error: legacyError } = await sb.from('assignment_questions').insert(legacyRows);
+                questionInsertError = legacyError || null;
+            }
+            if (questionInsertError) throw questionInsertError;
 
             showAlert('Assignment created successfully!', 'success');
             selectedQuestions = [];

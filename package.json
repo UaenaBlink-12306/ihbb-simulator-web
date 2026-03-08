@@ -1,0 +1,24 @@
+{
+  "name": "ihbb-simulator-web-main",
+  "version": "1.0.0",
+  "description": "This repository provides a web-based IHBB practice simulator with: - A browser frontend (`index.html`, `app.js`, `styles.css`) for setup, practice, review, and library management. - A local Python server (`server.py`) that serves static files and provides answer grading APIs. - A data build pipeline (`cleanquestions.py`, `build_db.py`) that converts raw text into `questions.json`.",
+  "main": "app.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/UaenaBlink-12306/ihbb-simulator-web.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/UaenaBlink-12306/ihbb-simulator-web/issues"
+  },
+  "homepage": "https://github.com/UaenaBlink-12306/ihbb-simulator-web#readme",
+  "dependencies": {
+    "playwright": "^1.58.2"
+  }
+}

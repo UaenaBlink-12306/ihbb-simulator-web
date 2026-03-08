@@ -1,0 +1,31 @@
+Original prompt: Add DeepSeek-powered question generation so students and teachers can generate new IHBB questions for focused practice and assignments. Generated questions should be stored persistently, use the existing bank shape with new IDs plus region/era/source metadata, follow a progressive clue structure, and solve the current "No loaded question set matches this focus yet" dead-end. Before coding, ensure existing questions are labeled with source "original". After implementation, verify the UX in-browser with a registered test account and push the work to GitHub.
+
+Notes:
+- User updated clue structure requirement from 3 clues to 4 clues total: hard, medium, medium, giveaway.
+- User wants existing bank labeled with source "original" and generated questions labeled with source "generated".
+- Hosted durability is a concern; current static questions.json alone is not a good primary runtime write target.
+
+TODO:
+- Audit existing source values in questions.json and current auth/register flow.
+- Decide generated-question persistence model and how it merges into the runtime library.
+- Add generation flows for student and teacher surfaces.
+- Run end-to-end browser QA with account registration.
+
+Progress updates:
+- Backfilled all 6,190 canonical questions in questions.json to meta.source = "original".
+- Updated build_db.py so future rebuilt canonical questions default to source "original".
+- Added generated-question endpoint scaffolding in both api/generate-questions.js and server.py with 4-clue validation.
+- Added generated-question persistence docs to SUPABASE_SETUP.md and assignment schema extensions for aliases/source.
+- Added teacher-side DeepSeek draft builder UI inside Create Assignment.
+- Added practice/student focus generation flow so coach actions can generate drills instead of dead-ending.
+- Added runtime migration so cached default banks without source metadata are upgraded to "original".
+
+QA notes:
+- Registered fresh teacher and student test accounts through the real signup/onboarding flow.
+- Verified teacher Create Assignment page renders the new DeepSeek Draft Builder UI.
+- Verified student coach/dashboard flow exposes a Generate Drill action and routes into the practice hub generation path.
+- Local end-to-end question generation is currently blocked by an invalid DEEPSEEK_API_KEY in .env; the UI now surfaces "DeepSeek API key is invalid." instead of a generic failure.
+
+Remaining follow-up:
+- Re-run full teacher/student generation success-path QA once a valid DeepSeek key is configured.
+- Optional: apply the new Supabase SQL migration so generated question persistence and assignment source/alias storage work in the hosted database.

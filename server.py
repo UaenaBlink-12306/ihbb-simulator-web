@@ -3,6 +3,7 @@ import os
 import json
 import math
 import re
+import uuid
 from typing import List, Dict, Any
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import socket
@@ -20,6 +21,30 @@ PORT = int(os.environ.get("IHBB_SERVER_PORT", "5057"))
 DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY")
 DEEPSEEK_URL = "https://api.deepseek.com/v1/chat/completions"
 MODEL = os.environ.get("DEEPSEEK_MODEL", "deepseek-chat")
+
+REGION_OPTIONS = [
+    "Africa",
+    "Central Asia",
+    "East Asia",
+    "Europe",
+    "Latin America",
+    "Middle East",
+    "North America",
+    "Oceania",
+    "South Asia",
+    "Southeast Asia",
+    "World",
+]
+
+ERA_LABELS = {
+    "01": "8000 BCE – 600 BCE",
+    "02": "600 BCE – 600 CE",
+    "03": "600 CE – 1450 CE",
+    "04": "1450 CE – 1750 CE",
+    "05": "1750 – 1914",
+    "06": "1914 – 1991",
+    "07": "1991 – Present",
+}
 
 
 def normalize(s: str) -> str:
@@ -64,6 +89,88 @@ def parse_json_from_content(content: str) -> Dict[str, Any]:
         return json.loads(cleaned[s:e + 1])
     except Exception:
         return {}
+
+
+def string_value(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value.strip()
+    if isinstance(value, (int, float, bool)):
+        return str(value)
+    return ""
+
+
+def to_alias_array(value: Any) -> List[str]:
+    if isinstance(value, list):
+        return list(dict.fromkeys(string_value(v) for v in value if string_value(v)))
+    if isinstance(value, str):
+        return list(dict.fromkeys(part.strip() for part in re.split(r"[;,|]", value) if part.strip()))
+    return []
+
+
+def split_sentences(text: str) -> List[str]:
+    cleaned = re.sub(r"\s+", " ", text or "").strip()
+    if not cleaned:
+        return []
+    return [part.strip() for part in re.split(r"(?<=[.!?])\s+(?=[A-Z\"'])", cleaned) if part.strip()]
+
+
+def normalize_region(value: Any) -> str:
+    text = string_value(value).lower()
+    if not text:
+        return ""
+    for region in REGION_OPTIONS:
+        if region.lower() == text:
+            return region
+    alias_map = {
+        "americas": "North America",
+        "america": "North America",
+        "northamerica": "North America",
+        "latinamerica": "Latin America",
+        "middleeast": "Middle East",
+        "eastasia": "East Asia",
+        "southasia": "South Asia",
+        "southeastasia": "Southeast Asia",
+        "centralasia": "Central Asia",
+    }
+    return alias_map.get(re.sub(r"[^a-z]+", "", text), "")
+
+
+def normalize_era_code(value: Any) -> str:
+    text = string_value(value)
+    if not text:
+        return ""
+    if text in ERA_LABELS:
+        return text
+    lower = text.lower()
+    for code, label in ERA_LABELS.items():
+        if label.lower() == lower:
+            return code
+    normalized_text = re.sub(r"[^a-z0-9]+", " ", lower).strip()
+    for code, label in ERA_LABELS.items():
+        normalized_label = re.sub(r"[^a-z0-9]+", " ", label.lower()).strip()
+        if normalized_text and (normalized_text in normalized_label or normalized_label in normalized_text):
+            return code
+    if "8000" in lower or "600 bce" in lower:
+        return "01"
+    if "600 ce" in lower or "classical" in lower:
+        return "02"
+    if "1450" in lower:
+        return "03"
+    if "1750" in lower:
+        return "04"
+    if "1914" in lower:
+        return "05"
+    if "1991" in lower:
+        return "06"
+    if "present" in lower or "modern" in lower:
+        return "07"
+    return ""
+
+
+def make_generated_id() -> str:
+    return f"gen_{uuid.uuid4().hex[:16]}"
 
 
 def token_overlap_ratio(a: str, b: str) -> float:
@@ -253,7 +360,7 @@ def normalize_coach(raw: Any, payload: Dict[str, Any], correct: bool, reason: st
     }
 
 
-def call_deepseek(messages: List[Dict[str, str]], max_tokens: int = 300) -> Dict[str, Any]:
+def call_deepseek(messages: List[Dict[str, str]], max_tokens: int = 300, temperature: float = 0.0) -> Dict[str, Any]:
     headers = {
         "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
         "Content-Type": "application/json",
@@ -261,7 +368,7 @@ def call_deepseek(messages: List[Dict[str, str]], max_tokens: int = 300) -> Dict
     body = {
         "model": MODEL,
         "messages": messages,
-        "temperature": 0.0,
+        "temperature": temperature,
         "response_format": {"type": "json_object"},
         "max_tokens": max_tokens,
     }
@@ -724,6 +831,147 @@ def analytics_insights_with_deepseek(payload: Dict[str, Any]) -> Dict[str, Any]:
     return {"source": "fallback", "insights": fallback}
 
 
+def generate_questions_with_deepseek(payload: Dict[str, Any]) -> Dict[str, Any]:
+    if not DEEPSEEK_API_KEY:
+        return {"error": "DeepSeek API key not configured."}
+
+    try:
+        count = int(payload.get("count", payload.get("num_questions", 5)) or 5)
+    except Exception:
+        count = 5
+    count = max(1, min(12, count))
+    region = normalize_region(payload.get("region", payload.get("category"))) or "World"
+    era = normalize_era_code(payload.get("era", payload.get("era_code", payload.get("eraCode"))))
+    topic = string_value(payload.get("topic", payload.get("focus_topic", payload.get("focus", payload.get("theme")))))
+    creator_role = string_value(payload.get("creator_role", payload.get("role", "student"))) or "student"
+    created_from = string_value(payload.get("created_from", payload.get("source_context", payload.get("purpose", "practice")))) or "practice"
+    avoid_answers = {normalize_compact(v) for v in to_alias_array(payload.get("avoid_answers")) if normalize_compact(v)}
+    reference_question = string_value(payload.get("reference_question"))
+    reference_answer = string_value(payload.get("reference_answer"))
+    wrong_answer = string_value(payload.get("wrong_answer"))
+    focus_reason = string_value(payload.get("focus_reason", payload.get("reason")))
+
+    system = (
+        "You write IHBB-style history tossup practice questions.\n"
+        "Return strict JSON only with this shape:\n"
+        "{\"items\":[{\"question\":\"...\",\"answer\":\"...\",\"aliases\":[\"...\"],\"region\":\""
+        + region
+        + "\",\"era\":\""
+        + (era or "code")
+        + "\",\"topic\":\""
+        + (topic or "General")
+        + "\"}]}\n"
+        "Every question must contain exactly 4 sentences total, in this order:\n"
+        "Sentence 1 = hardest clue.\n"
+        "Sentence 2 = medium clue.\n"
+        "Sentence 3 = medium clue.\n"
+        "Sentence 4 = easiest giveaway and must begin with \"For the point, name this\" or \"For the point, identify this\".\n"
+        "Do not reveal or directly quote the answer before sentence 4.\n"
+        "Use historically real, clue-rich facts. Avoid vague textbook summaries.\n"
+        "Keep answers distinct from one another.\n"
+        f"Region must be exactly one of: {', '.join(REGION_OPTIONS)}.\n"
+        "Era must be one of these codes only: "
+        + ", ".join(f"{code} ({label})" for code, label in ERA_LABELS.items())
+        + ".\n"
+        "Source is always generated."
+    )
+    user = {
+        "count": count,
+        "focus": {
+            "region": region,
+            "era_code": era,
+            "era_label": ERA_LABELS.get(era, ""),
+            "topic": topic,
+            "creator_role": creator_role,
+            "created_from": created_from,
+        },
+        "context": {
+            "focus_reason": focus_reason,
+            "reference_question": reference_question,
+            "reference_answer": reference_answer,
+            "wrong_answer": wrong_answer,
+        },
+        "avoid_answers": sorted(avoid_answers),
+    }
+
+    try:
+        obj = call_deepseek(
+            [
+                {"role": "system", "content": system},
+                {"role": "user", "content": json.dumps(user, ensure_ascii=False)},
+            ],
+            max_tokens=2200,
+            temperature=0.2,
+        )
+        raw_items = obj if isinstance(obj, list) else obj.get("items", obj.get("questions", [])) if isinstance(obj, dict) else []
+        items: List[Dict[str, Any]] = []
+        seen = set()
+        for index, raw in enumerate(raw_items if isinstance(raw_items, list) else []):
+            if not isinstance(raw, dict):
+                continue
+            question = re.sub(r"\s+", " ", string_value(raw.get("question", raw.get("prompt", raw.get("text", raw.get("body", "")))))).strip()
+            answer = re.sub(r"\s+", " ", string_value(raw.get("answer", raw.get("canonical_answer", raw.get("solution", ""))))).strip()
+            if not question or not answer:
+                continue
+            sentences = split_sentences(question)
+            if len(sentences) != 4:
+                continue
+            first_three = normalize_compact(" ".join(sentences[:3]))
+            answer_key = normalize_compact(answer)
+            question_key = normalize_compact(question)
+            if not answer_key or not question_key:
+                continue
+            if first_three and answer_key in first_three:
+                continue
+            if not re.search(r"for the point", sentences[3], re.I):
+                continue
+            dedupe_key = f"{answer_key}::{question_key}"
+            if dedupe_key in seen or answer_key in avoid_answers:
+                continue
+            seen.add(dedupe_key)
+            category = normalize_region(raw.get("category", raw.get("region", (raw.get("meta") or {}).get("category", region)))) or region or "World"
+            era_code = normalize_era_code(raw.get("era", (raw.get("meta") or {}).get("era", era))) or era or ""
+            items.append({
+                "id": make_generated_id(),
+                "question": question,
+                "answer": answer,
+                "aliases": to_alias_array(raw.get("aliases")),
+                "meta": {
+                    "category": category,
+                    "era": era_code,
+                    "source": "generated",
+                },
+                "topic": string_value(raw.get("topic", topic)),
+                "created_from": created_from,
+            })
+
+        if not items:
+            return {"error": "DeepSeek returned no valid generated questions."}
+
+        return {
+            "source": "deepseek",
+            "requested": count,
+            "returned": len(items),
+            "items": items,
+        }
+    except requests.exceptions.Timeout as e:
+        log.error("DeepSeek generation timeout: %s", e)
+        return {"error": "DeepSeek question generation timed out."}
+    except requests.exceptions.ConnectionError as e:
+        log.error("DeepSeek generation connection error: %s", e)
+        return {"error": "Could not reach DeepSeek for question generation."}
+    except requests.exceptions.HTTPError as e:
+        log.error("DeepSeek generation HTTP error: %s, response: %s", e, getattr(e.response, "text", ""))
+        status = getattr(e.response, "status_code", None)
+        if status == 401:
+            return {"error": "DeepSeek API key is invalid."}
+        return {"error": f"DeepSeek question generation failed with HTTP {status or 'error'}."}
+    except Exception as e:
+        log.exception("DeepSeek generation unexpected error: %s", e)
+        return {"error": "Question generation failed unexpectedly."}
+    return {"error": "Question generation failed."}
+
+
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 
@@ -805,7 +1053,14 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         parsed = urlparse(self.path)
-        if parsed.path not in ("/grade", "/api/grade", "/analytics-insights", "/api/analytics-insights"):
+        if parsed.path not in (
+            "/grade",
+            "/api/grade",
+            "/analytics-insights",
+            "/api/analytics-insights",
+            "/generate-questions",
+            "/api/generate-questions",
+        ):
             self._set_headers(404)
             self.wfile.write(b"{}")
             return
@@ -820,8 +1075,10 @@ class Handler(BaseHTTPRequestHandler):
 
         if parsed.path in ("/grade", "/api/grade"):
             result = grade_with_deepseek(payload)
-        else:
+        elif parsed.path in ("/analytics-insights", "/api/analytics-insights"):
             result = analytics_insights_with_deepseek(payload)
+        else:
+            result = generate_questions_with_deepseek(payload)
         self._set_headers(200)
         self.wfile.write(json.dumps(result).encode('utf-8'))
 
