@@ -33,6 +33,9 @@ const KEY_COACH_DRILL = 'ihbb_student_coach_drill';
 const WRONG_SYNC_TABLE = 'user_wrong_questions';
 const SESSION_SYNC_TABLE = 'user_drill_sessions';
 const COACH_SYNC_TABLE = 'user_coach_attempts';
+const GENERATED_QUESTIONS_TABLE = 'generated_questions';
+const GENERATED_BANK_SET_PREFIX = 'generated_bank_';
+const GENERATED_DRILL_SET_PREFIX = 'generated_drill_';
 
 const WrongSync = {
   userId: null,
@@ -62,6 +65,8 @@ const Settings = {
 };
 const Library = { sets: [], activeSetId: null };
 let Presets = {};
+let CurrentProfileRole = '';
+let PendingCoachGeneration = false;
 
 const App = {
   pool: [], order: [], i: 0, correct: 0, startTs: 0,
@@ -213,6 +218,56 @@ function safeReadJson(key, fallback) {
 }
 function setJsonSafe(key, value) {
   try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* noop */ }
+}
+function inferSourceFallbackForSet(set) {
+  const name = String(set?.name || '').trim();
+  if (set?.generatedBank || set?.generatedDrill || String(set?.id || '').startsWith(GENERATED_BANK_SET_PREFIX) || String(set?.id || '').startsWith(GENERATED_DRILL_SET_PREFIX)) {
+    return 'generated';
+  }
+  if (set?.volatile || /IHBB Questions/i.test(name)) return 'original';
+  return '';
+}
+function ensureSetItemSources(set, fallback = '') {
+  if (!set || !Array.isArray(set.items)) return false;
+  let changed = false;
+  for (const item of set.items) {
+    if (!item.meta || typeof item.meta !== 'object') {
+      item.meta = { category: '', era: '', source: '' };
+      changed = true;
+    }
+    const next = String(item.meta?.source || '').trim() || fallback;
+    if (next && item.meta.source !== next) {
+      item.meta.source = next;
+      changed = true;
+    }
+  }
+  return changed;
+}
+function migrateLibrarySources() {
+  if (!Array.isArray(Library.sets) || !Library.sets.length) return;
+  let changed = false;
+  for (const set of Library.sets) {
+    changed = ensureSetItemSources(set, inferSourceFallbackForSet(set)) || changed;
+  }
+  if (changed) saveLibrarySafe('migrateLibrarySources');
+}
+async function ensureCurrentProfileRole() {
+  if (CurrentProfileRole) return CurrentProfileRole;
+  if (!window.supabaseClient) return '';
+  try {
+    const userId = await ensureSessionSyncUserId();
+    if (!userId) return '';
+    const { data, error } = await window.supabaseClient
+      .from('profiles')
+      .select('role')
+      .eq('id', userId)
+      .single();
+    if (error) throw error;
+    CurrentProfileRole = String(data?.role || '').trim();
+  } catch {
+    CurrentProfileRole = '';
+  }
+  return CurrentProfileRole;
 }
 function isNotebookAttemptRecord(record) {
   return !!record && !record.correct;
@@ -544,6 +599,7 @@ function buildCoachFocusSuggestions(records = CoachNotebook.records) {
 
 function coachFocusCardHtml(focus, index, actionClass) {
   if (!focus) return '';
+  const scope = actionClass === 'coach-review-focus' ? 'review' : 'setup';
   return `
     <div class="coach-focus-card">
       <div class="coach-focus-head">
@@ -560,7 +616,8 @@ function coachFocusCardHtml(focus, index, actionClass) {
         ${focus.topic ? `<span class="coach-focus-pill">Topic: ${escHtml(focus.topic)}</span>` : ''}
       </div>
       <div class="coach-focus-actions">
-        <button class="btn pri ${actionClass}" type="button" data-focus-index="${index}">Apply Focus</button>
+        <button class="btn pri ${actionClass}" type="button" data-focus-index="${index}" data-focus-scope="${scope}">Apply Focus</button>
+        <button class="btn ghost coach-generate-focus" type="button" data-focus-index="${index}" data-focus-scope="${scope}">Generate Drill</button>
         ${focus.attemptId ? `<button class="btn ghost coach-jump-note" type="button" data-attempt="${escHtml(focus.attemptId)}">Open Lesson</button>` : `<button class="btn ghost coach-open-notebook" type="button">Open AI Notebook</button>`}
       </div>
     </div>
@@ -668,12 +725,56 @@ function applyPendingCoachGuidedDrill() {
     era: String(pending.era || '').trim(),
     topic: String(pending.topic || '').trim()
   };
+  const pendingMode = String(pending.mode || 'guided').trim() || 'guided';
+  if (pendingMode === 'generate') {
+    if (!PendingCoachGeneration) {
+      PendingCoachGeneration = true;
+      void startGeneratedFocusDrill(focus, {
+        count: 6,
+        createdFrom: String(pending.source || 'student-dashboard').trim() || 'student-dashboard',
+        clearPending: true
+      }).finally(() => {
+        PendingCoachGeneration = false;
+      });
+    }
+    return false;
+  }
   const applied = applyCoachFocusToSetup(focus, false);
   if (applied) {
     clearPendingCoachDrill();
     toast(`Coach drill ready: ${focus.title}`);
+  } else if (!PendingCoachGeneration) {
+    PendingCoachGeneration = true;
+    void startGeneratedFocusDrill(focus, {
+      count: 6,
+      createdFrom: String(pending.source || 'student-dashboard').trim() || 'student-dashboard',
+      clearPending: true
+    }).finally(() => {
+      PendingCoachGeneration = false;
+    });
   }
   return applied;
+}
+
+async function openCoachFocusDrill(focus, options = {}) {
+  if (!focus) {
+    toast('No coach focus available yet');
+    return false;
+  }
+  const applied = applyCoachFocusToSetup(focus, false);
+  if (applied) {
+    toast(`Coach focus applied: ${buildFocusTitle(focus)}`);
+    if (options.navigate !== false) {
+      navSet('nav-setup');
+      SHOW('view-setup');
+    }
+    return true;
+  }
+  return startGeneratedFocusDrill(focus, {
+    count: options.count || 6,
+    createdFrom: String(options.createdFrom || 'coach-focus').trim() || 'coach-focus',
+    clearPending: !!options.clearPending
+  });
 }
 
 function renderSetupCoachGuide() {
@@ -1012,6 +1113,205 @@ const ERA_NAMES = {
   "06": "1914 – 1991",
   "07": "1991 – Present"
 };
+
+function generatedBankSetId(userId = 'local') {
+  return `${GENERATED_BANK_SET_PREFIX}${userId}`;
+}
+
+function buildFocusTitle(focus) {
+  return [focus?.region, focus?.era, focus?.topic].filter(Boolean).join(' • ') || String(focus?.title || '').trim() || 'Targeted Focus';
+}
+
+function normalizeGeneratedQuestionRow(row) {
+  return normalizeJsonItem({
+    id: row?.id,
+    question: row?.question_text || row?.question,
+    answer: row?.answer_text || row?.answer,
+    aliases: row?.aliases,
+    meta: {
+      category: row?.category || row?.meta?.category || '',
+      era: row?.era || row?.meta?.era || '',
+      source: row?.source || row?.meta?.source || 'generated'
+    }
+  });
+}
+
+function upsertGeneratedBankSet(items, userId, { activate = false } = {}) {
+  const setId = generatedBankSetId(userId);
+  const nextItems = (items || []).map(it => ({ ...it, meta: { ...(it.meta || {}), source: String(it?.meta?.source || 'generated').trim() || 'generated' } }));
+  const existingIndex = (Library.sets || []).findIndex(set => set?.id === setId);
+  if (!nextItems.length) {
+    if (existingIndex >= 0) {
+      Library.sets.splice(existingIndex, 1);
+      if (Library.activeSetId === setId) {
+        Library.activeSetId = Library.sets[0]?.id || null;
+      }
+    }
+  } else {
+    const nextSet = {
+      id: setId,
+      name: 'My Generated Questions',
+      items: nextItems,
+      volatile: true,
+      generatedBank: true
+    };
+    if (existingIndex >= 0) Library.sets.splice(existingIndex, 1, nextSet);
+    else Library.sets.unshift(nextSet);
+    if (activate || !Library.activeSetId) Library.activeSetId = setId;
+  }
+  renderLibrarySelectors();
+  renderLibraryTable();
+  updateSetMeta();
+}
+
+function injectGeneratedDrillSet(items, focusTitle) {
+  Library.sets = (Library.sets || []).filter(set => !set?.generatedDrill);
+  const title = String(focusTitle || '').trim() || 'Targeted Focus';
+  const set = {
+    id: `${GENERATED_DRILL_SET_PREFIX}${Date.now()}`,
+    name: `Generated Drill • ${title}`,
+    items: (items || []).map(it => ({ ...it, meta: { ...(it.meta || {}), source: String(it?.meta?.source || 'generated').trim() || 'generated' } })),
+    volatile: true,
+    generatedDrill: true
+  };
+  Library.sets.unshift(set);
+  Library.activeSetId = set.id;
+  renderLibrarySelectors();
+  renderLibraryTable();
+  updateSetMeta();
+  return set;
+}
+
+function collectAvoidAnswers(focus = null) {
+  const answers = new Set();
+  for (const set of (Library.sets || [])) {
+    for (const item of (set?.items || [])) {
+      const sameRegion = !focus?.region || String(item?.meta?.category || '').trim() === String(focus.region || '').trim();
+      const sameEra = !focus?.era || String(item?.meta?.era || '').trim() === String(coachEraToCode(focus.era, set) || focus.era || '').trim();
+      if (sameRegion || sameEra || set?.generatedBank || set?.generatedDrill) {
+        const answer = String(item?.answer || '').trim();
+        if (answer) answers.add(answer);
+      }
+      if (answers.size >= 60) return Array.from(answers);
+    }
+  }
+  return Array.from(answers);
+}
+
+async function persistGeneratedQuestions(items, context = {}) {
+  if (!window.supabaseClient) return;
+  const userId = await ensureSessionSyncUserId();
+  if (!userId || !Array.isArray(items) || !items.length) return;
+  const creatorRole = String(context.creatorRole || await ensureCurrentProfileRole() || 'student').trim() || 'student';
+  const createdFrom = String(context.createdFrom || 'practice').trim() || 'practice';
+  const rows = items.map(item => ({
+    id: String(item.id || '').trim() || uid(),
+    user_id: userId,
+    question_text: String(item.question || '').trim(),
+    answer_text: String(item.answer || '').trim(),
+    aliases: Array.isArray(item.aliases) ? item.aliases : [],
+    category: String(item.meta?.category || '').trim(),
+    era: String(item.meta?.era || '').trim(),
+    source: String(item.meta?.source || 'generated').trim() || 'generated',
+    topic: String(item.topic || context.topic || '').trim(),
+    created_by_role: creatorRole,
+    created_from: createdFrom
+  }));
+  const { error } = await window.supabaseClient.from(GENERATED_QUESTIONS_TABLE).upsert(rows, { onConflict: 'id' });
+  if (error) throw error;
+}
+
+async function loadGeneratedQuestionBank() {
+  if (!window.supabaseClient) return;
+  const userId = await ensureSessionSyncUserId();
+  if (!userId) return;
+  try {
+    const { data, error } = await window.supabaseClient
+      .from(GENERATED_QUESTIONS_TABLE)
+      .select('id, question_text, answer_text, aliases, category, era, source, topic, created_from, created_at')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    const items = (data || []).map(normalizeGeneratedQuestionRow).filter(Boolean);
+    upsertGeneratedBankSet(items, userId);
+  } catch (err) {
+    console.warn('[GeneratedQuestions] unavailable:', err);
+  }
+}
+
+async function requestGeneratedQuestions(options = {}) {
+  const payload = {
+    count: Math.max(1, Math.min(12, Number.parseInt(String(options.count || 5), 10) || 5)),
+    region: String(options.region || '').trim() || 'World',
+    era: String(options.era || '').trim(),
+    topic: String(options.topic || '').trim(),
+    creator_role: String(options.creatorRole || '').trim() || 'student',
+    created_from: String(options.createdFrom || '').trim() || 'practice',
+    focus_reason: String(options.reason || '').trim(),
+    reference_question: String(options.referenceQuestion || '').trim(),
+    reference_answer: String(options.referenceAnswer || '').trim(),
+    wrong_answer: String(options.wrongAnswer || '').trim(),
+    avoid_answers: Array.isArray(options.avoidAnswers) ? options.avoidAnswers : collectAvoidAnswers(options)
+  };
+  const res = await fetch('/api/generate-questions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || data?.error) {
+    throw new Error(data?.error || `Question generation failed (${res.status})`);
+  }
+  return (data.items || []).map(normalizeJsonItem).filter(Boolean);
+}
+
+async function startGeneratedFocusDrill(focus, options = {}) {
+  if (!focus) {
+    toast('No focus available to generate');
+    return false;
+  }
+  const title = buildFocusTitle(focus);
+  const eraCode = String(coachEraToCode(focus.era, getActiveSet()) || focus.era || '').trim();
+  const creatorRole = String(options.creatorRole || await ensureCurrentProfileRole() || 'student').trim() || 'student';
+  const count = Math.max(1, Math.min(12, Number.parseInt(String(options.count || 6), 10) || 6));
+  try {
+    toast(`Generating ${count} fresh questions for ${title}...`);
+    const items = await requestGeneratedQuestions({
+      count,
+      region: String(focus.region || '').trim() || 'World',
+      era: eraCode,
+      topic: String(focus.topic || '').trim(),
+      creatorRole,
+      createdFrom: String(options.createdFrom || 'coach-focus').trim() || 'coach-focus',
+      reason: String(focus.reason || options.reason || '').trim(),
+      avoidAnswers: collectAvoidAnswers({ region: focus.region, era: eraCode, topic: focus.topic })
+    });
+    if (!items.length) throw new Error('No valid generated questions were returned.');
+    let persistenceNote = '';
+    try {
+      await persistGeneratedQuestions(items, {
+        creatorRole,
+        createdFrom: String(options.createdFrom || 'coach-focus').trim() || 'coach-focus',
+        topic: String(focus.topic || '').trim()
+      });
+      await loadGeneratedQuestionBank();
+    } catch (persistErr) {
+      console.warn('[GeneratedQuestions] persist failed:', persistErr);
+      persistenceNote = ' Saved only for this session.';
+    }
+    injectGeneratedDrillSet(items, title);
+    App.size = 'all';
+    App.mode = 'sequential';
+    App.filters = { cat: '', cats: [], era: '', eras: [], src: 'generated' };
+    if (options.clearPending) clearPendingCoachDrill();
+    if (options.startSession !== false) startSession();
+    toast(`Generated ${items.length} fresh question${items.length === 1 ? '' : 's'} for ${title}.${persistenceNote}`);
+    return true;
+  } catch (err) {
+    toast(String(err?.message || err || 'Question generation failed'));
+    return false;
+  }
+}
 
 function getEraName(code) {
   return ERA_NAMES[code] || code;
@@ -2436,16 +2736,12 @@ $('coach-refresh')?.addEventListener('click', async () => {
 });
 $('btn-review-coach-apply')?.addEventListener('click', () => {
   const focus = ReviewCoachFocusSuggestions[0] || CoachFocusSuggestions[0] || null;
-  if (!applyCoachFocusToSetup(focus)) return;
-  navSet('nav-setup');
-  SHOW('view-setup');
+  void openCoachFocusDrill(focus, { createdFrom: 'review-top' });
 });
 $('btn-review-coach-notebook')?.addEventListener('click', () => openCoachNotebook());
 $('btn-coach-apply-top')?.addEventListener('click', () => {
   const focus = CoachFocusSuggestions[0] || null;
-  if (!applyCoachFocusToSetup(focus)) return;
-  navSet('nav-setup');
-  SHOW('view-setup');
+  void openCoachFocusDrill(focus, { createdFrom: 'notebook-top' });
 });
 $('btn-coach-clear')?.addEventListener('click', () => { void clearCoachNotebook(); });
 $('btn-coach-back-review')?.addEventListener('click', async () => {
@@ -2464,9 +2760,7 @@ $('coach-list')?.addEventListener('click', (e) => {
   const applyBtn = e.target.closest('.coach-apply-note-focus');
   if (applyBtn) {
     const focus = coachFocusFromAttemptId(applyBtn.dataset.attempt || '');
-    if (!applyCoachFocusToSetup(focus)) return;
-    navSet('nav-setup');
-    SHOW('view-setup');
+    void openCoachFocusDrill(focus, { createdFrom: 'notebook-note' });
     return;
   }
   const btn = e.target.closest('.coach-toggle-mastered');
@@ -2479,17 +2773,21 @@ document.addEventListener('click', (e) => {
   const setupApplyBtn = e.target.closest('.coach-apply-focus');
   if (setupApplyBtn) {
     const focus = CoachFocusSuggestions[Number(setupApplyBtn.dataset.focusIndex) || 0] || null;
-    if (!applyCoachFocusToSetup(focus)) return;
-    navSet('nav-setup');
-    SHOW('view-setup');
+    void openCoachFocusDrill(focus, { createdFrom: 'coach-card' });
     return;
   }
   const reviewApplyBtn = e.target.closest('.coach-review-focus');
   if (reviewApplyBtn) {
     const focus = ReviewCoachFocusSuggestions[Number(reviewApplyBtn.dataset.focusIndex) || 0] || null;
-    if (!applyCoachFocusToSetup(focus)) return;
-    navSet('nav-setup');
-    SHOW('view-setup');
+    void openCoachFocusDrill(focus, { createdFrom: 'review-card' });
+    return;
+  }
+  const generateBtn = e.target.closest('.coach-generate-focus');
+  if (generateBtn) {
+    const scope = String(generateBtn.dataset.focusScope || 'setup').trim();
+    const source = scope === 'review' ? ReviewCoachFocusSuggestions : CoachFocusSuggestions;
+    const focus = source[Number(generateBtn.dataset.focusIndex) || 0] || null;
+    void startGeneratedFocusDrill(focus, { count: 6, createdFrom: 'coach-card-generate' });
     return;
   }
   const noteBtn = e.target.closest('.coach-jump-note');
@@ -2682,6 +2980,7 @@ async function tryFetchDefault(force = false) {
       const parsed = parseJsonImport(obj, 'IHBB Questions');
       if (!parsed) { toast('questions.json format is invalid'); return false; }
       if (parsed.type === 'library') {
+        (parsed.sets || []).forEach(set => ensureSetItemSources(set, 'original'));
         Library.sets = parsed.sets; Library.activeSetId = parsed.activeSetId || (parsed.sets[0]?.id || null);
         saveLibrary(); renderLibrarySelectors(); renderLibraryTable(); updateSetMeta();
         renderWrongBank();
@@ -2689,6 +2988,7 @@ async function tryFetchDefault(force = false) {
         return true;
       }
       const set = parsed.set;
+      ensureSetItemSources(set, 'original');
       Library.sets.unshift(set); Library.activeSetId = set.id;
       saveLibrary(); renderLibrarySelectors(); renderLibraryTable(); updateSetMeta();
       renderWrongBank();
@@ -2710,6 +3010,7 @@ async function tryFetchDefault(force = false) {
 /********************* Init *********************/
 (async function init() {
   loadAll(); populateVoices();
+  migrateLibrarySources();
   const rr = $('rate'); if (rr) rr.value = Settings.rate || 1.0;
   const sm = $('strictMode'); if (sm) sm.checked = (Settings.strict ?? false);
   const aa = $('autoAdvance'); if (aa) aa.checked = !!Settings.autoAdvance;
@@ -2726,8 +3027,9 @@ async function tryFetchDefault(force = false) {
   refreshCoachNotebook(false);
   // Auto-load questions.json on startup (from build_db.py)
   if (!(ASSIGNMENT_ID && HAS_ASSIGNMENT_PAYLOAD)) {
-    tryFetchDefault(false);
+    await tryFetchDefault(false);
   }
+  await loadGeneratedQuestionBank();
   updateSetupOverview();
 })();
 
@@ -3018,8 +3320,8 @@ try {
       id: q.question_id || q.id || uid(),
       question: q.question_text || q.question || q.q || '',
       answer: q.answer_text || q.answer || q.a || '',
-      aliases: [],
-      meta: { category: q.category || '', era: q.era || '' }
+      aliases: Array.isArray(q.aliases) ? q.aliases : [],
+      meta: { category: q.category || '', era: q.era || '', source: q.source || '' }
     }));
 
     if (!items.length) return;

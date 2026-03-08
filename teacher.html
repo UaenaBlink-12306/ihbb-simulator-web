@@ -150,6 +150,40 @@
                     </div>
                 </div>
 
+                <div class="card-muted-box generator-card" style="margin-bottom: 18px;">
+                    <div class="section-head" style="margin-bottom: 12px;">
+                        <div>
+                            <h3 style="margin: 0;">DeepSeek Draft Builder</h3>
+                            <p class="section-subtitle">Generate a focused batch of fresh questions, preview them, and
+                                drop them straight into this assignment.</p>
+                        </div>
+                        <div class="inline-actions">
+                            <button id="btn-teacher-generate" class="btn pri" type="button">Generate Draft</button>
+                            <button id="btn-teacher-add-draft" class="btn ghost" type="button" disabled>Add Draft to Assignment</button>
+                        </div>
+                    </div>
+                    <div class="setup-grid">
+                        <div class="input-group" style="margin: 0;">
+                            <label for="teacher-gen-topic">Focus Topic</label>
+                            <input type="text" id="teacher-gen-topic" placeholder="e.g. Meiji Japan, Cold War diplomacy">
+                        </div>
+                        <div class="input-group" style="margin: 0;">
+                            <label for="teacher-gen-count">Count</label>
+                            <input type="number" id="teacher-gen-count" value="5" min="1" max="12">
+                        </div>
+                        <div class="input-group" style="margin: 0;">
+                            <label for="teacher-gen-region">Region</label>
+                            <select id="teacher-gen-region"></select>
+                        </div>
+                        <div class="input-group" style="margin: 0;">
+                            <label for="teacher-gen-era">Era</label>
+                            <select id="teacher-gen-era"></select>
+                        </div>
+                    </div>
+                    <p id="teacher-gen-status" class="section-subtitle" style="margin-top: 12px;">Generated drafts stay private to your account and can be reused later in your own builder.</p>
+                    <div id="teacher-gen-preview" class="generator-preview hidden"></div>
+                </div>
+
                 <div class="chips">
                     <div class="chip active mode-btn" data-mode="random">Random</div>
                     <div class="chip mode-btn" data-mode="filter">By Topic / Era</div>

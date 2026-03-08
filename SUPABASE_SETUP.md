@@ -89,9 +89,16 @@ CREATE TABLE IF NOT EXISTS assignment_questions (
   question_id TEXT NOT NULL,
   question_text TEXT NOT NULL,
   answer_text TEXT NOT NULL,
+  aliases JSONB NOT NULL DEFAULT '[]'::jsonb,
   category TEXT DEFAULT '',
-  era TEXT DEFAULT ''
+  era TEXT DEFAULT '',
+  source TEXT DEFAULT ''
 );
+
+ALTER TABLE assignment_questions
+  ADD COLUMN IF NOT EXISTS aliases JSONB NOT NULL DEFAULT '[]'::jsonb;
+ALTER TABLE assignment_questions
+  ADD COLUMN IF NOT EXISTS source TEXT DEFAULT '';
 
 ALTER TABLE assignment_questions ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Teachers insert questions" ON assignment_questions FOR INSERT WITH CHECK (
@@ -104,6 +111,37 @@ CREATE POLICY "Members read questions" ON assignment_questions FOR SELECT USING 
     AND (a.teacher_id = auth.uid() OR EXISTS (SELECT 1 FROM class_students cs WHERE cs.class_id = a.class_id AND cs.student_id = auth.uid()))
   )
 );
+
+-- Generated Questions (private reusable drills + teacher drafts)
+CREATE TABLE IF NOT EXISTS generated_questions (
+  id TEXT PRIMARY KEY,
+  user_id UUID REFERENCES auth.users NOT NULL,
+  question_text TEXT NOT NULL,
+  answer_text TEXT NOT NULL,
+  aliases JSONB NOT NULL DEFAULT '[]'::jsonb,
+  category TEXT DEFAULT '',
+  era TEXT DEFAULT '',
+  source TEXT NOT NULL DEFAULT 'generated',
+  topic TEXT DEFAULT '',
+  created_by_role TEXT DEFAULT '',
+  created_from TEXT DEFAULT '',
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc', NOW())
+);
+
+CREATE INDEX IF NOT EXISTS idx_generated_questions_user_created
+  ON generated_questions(user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_generated_questions_user_region_era
+  ON generated_questions(user_id, category, era, created_at DESC);
+
+ALTER TABLE generated_questions ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Users read own generated questions" ON generated_questions
+  FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "Users insert own generated questions" ON generated_questions
+  FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "Users update own generated questions" ON generated_questions
+  FOR UPDATE USING (auth.uid() = user_id);
+CREATE POLICY "Users delete own generated questions" ON generated_questions
+  FOR DELETE USING (auth.uid() = user_id);
 
 -- Submissions
 CREATE TABLE IF NOT EXISTS assignment_submissions (
@@ -227,6 +265,7 @@ AS $$
   DELETE FROM public.user_wrong_questions WHERE user_id = auth.uid();
   DELETE FROM public.user_drill_sessions WHERE user_id = auth.uid();
   DELETE FROM public.user_coach_attempts WHERE user_id = auth.uid();
+  DELETE FROM public.generated_questions WHERE user_id = auth.uid();
   DELETE FROM public.assignment_submissions WHERE student_id = auth.uid();
   DELETE FROM public.assignment_questions WHERE assignment_id IN (SELECT id FROM public.assignments WHERE teacher_id = auth.uid());
   DELETE FROM public.assignments WHERE teacher_id = auth.uid();

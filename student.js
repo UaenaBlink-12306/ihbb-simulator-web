@@ -303,6 +303,12 @@ document.addEventListener('DOMContentLoaded', async () => {
             launchCoachGuidedDrill(focus);
             return;
         }
+        const generateBtn = event.target.closest('.coach-focus-generate');
+        if (generateBtn) {
+            const focus = coachFocusSuggestionsCurrent[Number(generateBtn.dataset.focusIndex) || 0] || null;
+            launchCoachGuidedDrill(focus, 'generate');
+            return;
+        }
         const masteredBtn = event.target.closest('.coach-focus-mastered');
         if (masteredBtn) {
             persistCoachMastered(masteredBtn.dataset.attempt || '', true);
@@ -611,7 +617,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         return coachFocusSuggestionsCurrent[0] || null;
     }
 
-    function launchCoachGuidedDrill(focus = null) {
+    function launchCoachGuidedDrill(focus = null, mode = 'guided') {
         const target = focus || getTopCoachFocus();
         if (!target) {
             showAlert('No coach-guided focus is available yet.', 'error');
@@ -624,6 +630,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 topic: target.topic || '',
                 title: target.title || '',
                 reason: target.reason || '',
+                mode: String(mode || 'guided').trim() || 'guided',
                 source: target.source || 'student-dashboard',
                 ts: Date.now()
             }));
@@ -657,6 +664,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 </div>
                 <div class="coach-focus-actions">
                     <button class="btn pri coach-focus-drill" type="button" data-focus-index="${index}">Guided Drill</button>
+                    <button class="btn ghost coach-focus-generate" type="button" data-focus-index="${index}">Generate Drill</button>
                     ${focus.attemptId ? `<button class="btn ghost coach-focus-mastered" type="button" data-attempt="${esc(focus.attemptId)}">Mark Top Lesson Mastered</button>` : `<button class="btn ghost coach-focus-open-analytics" type="button">View Analytics</button>`}
                 </div>
             </div>
