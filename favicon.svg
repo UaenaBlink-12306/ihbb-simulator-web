@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title">
+  <title>IHBB Practice Hub</title>
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#63a8ff" />
+      <stop offset="100%" stop-color="#28d2b0" />
+    </linearGradient>
+    <linearGradient id="shine" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.9" />
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0" />
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="18" fill="url(#bg)" />
+  <path d="M12 10h40c-6 0-11 5-11 11v2c0-7-5-13-13-13H12z" fill="url(#shine)" opacity="0.35" />
+  <path d="M19 18h8v10h10V18h8v28h-8V35H27v11h-8z" fill="#06111d" />
+  <path d="M49 18h5c4.4 0 8 3.6 8 8s-3.6 8-8 8h-5z" fill="#06111d" opacity="0.92" transform="translate(-9 0)" />
+</svg>

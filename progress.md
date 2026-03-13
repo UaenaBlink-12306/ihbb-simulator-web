@@ -29,3 +29,9 @@ QA notes:
 Remaining follow-up:
 - Re-run full teacher/student generation success-path QA once a valid DeepSeek key is configured.
 - Optional: apply the new Supabase SQL migration so generated question persistence and assignment source/alias storage work in the hosted database.
+
+UI refresh follow-up:
+- 2026-03-13: Added a shared frosted-glass/floating-card system in styles.css for heroes, cards, tab strips, form controls, metrics, and repeated dashboard surfaces, with restrained blur usage for performance.
+- 2026-03-13: Added shared favicon.svg links across all HTML entry points and generated a fallback favicon.ico to clear the default favicon 404 in browser verification.
+- 2026-03-13: Verified login.html through Playwright on desktop and mobile. Artifacts saved to output/playwright/login-desktop-glass.png and output/playwright/login-mobile-glass.png.
+- 2026-03-13: Found and fixed mobile overflow on .auth-card by adding shared box-sizing: border-box; rechecked at 430x950 and confirmed the card fits within the viewport.
