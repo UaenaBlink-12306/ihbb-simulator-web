@@ -36,3 +36,4 @@ UI refresh follow-up:
 - 2026-03-13: Verified login.html through Playwright on desktop and mobile. Artifacts saved to output/playwright/login-desktop-glass.png and output/playwright/login-mobile-glass.png.
 - 2026-03-13: Found and fixed mobile overflow on .auth-card by adding shared box-sizing: border-box; rechecked at 430x950 and confirmed the card fits within the viewport.
 - 2026-03-13: Reordered the student Assignments tab so the To Do / Completed lists render before the DeepSeek assignment support card.
+- 2026-03-13: Removed the Practice Hub hero blurb and metric cards from index.html so the top header only shows the badge, title, and action buttons.
