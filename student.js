@@ -282,6 +282,32 @@ document.addEventListener('DOMContentLoaded', async () => {
         el.scrollTop = el.scrollHeight;
     }
 
+    function isDashboardChatLayoutElementVisible(el) {
+        if (!el || el.hidden) return false;
+        const style = window.getComputedStyle(el);
+        if (style.display === 'none' || style.visibility === 'hidden' || Number(style.opacity || 1) === 0) return false;
+        const rect = el.getBoundingClientRect();
+        return rect.width > 1 && rect.height > 1 && rect.bottom > 0 && rect.top < window.innerHeight;
+    }
+
+    function syncDashboardChatLauncherLayout() {
+        if (!document.body?.classList.contains('has-coach-chat')) return;
+        const compact = window.matchMedia('(max-width: 860px)').matches;
+        const baseBottom = compact ? 104 : 20;
+        const baseRight = compact ? 12 : 20;
+        let extraBottom = 0;
+        for (const el of [document.getElementById('toast'), document.querySelector('.practice-bottom')]) {
+            if (!isDashboardChatLayoutElementVisible(el)) continue;
+            const rect = el.getBoundingClientRect();
+            const occupiesRightRail = rect.right > (window.innerWidth - 360) || rect.width >= (window.innerWidth - 48);
+            if (!occupiesRightRail) continue;
+            extraBottom = Math.max(extraBottom, Math.max(0, window.innerHeight - rect.top) + 14);
+        }
+        document.documentElement.style.setProperty('--coach-chat-launcher-right-offset', `${baseRight}px`);
+        document.documentElement.style.setProperty('--coach-chat-launcher-bottom-offset', `${baseBottom + extraBottom}px`);
+        document.documentElement.style.setProperty('--coach-chat-safe-space', `${Math.max(baseBottom + extraBottom + 80, compact ? 184 : 132)}px`);
+    }
+
     function setDashboardChatOpenState(open) {
         dashboardChat.open = !!open;
         const launcher = document.getElementById('coach-chat-launcher');
@@ -294,6 +320,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
         if (backdrop) backdrop.hidden = !dashboardChat.open;
         document.body.classList.toggle('coach-chat-open', dashboardChat.open);
+        syncDashboardChatLauncherLayout();
     }
 
     function renderDashboardChatChrome() {
@@ -570,6 +597,17 @@ document.addEventListener('DOMContentLoaded', async () => {
             document.getElementById('coach-chat-form')?.requestSubmit();
         }
     });
+    if (document.getElementById('coach-chat-launcher')) {
+        syncDashboardChatLauncherLayout();
+        window.addEventListener('resize', syncDashboardChatLauncherLayout);
+        window.addEventListener('orientationchange', syncDashboardChatLauncherLayout);
+        const dashboardChatLayoutObserver = new MutationObserver(() => syncDashboardChatLauncherLayout());
+        dashboardChatLayoutObserver.observe(document.body, {
+            subtree: true,
+            attributes: true,
+            attributeFilter: ['class', 'style', 'hidden']
+        });
+    }
 
     // ========== ACCOUNT TAB ==========
     const deleteBtn = document.getElementById('btn-delete-account');

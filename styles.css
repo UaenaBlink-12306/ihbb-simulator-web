@@ -2127,57 +2127,76 @@ tr:hover td {
   margin-top: 10px;
 }
 
+body.has-coach-chat {
+  --coach-chat-launcher-bottom-offset: 20px;
+  --coach-chat-launcher-right-offset: 20px;
+  --coach-chat-safe-space: 132px;
+}
+
+body.has-coach-chat .shell {
+  padding-bottom: max(132px, var(--coach-chat-safe-space, 132px));
+}
+
 .coach-chat-launcher {
   position: fixed;
-  right: 20px;
-  bottom: 20px;
-  top: auto;
+  right: max(12px, calc(env(safe-area-inset-right, 0px) + var(--coach-chat-launcher-right-offset, 20px)));
+  bottom: max(12px, calc(env(safe-area-inset-bottom, 0px) + var(--coach-chat-launcher-bottom-offset, 20px)));
   z-index: 80;
   display: inline-flex;
   align-items: center;
-  gap: 12px;
-  min-width: 0;
-  padding: 12px 14px;
-  border-radius: 18px;
-  border: 1px solid var(--line-strong);
+  justify-content: center;
+  width: 58px;
+  height: 58px;
+  min-width: 58px;
+  padding: 0;
+  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.72);
   background:
-    radial-gradient(circle at top right, rgba(99, 168, 255, 0.2), transparent 42%),
-    linear-gradient(180deg, rgba(11, 20, 33, 0.94), rgba(10, 17, 29, 0.98));
-  color: var(--ink);
-  box-shadow: var(--panel-shadow);
+    radial-gradient(circle at top right, rgba(31, 111, 255, 0.16), transparent 42%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(245, 249, 253, 0.82)),
+    rgba(255, 255, 255, 0.8);
+  color: #122033;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    0 22px 40px -28px rgba(15, 23, 42, 0.28),
+    0 16px 28px -26px rgba(31, 111, 255, 0.18);
+  backdrop-filter: blur(18px) saturate(160%);
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
   cursor: pointer;
-  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease, background 0.2s ease;
 }
 
 .coach-chat-launcher:hover {
   transform: translateY(-2px);
-  box-shadow: var(--panel-shadow-hover);
-  border-color: rgba(99, 168, 255, 0.34);
+  border-color: rgba(31, 111, 255, 0.22);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.94),
+    0 26px 44px -28px rgba(15, 23, 42, 0.26),
+    0 18px 30px -24px rgba(13, 154, 131, 0.14);
 }
 
 .coach-chat-launcher:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid rgba(31, 111, 255, 0.3);
   outline-offset: 3px;
 }
 
 .coach-chat-launcher-icon {
-  width: 40px;
-  height: 40px;
-  flex: 0 0 40px;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 30px;
   display: grid;
   place-items: center;
-  border-radius: 14px;
-  background: linear-gradient(135deg, rgba(99, 168, 255, 0.28), rgba(40, 210, 176, 0.22));
+  border-radius: 12px;
+  background: linear-gradient(135deg, rgba(31, 111, 255, 0.14), rgba(13, 154, 131, 0.12));
+  color: #16314e;
   font-family: 'Outfit', system-ui, sans-serif;
-  font-size: 13px;
+  font-size: 10px;
   font-weight: 900;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.12em;
 }
 
 .coach-chat-launcher-copy {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
+  display: none;
 }
 
 .coach-chat-launcher-title {
@@ -2189,57 +2208,71 @@ tr:hover td {
 }
 
 .coach-chat-launcher-note {
-  color: var(--muted);
+  color: #5d7088;
   font-size: 12px;
   line-height: 1.35;
 }
 
 .coach-chat-launcher-count {
-  min-width: 24px;
-  height: 24px;
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  min-width: 22px;
+  height: 22px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 0 8px;
+  padding: 0 7px;
   border-radius: 999px;
-  background: rgba(248, 113, 113, 0.16);
-  border: 1px solid rgba(248, 113, 113, 0.28);
-  color: var(--bad);
-  font-size: 12px;
+  background: linear-gradient(180deg, rgba(255, 244, 244, 0.98), rgba(255, 230, 230, 0.94));
+  border: 1px solid rgba(239, 68, 68, 0.18);
+  color: #c73f3f;
+  font-size: 11px;
   font-weight: 800;
+  box-shadow: 0 10px 18px -14px rgba(185, 28, 28, 0.35);
 }
 
 .coach-chat-backdrop {
   position: fixed;
   inset: 0;
   z-index: 88;
-  background: rgba(3, 7, 18, 0.5);
-  backdrop-filter: blur(6px);
+  background: rgba(226, 234, 244, 0.34);
+  backdrop-filter: blur(10px) saturate(120%);
+  -webkit-backdrop-filter: blur(10px) saturate(120%);
 }
 
 .coach-chat-sidebar {
   position: fixed;
-  inset: 0 0 0 auto;
-  width: min(430px, 100vw);
+  inset: 16px 16px 16px auto;
+  width: min(432px, calc(100vw - 32px));
   z-index: 89;
   pointer-events: none;
 }
 
 .coach-chat-panel {
   margin-left: auto;
-  width: min(430px, 100vw);
+  width: 100%;
   height: 100%;
   display: flex;
   flex-direction: column;
   gap: 16px;
   padding: 22px 20px 18px;
-  border-left: 1px solid var(--line);
+  border: 1px solid rgba(255, 255, 255, 0.78);
+  border-radius: 30px;
+  color: #122033;
+  color-scheme: light;
   background:
-    radial-gradient(circle at top right, rgba(99, 168, 255, 0.16), transparent 34%),
-    radial-gradient(circle at bottom left, rgba(40, 210, 176, 0.14), transparent 38%),
-    linear-gradient(180deg, rgba(9, 16, 27, 0.97), rgba(7, 13, 23, 0.985));
-  box-shadow: -24px 0 60px -42px rgba(0, 0, 0, 0.86);
-  transform: translateX(104%);
+    radial-gradient(circle at top right, rgba(31, 111, 255, 0.14), transparent 34%),
+    radial-gradient(circle at bottom left, rgba(13, 154, 131, 0.1), transparent 40%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(245, 249, 253, 0.82));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    0 30px 56px -34px rgba(15, 23, 42, 0.28),
+    0 22px 36px -30px rgba(31, 111, 255, 0.16);
+  backdrop-filter: blur(24px) saturate(160%);
+  -webkit-backdrop-filter: blur(24px) saturate(160%);
+  overflow: hidden;
+  transform: translateX(calc(100% + 24px));
   transition: transform 0.26s cubic-bezier(0.16, 1, 0.3, 1);
   pointer-events: auto;
 }
@@ -2263,6 +2296,20 @@ body.coach-chat-open {
   gap: 16px;
 }
 
+.coach-chat-panel .eyebrow,
+.coach-chat-panel .pill {
+  border-color: rgba(15, 23, 42, 0.08);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.82), rgba(247, 250, 253, 0.7)),
+    rgba(255, 255, 255, 0.64);
+  color: #5d7088;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.84);
+}
+
+.coach-chat-panel .card-title {
+  color: #122033;
+}
+
 .coach-chat-head-actions {
   display: flex;
   align-items: center;
@@ -2274,13 +2321,28 @@ body.coach-chat-open {
   width: 44px;
   height: 44px;
   padding: 0;
+  border-color: rgba(15, 23, 42, 0.08);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.84), rgba(245, 249, 253, 0.72)),
+    rgba(255, 255, 255, 0.68);
+  color: #122033;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.86),
+    0 12px 22px -20px rgba(15, 23, 42, 0.2);
   font-size: 24px;
   line-height: 1;
 }
 
+.coach-chat-close:hover {
+  border-color: rgba(31, 111, 255, 0.18);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(239, 246, 255, 0.78)),
+    rgba(255, 255, 255, 0.76);
+}
+
 .coach-chat-context-summary {
   margin: 6px 0 0;
-  color: var(--muted);
+  color: #5d7088;
   line-height: 1.6;
 }
 
@@ -2296,11 +2358,14 @@ body.coach-chat-open {
   gap: 6px;
   padding: 8px 11px;
   border-radius: 999px;
-  border: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.04);
-  color: var(--muted);
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.82), rgba(247, 250, 253, 0.68)),
+    rgba(255, 255, 255, 0.6);
+  color: #5d7088;
   font-size: 12px;
   font-weight: 700;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.78);
 }
 
 .coach-chat-messages {
@@ -2319,22 +2384,26 @@ body.coach-chat-open {
   gap: 10px;
   max-width: 100%;
   padding: 14px 15px;
-  border-radius: 18px;
-  border: 1px solid var(--line);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  border-radius: 22px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(246, 250, 255, 0.88)),
+    rgba(255, 255, 255, 0.78);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.84),
+    0 18px 28px -24px rgba(15, 23, 42, 0.18);
 }
 
 .coach-chat-message.assistant {
   align-self: flex-start;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.012)),
-    rgba(255, 255, 255, 0.03);
 }
 
 .coach-chat-message.user {
   align-self: flex-end;
-  background: linear-gradient(135deg, rgba(99, 168, 255, 0.2), rgba(40, 210, 176, 0.12));
-  border-color: rgba(99, 168, 255, 0.24);
+  background:
+    linear-gradient(135deg, rgba(223, 236, 255, 0.96), rgba(233, 248, 244, 0.84)),
+    rgba(255, 255, 255, 0.84);
+  border-color: rgba(31, 111, 255, 0.18);
 }
 
 .coach-chat-message-meta {
@@ -2342,7 +2411,7 @@ body.coach-chat-open {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  color: var(--muted);
+  color: #6b7d92;
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.05em;
@@ -2353,7 +2422,7 @@ body.coach-chat-open {
   margin: 0;
   white-space: pre-wrap;
   line-height: 1.7;
-  color: var(--ink);
+  color: #122033;
 }
 
 .coach-chat-actions {
@@ -2368,20 +2437,30 @@ body.coach-chat-open {
   align-items: flex-start;
   gap: 4px;
   min-width: 0;
-  padding: 10px 12px;
-  border-radius: 14px;
-  border: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.03);
-  color: var(--ink);
+  padding: 11px 12px;
+  border-radius: 16px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.86), rgba(245, 249, 253, 0.72)),
+    rgba(255, 255, 255, 0.68);
+  color: #122033;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.82),
+    0 14px 22px -22px rgba(15, 23, 42, 0.18);
   cursor: pointer;
   text-align: left;
-  transition: transform 0.18s ease, border-color 0.18s ease, background 0.18s ease;
+  transition: transform 0.18s ease, border-color 0.18s ease, background 0.18s ease, box-shadow 0.18s ease;
 }
 
 .coach-chat-action:hover {
   transform: translateY(-1px);
-  border-color: rgba(99, 168, 255, 0.28);
-  background: rgba(99, 168, 255, 0.09);
+  border-color: rgba(31, 111, 255, 0.18);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(236, 246, 255, 0.8)),
+    rgba(255, 255, 255, 0.74);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.88),
+    0 18px 26px -22px rgba(31, 111, 255, 0.16);
 }
 
 .coach-chat-action-label {
@@ -2390,7 +2469,7 @@ body.coach-chat-open {
 }
 
 .coach-chat-action-reason {
-  color: var(--muted);
+  color: #5d7088;
   font-size: 12px;
   line-height: 1.45;
 }
@@ -2399,7 +2478,7 @@ body.coach-chat-open {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  color: var(--muted);
+  color: #5d7088;
   font-size: 13px;
 }
 
@@ -2408,8 +2487,8 @@ body.coach-chat-open {
   width: 10px;
   height: 10px;
   border-radius: 999px;
-  background: var(--accent);
-  box-shadow: 14px 0 0 rgba(99, 168, 255, 0.45), 28px 0 0 rgba(99, 168, 255, 0.24);
+  background: #1f6fff;
+  box-shadow: 14px 0 0 rgba(31, 111, 255, 0.4), 28px 0 0 rgba(13, 154, 131, 0.24);
   animation: coachChatDots 1s infinite ease-in-out;
 }
 
@@ -2434,25 +2513,28 @@ body.coach-chat-open {
 .coach-chat-starter {
   padding: 8px 11px;
   border-radius: 999px;
-  border: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.03);
-  color: var(--muted);
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.84), rgba(246, 250, 255, 0.72)),
+    rgba(255, 255, 255, 0.64);
+  color: #5d7088;
   cursor: pointer;
   font-size: 12px;
   font-weight: 700;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
 }
 
 .coach-chat-starter:hover {
-  color: var(--ink);
-  border-color: rgba(99, 168, 255, 0.24);
+  color: #122033;
+  border-color: rgba(31, 111, 255, 0.18);
 }
 
 .coach-chat-form {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  padding-top: 6px;
-  border-top: 1px solid var(--line);
+  padding-top: 10px;
+  border-top: 1px solid rgba(15, 23, 42, 0.08);
 }
 
 .coach-chat-input-wrap {
@@ -2463,6 +2545,29 @@ body.coach-chat-open {
   width: 100%;
   min-height: 74px;
   resize: vertical;
+  padding: 14px 15px;
+  border-radius: 18px;
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(245, 249, 253, 0.82)),
+    rgba(255, 255, 255, 0.72);
+  color: #122033;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.86),
+    0 12px 20px -20px rgba(15, 23, 42, 0.18);
+  backdrop-filter: blur(12px) saturate(150%);
+  -webkit-backdrop-filter: blur(12px) saturate(150%);
+}
+
+.coach-chat-input-wrap textarea::placeholder,
+.coach-chat-form .muted {
+  color: #5d7088;
+}
+
+.coach-chat-input-wrap textarea:focus {
+  outline: 2px solid rgba(31, 111, 255, 0.18);
+  outline-offset: 0;
+  border-color: rgba(31, 111, 255, 0.24);
 }
 
 .coach-chat-form-actions {
@@ -2473,19 +2578,36 @@ body.coach-chat-open {
 }
 
 @media (max-width: 860px) {
-  .coach-chat-launcher {
-    right: 12px;
-    bottom: 12px;
-    padding: 10px 12px;
+  body.has-coach-chat {
+    --coach-chat-launcher-bottom-offset: 104px;
+    --coach-chat-launcher-right-offset: 12px;
+    --coach-chat-safe-space: 184px;
   }
 
-  .coach-chat-launcher-note {
-    display: none;
+  .coach-chat-launcher {
+    width: 52px;
+    height: 52px;
+    min-width: 52px;
+    border-radius: 18px;
+  }
+
+  .coach-chat-launcher-icon {
+    width: 28px;
+    height: 28px;
+    flex-basis: 28px;
+    border-radius: 11px;
+  }
+
+  .coach-chat-sidebar {
+    inset: auto 12px 12px 12px;
+    width: auto;
   }
 
   .coach-chat-panel {
-    width: 100vw;
+    height: min(78vh, 680px);
+    min-height: 420px;
     padding: 18px 16px 14px;
+    border-radius: 26px;
   }
 
   .coach-chat-form-actions {
