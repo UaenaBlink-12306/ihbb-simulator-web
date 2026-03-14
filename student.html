@@ -24,7 +24,7 @@
     <script src="student.js" defer></script>
 </head>
 
-<body class="has-coach-chat">
+<body>
     <div class="shell dashboard-shell">
         <header class="page-hero">
             <div class="hero-copy">
@@ -64,6 +64,15 @@
                 <a href="index.html?drill=1" class="btn ghost">Practice Drill</a>
                 <a href="livebee.html" class="btn ghost">Live Bee</a>
                 <a href="#" id="btn-logout" class="btn bad">Logout</a>
+                <button id="coach-chat-launcher" class="coach-chat-launcher" type="button" aria-controls="coach-chat-sidebar"
+                    aria-expanded="false" aria-label="Open DeepSeek training assistant">
+                    <span class="coach-chat-launcher-icon">DS</span>
+                    <span class="coach-chat-launcher-copy">
+                        <span class="coach-chat-launcher-title">DeepSeek</span>
+                        <span id="coach-chat-launcher-note" class="coach-chat-launcher-note">Open coach chat</span>
+                    </span>
+                    <span id="coach-chat-launcher-count" class="coach-chat-launcher-count hidden">0</span>
+                </button>
             </div>
         </header>
 
@@ -429,16 +438,6 @@
             <button id="btn-save-name" class="btn pri auth-option" style="margin-top: 8px;">Save and Continue</button>
         </div>
     </div>
-
-    <button id="coach-chat-launcher" class="coach-chat-launcher" type="button" aria-controls="coach-chat-sidebar"
-        aria-expanded="false" aria-label="Open DeepSeek training assistant">
-        <span class="coach-chat-launcher-icon">DS</span>
-        <span class="coach-chat-launcher-copy">
-            <span class="coach-chat-launcher-title">DeepSeek</span>
-            <span id="coach-chat-launcher-note" class="coach-chat-launcher-note">Open coach chat</span>
-        </span>
-        <span id="coach-chat-launcher-count" class="coach-chat-launcher-count hidden">0</span>
-    </button>
 
     <div id="coach-chat-backdrop" class="coach-chat-backdrop" hidden></div>
     <aside id="coach-chat-sidebar" class="coach-chat-sidebar" aria-hidden="true">

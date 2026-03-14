@@ -2127,27 +2127,15 @@ tr:hover td {
   margin-top: 10px;
 }
 
-body.has-coach-chat {
-  --coach-chat-launcher-bottom-offset: 20px;
-  --coach-chat-launcher-right-offset: 20px;
-  --coach-chat-safe-space: 132px;
-}
-
-body.has-coach-chat .shell {
-  padding-bottom: max(132px, var(--coach-chat-safe-space, 132px));
-}
-
 .coach-chat-launcher {
-  position: fixed;
-  right: max(12px, calc(env(safe-area-inset-right, 0px) + var(--coach-chat-launcher-right-offset, 20px)));
-  bottom: max(12px, calc(env(safe-area-inset-bottom, 0px) + var(--coach-chat-launcher-bottom-offset, 20px)));
-  z-index: 80;
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 58px;
-  height: 58px;
-  min-width: 58px;
+  width: 52px;
+  height: 52px;
+  min-width: 52px;
+  flex: 0 0 auto;
   padding: 0;
   border-radius: 20px;
   border: 1px solid rgba(255, 255, 255, 0.72);
@@ -2164,6 +2152,10 @@ body.has-coach-chat .shell {
   -webkit-backdrop-filter: blur(18px) saturate(160%);
   cursor: pointer;
   transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease, background 0.2s ease;
+}
+
+.hero-actions .coach-chat-launcher {
+  align-self: flex-start;
 }
 
 .coach-chat-launcher:hover {
@@ -2578,24 +2570,18 @@ body.coach-chat-open {
 }
 
 @media (max-width: 860px) {
-  body.has-coach-chat {
-    --coach-chat-launcher-bottom-offset: 104px;
-    --coach-chat-launcher-right-offset: 12px;
-    --coach-chat-safe-space: 184px;
-  }
-
   .coach-chat-launcher {
-    width: 52px;
-    height: 52px;
-    min-width: 52px;
-    border-radius: 18px;
+    width: 48px;
+    height: 48px;
+    min-width: 48px;
+    border-radius: 17px;
   }
 
   .coach-chat-launcher-icon {
-    width: 28px;
-    height: 28px;
-    flex-basis: 28px;
-    border-radius: 11px;
+    width: 26px;
+    height: 26px;
+    flex-basis: 26px;
+    border-radius: 10px;
   }
 
   .coach-chat-sidebar {
@@ -3812,6 +3798,11 @@ input[type=datetime-local]:focus {
   .hero-actions .btn,
   .hero-actions a.btn {
     width: 100%;
+  }
+
+  .hero-actions .coach-chat-launcher {
+    order: -1;
+    align-self: flex-end;
   }
 
   .metric-card {

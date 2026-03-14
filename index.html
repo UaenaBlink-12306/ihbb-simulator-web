@@ -85,7 +85,7 @@
   </script>
 </head>
 
-<body class="has-coach-chat">
+<body>
   <div class="shell page-shell">
     <header class="page-hero">
       <div class="hero-copy">
@@ -100,6 +100,15 @@
       <div class="hero-actions">
         <a href="index.html" class="btn ghost">Back to Dashboard</a>
         <a href="#" id="nav-logout" class="btn bad">Logout</a>
+        <button id="coach-chat-launcher" class="coach-chat-launcher" type="button" aria-controls="coach-chat-sidebar"
+          aria-expanded="false" aria-label="Open DeepSeek training assistant">
+          <span class="coach-chat-launcher-icon">DS</span>
+          <span class="coach-chat-launcher-copy">
+            <span class="coach-chat-launcher-title">DeepSeek</span>
+            <span id="coach-chat-launcher-note" class="coach-chat-launcher-note">Ask for a drill</span>
+          </span>
+          <span id="coach-chat-launcher-count" class="coach-chat-launcher-count hidden">0</span>
+        </button>
       </div>
     </header>
 
@@ -520,16 +529,6 @@
     </div>
   </section>
   </div>
-
-  <button id="coach-chat-launcher" class="coach-chat-launcher" type="button" aria-controls="coach-chat-sidebar"
-    aria-expanded="false" aria-label="Open DeepSeek training assistant">
-    <span class="coach-chat-launcher-icon">DS</span>
-    <span class="coach-chat-launcher-copy">
-      <span class="coach-chat-launcher-title">DeepSeek</span>
-      <span id="coach-chat-launcher-note" class="coach-chat-launcher-note">Ask for a drill</span>
-    </span>
-    <span id="coach-chat-launcher-count" class="coach-chat-launcher-count hidden">0</span>
-  </button>
 
   <div id="coach-chat-backdrop" class="coach-chat-backdrop" hidden></div>
   <aside id="coach-chat-sidebar" class="coach-chat-sidebar" aria-hidden="true">

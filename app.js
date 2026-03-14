@@ -778,32 +778,6 @@ function renderCoachChatMessages() {
   messagesEl.scrollTop = messagesEl.scrollHeight;
 }
 
-function isCoachChatLayoutElementVisible(el) {
-  if (!el || el.hidden) return false;
-  const style = window.getComputedStyle(el);
-  if (style.display === 'none' || style.visibility === 'hidden' || Number(style.opacity || 1) === 0) return false;
-  const rect = el.getBoundingClientRect();
-  return rect.width > 1 && rect.height > 1 && rect.bottom > 0 && rect.top < window.innerHeight;
-}
-
-function syncCoachChatLauncherLayout() {
-  if (!document.body?.classList.contains('has-coach-chat')) return;
-  const compact = window.matchMedia('(max-width: 860px)').matches;
-  const baseBottom = compact ? 104 : 20;
-  const baseRight = compact ? 12 : 20;
-  let extraBottom = 0;
-  for (const el of [$('toast'), document.querySelector('.practice-bottom')]) {
-    if (!isCoachChatLayoutElementVisible(el)) continue;
-    const rect = el.getBoundingClientRect();
-    const occupiesRightRail = rect.right > (window.innerWidth - 360) || rect.width >= (window.innerWidth - 48);
-    if (!occupiesRightRail) continue;
-    extraBottom = Math.max(extraBottom, Math.max(0, window.innerHeight - rect.top) + 14);
-  }
-  document.documentElement.style.setProperty('--coach-chat-launcher-right-offset', `${baseRight}px`);
-  document.documentElement.style.setProperty('--coach-chat-launcher-bottom-offset', `${baseBottom + extraBottom}px`);
-  document.documentElement.style.setProperty('--coach-chat-safe-space', `${Math.max(baseBottom + extraBottom + 80, compact ? 184 : 132)}px`);
-}
-
 function setCoachChatOpenState(open) {
   CoachChat.open = !!open;
   const launcher = $('coach-chat-launcher');
@@ -816,7 +790,6 @@ function setCoachChatOpenState(open) {
   }
   if (backdrop) backdrop.hidden = !CoachChat.open;
   document.body.classList.toggle('coach-chat-open', CoachChat.open);
-  syncCoachChatLauncherLayout();
 }
 
 function renderCoachChatChrome() {
@@ -3674,17 +3647,6 @@ $('coach-chat-input')?.addEventListener('keydown', (e) => {
     $('coach-chat-form')?.requestSubmit();
   }
 });
-if ($('coach-chat-launcher')) {
-  syncCoachChatLauncherLayout();
-  window.addEventListener('resize', syncCoachChatLauncherLayout);
-  window.addEventListener('orientationchange', syncCoachChatLauncherLayout);
-  const coachChatLayoutObserver = new MutationObserver(() => syncCoachChatLauncherLayout());
-  coachChatLayoutObserver.observe(document.body, {
-    subtree: true,
-    attributes: true,
-    attributeFilter: ['class', 'style', 'hidden']
-  });
-}
 
 /********************* Default fetch — loads categorized JSON only *********************/
 async function tryFetchDefault(force = false) {
