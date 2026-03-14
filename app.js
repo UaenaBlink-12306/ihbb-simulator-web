@@ -30,6 +30,7 @@ const KEY_SESS_SYNC_SEEN = 'ihbb_v2_session_sync_seen'; // per-user marker: <pre
 const KEY_COACH_LOCAL = 'ihbb_v2_coach_attempts';
 const KEY_COACH_PENDING = 'ihbb_v2_coach_pending';
 const KEY_COACH_DRILL = 'ihbb_student_coach_drill';
+const KEY_COACH_CHAT_ACTION = 'ihbb_v2_coach_chat_action';
 const WRONG_SYNC_TABLE = 'user_wrong_questions';
 const SESSION_SYNC_TABLE = 'user_drill_sessions';
 const COACH_SYNC_TABLE = 'user_coach_attempts';
@@ -1294,6 +1295,72 @@ function readPendingCoachDrill() {
 
 function clearPendingCoachDrill() {
   try { localStorage.removeItem(KEY_COACH_DRILL); } catch { /* noop */ }
+}
+
+function writePendingCoachChatAction(mode, extra = {}) {
+  const payload = {
+    mode: String(mode || '').trim(),
+    ts: Date.now(),
+    ...extra
+  };
+  try { localStorage.setItem(KEY_COACH_CHAT_ACTION, JSON.stringify(payload)); } catch { /* noop */ }
+}
+
+function readPendingCoachChatAction() {
+  const raw = safeReadJson(KEY_COACH_CHAT_ACTION, null);
+  if (!raw || typeof raw !== 'object') return null;
+  const mode = String(raw.mode || '').trim();
+  if (!mode) return null;
+  const ts = Number(raw.ts || 0);
+  if (ts && (Date.now() - ts) > 30 * 60 * 1000) {
+    try { localStorage.removeItem(KEY_COACH_CHAT_ACTION); } catch { /* noop */ }
+    return null;
+  }
+  return raw;
+}
+
+function clearPendingCoachChatAction() {
+  try { localStorage.removeItem(KEY_COACH_CHAT_ACTION); } catch { /* noop */ }
+}
+
+async function applyPendingCoachChatAction() {
+  const pending = readPendingCoachChatAction();
+  if (!pending) return false;
+  clearPendingCoachChatAction();
+  const mode = String(pending.mode || '').trim();
+  if (mode === 'practice_due_now' || mode === 'review_last_misses') {
+    navSet('nav-review');
+    SHOW('view-review');
+    renderHistory();
+    renderWrongBank();
+    drawCharts();
+    await refreshCoachNotebook(false);
+    if (wrongRecords().length) {
+      reviewMissedNow();
+    } else {
+      toast('Wrong bank empty');
+    }
+    return true;
+  }
+  if (mode === 'open_review') {
+    navSet('nav-review');
+    SHOW('view-review');
+    renderHistory();
+    renderWrongBank();
+    drawCharts();
+    await refreshCoachNotebook(false);
+    return true;
+  }
+  if (mode === 'start_current_session') {
+    navSet('nav-setup');
+    SHOW('view-setup');
+    if (getActiveSet()) startSession();
+    else toast('Load a set before starting practice');
+    return true;
+  }
+  navSet('nav-setup');
+  SHOW('view-setup');
+  return true;
 }
 
 function applyPendingCoachGuidedDrill() {
@@ -3658,6 +3725,7 @@ async function tryFetchDefault(force = false) {
   await loadGeneratedQuestionBank();
   updateSetupOverview();
   renderCoachChatChrome();
+  await applyPendingCoachChatAction();
   setTimeout(() => { maybeAutoOpenCoachChat('init'); }, 500);
 })();
 

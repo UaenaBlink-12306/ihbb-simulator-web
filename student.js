@@ -13,6 +13,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     const KEY_SESS = 'ihbb_v2_sessions';
     const KEY_COACH_LOCAL = 'ihbb_v2_coach_attempts';
+    const KEY_WRONG = 'ihbb_v2_wrong_srs';
+    const COACH_CHAT_NAV_STORAGE_KEY = 'ihbb_v2_coach_chat_action';
     const SESSION_SYNC_TABLE = 'user_drill_sessions';
     const COACH_SYNC_TABLE = 'user_coach_attempts';
     const COACH_DRILL_STORAGE_KEY = 'ihbb_student_coach_drill';
@@ -75,6 +77,27 @@ document.addEventListener('DOMContentLoaded', async () => {
         return `<div><b>Read More:</b> <a class="coach-link" href="${esc(wiki)}" target="_blank" rel="noopener noreferrer">${esc(label)}</a></div>`;
     };
     const isNotebookCoachRecord = (record) => !!record && !record.correct;
+    const DASHBOARD_CHAT_STARTERS = [
+        { label: 'What next?', prompt: 'What should I practice next from my student dashboard?' },
+        { label: 'Notebook or wrong-bank?', prompt: 'Should I use AI Notebook or Wrong-bank right now?' },
+        { label: 'Build a focused drill', prompt: 'Recommend a focused drill and send me into training.' }
+    ];
+    const DASHBOARD_CHAT_ALLOWED_ACTIONS = new Set([
+        'practice_due_now',
+        'review_last_misses',
+        'open_ai_notebook',
+        'apply_top_focus',
+        'generate_focus_drill',
+        'start_current_session',
+        'open_setup',
+        'open_review'
+    ]);
+    const dashboardChat = {
+        open: false,
+        busy: false,
+        source: 'ready',
+        messages: []
+    };
 
     // ========== NAME CHECK ==========
     if (!profile.display_name || !profile.display_name.trim()) {
@@ -98,6 +121,405 @@ document.addEventListener('DOMContentLoaded', async () => {
         document.getElementById('tab-' + tabName)?.classList.add('active');
         if (tabName === 'analytics') loadAnalytics();
         if (tabName === 'coach') loadCoachWorkspace(false);
+        renderDashboardChatChrome();
+    }
+
+    function readWrongBankState() {
+        const raw = safeReadJson(KEY_WRONG, {});
+        const state = raw && typeof raw === 'object' ? raw : {};
+        const entries = Object.values(state);
+        const now = Date.now();
+        const dueNow = entries.filter(entry => Number(entry?.dueAt || 0) <= now).length;
+        return { total: entries.length, dueNow };
+    }
+
+    function coachChatFocusTitle(focus) {
+        return [focus?.region, focus?.era, focus?.topic].filter(Boolean).join(' • ') || String(focus?.title || '').trim() || 'Top focus';
+    }
+
+    function buildDashboardChatContext() {
+        const sessions = safeReadJson(KEY_SESS, []);
+        const recentSessions = Array.isArray(sessions) ? sessions.slice(0, 5) : [];
+        const lastSession = recentSessions[0] || null;
+        const recentAccuracy = recentSessions.length
+            ? Math.round(recentSessions.reduce((sum, session) => sum + Number(session?.acc || 0), 0) / recentSessions.length)
+            : 0;
+        const daysSinceLastSession = Number(lastSession?.ts || 0)
+            ? Math.max(0, Math.floor((Date.now() - Number(lastSession.ts)) / DAY_MS))
+            : 0;
+        const wrongBank = readWrongBankState();
+        const topFocuses = (Array.isArray(coachFocusSuggestionsCurrent) ? coachFocusSuggestionsCurrent : []).slice(0, 4).map(focus => ({
+            key: String(focus?.key || '').trim(),
+            title: String(focus?.title || '').trim(),
+            region: String(focus?.region || '').trim(),
+            era: String(focus?.era || '').trim(),
+            topic: String(focus?.topic || '').trim(),
+            priority: String(focus?.priority || 'medium').trim(),
+            reason: String(focus?.reason || '').trim(),
+            action: String(focus?.action || '').trim()
+        }));
+        const recentRecord = Array.isArray(coachRecordsCurrent) && coachRecordsCurrent.length ? coachRecordsCurrent[0] : null;
+        const recentFocus = recentRecord ? coachFocusFromRecord(recentRecord) : {};
+        const activeTab = document.querySelector('.dash-tab.active')?.dataset?.tab || 'classes';
+        return {
+            current_view: `dashboard-${activeTab}`,
+            wrong_bank: {
+                due_now: wrongBank.dueNow,
+                total: wrongBank.total
+            },
+            coach_notebook: {
+                total: Array.isArray(coachRecordsCurrent) ? coachRecordsCurrent.length : 0,
+                open_lessons: Array.isArray(coachRecordsCurrent) ? coachRecordsCurrent.filter(record => !record.mastered).length : 0,
+                top_focuses: topFocuses
+            },
+            session_history: {
+                total_sessions: Array.isArray(sessions) ? sessions.length : 0,
+                recent_accuracy: recentAccuracy,
+                days_since_last_session: daysSinceLastSession,
+                last_session: lastSession ? {
+                    accuracy: Number(lastSession.acc || 0),
+                    total: Number(lastSession.total || 0),
+                    correct: Number(lastSession.correct || 0),
+                    duration_seconds: Number(lastSession.dur || 0),
+                    timestamp: Number(lastSession.ts || 0)
+                } : null
+            },
+            setup: {
+                mode: 'Practice Hub',
+                length: 'Use Practice Drill to choose length',
+                filters: 'Coach and analytics suggestions are synced here'
+            },
+            active_set: {
+                name: 'Practice Hub',
+                item_count: 0
+            },
+            recent_incorrect: recentRecord ? {
+                key: [recentFocus.region, recentFocus.era, recentFocus.topic].filter(Boolean).join('|'),
+                title: coachChatFocusTitle({
+                    title: [recentFocus.region, recentFocus.era, recentFocus.topic].filter(Boolean).join(' • ')
+                }),
+                region: String(recentFocus.region || '').trim(),
+                era: String(recentFocus.era || '').trim(),
+                topic: String(recentFocus.topic || '').trim(),
+                reason: String(recentRecord?.coach?.summary || recentRecord?.reason || '').trim(),
+                attempt_id: String(recentRecord?.client_attempt_id || '').trim()
+            } : null,
+            analytics: analyticsSnapshotCurrent ? {
+                total_attempts: Number(analyticsSnapshotCurrent.totalAttempts || 0),
+                total_accuracy: Number(analyticsSnapshotCurrent.totalAccuracy || 0),
+                blind_spots: Array.isArray(analyticsSnapshotCurrent.blindSpots)
+                    ? analyticsSnapshotCurrent.blindSpots.slice(0, 3).map(spot => ({
+                        title: String(spot?.title || '').trim(),
+                        priority: String(spot?.priority || 'medium').trim()
+                    }))
+                    : []
+            } : null
+        };
+    }
+
+    function buildDashboardChatSummary(snapshot) {
+        const recent = snapshot?.recent_incorrect;
+        const topFocus = snapshot?.coach_notebook?.top_focuses?.[0];
+        if (recent?.title) return `Recent miss: ${recent.title}. Ask for a corrective drill or reopen notebook guidance.`;
+        if ((snapshot?.wrong_bank?.due_now || 0) > 0) return `${snapshot.wrong_bank.due_now} wrong-bank card${snapshot.wrong_bank.due_now === 1 ? '' : 's'} are due.`;
+        if (topFocus?.title) return `Top coach focus: ${topFocus.title}. Ask DeepSeek to turn it into a drill.`;
+        if ((snapshot?.session_history?.total_sessions || 0) <= 0) return 'No recent drill history yet. Ask for a first practice plan.';
+        return 'Ask DeepSeek what to practice next before your next drill or assignment.';
+    }
+
+    function updateDashboardChatSourceLabel() {
+        const el = document.getElementById('coach-chat-source');
+        if (!el) return;
+        let label = 'Ready';
+        if (dashboardChat.busy) label = 'Thinking';
+        else if (dashboardChat.source === 'deepseek') label = 'DeepSeek';
+        else if (dashboardChat.source === 'fallback') label = 'Local plan';
+        el.textContent = label;
+    }
+
+    function renderDashboardChatStarters() {
+        const el = document.getElementById('coach-chat-starters');
+        if (!el) return;
+        el.innerHTML = DASHBOARD_CHAT_STARTERS.map((starter, index) => `
+            <button class="coach-chat-starter" type="button" data-starter-index="${index}">${esc(starter.label)}</button>
+        `).join('');
+    }
+
+    function renderDashboardChatMessages() {
+        const el = document.getElementById('coach-chat-messages');
+        if (!el) return;
+        const messagesHtml = dashboardChat.messages.map((message, messageIndex) => `
+            <div class="coach-chat-message ${message.role === 'user' ? 'user' : 'assistant'}">
+                <div class="coach-chat-message-meta">
+                    <span>${esc(message.role === 'user' ? 'You' : (message.source === 'deepseek' ? 'DeepSeek' : 'Local plan'))}</span>
+                    <span>${esc(message.role === 'user' ? 'Prompt' : 'Coach advice')}</span>
+                </div>
+                <p class="coach-chat-message-text">${esc(message.text || '')}</p>
+                ${Array.isArray(message.actions) && message.actions.length ? `
+                    <div class="coach-chat-actions">
+                        ${message.actions.map((action, actionIndex) => `
+                            <button class="coach-chat-action" type="button" data-message-index="${messageIndex}" data-action-index="${actionIndex}">
+                                <span class="coach-chat-action-label">${esc(action.label || 'Run action')}</span>
+                                <span class="coach-chat-action-reason">${esc(action.reason || 'Recommended from your current dashboard state.')}</span>
+                            </button>
+                        `).join('')}
+                    </div>
+                ` : ''}
+            </div>
+        `).join('');
+        const loadingHtml = dashboardChat.busy ? `
+            <div class="coach-chat-message assistant">
+                <div class="coach-chat-message-meta">
+                    <span>DeepSeek</span>
+                    <span>Preparing</span>
+                </div>
+                <div class="coach-chat-loading">Reviewing your coach history, wrong-bank, and analytics.</div>
+            </div>
+        ` : '';
+        el.innerHTML = messagesHtml || loadingHtml
+            ? `${messagesHtml}${loadingHtml}`
+            : `<div class="coach-chat-message assistant"><p class="coach-chat-message-text">Ask what to train next, whether to use AI Notebook or Wrong-bank, or where to focus before an assignment.</p></div>`;
+        el.scrollTop = el.scrollHeight;
+    }
+
+    function setDashboardChatOpenState(open) {
+        dashboardChat.open = !!open;
+        const launcher = document.getElementById('coach-chat-launcher');
+        const sidebar = document.getElementById('coach-chat-sidebar');
+        const backdrop = document.getElementById('coach-chat-backdrop');
+        if (launcher) launcher.setAttribute('aria-expanded', dashboardChat.open ? 'true' : 'false');
+        if (sidebar) {
+            sidebar.classList.toggle('open', dashboardChat.open);
+            sidebar.setAttribute('aria-hidden', dashboardChat.open ? 'false' : 'true');
+        }
+        if (backdrop) backdrop.hidden = !dashboardChat.open;
+        document.body.classList.toggle('coach-chat-open', dashboardChat.open);
+    }
+
+    function renderDashboardChatChrome() {
+        const snapshot = buildDashboardChatContext();
+        const summaryEl = document.getElementById('coach-chat-context-summary');
+        const pillsEl = document.getElementById('coach-chat-status-pills');
+        const noteEl = document.getElementById('coach-chat-launcher-note');
+        const countEl = document.getElementById('coach-chat-launcher-count');
+        const hintEl = document.getElementById('coach-chat-hint');
+        const sendBtn = document.getElementById('coach-chat-send');
+
+        if (summaryEl) summaryEl.textContent = buildDashboardChatSummary(snapshot);
+        if (pillsEl) {
+            const pills = [];
+            if ((snapshot?.wrong_bank?.due_now || 0) > 0) pills.push(`Wrong-bank due ${snapshot.wrong_bank.due_now}`);
+            if ((snapshot?.coach_notebook?.open_lessons || 0) > 0) pills.push(`Notebook open ${snapshot.coach_notebook.open_lessons}`);
+            if ((snapshot?.session_history?.recent_accuracy || 0) > 0) pills.push(`Recent accuracy ${snapshot.session_history.recent_accuracy}%`);
+            if (snapshot?.coach_notebook?.top_focuses?.[0]?.title) pills.push(snapshot.coach_notebook.top_focuses[0].title);
+            pillsEl.innerHTML = pills.length
+                ? pills.slice(0, 4).map(text => `<span class="coach-chat-status-pill">${esc(text)}</span>`).join('')
+                : `<span class="coach-chat-status-pill">Ask DeepSeek to recommend your next drill.</span>`;
+        }
+        if (noteEl) {
+            if (snapshot?.recent_incorrect?.title) noteEl.textContent = 'Fix the last miss';
+            else if ((snapshot?.wrong_bank?.due_now || 0) > 0) noteEl.textContent = `${snapshot.wrong_bank.due_now} due in Wrong-bank`;
+            else if ((snapshot?.coach_notebook?.open_lessons || 0) > 0) noteEl.textContent = `${snapshot.coach_notebook.open_lessons} coach lesson${snapshot.coach_notebook.open_lessons === 1 ? '' : 's'}`;
+            else noteEl.textContent = 'Open coach chat';
+        }
+        if (countEl) {
+            const count = Math.max(snapshot?.wrong_bank?.due_now || 0, snapshot?.coach_notebook?.open_lessons || 0);
+            countEl.textContent = String(count || 0);
+            countEl.classList.toggle('hidden', !count);
+        }
+        if (hintEl) {
+            hintEl.textContent = snapshot?.coach_notebook?.top_focuses?.[0]?.title
+                ? 'DeepSeek can send you into a guided or generated drill from this dashboard.'
+                : 'DeepSeek can point you to notebook review, analytics, or the Practice Hub.';
+        }
+        if (sendBtn) sendBtn.disabled = !!dashboardChat.busy;
+
+        renderDashboardChatStarters();
+        renderDashboardChatMessages();
+        updateDashboardChatSourceLabel();
+        setDashboardChatOpenState(dashboardChat.open);
+    }
+
+    function normalizeDashboardChatActions(actions) {
+        const out = [];
+        const seen = new Set();
+        for (const action of (Array.isArray(actions) ? actions : [])) {
+            const id = String(action?.id || '').trim();
+            const focusKey = String(action?.focus_key || '').trim();
+            if (!DASHBOARD_CHAT_ALLOWED_ACTIONS.has(id)) continue;
+            const key = `${id}|${focusKey}`;
+            if (seen.has(key)) continue;
+            seen.add(key);
+            out.push({
+                id,
+                label: String(action?.label || '').trim() || id.replace(/_/g, ' '),
+                reason: String(action?.reason || '').trim() || 'Recommended from your current dashboard state.',
+                focus_key: focusKey
+            });
+        }
+        return out.slice(0, 3);
+    }
+
+    function buildDashboardChatFallback(message) {
+        const snapshot = buildDashboardChatContext();
+        const prompt = String(message || '').trim().toLowerCase();
+        const wrongDue = snapshot?.wrong_bank?.due_now || 0;
+        const notebookOpen = snapshot?.coach_notebook?.open_lessons || 0;
+        const topFocus = snapshot?.coach_notebook?.top_focuses?.[0] || null;
+        const topFocusTitle = coachChatFocusTitle(topFocus);
+        const topFocusKey = String(topFocus?.key || '').trim();
+        const recent = snapshot?.recent_incorrect || null;
+        const actions = [];
+        let reply = '';
+
+        if (prompt.includes('wrong-bank') || prompt.includes('wrong bank') || prompt.includes('srs')) {
+            reply = wrongDue > 0
+                ? `Wrong-bank is useful now because ${wrongDue} card${wrongDue === 1 ? '' : 's'} are due. Use the Practice Hub to clear those before adding more mixed volume.`
+                : 'Wrong-bank is best after you build up misses in regular drills. Nothing is due yet, so a focused coach drill is the better move.';
+            if (wrongDue > 0) actions.push({ id: 'practice_due_now', label: `Practice ${wrongDue} due card${wrongDue === 1 ? '' : 's'}`, reason: 'Open the Practice Hub and start due-card review.' });
+            else if (topFocusKey) actions.push({ id: 'generate_focus_drill', label: `Generate ${topFocusTitle}`, reason: 'Turn the top notebook focus into a fresh drill.', focus_key: topFocusKey });
+        } else if (prompt.includes('notebook') || prompt.includes('lesson') || prompt.includes('coach')) {
+            reply = notebookOpen
+                ? `AI Notebook is the better next move when you need explanation and pattern review. You have ${notebookOpen} open lesson${notebookOpen === 1 ? '' : 's'} waiting.`
+                : 'Your AI Notebook is light right now, so the better move is another drill that creates stronger coach evidence.';
+            actions.push({ id: 'open_ai_notebook', label: 'Open Coach Workspace', reason: 'Jump into the saved DeepSeek lessons on this dashboard.' });
+            if (topFocusKey) actions.push({ id: 'generate_focus_drill', label: `Generate ${topFocusTitle}`, reason: 'Send this focus into a fresh practice drill.', focus_key: topFocusKey });
+        } else if (recent?.title) {
+            reply = `Your latest miss was ${recent.title}. Review that lesson once, then run a short guided drill before returning to mixed practice.`;
+            actions.push({ id: 'open_ai_notebook', label: 'Open Coach Workspace', reason: 'Reopen the saved lesson on this dashboard.' });
+            if (topFocusKey) actions.push({ id: 'apply_top_focus', label: `Guided Drill: ${topFocusTitle}`, reason: 'Launch a guided drill from the dashboard coach focus.', focus_key: topFocusKey });
+        } else if (topFocusKey) {
+            reply = `The clearest next move is ${topFocusTitle}. Use a targeted drill first, then go back to assignments or mixed practice.`;
+            actions.push({ id: 'apply_top_focus', label: `Guided Drill: ${topFocusTitle}`, reason: 'Launch the top coach focus from this dashboard.', focus_key: topFocusKey });
+            actions.push({ id: 'generate_focus_drill', label: `Generate ${topFocusTitle}`, reason: 'Create a fresh practice set for the same focus.', focus_key: topFocusKey });
+        } else {
+            reply = 'Start with a Practice Hub drill so DeepSeek has enough evidence to guide you with notebook and weak-area advice.';
+            actions.push({ id: 'start_current_session', label: 'Open Practice Hub', reason: 'Jump to the drill builder and start a session.' });
+        }
+
+        return {
+            source: 'fallback',
+            message: reply,
+            quick_actions: normalizeDashboardChatActions(actions)
+        };
+    }
+
+    async function requestDashboardChatReply(message) {
+        const payload = {
+            message: String(message || '').trim(),
+            conversation: dashboardChat.messages
+                .filter(entry => entry && ['user', 'assistant'].includes(entry.role))
+                .slice(-8)
+                .map(entry => ({ role: entry.role, content: String(entry.text || '').trim() }))
+                .filter(entry => entry.content),
+            study_context: buildDashboardChatContext()
+        };
+        const response = await fetch('/api/coach-chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        const raw = await response.json().catch(() => ({}));
+        if (!response.ok && !raw?.message) throw new Error(`Coach chat failed (${response.status})`);
+        const fallback = buildDashboardChatFallback(payload.message);
+        return {
+            source: String(raw?.source || '').trim().toLowerCase() === 'deepseek' ? 'deepseek' : fallback.source,
+            message: String(raw?.message || '').trim() || fallback.message,
+            quick_actions: normalizeDashboardChatActions(raw?.quick_actions || fallback.quick_actions)
+        };
+    }
+
+    async function sendDashboardChatMessage(rawMessage) {
+        const message = String(rawMessage || '').trim();
+        if (!message || dashboardChat.busy) return;
+        dashboardChat.messages.push({ role: 'user', text: message, source: 'user', actions: [] });
+        dashboardChat.busy = true;
+        dashboardChat.source = 'ready';
+        renderDashboardChatChrome();
+        try {
+            const reply = await requestDashboardChatReply(message);
+            dashboardChat.source = reply.source === 'deepseek' ? 'deepseek' : 'fallback';
+            dashboardChat.messages.push({
+                role: 'assistant',
+                text: String(reply.message || '').trim(),
+                source: dashboardChat.source,
+                actions: normalizeDashboardChatActions(reply.quick_actions)
+            });
+        } catch (err) {
+            const fallback = buildDashboardChatFallback(message);
+            dashboardChat.source = 'fallback';
+            dashboardChat.messages.push({
+                role: 'assistant',
+                text: String(fallback.message || '').trim(),
+                source: 'fallback',
+                actions: normalizeDashboardChatActions(fallback.quick_actions)
+            });
+        } finally {
+            dashboardChat.busy = false;
+            if (dashboardChat.messages.length > 18) dashboardChat.messages.splice(0, dashboardChat.messages.length - 18);
+            renderDashboardChatChrome();
+        }
+    }
+
+    function openDashboardChat() {
+        dashboardChat.open = true;
+        renderDashboardChatChrome();
+        setTimeout(() => document.getElementById('coach-chat-input')?.focus(), 60);
+        if (!dashboardChat.messages.length) {
+            void sendDashboardChatMessage(DASHBOARD_CHAT_STARTERS[0].prompt);
+        }
+    }
+
+    function closeDashboardChat() {
+        dashboardChat.open = false;
+        renderDashboardChatChrome();
+    }
+
+    function writeDashboardCoachNavAction(mode) {
+        try {
+            localStorage.setItem(COACH_CHAT_NAV_STORAGE_KEY, JSON.stringify({ mode: String(mode || '').trim(), ts: Date.now() }));
+        } catch { /* noop */ }
+    }
+
+    function resolveDashboardChatFocus(action) {
+        const focusKey = String(action?.focus_key || '').trim();
+        if (focusKey) {
+            const match = (Array.isArray(coachFocusSuggestionsCurrent) ? coachFocusSuggestionsCurrent : [])
+                .find(focus => String(focus?.key || '').trim() === focusKey);
+            if (match) return match;
+        }
+        return (Array.isArray(coachFocusSuggestionsCurrent) ? coachFocusSuggestionsCurrent[0] : null) || null;
+    }
+
+    async function runDashboardChatAction(action) {
+        const actionId = String(action?.id || '').trim();
+        const focus = resolveDashboardChatFocus(action);
+        if (!DASHBOARD_CHAT_ALLOWED_ACTIONS.has(actionId)) return;
+        if (actionId === 'open_ai_notebook') {
+            activateDashboardTab('coach');
+            await loadCoachWorkspace(false);
+            return;
+        }
+        if (actionId === 'apply_top_focus') {
+            if (!focus) { showAlert('No coach focus is ready yet.', 'error'); return; }
+            closeDashboardChat();
+            launchCoachGuidedDrill(focus, 'guided');
+            return;
+        }
+        if (actionId === 'generate_focus_drill') {
+            if (!focus) { showAlert('No coach focus is ready yet.', 'error'); return; }
+            closeDashboardChat();
+            launchCoachGuidedDrill(focus, 'generate');
+            return;
+        }
+        if (actionId === 'practice_due_now' || actionId === 'review_last_misses' || actionId === 'open_review') {
+            writeDashboardCoachNavAction(actionId);
+            closeDashboardChat();
+            window.location.href = 'index.html?drill=1';
+            return;
+        }
+        closeDashboardChat();
+        window.location.href = 'index.html?drill=1';
     }
 
     // ========== TAB SWITCHING ==========
@@ -108,6 +530,45 @@ document.addEventListener('DOMContentLoaded', async () => {
     // ========== LOGOUT ==========
     document.getElementById('btn-logout').addEventListener('click', async (e) => {
         e.preventDefault(); await sb.auth.signOut(); window.location.replace('login.html');
+    });
+
+    document.getElementById('coach-chat-launcher')?.addEventListener('click', () => openDashboardChat());
+    document.getElementById('coach-chat-close')?.addEventListener('click', () => closeDashboardChat());
+    document.getElementById('coach-chat-backdrop')?.addEventListener('click', () => closeDashboardChat());
+    document.getElementById('coach-chat-form')?.addEventListener('submit', (event) => {
+        event.preventDefault();
+        const input = document.getElementById('coach-chat-input');
+        const message = String(input?.value || '').trim();
+        if (!message) return;
+        if (input) input.value = '';
+        void sendDashboardChatMessage(message);
+    });
+    document.getElementById('coach-chat-starters')?.addEventListener('click', (event) => {
+        const button = event.target.closest('.coach-chat-starter');
+        if (!button) return;
+        const starter = DASHBOARD_CHAT_STARTERS[Number(button.dataset.starterIndex) || 0];
+        if (!starter?.prompt) return;
+        void sendDashboardChatMessage(starter.prompt);
+    });
+    document.getElementById('coach-chat-messages')?.addEventListener('click', (event) => {
+        const button = event.target.closest('.coach-chat-action');
+        if (!button) return;
+        const messageIndex = Number(button.dataset.messageIndex);
+        const actionIndex = Number(button.dataset.actionIndex);
+        const action = dashboardChat.messages?.[messageIndex]?.actions?.[actionIndex];
+        if (!action) return;
+        void runDashboardChatAction(action);
+    });
+    document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape' && dashboardChat.open) {
+            event.preventDefault();
+            closeDashboardChat();
+            return;
+        }
+        if (event.key === 'Enter' && !event.shiftKey && document.activeElement?.id === 'coach-chat-input') {
+            event.preventDefault();
+            document.getElementById('coach-chat-form')?.requestSubmit();
+        }
     });
 
     // ========== ACCOUNT TAB ==========
@@ -681,11 +1142,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (!focuses.length) {
             summaryEl.textContent = 'DeepSeek prep suggestions will appear here once you build up some coach notes or analytics history.';
             focusEl.innerHTML = '<div class="coach-empty">Practice a few more questions to unlock targeted assignment prep.</div>';
+            renderDashboardChatChrome();
             return;
         }
         const primary = focuses[0];
         summaryEl.textContent = `Before your next assignment, put extra attention on ${primary.title}. The coach is seeing repeat friction there across your recent practice.`;
         renderCoachFocusCards('assignments-coach-focuses', focuses, 'No assignment prep suggestions yet.');
+        renderDashboardChatChrome();
     }
 
     function renderCoachWorkspace() {
@@ -752,6 +1215,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
 
         renderAssignmentsCoachBrief();
+        renderDashboardChatChrome();
     }
 
     async function persistCoachMastered(attemptId, mastered) {
@@ -1650,7 +2114,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (emptyEl) emptyEl.classList.toggle('hidden', hasData);
         if (contentEl) contentEl.classList.toggle('hidden', !hasData);
         prepareAnalyticsInsights(snapshot, hasData);
-        if (!hasData) return;
+        if (!hasData) {
+            renderDashboardChatChrome();
+            return;
+        }
 
         document.getElementById('analytics-kpi-attempts').textContent = snapshot.totalAttempts.toLocaleString();
         document.getElementById('analytics-kpi-accuracy').textContent = `${snapshot.totalAccuracy}%`;
@@ -1683,6 +2150,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         renderPerformanceList('analytics-region-list', snapshot.regionStats, 'No region-tagged questions yet.');
         renderBlindSpots(snapshot.blindSpots);
         renderHeatmap(snapshot.days, snapshot.activeDays, snapshot.fastestBuzz);
+        renderDashboardChatChrome();
     }
 
     // ========== HELPERS ==========
@@ -1698,4 +2166,5 @@ document.addEventListener('DOMContentLoaded', async () => {
     loadAssignments();
     loadAnalytics();
     loadCoachWorkspace(false);
+    renderDashboardChatChrome();
 });

@@ -2129,8 +2129,9 @@ tr:hover td {
 
 .coach-chat-launcher {
   position: fixed;
-  top: 18px;
-  right: 18px;
+  right: 20px;
+  bottom: 20px;
+  top: auto;
   z-index: 80;
   display: inline-flex;
   align-items: center;
@@ -2473,8 +2474,8 @@ body.coach-chat-open {
 
 @media (max-width: 860px) {
   .coach-chat-launcher {
-    top: 12px;
     right: 12px;
+    bottom: 12px;
     padding: 10px 12px;
   }
 

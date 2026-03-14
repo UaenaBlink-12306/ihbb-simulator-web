@@ -429,6 +429,48 @@
             <button id="btn-save-name" class="btn pri auth-option" style="margin-top: 8px;">Save and Continue</button>
         </div>
     </div>
+
+    <button id="coach-chat-launcher" class="coach-chat-launcher" type="button" aria-controls="coach-chat-sidebar"
+        aria-expanded="false" aria-label="Open DeepSeek training assistant">
+        <span class="coach-chat-launcher-icon">DS</span>
+        <span class="coach-chat-launcher-copy">
+            <span class="coach-chat-launcher-title">DeepSeek</span>
+            <span id="coach-chat-launcher-note" class="coach-chat-launcher-note">Open coach chat</span>
+        </span>
+        <span id="coach-chat-launcher-count" class="coach-chat-launcher-count hidden">0</span>
+    </button>
+
+    <div id="coach-chat-backdrop" class="coach-chat-backdrop" hidden></div>
+    <aside id="coach-chat-sidebar" class="coach-chat-sidebar" aria-hidden="true">
+        <div class="coach-chat-panel">
+            <div class="coach-chat-head">
+                <div>
+                    <div class="eyebrow">DeepSeek sidebar</div>
+                    <h2 class="card-title">Training Assistant</h2>
+                    <p id="coach-chat-context-summary" class="coach-chat-context-summary">Reviewing your coach and analytics history.</p>
+                </div>
+                <div class="coach-chat-head-actions">
+                    <span id="coach-chat-source" class="pill">Ready</span>
+                    <button id="coach-chat-close" class="btn ghost coach-chat-close" type="button" aria-label="Close sidebar">×</button>
+                </div>
+            </div>
+
+            <div id="coach-chat-status-pills" class="coach-chat-status-pills"></div>
+            <div id="coach-chat-messages" class="coach-chat-messages" aria-live="polite"></div>
+            <div id="coach-chat-starters" class="coach-chat-starters"></div>
+
+            <form id="coach-chat-form" class="coach-chat-form">
+                <label class="coach-chat-input-wrap" for="coach-chat-input">
+                    <textarea id="coach-chat-input" rows="2"
+                        placeholder="Ask what to train next, whether to use AI Notebook, or where to focus before an assignment."></textarea>
+                </label>
+                <div class="coach-chat-form-actions">
+                    <div id="coach-chat-hint" class="muted">DeepSeek can send you straight into a targeted drill.</div>
+                    <button id="coach-chat-send" class="btn pri" type="submit">Send</button>
+                </div>
+            </form>
+        </div>
+    </aside>
 </body>
 
 </html>
