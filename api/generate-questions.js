@@ -1,3 +1,6 @@
+const fs = require('fs/promises');
+const path = require('path');
+
 const REGION_OPTIONS = [
   'Africa',
   'Central Asia',
@@ -21,6 +24,10 @@ const ERA_LABELS = {
   '06': '1914 – 1991',
   '07': '1991 – Present'
 };
+
+const ROOT_DIR = path.resolve(__dirname, '..');
+const QUESTIONS_JSON_PATH = path.join(ROOT_DIR, 'questions.json');
+const GENERATED_QUESTIONS_BANK_PATH = path.join(ROOT_DIR, 'generated_questions_bank.json');
 
 function parseJsonFromContent(content) {
   if (!content) return null;
@@ -162,6 +169,121 @@ function normalizeGeneratedItem(raw, defaults, index, seenKeys, avoidAnswers) {
   };
 }
 
+function normalizeGeneratedBankItem(raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const question = stringValue(raw.question || raw.question_text || raw.prompt || raw.text || raw.body).replace(/\s+/g, ' ').trim();
+  const answer = stringValue(raw.answer || raw.answer_text || raw.canonical_answer || raw.solution).replace(/\s+/g, ' ').trim();
+  if (!question || !answer) return null;
+  const category = normalizeRegion(raw.category || raw.region || raw.meta?.category) || 'World';
+  const era = normalizeEra(raw.era || raw.meta?.era) || '';
+  const item = {
+    id: stringValue(raw.id) || makeGeneratedId(0),
+    question,
+    answer,
+    aliases: toAliasArray(raw.aliases),
+    meta: {
+      category,
+      era,
+      source: 'generated'
+    }
+  };
+  const topic = stringValue(raw.topic);
+  if (topic) item.topic = topic;
+  const createdFrom = stringValue(raw.created_from);
+  if (createdFrom) item.created_from = createdFrom;
+  return item;
+}
+
+function questionStorageKey(raw) {
+  const answer = normalizeCompact(raw?.answer || raw?.answer_text);
+  const question = normalizeCompact(raw?.question || raw?.question_text);
+  if (!answer || !question) return '';
+  return `${answer}::${question}`;
+}
+
+function mergeGeneratedItems(existingItems, incomingItems) {
+  const nextItems = Array.isArray(existingItems) ? existingItems.filter((item) => item && typeof item === 'object' && !Array.isArray(item)) : [];
+  const byId = new Map();
+  const byKey = new Map();
+  for (const item of nextItems) {
+    const id = stringValue(item.id);
+    const key = questionStorageKey(item);
+    if (id) byId.set(id, item);
+    if (key) byKey.set(key, item);
+  }
+  const sessionItems = [];
+  let added = 0;
+  for (const raw of (incomingItems || [])) {
+    const item = normalizeGeneratedBankItem(raw);
+    if (!item) continue;
+    const id = stringValue(item.id);
+    const key = questionStorageKey(item);
+    const existing = (id && byId.get(id)) || (key && byKey.get(key)) || null;
+    if (existing) {
+      sessionItems.push(existing);
+      continue;
+    }
+    nextItems.push(item);
+    if (id) byId.set(id, item);
+    if (key) byKey.set(key, item);
+    sessionItems.push(item);
+    added += 1;
+  }
+  return { items: nextItems, sessionItems, added };
+}
+
+async function atomicWriteJson(filename, payload) {
+  const tmpPath = `${filename}.tmp`;
+  await fs.writeFile(tmpPath, JSON.stringify(payload, null, 2), 'utf8');
+  await fs.rename(tmpPath, filename);
+}
+
+async function persistGeneratedItems(items) {
+  const persistence = {
+    shared_bank_added: 0,
+    shared_bank_total: 0,
+    questions_json_added: 0,
+    questions_json_updated: false,
+    warning: ''
+  };
+  const warnings = [];
+
+  try {
+    let bankPayload = { id: 'generated_shared_bank', name: 'Shared Generated Questions', items: [] };
+    try {
+      const raw = await fs.readFile(GENERATED_QUESTIONS_BANK_PATH, 'utf8');
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) bankPayload = parsed;
+    } catch {}
+    const mergedBank = mergeGeneratedItems(bankPayload.items, items);
+    bankPayload.id = bankPayload.id || 'generated_shared_bank';
+    bankPayload.name = bankPayload.name || 'Shared Generated Questions';
+    bankPayload.items = mergedBank.items;
+    await atomicWriteJson(GENERATED_QUESTIONS_BANK_PATH, bankPayload);
+    persistence.shared_bank_added = mergedBank.added;
+    persistence.shared_bank_total = mergedBank.items.length;
+  } catch (error) {
+    warnings.push('Shared generated bank could not be updated on this server.');
+  }
+
+  try {
+    const raw = await fs.readFile(QUESTIONS_JSON_PATH, 'utf8');
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      const mergedQuestions = mergeGeneratedItems(parsed.items, items);
+      parsed.items = mergedQuestions.items;
+      await atomicWriteJson(QUESTIONS_JSON_PATH, parsed);
+      persistence.questions_json_added = mergedQuestions.added;
+      persistence.questions_json_updated = true;
+    }
+  } catch (error) {
+    warnings.push('questions.json could not be rewritten on this server.');
+  }
+
+  if (warnings.length) persistence.warning = warnings.join(' ');
+  return persistence;
+}
+
 async function callDeepSeek(messages, maxTokens) {
   const key = process.env.DEEPSEEK_API_KEY;
   const model = process.env.DEEPSEEK_MODEL || 'deepseek-chat';
@@ -269,11 +391,14 @@ module.exports = async function handler(req, res) {
       return res.status(502).json({ error: 'DeepSeek returned no valid generated questions.' });
     }
 
+    const persistence = await persistGeneratedItems(items);
+
     return res.status(200).json({
       source: 'deepseek',
       requested: count,
       returned: items.length,
-      items
+      items,
+      persistence
     });
   } catch (error) {
     return res.status(500).json({ error: error?.message || 'Question generation failed.' });

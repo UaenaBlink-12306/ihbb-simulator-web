@@ -51,3 +51,10 @@ UI refresh follow-up:
 - 2026-03-14: Moved the DeepSeek launcher out of its floating bottom-right position and into the header action area on both `index.html` and `student.html`, keeping it top-right without overlaying page content.
 - 2026-03-14: Removed the now-unused launcher offset/safe-space sync logic from `app.js` and `student.js`; the header-mounted trigger no longer needs viewport collision handling.
 - 2026-03-14: Browser QA confirmed the launcher now sits at the top-right edge of the hero action group on desktop and mobile, with the mobile Practice Hub stacking it above the action buttons instead of overlapping them. Artifacts saved to `output/playwright/coach-chat-practice-top-right-mobile.png`, `output/playwright/coach-chat-practice-top-right-open.png`, and `output/playwright/coach-chat-dashboard-top-right.png`.
+- 2026-03-14: Changed generated-question create flows so they no longer inject a visible per-user "Generated Drill" set. Fresh DeepSeek questions now merge into the shared runtime library and the session starts immediately from those returned questions.
+- 2026-03-14: Added `generated_questions_bank.json` as a shared generated-question overlay file. Both `server.py` and `api/generate-questions.js` now persist valid generated items into that overlay and also best-effort merge them into `questions.json` so future users can study them from the main bank.
+- 2026-03-14: Updated `app.js` to load the shared generated overlay during default-bank bootstrap, treat generated items by `meta.source` instead of special generated-set IDs, and use a one-shot `sessionOverrideItems` pool so AI Notebook / coach generation jumps straight into practice instead of setup.
+- 2026-03-14: Browser QA with a mocked generation response confirmed the library count increased, no generated drill set was created, and practice started immediately after generation. Artifact saved to `output/playwright/generated-merge-direct-practice.png`.
+
+Remaining follow-up:
+- Re-run the live DeepSeek success path against the real backend once a valid `DEEPSEEK_API_KEY` is available in the environment.

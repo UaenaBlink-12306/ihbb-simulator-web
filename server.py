@@ -4,7 +4,7 @@ import json
 import math
 import re
 import uuid
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Tuple
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import socket
 from urllib.parse import urlparse, quote
@@ -1287,11 +1287,14 @@ def generate_questions_with_deepseek(payload: Dict[str, Any]) -> Dict[str, Any]:
         if not items:
             return {"error": "DeepSeek returned no valid generated questions."}
 
+        persistence = persist_generated_items(items)
+
         return {
             "source": "deepseek",
             "requested": count,
             "returned": len(items),
             "items": items,
+            "persistence": persistence,
         }
     except requests.exceptions.Timeout as e:
         log.error("DeepSeek generation timeout: %s", e)
@@ -1312,6 +1315,134 @@ def generate_questions_with_deepseek(payload: Dict[str, Any]) -> Dict[str, Any]:
 
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+QUESTIONS_JSON_PATH = os.path.join(BASE_DIR, "questions.json")
+GENERATED_QUESTIONS_BANK_PATH = os.path.join(BASE_DIR, "generated_questions_bank.json")
+
+
+def normalize_generated_bank_item(raw: Any) -> Dict[str, Any]:
+    if not isinstance(raw, dict):
+        return {}
+    question = re.sub(r"\s+", " ", string_value(raw.get("question", raw.get("question_text", raw.get("prompt", raw.get("text", raw.get("body", ""))))))).strip()
+    answer = re.sub(r"\s+", " ", string_value(raw.get("answer", raw.get("answer_text", raw.get("canonical_answer", raw.get("solution", "")))))).strip()
+    if not question or not answer:
+        return {}
+    meta = raw.get("meta") or {}
+    item = {
+        "id": string_value(raw.get("id")) or make_generated_id(),
+        "question": question,
+        "answer": answer,
+        "aliases": to_alias_array(raw.get("aliases")),
+        "meta": {
+            "category": normalize_region(raw.get("category", raw.get("region", meta.get("category")))) or "World",
+            "era": normalize_era_code(raw.get("era", meta.get("era"))) or "",
+            "source": "generated",
+        },
+    }
+    topic = string_value(raw.get("topic"))
+    if topic:
+        item["topic"] = topic
+    created_from = string_value(raw.get("created_from"))
+    if created_from:
+        item["created_from"] = created_from
+    return item
+
+
+def question_storage_key(raw: Any) -> str:
+    if not isinstance(raw, dict):
+        return ""
+    answer = normalize_compact(string_value(raw.get("answer", raw.get("answer_text"))))
+    question = normalize_compact(string_value(raw.get("question", raw.get("question_text"))))
+    if not answer or not question:
+        return ""
+    return f"{answer}::{question}"
+
+
+def merge_generated_items(existing_items: Any, incoming_items: Any) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], int]:
+    next_items: List[Dict[str, Any]] = [item for item in (existing_items or []) if isinstance(item, dict)]
+    by_id: Dict[str, Dict[str, Any]] = {}
+    by_key: Dict[str, Dict[str, Any]] = {}
+    for item in next_items:
+        item_id = string_value(item.get("id"))
+        key = question_storage_key(item)
+        if item_id:
+            by_id[item_id] = item
+        if key:
+            by_key[key] = item
+    session_items: List[Dict[str, Any]] = []
+    added = 0
+    for raw in incoming_items or []:
+        item = normalize_generated_bank_item(raw)
+        if not item:
+            continue
+        item_id = string_value(item.get("id"))
+        key = question_storage_key(item)
+        existing = by_id.get(item_id) if item_id else None
+        if not existing and key:
+            existing = by_key.get(key)
+        if existing:
+            session_items.append(existing)
+            continue
+        next_items.append(item)
+        if item_id:
+            by_id[item_id] = item
+        if key:
+            by_key[key] = item
+        session_items.append(item)
+        added += 1
+    return next_items, session_items, added
+
+
+def atomic_write_json(path: str, payload: Any) -> None:
+    tmp_path = path + ".tmp"
+    with open(tmp_path, "w", encoding="utf-8") as handle:
+        json.dump(payload, handle, ensure_ascii=False, indent=2)
+    os.replace(tmp_path, path)
+
+
+def persist_generated_items(items: List[Dict[str, Any]]) -> Dict[str, Any]:
+    persistence = {
+        "shared_bank_added": 0,
+        "shared_bank_total": 0,
+        "questions_json_added": 0,
+        "questions_json_updated": False,
+        "warning": "",
+    }
+    warnings: List[str] = []
+
+    try:
+        if os.path.exists(GENERATED_QUESTIONS_BANK_PATH):
+            with open(GENERATED_QUESTIONS_BANK_PATH, "r", encoding="utf-8") as handle:
+                bank_payload = json.load(handle)
+        else:
+            bank_payload = {"id": "generated_shared_bank", "name": "Shared Generated Questions", "items": []}
+        merged_items, _, added = merge_generated_items(bank_payload.get("items"), items)
+        bank_payload["id"] = bank_payload.get("id") or "generated_shared_bank"
+        bank_payload["name"] = bank_payload.get("name") or "Shared Generated Questions"
+        bank_payload["items"] = merged_items
+        atomic_write_json(GENERATED_QUESTIONS_BANK_PATH, bank_payload)
+        persistence["shared_bank_added"] = added
+        persistence["shared_bank_total"] = len(merged_items)
+    except Exception as exc:
+        log.warning("Shared generated bank persist failed: %s", exc)
+        warnings.append("Shared generated bank could not be updated on this server.")
+
+    try:
+        if os.path.exists(QUESTIONS_JSON_PATH):
+            with open(QUESTIONS_JSON_PATH, "r", encoding="utf-8") as handle:
+                questions_payload = json.load(handle)
+            if isinstance(questions_payload, dict):
+                merged_items, _, added = merge_generated_items(questions_payload.get("items"), items)
+                questions_payload["items"] = merged_items
+                atomic_write_json(QUESTIONS_JSON_PATH, questions_payload)
+                persistence["questions_json_added"] = added
+                persistence["questions_json_updated"] = True
+    except Exception as exc:
+        log.warning("questions.json merge failed: %s", exc)
+        warnings.append("questions.json could not be rewritten on this server.")
+
+    if warnings:
+        persistence["warning"] = " ".join(warnings)
+    return persistence
 
 
 def guess_type(path: str) -> str:

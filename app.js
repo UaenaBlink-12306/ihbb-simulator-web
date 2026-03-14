@@ -34,9 +34,7 @@ const KEY_COACH_CHAT_ACTION = 'ihbb_v2_coach_chat_action';
 const WRONG_SYNC_TABLE = 'user_wrong_questions';
 const SESSION_SYNC_TABLE = 'user_drill_sessions';
 const COACH_SYNC_TABLE = 'user_coach_attempts';
-const GENERATED_QUESTIONS_TABLE = 'generated_questions';
-const GENERATED_BANK_SET_PREFIX = 'generated_bank_';
-const GENERATED_DRILL_SET_PREFIX = 'generated_drill_';
+const GENERATED_QUESTIONS_BANK_URL = './generated_questions_bank.json';
 
 const WrongSync = {
   userId: null,
@@ -78,7 +76,8 @@ const App = {
   rollingSentences: [], _cdIv: null,
   autoGrade: true,
   sessionId: null,
-  submitBusy: false
+  submitBusy: false,
+  sessionOverrideItems: null
 };
 
 const EXPLICIT_NO_ATTEMPT_ANSWERS = new Set([
@@ -222,7 +221,7 @@ function setJsonSafe(key, value) {
 }
 function inferSourceFallbackForSet(set) {
   const name = String(set?.name || '').trim();
-  if (set?.generatedBank || set?.generatedDrill || String(set?.id || '').startsWith(GENERATED_BANK_SET_PREFIX) || String(set?.id || '').startsWith(GENERATED_DRILL_SET_PREFIX)) {
+  if (Array.isArray(set?.items) && set.items.length && set.items.every(item => String(item?.meta?.source || '').trim() === 'generated')) {
     return 'generated';
   }
   if (set?.volatile || /IHBB Questions/i.test(name)) return 'original';
@@ -1761,72 +1760,101 @@ const ERA_NAMES = {
   "07": "1991 – Present"
 };
 
-function generatedBankSetId(userId = 'local') {
-  return `${GENERATED_BANK_SET_PREFIX}${userId}`;
-}
-
 function buildFocusTitle(focus) {
   return [focus?.region, focus?.era, focus?.topic].filter(Boolean).join(' • ') || String(focus?.title || '').trim() || 'Targeted Focus';
 }
 
-function normalizeGeneratedQuestionRow(row) {
-  return normalizeJsonItem({
-    id: row?.id,
-    question: row?.question_text || row?.question,
-    answer: row?.answer_text || row?.answer,
-    aliases: row?.aliases,
-    meta: {
-      category: row?.category || row?.meta?.category || '',
-      era: row?.era || row?.meta?.era || '',
-      source: row?.source || row?.meta?.source || 'generated'
-    }
-  });
+function questionMergeKey(item) {
+  const question = String(item?.question || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
+  const answer = String(item?.answer || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
+  if (!question || !answer) return '';
+  return `${answer}::${question}`;
 }
 
-function upsertGeneratedBankSet(items, userId, { activate = false } = {}) {
-  const setId = generatedBankSetId(userId);
-  const nextItems = (items || []).map(it => ({ ...it, meta: { ...(it.meta || {}), source: String(it?.meta?.source || 'generated').trim() || 'generated' } }));
-  const existingIndex = (Library.sets || []).findIndex(set => set?.id === setId);
-  if (!nextItems.length) {
-    if (existingIndex >= 0) {
-      Library.sets.splice(existingIndex, 1);
-      if (Library.activeSetId === setId) {
-        Library.activeSetId = Library.sets[0]?.id || null;
-      }
-    }
-  } else {
-    const nextSet = {
-      id: setId,
-      name: 'My Generated Questions',
-      items: nextItems,
-      volatile: true,
-      generatedBank: true
-    };
-    if (existingIndex >= 0) Library.sets.splice(existingIndex, 1, nextSet);
-    else Library.sets.unshift(nextSet);
-    if (activate || !Library.activeSetId) Library.activeSetId = setId;
+function findSharedQuestionSet() {
+  const sets = Array.isArray(Library.sets) ? Library.sets : [];
+  return sets.find(set => /IHBB Questions/i.test(String(set?.name || '').trim()))
+    || sets.find(set => set?.volatile)
+    || sets[0]
+    || null;
+}
+
+function mergeQuestionItems(existingItems, incomingItems) {
+  const nextItems = Array.isArray(existingItems) ? existingItems.slice() : [];
+  const byId = new Map();
+  const byKey = new Map();
+  for (const existing of nextItems) {
+    const id = String(existing?.id || '').trim();
+    const key = questionMergeKey(existing);
+    if (id) byId.set(id, existing);
+    if (key) byKey.set(key, existing);
   }
-  renderLibrarySelectors();
-  renderLibraryTable();
-  updateSetMeta();
+  const sessionItems = [];
+  let insertedCount = 0;
+  for (const raw of (incomingItems || [])) {
+    const item = normalizeJsonItem(raw);
+    if (!item) continue;
+    item.meta = { ...(item.meta || {}), source: String(item?.meta?.source || 'generated').trim() || 'generated' };
+    const id = String(item.id || '').trim();
+    const key = questionMergeKey(item);
+    const existing = (id && byId.get(id)) || (key && byKey.get(key)) || null;
+    if (existing) {
+      sessionItems.push(existing);
+      continue;
+    }
+    nextItems.push(item);
+    if (id) byId.set(id, item);
+    if (key) byKey.set(key, item);
+    sessionItems.push(item);
+    insertedCount++;
+  }
+  return { items: nextItems, sessionItems, insertedCount };
 }
 
-function injectGeneratedDrillSet(items, focusTitle) {
-  Library.sets = (Library.sets || []).filter(set => !set?.generatedDrill);
-  const title = String(focusTitle || '').trim() || 'Targeted Focus';
-  const set = {
-    id: `${GENERATED_DRILL_SET_PREFIX}${Date.now()}`,
-    name: `Generated Drill • ${title}`,
-    items: (items || []).map(it => ({ ...it, meta: { ...(it.meta || {}), source: String(it?.meta?.source || 'generated').trim() || 'generated' } })),
-    volatile: true,
-    generatedDrill: true
-  };
-  Library.sets.unshift(set);
-  Library.activeSetId = set.id;
+function mergeGeneratedQuestionsIntoSharedLibrary(incomingItems, { activate = true } = {}) {
+  Library.sets = Array.isArray(Library.sets) ? Library.sets : [];
+  let set = findSharedQuestionSet();
+  if (!set) {
+    set = { id: uid(), name: 'IHBB Questions', items: [], volatile: true };
+    Library.sets.unshift(set);
+  }
+  const merged = mergeQuestionItems(set.items || [], incomingItems);
+  set.items = merged.items;
+  if (activate || !Library.activeSetId) Library.activeSetId = set.id;
   renderLibrarySelectors();
   renderLibraryTable();
   updateSetMeta();
-  return set;
+  updateFilterRowSafe();
+  updateSetupOverview();
+  return {
+    set,
+    sessionItems: merged.sessionItems,
+    insertedCount: merged.insertedCount,
+    totalCount: set.items.length
+  };
+}
+
+async function fetchSharedGeneratedQuestionItems() {
+  try {
+    const res = await fetch(GENERATED_QUESTIONS_BANK_URL, { cache: 'no-cache' });
+    if (!res.ok) return [];
+    const obj = await res.json();
+    if (Array.isArray(obj?.items)) {
+      return normalizeJsonItems(obj.items);
+    }
+    if (Array.isArray(obj?.sets)) {
+      return obj.sets.flatMap(set => normalizeJsonItems(set?.items || []));
+    }
+    const parsed = parseJsonImport(obj, 'Shared Generated Questions');
+    if (!parsed) return [];
+    if (parsed.type === 'library') {
+      return parsed.sets.flatMap(set => Array.isArray(set?.items) ? set.items : []);
+    }
+    return Array.isArray(parsed.set?.items) ? parsed.set.items : [];
+  } catch (err) {
+    console.warn('[GeneratedQuestions] shared bank unavailable:', err);
+    return [];
+  }
 }
 
 function collectAvoidAnswers(focus = null) {
@@ -1835,7 +1863,7 @@ function collectAvoidAnswers(focus = null) {
     for (const item of (set?.items || [])) {
       const sameRegion = !focus?.region || String(item?.meta?.category || '').trim() === String(focus.region || '').trim();
       const sameEra = !focus?.era || String(item?.meta?.era || '').trim() === String(coachEraToCode(focus.era, set) || focus.era || '').trim();
-      if (sameRegion || sameEra || set?.generatedBank || set?.generatedDrill) {
+      if (sameRegion || sameEra || String(item?.meta?.source || '').trim() === 'generated') {
         const answer = String(item?.answer || '').trim();
         if (answer) answers.add(answer);
       }
@@ -1843,47 +1871,6 @@ function collectAvoidAnswers(focus = null) {
     }
   }
   return Array.from(answers);
-}
-
-async function persistGeneratedQuestions(items, context = {}) {
-  if (!window.supabaseClient) return;
-  const userId = await ensureSessionSyncUserId();
-  if (!userId || !Array.isArray(items) || !items.length) return;
-  const creatorRole = String(context.creatorRole || await ensureCurrentProfileRole() || 'student').trim() || 'student';
-  const createdFrom = String(context.createdFrom || 'practice').trim() || 'practice';
-  const rows = items.map(item => ({
-    id: String(item.id || '').trim() || uid(),
-    user_id: userId,
-    question_text: String(item.question || '').trim(),
-    answer_text: String(item.answer || '').trim(),
-    aliases: Array.isArray(item.aliases) ? item.aliases : [],
-    category: String(item.meta?.category || '').trim(),
-    era: String(item.meta?.era || '').trim(),
-    source: String(item.meta?.source || 'generated').trim() || 'generated',
-    topic: String(item.topic || context.topic || '').trim(),
-    created_by_role: creatorRole,
-    created_from: createdFrom
-  }));
-  const { error } = await window.supabaseClient.from(GENERATED_QUESTIONS_TABLE).upsert(rows, { onConflict: 'id' });
-  if (error) throw error;
-}
-
-async function loadGeneratedQuestionBank() {
-  if (!window.supabaseClient) return;
-  const userId = await ensureSessionSyncUserId();
-  if (!userId) return;
-  try {
-    const { data, error } = await window.supabaseClient
-      .from(GENERATED_QUESTIONS_TABLE)
-      .select('id, question_text, answer_text, aliases, category, era, source, topic, created_from, created_at')
-      .eq('user_id', userId)
-      .order('created_at', { ascending: false });
-    if (error) throw error;
-    const items = (data || []).map(normalizeGeneratedQuestionRow).filter(Boolean);
-    upsertGeneratedBankSet(items, userId);
-  } catch (err) {
-    console.warn('[GeneratedQuestions] unavailable:', err);
-  }
 }
 
 async function requestGeneratedQuestions(options = {}) {
@@ -1909,7 +1896,10 @@ async function requestGeneratedQuestions(options = {}) {
   if (!res.ok || data?.error) {
     throw new Error(data?.error || `Question generation failed (${res.status})`);
   }
-  return (data.items || []).map(normalizeJsonItem).filter(Boolean);
+  return {
+    items: (data.items || []).map(normalizeJsonItem).filter(Boolean),
+    persistence: data?.persistence || null
+  };
 }
 
 async function startGeneratedFocusDrill(focus, options = {}) {
@@ -1923,7 +1913,7 @@ async function startGeneratedFocusDrill(focus, options = {}) {
   const count = Math.max(1, Math.min(12, Number.parseInt(String(options.count || 6), 10) || 6));
   try {
     toast(`Generating ${count} fresh questions for ${title}...`);
-    const items = await requestGeneratedQuestions({
+    const generated = await requestGeneratedQuestions({
       count,
       region: String(focus.region || '').trim() || 'World',
       era: eraCode,
@@ -1933,26 +1923,23 @@ async function startGeneratedFocusDrill(focus, options = {}) {
       reason: String(focus.reason || options.reason || '').trim(),
       avoidAnswers: collectAvoidAnswers({ region: focus.region, era: eraCode, topic: focus.topic })
     });
+    const items = generated.items || [];
     if (!items.length) throw new Error('No valid generated questions were returned.');
-    let persistenceNote = '';
-    try {
-      await persistGeneratedQuestions(items, {
-        creatorRole,
-        createdFrom: String(options.createdFrom || 'coach-focus').trim() || 'coach-focus',
-        topic: String(focus.topic || '').trim()
-      });
-      await loadGeneratedQuestionBank();
-    } catch (persistErr) {
-      console.warn('[GeneratedQuestions] persist failed:', persistErr);
-      persistenceNote = ' Saved only for this session.';
-    }
-    injectGeneratedDrillSet(items, title);
+    const mergeResult = mergeGeneratedQuestionsIntoSharedLibrary(items, { activate: true });
+    App.sessionOverrideItems = mergeResult.sessionItems.slice();
     App.size = 'all';
     App.mode = 'sequential';
-    App.filters = { cat: '', cats: [], era: '', eras: [], src: 'generated' };
+    App.filters = { cat: '', cats: [], era: '', eras: [], src: '' };
     if (options.clearPending) clearPendingCoachDrill();
     if (options.startSession !== false) startSession();
-    toast(`Generated ${items.length} fresh question${items.length === 1 ? '' : 's'} for ${title}.${persistenceNote}`);
+    const persistence = generated.persistence || {};
+    const sharedAdded = Number(persistence.shared_bank_added || 0);
+    const persistenceNote = persistence.warning
+      ? ` ${String(persistence.warning).trim()}`
+      : (sharedAdded > 0
+        ? ` Added ${sharedAdded} to the shared bank.`
+        : ' Already present in the shared bank.');
+    toast(`Generated ${mergeResult.sessionItems.length} fresh question${mergeResult.sessionItems.length === 1 ? '' : 's'} for ${title}.${persistenceNote}`);
     return true;
   } catch (err) {
     toast(String(err?.message || err || 'Question generation failed'));
@@ -2350,6 +2337,10 @@ function applyPreset(p) {
 
 /********************* Pool build & UI helpers *********************/
 function buildPool() {
+  if (Array.isArray(App.sessionOverrideItems) && App.sessionOverrideItems.length) {
+    App.pool = App.sessionOverrideItems.slice();
+    return;
+  }
   const set = getActiveSet(); if (!set) { App.pool = []; return; }
   let arr = set.items.slice();
   // Multi-category filter from Setup chips
@@ -2603,6 +2594,7 @@ function startSession() {
       App.order = sampleIndices(App.pool.length, App.size);
     }
   }
+  App.sessionOverrideItems = null;
 
   App.startTs = performance.now();
   updateHeader();
@@ -3672,8 +3664,16 @@ async function tryFetchDefault(force = false) {
       const obj = await rj.json();
       const parsed = parseJsonImport(obj, 'IHBB Questions');
       if (!parsed) { toast('questions.json format is invalid'); return false; }
+      const sharedGeneratedItems = await fetchSharedGeneratedQuestionItems();
       if (parsed.type === 'library') {
         (parsed.sets || []).forEach(set => ensureSetItemSources(set, 'original'));
+        if (sharedGeneratedItems.length) {
+          const targetSet = parsed.sets.find(set => /IHBB Questions/i.test(String(set?.name || '').trim())) || parsed.sets[0];
+          if (targetSet) {
+            const merged = mergeQuestionItems(targetSet.items || [], sharedGeneratedItems);
+            targetSet.items = merged.items;
+          }
+        }
         Library.sets = parsed.sets; Library.activeSetId = parsed.activeSetId || (parsed.sets[0]?.id || null);
         saveLibrary(); renderLibrarySelectors(); renderLibraryTable(); updateSetMeta();
         renderWrongBank();
@@ -3682,6 +3682,10 @@ async function tryFetchDefault(force = false) {
       }
       const set = parsed.set;
       ensureSetItemSources(set, 'original');
+      if (sharedGeneratedItems.length) {
+        const merged = mergeQuestionItems(set.items || [], sharedGeneratedItems);
+        set.items = merged.items;
+      }
       Library.sets.unshift(set); Library.activeSetId = set.id;
       saveLibrary(); renderLibrarySelectors(); renderLibraryTable(); updateSetMeta();
       renderWrongBank();
@@ -3722,7 +3726,6 @@ async function tryFetchDefault(force = false) {
   if (!(ASSIGNMENT_ID && HAS_ASSIGNMENT_PAYLOAD)) {
     await tryFetchDefault(false);
   }
-  await loadGeneratedQuestionBank();
   updateSetupOverview();
   renderCoachChatChrome();
   await applyPendingCoachChatAction();
