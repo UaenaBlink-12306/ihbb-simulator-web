@@ -521,6 +521,48 @@
   </section>
   </div>
 
+  <button id="coach-chat-launcher" class="coach-chat-launcher" type="button" aria-controls="coach-chat-sidebar"
+    aria-expanded="false" aria-label="Open DeepSeek training assistant">
+    <span class="coach-chat-launcher-icon">DS</span>
+    <span class="coach-chat-launcher-copy">
+      <span class="coach-chat-launcher-title">DeepSeek</span>
+      <span id="coach-chat-launcher-note" class="coach-chat-launcher-note">Ask for a drill</span>
+    </span>
+    <span id="coach-chat-launcher-count" class="coach-chat-launcher-count hidden">0</span>
+  </button>
+
+  <div id="coach-chat-backdrop" class="coach-chat-backdrop" hidden></div>
+  <aside id="coach-chat-sidebar" class="coach-chat-sidebar" aria-hidden="true">
+    <div class="coach-chat-panel">
+      <div class="coach-chat-head">
+        <div>
+          <div class="eyebrow">DeepSeek sidebar</div>
+          <h2 class="card-title">Training Assistant</h2>
+          <p id="coach-chat-context-summary" class="coach-chat-context-summary">Scanning your practice state.</p>
+        </div>
+        <div class="coach-chat-head-actions">
+          <span id="coach-chat-source" class="pill">Ready</span>
+          <button id="coach-chat-close" class="btn ghost coach-chat-close" type="button" aria-label="Close sidebar">×</button>
+        </div>
+      </div>
+
+      <div id="coach-chat-status-pills" class="coach-chat-status-pills"></div>
+      <div id="coach-chat-messages" class="coach-chat-messages" aria-live="polite"></div>
+      <div id="coach-chat-starters" class="coach-chat-starters"></div>
+
+      <form id="coach-chat-form" class="coach-chat-form">
+        <label class="coach-chat-input-wrap" for="coach-chat-input">
+          <textarea id="coach-chat-input" rows="2"
+            placeholder="Ask what to practice next, when to use Wrong-bank, or how to use AI Notebook."></textarea>
+        </label>
+        <div class="coach-chat-form-actions">
+          <div id="coach-chat-hint" class="muted">DeepSeek can recommend a drill and launch it from here.</div>
+          <button id="coach-chat-send" class="btn pri" type="submit">Send</button>
+        </div>
+      </form>
+    </div>
+  </aside>
+
   <!-- Hidden inputs -->
   <input id="lib-import-json" type="file" accept=".json,application/json,text/json" style="display:none">
 

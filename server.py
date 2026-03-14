@@ -831,6 +831,345 @@ def analytics_insights_with_deepseek(payload: Dict[str, Any]) -> Dict[str, Any]:
     return {"source": "fallback", "insights": fallback}
 
 
+COACH_CHAT_ALLOWED_ACTIONS = {
+    "practice_due_now",
+    "review_last_misses",
+    "open_ai_notebook",
+    "apply_top_focus",
+    "generate_focus_drill",
+    "start_current_session",
+    "open_setup",
+    "open_review",
+}
+
+
+def safe_int(value: Any, default: int = 0) -> int:
+    try:
+        return int(value)
+    except Exception:
+        return default
+
+
+def normalize_coach_chat_focus(raw: Any) -> Dict[str, Any]:
+    if not isinstance(raw, dict):
+        return {}
+    priority = string_value(raw.get("priority")).lower()
+    if priority not in ("high", "medium", "low"):
+        priority = "medium"
+    return {
+        "key": string_value(raw.get("key")),
+        "title": string_value(raw.get("title")),
+        "region": string_value(raw.get("region")),
+        "era": string_value(raw.get("era")),
+        "topic": string_value(raw.get("topic")),
+        "reason": string_value(raw.get("reason")),
+        "action": string_value(raw.get("action")),
+        "priority": priority,
+    }
+
+
+def normalize_coach_chat_context(payload: Dict[str, Any]) -> Dict[str, Any]:
+    raw = payload.get("study_context") if isinstance(payload.get("study_context"), dict) else {}
+    wrong = raw.get("wrong_bank") if isinstance(raw.get("wrong_bank"), dict) else {}
+    notebook = raw.get("coach_notebook") if isinstance(raw.get("coach_notebook"), dict) else {}
+    session_history = raw.get("session_history") if isinstance(raw.get("session_history"), dict) else {}
+    last_session = session_history.get("last_session") if isinstance(session_history.get("last_session"), dict) else {}
+    recent_incorrect = raw.get("recent_incorrect") if isinstance(raw.get("recent_incorrect"), dict) else {}
+    setup = raw.get("setup") if isinstance(raw.get("setup"), dict) else {}
+    active_set = raw.get("active_set") if isinstance(raw.get("active_set"), dict) else {}
+    top_focuses = [normalize_coach_chat_focus(x) for x in (notebook.get("top_focuses") if isinstance(notebook.get("top_focuses"), list) else [])]
+    top_focuses = [x for x in top_focuses if x.get("key") or x.get("title")]
+    recent_focus = normalize_coach_chat_focus(recent_incorrect)
+    return {
+        "current_view": string_value(raw.get("current_view")),
+        "wrong_bank": {
+            "due_now": max(0, safe_int(wrong.get("due_now"), 0)),
+            "total": max(0, safe_int(wrong.get("total"), 0)),
+        },
+        "coach_notebook": {
+            "open_lessons": max(0, safe_int(notebook.get("open_lessons"), 0)),
+            "total": max(0, safe_int(notebook.get("total"), 0)),
+            "top_focuses": top_focuses[:4],
+        },
+        "session_history": {
+            "total_sessions": max(0, safe_int(session_history.get("total_sessions"), 0)),
+            "recent_accuracy": max(0, min(100, safe_int(session_history.get("recent_accuracy"), 0))),
+            "days_since_last_session": max(0, safe_int(session_history.get("days_since_last_session"), 0)),
+            "last_session": {
+                "accuracy": max(0, min(100, safe_int(last_session.get("accuracy"), 0))),
+                "total": max(0, safe_int(last_session.get("total"), 0)),
+                "correct": max(0, safe_int(last_session.get("correct"), 0)),
+                "duration_seconds": max(0, safe_int(last_session.get("duration_seconds"), 0)),
+                "timestamp": safe_int(last_session.get("timestamp"), 0),
+            } if last_session else {},
+        },
+        "setup": {
+            "mode": string_value(setup.get("mode")),
+            "length": string_value(setup.get("length")),
+            "filters": string_value(setup.get("filters")),
+        },
+        "active_set": {
+            "name": string_value(active_set.get("name")),
+            "item_count": max(0, safe_int(active_set.get("item_count"), 0)),
+        },
+        "recent_incorrect": recent_focus,
+    }
+
+
+def coach_chat_focus_title(focus: Dict[str, Any]) -> str:
+    if not isinstance(focus, dict):
+        return ""
+    return string_value(focus.get("title")) or " • ".join(part for part in [
+        string_value(focus.get("region")),
+        string_value(focus.get("era")),
+        string_value(focus.get("topic")),
+    ] if part) or "your top focus"
+
+
+def coach_chat_action(action_id: str, label: str, reason: str, focus_key: str = "") -> Dict[str, Any]:
+    out = {
+        "id": action_id,
+        "label": label,
+        "reason": reason,
+    }
+    focus_key = string_value(focus_key)
+    if focus_key:
+        out["focus_key"] = focus_key
+    return out
+
+
+def dedupe_coach_chat_actions(actions: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    out = []
+    seen = set()
+    for action in actions or []:
+        if not isinstance(action, dict):
+            continue
+        action_id = string_value(action.get("id"))
+        if action_id not in COACH_CHAT_ALLOWED_ACTIONS:
+            continue
+        focus_key = string_value(action.get("focus_key"))
+        key = f"{action_id}|{focus_key}"
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(action)
+    return out[:3]
+
+
+def fallback_coach_chat(payload: Dict[str, Any]) -> Dict[str, Any]:
+    context = normalize_coach_chat_context(payload)
+    user_message = normalize(string_value(payload.get("message")))
+    wrong_due = context["wrong_bank"]["due_now"]
+    wrong_total = context["wrong_bank"]["total"]
+    notebook_open = context["coach_notebook"]["open_lessons"]
+    top_focuses = context["coach_notebook"]["top_focuses"]
+    top_focus = top_focuses[0] if top_focuses else {}
+    recent_incorrect = context["recent_incorrect"] if isinstance(context.get("recent_incorrect"), dict) else {}
+    recent_accuracy = context["session_history"]["recent_accuracy"]
+    total_sessions = context["session_history"]["total_sessions"]
+    last_days = context["session_history"]["days_since_last_session"]
+    focus_title = coach_chat_focus_title(top_focus)
+    focus_key = string_value(top_focus.get("key"))
+    recent_focus_title = coach_chat_focus_title(recent_incorrect)
+    recent_focus_key = string_value(recent_incorrect.get("key"))
+
+    actions: List[Dict[str, Any]] = []
+    if "wrong bank" in user_message or "srs" in user_message:
+        if wrong_due > 0:
+            message = (
+                f"Wrong-bank is the right tool when you want spaced repetition on misses instead of fresh coverage. "
+                f"You currently have {wrong_due} due card{'s' if wrong_due != 1 else ''} out of {wrong_total} tracked."
+            )
+            actions.append(coach_chat_action("practice_due_now", f"Practice {wrong_due} due card{'s' if wrong_due != 1 else ''}", "Start the due SRS queue immediately."))
+        else:
+            message = (
+                "Wrong-bank works best after you build up misses in regular drills. "
+                "Right now nothing is due, so a fresh targeted session is the better move."
+            )
+            if focus_key:
+                actions.append(coach_chat_action("generate_focus_drill", f"Generate {focus_title}", "Create fresh questions around the recurring blind spot.", focus_key))
+            actions.append(coach_chat_action("open_review", "Open Review", "Check your wrong-bank status and recent session debrief."))
+    elif "notebook" in user_message or "ai notebook" in user_message or "lesson" in user_message or "coach" in user_message:
+        message = (
+            "AI Notebook is best when you need explanation and pattern review, not repetition of the exact same misses. "
+            f"You have {notebook_open} open lesson{'s' if notebook_open != 1 else ''}"
+            + (f", and {focus_title} is the clearest recurring lane." if focus_key else ".")
+        )
+        actions.append(coach_chat_action("open_ai_notebook", "Open AI Notebook", "Review saved DeepSeek lessons and mastery state."))
+        if focus_key:
+            actions.append(coach_chat_action("apply_top_focus", f"Apply {focus_title}", "Load that focus into the practice builder.", focus_key))
+            actions.append(coach_chat_action("generate_focus_drill", f"Generate {focus_title}", "Turn that notebook pattern into a fresh drill.", focus_key))
+    elif recent_focus_key:
+        message = (
+            f"You just hit a miss tied to {recent_focus_title}. Do not jump straight back to mixed drilling. "
+            "Review the notebook explanation once, then run a short focused set before returning to broader practice."
+        )
+        actions.append(coach_chat_action("open_ai_notebook", "Open the lesson", "Review the saved DeepSeek explanation for this miss."))
+        actions.append(coach_chat_action("generate_focus_drill", f"Generate {recent_focus_title}", "Build a short corrective drill from the same lane.", recent_focus_key))
+        actions.append(coach_chat_action("review_last_misses", "Review recent misses", "Revisit the review queue before resuming mixed practice."))
+    elif wrong_due >= 3:
+        message = (
+            f"You have {wrong_due} due wrong-bank card{'s' if wrong_due != 1 else ''}. "
+            "That is the cleanest next move because it closes the loop on known misses before you add more volume."
+        )
+        actions.append(coach_chat_action("practice_due_now", f"Practice {wrong_due} due card{'s' if wrong_due != 1 else ''}", "Start the due SRS queue now."))
+        if focus_key:
+            actions.append(coach_chat_action("generate_focus_drill", f"Generate {focus_title}", "Follow SRS with a short fresh drill in the same lane.", focus_key))
+    elif focus_key and (notebook_open > 0 or recent_accuracy < 70):
+        message = (
+            f"Your notebook keeps pointing back to {focus_title}. "
+            "Use that as the next targeted block, then return to mixed practice after accuracy stabilizes."
+        )
+        actions.append(coach_chat_action("apply_top_focus", f"Apply {focus_title}", "Load the recurring notebook focus into setup.", focus_key))
+        actions.append(coach_chat_action("generate_focus_drill", f"Generate {focus_title}", "Create fresh questions in the same lane.", focus_key))
+        actions.append(coach_chat_action("open_ai_notebook", "Open AI Notebook", "Review the supporting explanations first."))
+    elif total_sessions <= 0:
+        message = (
+            "Start with one normal mixed drill to create enough evidence for better recommendations. "
+            "Once you miss a few questions, Wrong-bank and AI Notebook become much more valuable."
+        )
+        actions.append(coach_chat_action("start_current_session", "Start current session", "Begin the drill you have configured now."))
+        actions.append(coach_chat_action("open_setup", "Open setup", "Tune region, era, and mode before starting."))
+    else:
+        freshness = (
+            f"Your last session was about {last_days} day{'s' if last_days != 1 else ''} ago. "
+            if last_days else
+            "You already have recent practice data. "
+        )
+        message = (
+            freshness
+            + "The best structure is one targeted block for a weak lane and one mixed block to test transfer. "
+            + (f"Right now {focus_title} is the clearest place to focus first." if focus_key else "Right now a short mixed drill is enough to keep momentum.")
+        )
+        if focus_key:
+            actions.append(coach_chat_action("apply_top_focus", f"Apply {focus_title}", "Set up a targeted block first.", focus_key))
+        actions.append(coach_chat_action("start_current_session", "Start current session", "Run the current practice setup."))
+        actions.append(coach_chat_action("open_review", "Open Review", "Check wrong-bank and session debrief before deciding."))
+
+    return {
+        "source": "fallback",
+        "message": message,
+        "quick_actions": dedupe_coach_chat_actions(actions),
+    }
+
+
+def normalize_coach_chat_response(raw: Any, payload: Dict[str, Any]) -> Dict[str, Any]:
+    fallback = fallback_coach_chat(payload)
+    obj = raw if isinstance(raw, dict) else {}
+    context = normalize_coach_chat_context(payload)
+    focus_lookup = {
+        focus.get("key"): focus
+        for focus in context.get("coach_notebook", {}).get("top_focuses", [])
+        if focus.get("key")
+    }
+    recent_focus = context.get("recent_incorrect", {})
+    if recent_focus.get("key"):
+        focus_lookup[recent_focus["key"]] = recent_focus
+
+    actions = []
+    raw_actions = obj.get("quick_actions", [])
+    if isinstance(raw_actions, list):
+        for item in raw_actions[:4]:
+            if not isinstance(item, dict):
+                continue
+            action_id = string_value(item.get("id"))
+            if action_id not in COACH_CHAT_ALLOWED_ACTIONS:
+                continue
+            focus_key = string_value(item.get("focus_key"))
+            if focus_key and focus_key not in focus_lookup:
+                focus_key = ""
+            actions.append(coach_chat_action(
+                action_id,
+                string_value(item.get("label")) or string_value(item.get("title")) or action_id.replace("_", " ").title(),
+                string_value(item.get("reason")) or "Recommended from your current practice context.",
+                focus_key,
+            ))
+
+    message = string_value(obj.get("message"))
+    if not message:
+        message = fallback["message"]
+    return {
+        "source": "deepseek",
+        "message": message,
+        "quick_actions": dedupe_coach_chat_actions(actions or fallback["quick_actions"]),
+    }
+
+
+def coach_chat_with_deepseek(payload: Dict[str, Any]) -> Dict[str, Any]:
+    fallback = fallback_coach_chat(payload)
+    if not DEEPSEEK_API_KEY:
+        return fallback
+
+    context = normalize_coach_chat_context(payload)
+    conversation = []
+    raw_conversation = payload.get("conversation", [])
+    if isinstance(raw_conversation, list):
+        for item in raw_conversation[-8:]:
+            if not isinstance(item, dict):
+                continue
+            role = string_value(item.get("role")).lower()
+            if role not in ("user", "assistant"):
+                continue
+            content = string_value(item.get("content"))
+            if not content:
+                continue
+            conversation.append({"role": role, "content": content})
+
+    top_focus_keys = [focus.get("key") for focus in context.get("coach_notebook", {}).get("top_focuses", []) if focus.get("key")]
+    recent_focus = context.get("recent_incorrect", {})
+    if recent_focus.get("key") and recent_focus["key"] not in top_focus_keys:
+        top_focus_keys.append(recent_focus["key"])
+
+    system = (
+        "You are the DeepSeek training sidebar inside an IHBB Practice Hub.\n"
+        "Answer the user's study question clearly and accurately using only the provided app capabilities and study context.\n"
+        "You may answer IHBB/history study questions directly, but if you are uncertain, say so instead of bluffing.\n"
+        "Product capabilities you may mention:\n"
+        "- Wrong-bank (SRS) practices previously missed questions that are due.\n"
+        "- AI Notebook stores DeepSeek lessons from incorrect answers.\n"
+        "- Apply Top Focus loads a recurring notebook focus into the practice builder.\n"
+        "- Generate Focus Drill creates fresh generated questions for a focus.\n"
+        "- Review Last Misses opens review and starts practice on misses.\n"
+        "- Start Current Session launches the current practice setup.\n"
+        "- Open Setup, Open Review, and Open AI Notebook navigate to those surfaces.\n"
+        "Do not invent any other controls, tabs, or data.\n"
+        "Keep the answer concise and practical.\n"
+        "Recommend at most 3 quick actions and only use these action ids: "
+        + ", ".join(sorted(COACH_CHAT_ALLOWED_ACTIONS))
+        + ".\n"
+        "If you use focus_key, it must exactly match one of these keys: "
+        + (", ".join(top_focus_keys) if top_focus_keys else "(none available)")
+        + ".\n"
+        "Return strict JSON only with this shape:\n"
+        "{\"message\":\"string\",\"quick_actions\":[{\"id\":\"action_id\",\"label\":\"string\",\"reason\":\"string\",\"focus_key\":\"optional\"}]}"
+    )
+    user = {
+        "message": string_value(payload.get("message")) or "What should I practice next?",
+        "conversation": conversation,
+        "study_context": context,
+        "fallback_plan": {
+            "message": fallback["message"],
+            "quick_actions": fallback["quick_actions"],
+        },
+    }
+
+    try:
+        obj = call_deepseek([
+            {"role": "system", "content": system},
+            {"role": "user", "content": json.dumps(user, ensure_ascii=False)},
+        ], max_tokens=700, temperature=0.2)
+        return normalize_coach_chat_response(obj, payload)
+    except requests.exceptions.Timeout as e:
+        log.error("DeepSeek coach chat timeout: %s", e)
+    except requests.exceptions.ConnectionError as e:
+        log.error("DeepSeek coach chat connection error: %s", e)
+    except requests.exceptions.HTTPError as e:
+        log.error("DeepSeek coach chat HTTP error: %s, response: %s", e, getattr(e.response, "text", ""))
+    except Exception as e:
+        log.exception("DeepSeek coach chat unexpected error: %s", e)
+    return fallback
+
+
 def generate_questions_with_deepseek(payload: Dict[str, Any]) -> Dict[str, Any]:
     if not DEEPSEEK_API_KEY:
         return {"error": "DeepSeek API key not configured."}
@@ -1058,6 +1397,8 @@ class Handler(BaseHTTPRequestHandler):
             "/api/grade",
             "/analytics-insights",
             "/api/analytics-insights",
+            "/coach-chat",
+            "/api/coach-chat",
             "/generate-questions",
             "/api/generate-questions",
         ):
@@ -1077,6 +1418,8 @@ class Handler(BaseHTTPRequestHandler):
             result = grade_with_deepseek(payload)
         elif parsed.path in ("/analytics-insights", "/api/analytics-insights"):
             result = analytics_insights_with_deepseek(payload)
+        elif parsed.path in ("/coach-chat", "/api/coach-chat"):
+            result = coach_chat_with_deepseek(payload)
         else:
             result = generate_questions_with_deepseek(payload)
         self._set_headers(200)

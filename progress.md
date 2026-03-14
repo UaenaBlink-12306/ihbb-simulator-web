@@ -37,3 +37,8 @@ UI refresh follow-up:
 - 2026-03-13: Found and fixed mobile overflow on .auth-card by adding shared box-sizing: border-box; rechecked at 430x950 and confirmed the card fits within the viewport.
 - 2026-03-13: Reordered the student Assignments tab so the To Do / Completed lists render before the DeepSeek assignment support card.
 - 2026-03-13: Removed the Practice Hub hero blurb and metric cards from index.html so the top header only shows the badge, title, and action buttons.
+- 2026-03-14: Added a DeepSeek training sidebar to the Practice Hub with a fixed top-right launcher, slide-in panel, close/backdrop handling, context pills, starter prompts, and chat-driven quick actions.
+- 2026-03-14: Added `/api/coach-chat` in both `server.py` and `api/coach-chat.js`, with DeepSeek-backed responses plus a local fallback plan that explains Wrong-bank, AI Notebook, and next-practice recommendations from live study context.
+- 2026-03-14: Wired chat actions into existing drill flows so one click can start due-card review, open AI Notebook, apply a top focus, generate a drill, or start the current session.
+- 2026-03-14: Added auto-open heuristics for urgent cases (recent miss, stacked wrong-bank due cards, multiple open notebook lessons) while respecting manual dismissal for the rest of the tab session.
+- 2026-03-14: Browser QA passed for manual launcher open and miss-triggered auto-open with fresh student accounts. Verified the sidebar can start due-card practice in one click and closes itself when practice begins. Artifacts saved to `output/playwright/sidebar-practice-hub.png`, `output/playwright/sidebar-open-initial.png`, `output/playwright/sidebar-after-miss-auto.png`, and `output/playwright/sidebar-after-action.png`.
