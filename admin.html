@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>IHBB Admin Console</title>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@500;700;800&display=swap"
+    rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+  <script src="admin.js" defer></script>
+</head>
+
+<body>
+  <div class="shell page-shell admin-shell">
+    <header class="page-hero admin-hero">
+      <div class="hero-copy">
+        <div class="hero-brand">
+          <div class="logo">AD</div>
+          <div>
+            <div class="hero-kicker">Developer only</div>
+            <h1>Admin Console</h1>
+            <p class="hero-blurb">Inspect generated-question moderation, user records, and privileged table data from one
+              place.</p>
+          </div>
+        </div>
+      </div>
+      <div class="hero-actions admin-hero-actions">
+        <button id="admin-refresh" class="btn ghost" type="button" disabled>Refresh</button>
+        <button id="admin-logout" class="btn bad hidden" type="button">Logout</button>
+      </div>
+    </header>
+
+    <div id="admin-alert" class="alert hidden"></div>
+
+    <section id="admin-auth-panel" class="card section-card admin-auth-panel">
+      <div class="section-head">
+        <div>
+          <div class="eyebrow">Locked access</div>
+          <h2 class="card-title">Admin Sign In</h2>
+          <p id="admin-auth-note" class="section-subtitle">This console only unlocks when the server has an admin email,
+            password hash, and session secret configured.</p>
+        </div>
+      </div>
+      <form id="admin-login-form" class="admin-login-form">
+        <label>
+          <span>Email</span>
+          <input id="admin-email" type="email" autocomplete="username" placeholder="developer email" required>
+        </label>
+        <label>
+          <span>Password</span>
+          <input id="admin-password" type="password" autocomplete="current-password" placeholder="developer password"
+            required>
+        </label>
+        <button id="admin-login-submit" class="btn pri" type="submit">Sign In</button>
+      </form>
+    </section>
+
+    <section id="admin-console" class="stack hidden">
+      <div id="admin-config-banner" class="card section-card admin-banner hidden"></div>
+
+      <section class="card section-card">
+        <div class="section-head">
+          <div>
+            <div class="eyebrow">Overview</div>
+            <h2 class="card-title">Summary</h2>
+          </div>
+        </div>
+        <div id="admin-summary" class="admin-summary-grid"></div>
+      </section>
+
+      <section class="card section-card">
+        <div class="section-head">
+          <div>
+            <div class="eyebrow">DeepSeek moderation</div>
+            <h2 class="card-title">Generated Questions</h2>
+            <p class="section-subtitle">Pending questions are merged immediately, but you can approve them in bulk or
+              delete them from both generated storage and the main question bank.</p>
+          </div>
+          <div class="admin-toolbar">
+            <input id="admin-generated-search" type="search" placeholder="Search generated questions">
+            <select id="admin-generated-filter">
+              <option value="all">All statuses</option>
+              <option value="pending">Pending</option>
+              <option value="approved">Approved</option>
+              <option value="deleted">Deleted</option>
+            </select>
+            <button id="admin-approve-all" class="btn pri" type="button">Accept All</button>
+          </div>
+        </div>
+        <div id="admin-generated-list" class="admin-generated-list"></div>
+      </section>
+
+      <section class="card section-card">
+        <div class="section-head">
+          <div>
+            <div class="eyebrow">Users</div>
+            <h2 class="card-title">Accounts and Profiles</h2>
+            <p class="section-subtitle">This view is populated from the Supabase service-role-backed snapshot when that
+              key is configured.</p>
+          </div>
+          <div class="admin-toolbar">
+            <input id="admin-user-search" type="search" placeholder="Search users">
+          </div>
+        </div>
+        <div id="admin-users" class="admin-table-wrap"></div>
+      </section>
+
+      <section class="card section-card">
+        <div class="section-head">
+          <div>
+            <div class="eyebrow">Database</div>
+            <h2 class="card-title">Raw Tables</h2>
+            <p class="section-subtitle">Recent rows from each app table plus counts. This section stays empty until the
+              service role key is configured on the server.</p>
+          </div>
+        </div>
+        <div id="admin-database" class="admin-database-list"></div>
+      </section>
+    </section>
+  </div>
+</body>
+
+</html>

@@ -55,6 +55,11 @@ UI refresh follow-up:
 - 2026-03-14: Added `generated_questions_bank.json` as a shared generated-question overlay file. Both `server.py` and `api/generate-questions.js` now persist valid generated items into that overlay and also best-effort merge them into `questions.json` so future users can study them from the main bank.
 - 2026-03-14: Updated `app.js` to load the shared generated overlay during default-bank bootstrap, treat generated items by `meta.source` instead of special generated-set IDs, and use a one-shot `sessionOverrideItems` pool so AI Notebook / coach generation jumps straight into practice instead of setup.
 - 2026-03-14: Browser QA with a mocked generation response confirmed the library count increased, no generated drill set was created, and practice started immediately after generation. Artifact saved to `output/playwright/generated-merge-direct-practice.png`.
+- 2026-03-14: Added a backend-gated `admin.html` / `admin.js` console for developer-only access, including a generated-question moderation queue, Accept All, per-question approve/delete controls, a user directory, and raw table viewers.
+- 2026-03-14: Added `generated_questions_review.json` plus matching review-ledger persistence in both `server.py` and `api/generate-questions.js` so generated questions can merge immediately while still being tracked as pending, approved, or deleted by admin moderation.
+- 2026-03-14: Added `/api/admin` in both the local Python server and the Vercel-style API, using a backend-only admin email/password hash/session secret instead of the public Supabase client so the admin console is not accessible through normal signup/login flows.
+- 2026-03-14: Browser QA with a mocked admin API confirmed login, generated-question filtering, Accept All, user-table rendering, and raw table sections on `admin.html`. Artifact saved to `output/playwright/admin-console-overview.png`.
 
 Remaining follow-up:
 - Re-run the live DeepSeek success path against the real backend once a valid `DEEPSEEK_API_KEY` is available in the environment.
+- Set `SUPABASE_SERVICE_ROLE_KEY` in the deployment environment to unlock the full database browser and all-user visibility inside the admin console. Without it, generated-question moderation still works but the user/database sections remain limited.

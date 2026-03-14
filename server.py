@@ -4,10 +4,14 @@ import json
 import math
 import re
 import uuid
+import time
+import base64
+import hmac
+import hashlib
 from typing import List, Dict, Any, Tuple
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import socket
-from urllib.parse import urlparse, quote
+from urllib.parse import urlparse, quote, parse_qs
 
 import requests
 
@@ -21,6 +25,29 @@ PORT = int(os.environ.get("IHBB_SERVER_PORT", "5057"))
 DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY")
 DEEPSEEK_URL = "https://api.deepseek.com/v1/chat/completions"
 MODEL = os.environ.get("DEEPSEEK_MODEL", "deepseek-chat")
+ADMIN_COOKIE = "ihbb_admin_session"
+ADMIN_EMAIL = str(os.environ.get("IHBB_ADMIN_EMAIL", os.environ.get("ADMIN_EMAIL", ""))).strip().lower()
+ADMIN_PASSWORD_HASH = str(os.environ.get("IHBB_ADMIN_PASSWORD_HASH", os.environ.get("ADMIN_PASSWORD_HASH", ""))).strip()
+ADMIN_PASSWORD_PLAIN = str(os.environ.get("IHBB_ADMIN_PASSWORD", os.environ.get("ADMIN_PASSWORD", ""))).strip()
+ADMIN_SESSION_SECRET = str(
+    os.environ.get("IHBB_ADMIN_SESSION_SECRET",
+                   os.environ.get("ADMIN_SESSION_SECRET",
+                                  os.environ.get("ADMIN_PASSWORD_HASH",
+                                                 os.environ.get("ADMIN_PASSWORD", ""))))
+).strip()
+SUPABASE_URL = str(os.environ.get("SUPABASE_URL", os.environ.get("NEXT_PUBLIC_SUPABASE_URL", "https://laexxsgzldivvizwfjcn.supabase.co"))).strip()
+SUPABASE_SERVICE_ROLE_KEY = str(os.environ.get("SUPABASE_SERVICE_ROLE_KEY", os.environ.get("SUPABASE_SERVICE_KEY", ""))).strip()
+SESSION_MAX_AGE_SECONDS = 60 * 60 * 12
+APP_TABLES = [
+    {"name": "profiles", "order_by": "created_at.desc", "limit": 200},
+    {"name": "classes", "order_by": "created_at.desc", "limit": 200},
+    {"name": "class_students", "order_by": "joined_at.desc", "limit": 200},
+    {"name": "assignments", "order_by": "created_at.desc", "limit": 200},
+    {"name": "assignment_submissions", "order_by": "submitted_at.desc", "limit": 200},
+    {"name": "user_wrong_questions", "order_by": "created_at.desc", "limit": 200},
+    {"name": "user_drill_sessions", "order_by": "created_at.desc", "limit": 200},
+    {"name": "user_coach_attempts", "order_by": "created_at.desc", "limit": 200},
+]
 
 REGION_OPTIONS = [
     "Africa",
@@ -1282,6 +1309,7 @@ def generate_questions_with_deepseek(payload: Dict[str, Any]) -> Dict[str, Any]:
                 },
                 "topic": string_value(raw.get("topic", topic)),
                 "created_from": created_from,
+                "created_by_role": creator_role,
             })
 
         if not items:
@@ -1317,6 +1345,7 @@ def generate_questions_with_deepseek(payload: Dict[str, Any]) -> Dict[str, Any]:
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 QUESTIONS_JSON_PATH = os.path.join(BASE_DIR, "questions.json")
 GENERATED_QUESTIONS_BANK_PATH = os.path.join(BASE_DIR, "generated_questions_bank.json")
+GENERATED_QUESTIONS_REVIEW_PATH = os.path.join(BASE_DIR, "generated_questions_review.json")
 
 
 def normalize_generated_bank_item(raw: Any) -> Dict[str, Any]:
@@ -1344,6 +1373,9 @@ def normalize_generated_bank_item(raw: Any) -> Dict[str, Any]:
     created_from = string_value(raw.get("created_from"))
     if created_from:
         item["created_from"] = created_from
+    created_by_role = string_value(raw.get("created_by_role", raw.get("creator_role")))
+    if created_by_role:
+        item["created_by_role"] = created_by_role
     return item
 
 
@@ -1399,23 +1431,136 @@ def atomic_write_json(path: str, payload: Any) -> None:
     os.replace(tmp_path, path)
 
 
+def read_json_object(path: str, fallback: Dict[str, Any]) -> Dict[str, Any]:
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            parsed = json.load(handle)
+        if isinstance(parsed, dict):
+            return parsed
+    except Exception:
+        pass
+    return dict(fallback)
+
+
+def normalize_review_entry(raw: Any) -> Dict[str, Any]:
+    if not isinstance(raw, dict):
+        return {}
+    entry_id = string_value(raw.get("id"))
+    storage_key = string_value(raw.get("storage_key", raw.get("storageKey")))
+    if not entry_id and not storage_key:
+        return {}
+    status = string_value(raw.get("review_status", raw.get("status"))).lower()
+    return {
+        "id": entry_id,
+        "storage_key": storage_key,
+        "question": string_value(raw.get("question")),
+        "answer": string_value(raw.get("answer")),
+        "category": string_value(raw.get("category")),
+        "era": string_value(raw.get("era")),
+        "topic": string_value(raw.get("topic")),
+        "created_from": string_value(raw.get("created_from")),
+        "created_by_role": string_value(raw.get("created_by_role")),
+        "review_status": status if status in ("approved", "deleted") else "pending",
+        "review_created_at": string_value(raw.get("review_created_at")) or time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "reviewed_at": string_value(raw.get("reviewed_at")),
+        "merged": raw.get("merged") is not False,
+    }
+
+
+def build_review_maps(items: Any) -> Tuple[Dict[str, Dict[str, Any]], Dict[str, Dict[str, Any]], List[Dict[str, Any]]]:
+    by_id: Dict[str, Dict[str, Any]] = {}
+    by_key: Dict[str, Dict[str, Any]] = {}
+    normalized: List[Dict[str, Any]] = []
+    for raw in items or []:
+        entry = normalize_review_entry(raw)
+        if not entry:
+            continue
+        normalized.append(entry)
+        if entry.get("id"):
+            by_id[entry["id"]] = entry
+        if entry.get("storage_key"):
+            by_key[entry["storage_key"]] = entry
+    return by_id, by_key, normalized
+
+
+def upsert_review_entries(review_payload: Dict[str, Any], items: List[Dict[str, Any]]) -> Tuple[int, int]:
+    by_id, by_key, normalized = build_review_maps(review_payload.get("items"))
+    review_payload["items"] = normalized
+    pending_added = 0
+    blocked_by_delete = 0
+    now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    for raw in items or []:
+        item = normalize_generated_bank_item(raw)
+        if not item:
+            continue
+        storage_key = question_storage_key(item)
+        existing = by_id.get(string_value(item.get("id"))) or by_key.get(storage_key)
+        if existing:
+            if existing.get("review_status") == "deleted":
+                blocked_by_delete += 1
+            continue
+        entry = {
+            "id": string_value(item.get("id")),
+            "storage_key": storage_key,
+            "question": string_value(item.get("question")),
+            "answer": string_value(item.get("answer")),
+            "category": string_value(item.get("meta", {}).get("category")),
+            "era": string_value(item.get("meta", {}).get("era")),
+            "topic": string_value(item.get("topic")),
+            "created_from": string_value(item.get("created_from")),
+            "created_by_role": string_value(item.get("created_by_role")),
+            "review_status": "pending",
+            "review_created_at": now,
+            "reviewed_at": "",
+            "merged": True,
+        }
+        review_payload["items"].append(entry)
+        if entry["id"]:
+            by_id[entry["id"]] = entry
+        if entry["storage_key"]:
+            by_key[entry["storage_key"]] = entry
+        pending_added += 1
+    return pending_added, blocked_by_delete
+
+
+def filter_incoming_by_review(items: List[Dict[str, Any]], review_payload: Dict[str, Any]) -> List[Dict[str, Any]]:
+    by_id, by_key, _ = build_review_maps(review_payload.get("items"))
+    filtered: List[Dict[str, Any]] = []
+    for raw in items or []:
+        item = normalize_generated_bank_item(raw)
+        if not item:
+            continue
+        storage_key = question_storage_key(item)
+        existing = by_id.get(string_value(item.get("id"))) or by_key.get(storage_key)
+        if existing and existing.get("review_status") == "deleted":
+            continue
+        filtered.append(item)
+    return filtered
+
+
 def persist_generated_items(items: List[Dict[str, Any]]) -> Dict[str, Any]:
     persistence = {
         "shared_bank_added": 0,
         "shared_bank_total": 0,
         "questions_json_added": 0,
         "questions_json_updated": False,
+        "review_pending_added": 0,
+        "review_pending_total": 0,
+        "review_blocked": 0,
         "warning": "",
     }
     warnings: List[str] = []
 
+    review_payload = read_json_object(GENERATED_QUESTIONS_REVIEW_PATH, {"id": "generated_question_reviews", "items": []})
+    filtered_items = filter_incoming_by_review(items, review_payload)
+    persistence["review_blocked"] = max(0, len(items or []) - len(filtered_items))
+
     try:
-        if os.path.exists(GENERATED_QUESTIONS_BANK_PATH):
-            with open(GENERATED_QUESTIONS_BANK_PATH, "r", encoding="utf-8") as handle:
-                bank_payload = json.load(handle)
-        else:
-            bank_payload = {"id": "generated_shared_bank", "name": "Shared Generated Questions", "items": []}
-        merged_items, _, added = merge_generated_items(bank_payload.get("items"), items)
+        bank_payload = read_json_object(
+            GENERATED_QUESTIONS_BANK_PATH,
+            {"id": "generated_shared_bank", "name": "Shared Generated Questions", "items": []},
+        )
+        merged_items, _, added = merge_generated_items(bank_payload.get("items"), filtered_items)
         bank_payload["id"] = bank_payload.get("id") or "generated_shared_bank"
         bank_payload["name"] = bank_payload.get("name") or "Shared Generated Questions"
         bank_payload["items"] = merged_items
@@ -1427,22 +1572,469 @@ def persist_generated_items(items: List[Dict[str, Any]]) -> Dict[str, Any]:
         warnings.append("Shared generated bank could not be updated on this server.")
 
     try:
-        if os.path.exists(QUESTIONS_JSON_PATH):
-            with open(QUESTIONS_JSON_PATH, "r", encoding="utf-8") as handle:
-                questions_payload = json.load(handle)
-            if isinstance(questions_payload, dict):
-                merged_items, _, added = merge_generated_items(questions_payload.get("items"), items)
-                questions_payload["items"] = merged_items
-                atomic_write_json(QUESTIONS_JSON_PATH, questions_payload)
-                persistence["questions_json_added"] = added
-                persistence["questions_json_updated"] = True
+        questions_payload = read_json_object(QUESTIONS_JSON_PATH, {"items": []})
+        merged_items, _, added = merge_generated_items(questions_payload.get("items"), filtered_items)
+        questions_payload["items"] = merged_items
+        atomic_write_json(QUESTIONS_JSON_PATH, questions_payload)
+        persistence["questions_json_added"] = added
+        persistence["questions_json_updated"] = True
     except Exception as exc:
         log.warning("questions.json merge failed: %s", exc)
         warnings.append("questions.json could not be rewritten on this server.")
 
+    try:
+        pending_added, blocked_by_delete = upsert_review_entries(review_payload, filtered_items)
+        review_payload["id"] = review_payload.get("id") or "generated_question_reviews"
+        atomic_write_json(GENERATED_QUESTIONS_REVIEW_PATH, review_payload)
+        persistence["review_pending_added"] = pending_added
+        persistence["review_pending_total"] = len([entry for entry in review_payload.get("items", []) if string_value(entry.get("review_status")) == "pending"])
+        persistence["review_blocked"] += blocked_by_delete
+    except Exception as exc:
+        log.warning("Generated review ledger persist failed: %s", exc)
+        warnings.append("Generated question review ledger could not be updated on this server.")
+
     if warnings:
         persistence["warning"] = " ".join(warnings)
     return persistence
+
+
+def load_generated_moderation_state() -> Dict[str, Any]:
+    bank_payload = read_json_object(
+        GENERATED_QUESTIONS_BANK_PATH,
+        {"id": "generated_shared_bank", "name": "Shared Generated Questions", "items": []},
+    )
+    review_payload = read_json_object(
+        GENERATED_QUESTIONS_REVIEW_PATH,
+        {"id": "generated_question_reviews", "items": []},
+    )
+    review_by_id, review_by_key, review_items = build_review_maps(review_payload.get("items"))
+    review_payload["items"] = review_items
+    records: List[Dict[str, Any]] = []
+    for raw in bank_payload.get("items", []) or []:
+        item = normalize_generated_bank_item(raw)
+        if not item:
+            continue
+        storage_key = question_storage_key(item)
+        review = review_by_id.get(string_value(item.get("id"))) or review_by_key.get(storage_key) or {}
+        records.append({
+            **item,
+            "storage_key": storage_key,
+            "review_status": string_value(review.get("review_status")) or "pending",
+            "review_created_at": string_value(review.get("review_created_at")),
+            "reviewed_at": string_value(review.get("reviewed_at")),
+            "created_by_role": string_value(item.get("created_by_role", review.get("created_by_role"))),
+            "merged": review.get("merged") is not False,
+        })
+    for entry in review_items:
+        if entry.get("review_status") != "pending":
+            continue
+        exists = any(
+            string_value(record.get("id")) == string_value(entry.get("id"))
+            or (string_value(record.get("storage_key")) and string_value(record.get("storage_key")) == string_value(entry.get("storage_key")))
+            for record in records
+        )
+        if exists:
+            continue
+        records.append({
+            "id": string_value(entry.get("id")),
+            "question": string_value(entry.get("question")),
+            "answer": string_value(entry.get("answer")),
+            "aliases": [],
+            "meta": {
+                "category": string_value(entry.get("category")),
+                "era": string_value(entry.get("era")),
+                "source": "generated",
+            },
+            "topic": string_value(entry.get("topic")),
+            "created_from": string_value(entry.get("created_from")),
+            "created_by_role": string_value(entry.get("created_by_role")),
+            "storage_key": string_value(entry.get("storage_key")),
+            "review_status": string_value(entry.get("review_status")) or "pending",
+            "review_created_at": string_value(entry.get("review_created_at")),
+            "reviewed_at": string_value(entry.get("reviewed_at")),
+            "merged": False,
+        })
+    records.sort(key=lambda item: string_value(item.get("review_created_at")), reverse=True)
+    return {
+        "bank_payload": bank_payload,
+        "review_payload": review_payload,
+        "records": records,
+    }
+
+
+def remove_question_from_list(items: Any, target_id: str, target_key: str) -> List[Dict[str, Any]]:
+    remaining: List[Dict[str, Any]] = []
+    for raw in items or []:
+        item = normalize_generated_bank_item(raw)
+        if not item:
+            continue
+        storage_key = question_storage_key(item)
+        if target_id and string_value(item.get("id")) == target_id:
+            continue
+        if target_key and storage_key == target_key:
+            continue
+        remaining.append(item)
+    return remaining
+
+
+def update_review_status(action: str, target_id: str) -> Dict[str, Any]:
+    state = load_generated_moderation_state()
+    record = next((item for item in state["records"] if string_value(item.get("id")) == string_value(target_id)), None)
+    if not record:
+        raise KeyError("Generated question not found.")
+    storage_key = question_storage_key(record)
+    now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    if action == "delete":
+        state["bank_payload"]["items"] = remove_question_from_list(state["bank_payload"].get("items"), string_value(target_id), storage_key)
+        atomic_write_json(GENERATED_QUESTIONS_BANK_PATH, state["bank_payload"])
+        questions_payload = read_json_object(QUESTIONS_JSON_PATH, {"items": []})
+        questions_payload["items"] = remove_question_from_list(questions_payload.get("items"), string_value(target_id), storage_key)
+        atomic_write_json(QUESTIONS_JSON_PATH, questions_payload)
+    next_review_items: List[Dict[str, Any]] = []
+    matched = False
+    for entry in state["review_payload"].get("items", []):
+        matches_id = string_value(entry.get("id")) == string_value(target_id)
+        matches_key = storage_key and string_value(entry.get("storage_key")) == storage_key
+        if matches_id or matches_key:
+            matched = True
+            updated = dict(entry)
+            updated["review_status"] = "deleted" if action == "delete" else "approved"
+            updated["reviewed_at"] = now
+            updated["merged"] = action != "delete"
+            next_review_items.append(updated)
+        else:
+            next_review_items.append(entry)
+    if not matched:
+        next_review_items.append({
+            "id": string_value(record.get("id")),
+            "storage_key": storage_key,
+            "question": string_value(record.get("question")),
+            "answer": string_value(record.get("answer")),
+            "category": string_value(record.get("meta", {}).get("category")),
+            "era": string_value(record.get("meta", {}).get("era")),
+            "topic": string_value(record.get("topic")),
+            "created_from": string_value(record.get("created_from")),
+            "created_by_role": string_value(record.get("created_by_role")),
+            "review_status": "deleted" if action == "delete" else "approved",
+            "review_created_at": string_value(record.get("review_created_at")) or now,
+            "reviewed_at": now,
+            "merged": action != "delete",
+        })
+    state["review_payload"]["items"] = next_review_items
+    atomic_write_json(GENERATED_QUESTIONS_REVIEW_PATH, state["review_payload"])
+    return load_generated_moderation_state()
+
+
+def approve_all_generated_questions() -> Dict[str, Any]:
+    state = load_generated_moderation_state()
+    now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    changed = 0
+    next_items: List[Dict[str, Any]] = []
+    for entry in state["review_payload"].get("items", []):
+        if string_value(entry.get("review_status")) != "pending":
+            next_items.append(entry)
+            continue
+        changed += 1
+        updated = dict(entry)
+        updated["review_status"] = "approved"
+        updated["reviewed_at"] = now
+        updated["merged"] = True
+        next_items.append(updated)
+    state["review_payload"]["items"] = next_items
+    atomic_write_json(GENERATED_QUESTIONS_REVIEW_PATH, state["review_payload"])
+    return {"changed": changed, "state": load_generated_moderation_state()}
+
+
+def get_questions_json_count() -> int:
+    payload = read_json_object(QUESTIONS_JSON_PATH, {"items": []})
+    return len(payload.get("items", []) or [])
+
+
+def to_base64url(data: bytes) -> str:
+    return base64.urlsafe_b64encode(data).decode("ascii").rstrip("=")
+
+
+def from_base64url(text: str) -> bytes:
+    padding = "=" * (-len(text or "") % 4)
+    return base64.urlsafe_b64decode((text + padding).encode("ascii"))
+
+
+def sign_admin_value(value: str) -> str:
+    return to_base64url(hmac.new(ADMIN_SESSION_SECRET.encode("utf-8"), value.encode("utf-8"), hashlib.sha256).digest())
+
+
+def admin_configured() -> bool:
+    return bool(ADMIN_EMAIL and ADMIN_SESSION_SECRET and (ADMIN_PASSWORD_HASH or ADMIN_PASSWORD_PLAIN))
+
+
+def verify_admin_password(password: Any) -> bool:
+    candidate = string_value(password)
+    if ADMIN_PASSWORD_HASH.startswith("pbkdf2$"):
+        parts = ADMIN_PASSWORD_HASH.split("$")
+        if len(parts) == 4:
+            _, iterations_text, salt_text, expected_text = parts
+            try:
+                iterations = int(iterations_text)
+            except Exception:
+                iterations = 210000
+            derived = hashlib.pbkdf2_hmac("sha256", candidate.encode("utf-8"), salt_text.encode("utf-8"), iterations, dklen=32)
+            return hmac.compare_digest(to_base64url(derived), expected_text)
+    if ADMIN_PASSWORD_HASH:
+        return hmac.compare_digest(candidate.encode("utf-8"), ADMIN_PASSWORD_HASH.encode("utf-8"))
+    if ADMIN_PASSWORD_PLAIN:
+        return hmac.compare_digest(candidate.encode("utf-8"), ADMIN_PASSWORD_PLAIN.encode("utf-8"))
+    return False
+
+
+def create_admin_session_token(email: str) -> str:
+    payload = {
+        "email": string_value(email).lower(),
+        "iat": int(time.time() * 1000),
+        "exp": int((time.time() + SESSION_MAX_AGE_SECONDS) * 1000),
+    }
+    body = to_base64url(json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
+    signature = sign_admin_value(body)
+    return f"{body}.{signature}"
+
+
+def verify_admin_session_token(token: str) -> Dict[str, Any]:
+    body, _, signature = string_value(token).partition(".")
+    if not body or not signature or not ADMIN_SESSION_SECRET:
+        return {}
+    expected = sign_admin_value(body)
+    if not hmac.compare_digest(signature.encode("utf-8"), expected.encode("utf-8")):
+        return {}
+    try:
+        payload = json.loads(from_base64url(body).decode("utf-8"))
+    except Exception:
+        return {}
+    if int(payload.get("exp", 0) or 0) < int(time.time() * 1000):
+        return {}
+    if string_value(payload.get("email")).lower() != ADMIN_EMAIL:
+        return {}
+    return payload
+
+
+def parse_cookie_map(header: str) -> Dict[str, str]:
+    cookie_map: Dict[str, str] = {}
+    for part in (header or "").split(";"):
+        if "=" not in part:
+            continue
+        key, value = part.split("=", 1)
+        name = string_value(key)
+        if not name:
+            continue
+        cookie_map[name] = value.strip()
+    return cookie_map
+
+
+def get_authenticated_admin_email(headers: Any) -> str:
+    cookie_header = headers.get("Cookie", headers.get("cookie", "")) if headers else ""
+    token = parse_cookie_map(cookie_header).get(ADMIN_COOKIE, "")
+    payload = verify_admin_session_token(token)
+    return string_value(payload.get("email")).lower()
+
+
+def is_secure_request(headers: Any) -> bool:
+    return string_value(headers.get("X-Forwarded-Proto", headers.get("x-forwarded-proto", ""))).lower() == "https"
+
+
+def build_admin_cookie(token: str, headers: Any, max_age: int = SESSION_MAX_AGE_SECONDS) -> str:
+    parts = [
+        f"{ADMIN_COOKIE}={token}",
+        "Path=/",
+        "HttpOnly",
+        "SameSite=Strict",
+        f"Max-Age={max(0, int(max_age))}",
+    ]
+    if is_secure_request(headers):
+        parts.append("Secure")
+    return "; ".join(parts)
+
+
+def fetch_supabase_json(path: str, params: Dict[str, Any] = None, prefer: str = "count=exact") -> Tuple[Any, Any]:
+    if not SUPABASE_SERVICE_ROLE_KEY or not SUPABASE_URL:
+        raise RuntimeError("Supabase service role is not configured.")
+    headers = {
+        "apikey": SUPABASE_SERVICE_ROLE_KEY,
+        "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}",
+        "Content-Type": "application/json",
+    }
+    if prefer:
+        headers["Prefer"] = prefer
+    response = requests.get(
+        f"{SUPABASE_URL}{path}",
+        params=params or {},
+        headers=headers,
+        timeout=25,
+    )
+    text = response.text or ""
+    try:
+        data = json.loads(text) if text else None
+    except Exception:
+        data = text
+    if not response.ok:
+        message = data.get("msg", data.get("message")) if isinstance(data, dict) else ""
+        raise RuntimeError(message or text or f"{path} failed")
+    return data, response.headers
+
+
+def fetch_table_snapshot(config: Dict[str, Any]) -> Dict[str, Any]:
+    params = {"select": "*", "limit": str(int(config.get("limit", 200) or 200))}
+    if string_value(config.get("order_by")):
+        params["order"] = string_value(config.get("order_by"))
+    data, headers = fetch_supabase_json(f"/rest/v1/{config['name']}", params=params)
+    content_range = headers.get("content-range", "")
+    total_text = content_range.split("/", 1)[1] if "/" in content_range else ""
+    try:
+        total = int(total_text)
+    except Exception:
+        total = len(data or []) if isinstance(data, list) else 0
+    return {
+        "name": config["name"],
+        "count": total,
+        "rows": data if isinstance(data, list) else [],
+    }
+
+
+def fetch_auth_users() -> List[Dict[str, Any]]:
+    users: List[Dict[str, Any]] = []
+    for page in range(1, 6):
+        data, _ = fetch_supabase_json("/auth/v1/admin/users", params={"page": str(page), "per_page": "200"}, prefer="")
+        page_users = data.get("users", []) if isinstance(data, dict) else []
+        if not isinstance(page_users, list):
+            page_users = []
+        users.extend([user for user in page_users if isinstance(user, dict)])
+        if len(page_users) < 200:
+            break
+    return users
+
+
+def count_by(rows: Any, key: str) -> Dict[str, int]:
+    counts: Dict[str, int] = {}
+    for row in rows or []:
+        if not isinstance(row, dict):
+            continue
+        name = string_value(row.get(key))
+        if not name:
+            continue
+        counts[name] = counts.get(name, 0) + 1
+    return counts
+
+
+def build_user_directory(auth_users: List[Dict[str, Any]], tables: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    table_map = {table.get("name"): table.get("rows", []) for table in tables if isinstance(table, dict)}
+    profiles = table_map.get("profiles", []) if isinstance(table_map.get("profiles"), list) else []
+    memberships_by_student = count_by(table_map.get("class_students"), "student_id")
+    classes_by_teacher = count_by(table_map.get("classes"), "teacher_id")
+    submissions_by_student = count_by(table_map.get("assignment_submissions"), "student_id")
+    wrong_by_user = count_by(table_map.get("user_wrong_questions"), "user_id")
+    sessions_by_user = count_by(table_map.get("user_drill_sessions"), "user_id")
+    coach_by_user = count_by(table_map.get("user_coach_attempts"), "user_id")
+    profile_by_id = {string_value(profile.get("id")): profile for profile in profiles if isinstance(profile, dict)}
+    users: List[Dict[str, Any]] = []
+    seen: set = set()
+    for auth_user in auth_users or []:
+        if not isinstance(auth_user, dict):
+            continue
+        user_id = string_value(auth_user.get("id"))
+        profile = profile_by_id.get(user_id, {})
+        if user_id:
+            seen.add(user_id)
+        users.append({
+            "id": user_id,
+            "email": string_value(auth_user.get("email")),
+            "email_confirmed_at": string_value(auth_user.get("email_confirmed_at")),
+            "created_at": string_value(auth_user.get("created_at")),
+            "last_sign_in_at": string_value(auth_user.get("last_sign_in_at")),
+            "role": string_value(profile.get("role")),
+            "display_name": string_value(profile.get("display_name")),
+            "class_code": string_value(profile.get("class_code")),
+            "profile_created_at": string_value(profile.get("created_at")),
+            "joined_classes": memberships_by_student.get(user_id, 0),
+            "owned_classes": classes_by_teacher.get(user_id, 0),
+            "assignment_submissions": submissions_by_student.get(user_id, 0),
+            "wrong_bank_rows": wrong_by_user.get(user_id, 0),
+            "drill_sessions": sessions_by_user.get(user_id, 0),
+            "coach_attempts": coach_by_user.get(user_id, 0),
+        })
+    for profile in profiles:
+        user_id = string_value(profile.get("id"))
+        if not user_id or user_id in seen:
+            continue
+        users.append({
+            "id": user_id,
+            "email": "",
+            "email_confirmed_at": "",
+            "created_at": "",
+            "last_sign_in_at": "",
+            "role": string_value(profile.get("role")),
+            "display_name": string_value(profile.get("display_name")),
+            "class_code": string_value(profile.get("class_code")),
+            "profile_created_at": string_value(profile.get("created_at")),
+            "joined_classes": memberships_by_student.get(user_id, 0),
+            "owned_classes": classes_by_teacher.get(user_id, 0),
+            "assignment_submissions": submissions_by_student.get(user_id, 0),
+            "wrong_bank_rows": wrong_by_user.get(user_id, 0),
+            "drill_sessions": sessions_by_user.get(user_id, 0),
+            "coach_attempts": coach_by_user.get(user_id, 0),
+        })
+    users.sort(key=lambda item: string_value(item.get("email") or item.get("display_name") or item.get("id")))
+    return users
+
+
+def fetch_database_snapshot() -> Dict[str, Any]:
+    if not SUPABASE_SERVICE_ROLE_KEY:
+        return {
+            "service_role_configured": False,
+            "warnings": ["Set SUPABASE_SERVICE_ROLE_KEY in the server environment to unlock the full database browser and auth user list."],
+            "auth_users": [],
+            "users": [],
+            "tables": [],
+        }
+    warnings: List[str] = []
+    tables: List[Dict[str, Any]] = []
+    for config in APP_TABLES:
+        try:
+            tables.append(fetch_table_snapshot(config))
+        except Exception as exc:
+            warnings.append(f"{config['name']}: {exc}")
+    auth_users: List[Dict[str, Any]] = []
+    try:
+        auth_users = fetch_auth_users()
+    except Exception as exc:
+        warnings.append(f"auth.users: {exc}")
+    return {
+        "service_role_configured": True,
+        "warnings": warnings,
+        "auth_users": auth_users,
+        "users": build_user_directory(auth_users, tables),
+        "tables": tables,
+    }
+
+
+def build_admin_data() -> Dict[str, Any]:
+    generated_state = load_generated_moderation_state()
+    generated_records = generated_state.get("records", [])
+    pending_count = len([item for item in generated_records if string_value(item.get("review_status")) == "pending"])
+    database = fetch_database_snapshot()
+    return {
+        "config": {
+            "admin_configured": admin_configured(),
+            "service_role_configured": database.get("service_role_configured", False),
+            "admin_email": ADMIN_EMAIL,
+        },
+        "summary": {
+            "generated_total": len(generated_records),
+            "generated_pending": pending_count,
+            "questions_total": get_questions_json_count(),
+            "auth_users_total": len(database.get("auth_users", []) or []),
+            "surfaced_users_total": len(database.get("users", []) or []),
+        },
+        "generated": generated_records,
+        "users": database.get("users", []),
+        "database": database,
+    }
 
 
 def guess_type(path: str) -> str:
@@ -1474,14 +2066,121 @@ def safe_join(base: str, *paths: str) -> str:
 
 
 class Handler(BaseHTTPRequestHandler):
-    def _set_headers(self, code=200, content_type="application/json"):
+    def _set_headers(self, code=200, content_type="application/json", extra_headers: Dict[str, str] = None):
         self.send_response(code)
         self.send_header("Content-Type", content_type)
         # CORS
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Methods", "POST, OPTIONS, GET")
         self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        for key, value in (extra_headers or {}).items():
+            if value is not None:
+                self.send_header(key, value)
         self.end_headers()
+
+    def _write_json(self, code: int, payload: Any, extra_headers: Dict[str, str] = None):
+        self._set_headers(code, "application/json", extra_headers=extra_headers)
+        self.wfile.write(json.dumps(payload).encode("utf-8"))
+
+    def _read_json_body(self) -> Dict[str, Any]:
+        try:
+            length = int(self.headers.get("content-length", "0"))
+        except Exception:
+            length = 0
+        raw = self.rfile.read(length) if length else b"{}"
+        try:
+            return json.loads(raw.decode("utf-8") or "{}")
+        except Exception:
+            return {}
+
+    def _handle_admin_get(self, parsed) -> bool:
+        if parsed.path not in ("/admin", "/api/admin"):
+            return False
+        params = parse_qs(parsed.query or "")
+        action = string_value((params.get("action") or [""])[0]).lower()
+        if action == "data":
+            email = get_authenticated_admin_email(self.headers)
+            if not email:
+                self._write_json(401, {"error": "Admin session required."})
+                return True
+            self._write_json(200, build_admin_data())
+            return True
+        self._write_json(200, {
+            "authenticated": bool(get_authenticated_admin_email(self.headers)),
+            "config": {
+                "admin_configured": admin_configured(),
+                "service_role_configured": bool(SUPABASE_SERVICE_ROLE_KEY),
+                "admin_email": ADMIN_EMAIL,
+            }
+        })
+        return True
+
+    def _handle_admin_post(self, payload: Dict[str, Any]) -> bool:
+        parsed = urlparse(self.path)
+        if parsed.path not in ("/admin", "/api/admin"):
+            return False
+        action = string_value(payload.get("action")).lower()
+        if action == "login":
+            if not admin_configured():
+                self._write_json(503, {"error": "Admin login is not configured on this server."})
+                return True
+            email = string_value(payload.get("email")).lower()
+            password = string_value(payload.get("password"))
+            if email != ADMIN_EMAIL or not verify_admin_password(password):
+                self._write_json(401, {"error": "Invalid admin credentials."})
+                return True
+            token = create_admin_session_token(email)
+            self._write_json(200, {
+                "ok": True,
+                "authenticated": True,
+                "config": {
+                    "admin_configured": True,
+                    "service_role_configured": bool(SUPABASE_SERVICE_ROLE_KEY),
+                    "admin_email": ADMIN_EMAIL,
+                }
+            }, extra_headers={"Set-Cookie": build_admin_cookie(token, self.headers)})
+            return True
+        if action == "logout":
+            self._write_json(200, {"ok": True}, extra_headers={"Set-Cookie": build_admin_cookie("", self.headers, 0)})
+            return True
+        email = get_authenticated_admin_email(self.headers)
+        if not email:
+            self._write_json(401, {"error": "Admin session required."})
+            return True
+        if action == "approve":
+            try:
+                state = update_review_status("approve", string_value(payload.get("id")))
+                self._write_json(200, {
+                    "ok": True,
+                    "generated": state.get("records", []),
+                    "pending": len([item for item in state.get("records", []) if string_value(item.get("review_status")) == "pending"]),
+                })
+            except KeyError:
+                self._write_json(404, {"error": "Generated question not found."})
+            return True
+        if action == "delete":
+            try:
+                state = update_review_status("delete", string_value(payload.get("id")))
+                self._write_json(200, {
+                    "ok": True,
+                    "generated": state.get("records", []),
+                    "pending": len([item for item in state.get("records", []) if string_value(item.get("review_status")) == "pending"]),
+                })
+            except KeyError:
+                self._write_json(404, {"error": "Generated question not found."})
+            return True
+        if action == "approve_all":
+            result = approve_all_generated_questions()
+            state = result.get("state", {})
+            self._write_json(200, {
+                "ok": True,
+                "changed": result.get("changed", 0),
+                "generated": state.get("records", []),
+                "pending": len([item for item in state.get("records", []) if string_value(item.get("review_status")) == "pending"]),
+            })
+            return True
+        self._write_json(400, {"error": "Unknown admin action."})
+        return True
 
     def do_OPTIONS(self):
         self._set_headers(204)
@@ -1490,8 +2189,9 @@ class Handler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         # Health check
         if parsed.path == "/health":
-            self._set_headers(200)
-            self.wfile.write(b"{\"ok\":true}")
+            self._write_json(200, {"ok": True})
+            return
+        if self._handle_admin_get(parsed):
             return
 
         # Static file serving from BASE_DIR
@@ -1501,8 +2201,7 @@ class Handler(BaseHTTPRequestHandler):
         try:
             full = safe_join(BASE_DIR, rel)
         except ValueError:
-            self._set_headers(400)
-            self.wfile.write(b"{\"error\":\"bad path\"}")
+            self._write_json(400, {"error": "bad path"})
             return
 
         if os.path.isdir(full):
@@ -1515,11 +2214,9 @@ class Handler(BaseHTTPRequestHandler):
                 self._set_headers(200, guess_type(full))
                 self.wfile.write(data)
             except Exception:
-                self._set_headers(500)
-                self.wfile.write(b"{\"error\":\"read failed\"}")
+                self._write_json(500, {"error": "read failed"})
         else:
-            self._set_headers(404)
-            self.wfile.write(b"{}")
+            self._write_json(404, {})
 
     def do_POST(self):
         parsed = urlparse(self.path)
@@ -1532,17 +2229,14 @@ class Handler(BaseHTTPRequestHandler):
             "/api/coach-chat",
             "/generate-questions",
             "/api/generate-questions",
+            "/admin",
+            "/api/admin",
         ):
-            self._set_headers(404)
-            self.wfile.write(b"{}")
+            self._write_json(404, {})
             return
-        try:
-            length = int(self.headers.get('content-length', '0'))
-            body = self.rfile.read(length) if length else b"{}"
-            payload = json.loads(body.decode('utf-8') or "{}")
-        except Exception:
-            self._set_headers(400)
-            self.wfile.write(b"{\"error\":\"invalid json\"}")
+        payload = self._read_json_body()
+        if parsed.path in ("/admin", "/api/admin"):
+            self._handle_admin_post(payload)
             return
 
         if parsed.path in ("/grade", "/api/grade"):
@@ -1553,8 +2247,7 @@ class Handler(BaseHTTPRequestHandler):
             result = coach_chat_with_deepseek(payload)
         else:
             result = generate_questions_with_deepseek(payload)
-        self._set_headers(200)
-        self.wfile.write(json.dumps(result).encode('utf-8'))
+        self._write_json(200, result)
 
 
 class NoFQDNHTTPServer(HTTPServer):
