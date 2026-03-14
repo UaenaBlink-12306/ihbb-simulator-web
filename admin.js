@@ -1,10 +1,12 @@
 document.addEventListener('DOMContentLoaded', () => {
+  const FILE_MODE = window.location.protocol === 'file:';
   const state = {
     authenticated: false,
     data: null,
     generatedFilter: 'all',
     generatedSearch: '',
-    userSearch: ''
+    userSearch: '',
+    localAdminOrigin: 'http://127.0.0.1:5057'
   };
 
   const $ = (id) => document.getElementById(id);
@@ -21,6 +23,34 @@ document.addEventListener('DOMContentLoaded', () => {
     if (Number.isNaN(date.getTime())) return text;
     return date.toLocaleString();
   };
+
+  function localAdminUrl(origin = state.localAdminOrigin) {
+    return `${String(origin || 'http://127.0.0.1:5057').replace(/\/+$/, '')}/admin.html`;
+  }
+
+  function setLocalAdminOrigin(origin) {
+    state.localAdminOrigin = String(origin || 'http://127.0.0.1:5057').replace(/\/+$/, '');
+    const urlEl = $('admin-local-url');
+    if (urlEl) urlEl.textContent = localAdminUrl();
+  }
+
+  function showFileMode(message, type = 'muted') {
+    $('admin-file-panel')?.classList.remove('hidden');
+    $('admin-auth-panel')?.classList.add('hidden');
+    $('admin-console')?.classList.add('hidden');
+    $('admin-refresh') && ($('admin-refresh').disabled = true);
+    $('admin-logout')?.classList.add('hidden');
+    const statusEl = $('admin-file-status');
+    if (statusEl) {
+      statusEl.className = `card-muted-box${type === 'error' ? ' text-bad' : ''}`;
+      statusEl.textContent = message;
+    }
+  }
+
+  function handleFileMode() {
+    setLocalAdminOrigin(state.localAdminOrigin);
+    showFileMode('This page was opened as a local file, so the admin API and cookie session cannot work here. Start `python server.py`, then open the HTTP URL below.', 'error');
+  }
 
   function showAlert(message, type = 'error') {
     const box = $('admin-alert');
@@ -349,6 +379,19 @@ document.addEventListener('DOMContentLoaded', () => {
       button.disabled = false;
     }
   });
+
+  $('admin-open-local')?.addEventListener('click', () => {
+    window.location.href = localAdminUrl();
+  });
+
+  $('admin-retry-local')?.addEventListener('click', () => {
+    window.location.href = localAdminUrl();
+  });
+
+  if (FILE_MODE) {
+    handleFileMode();
+    return;
+  }
 
   refreshStatus().catch((error) => {
     showAlert(error.message || 'Admin status check failed.');

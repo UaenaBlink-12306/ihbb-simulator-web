@@ -59,6 +59,8 @@ UI refresh follow-up:
 - 2026-03-14: Added `generated_questions_review.json` plus matching review-ledger persistence in both `server.py` and `api/generate-questions.js` so generated questions can merge immediately while still being tracked as pending, approved, or deleted by admin moderation.
 - 2026-03-14: Added `/api/admin` in both the local Python server and the Vercel-style API, using a backend-only admin email/password hash/session secret instead of the public Supabase client so the admin console is not accessible through normal signup/login flows.
 - 2026-03-14: Browser QA with a mocked admin API confirmed login, generated-question filtering, Accept All, user-table rendering, and raw table sections on `admin.html`. Artifact saved to `output/playwright/admin-console-overview.png`.
+- 2026-03-14: Added a `file://` safety fallback to `admin.html` / `admin.js`. If the page is opened directly from disk, it now stops before any `/api/admin` fetches, explains that the admin console must run over HTTP, and offers a one-click jump to `http://127.0.0.1:5057/admin.html`.
+- 2026-03-14: Browser QA confirmed direct `file:///.../admin.html` loads now show the instructional panel with no console errors, and clicking the local HTTP button lands on the working admin login page when `python server.py` is running. Artifacts saved to `output/playwright/admin-file-mode-help.png` and `output/playwright/admin-file-open-http.png`.
 
 Remaining follow-up:
 - Re-run the live DeepSeek success path against the real backend once a valid `DEEPSEEK_API_KEY` is available in the environment.

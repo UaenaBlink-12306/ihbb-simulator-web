@@ -37,6 +37,32 @@
 
     <div id="admin-alert" class="alert hidden"></div>
 
+    <section id="admin-file-panel" class="card section-card admin-file-panel hidden">
+      <div class="section-head">
+        <div>
+          <div class="eyebrow">Local file detected</div>
+          <h2 class="card-title">Use HTTP Instead of `file://`</h2>
+          <p class="section-subtitle">The admin console needs the backend API and signed cookies, so it cannot run from a
+            directly opened file.</p>
+        </div>
+      </div>
+      <div class="stack">
+        <div id="admin-file-status" class="card-muted-box">
+          This page was opened as a local file, so the admin API and cookie session cannot work here.
+        </div>
+        <div class="admin-file-actions">
+          <button id="admin-open-local" class="btn pri" type="button">Open Local Admin URL</button>
+          <button id="admin-retry-local" class="btn ghost" type="button">I Started the Server</button>
+        </div>
+        <div class="card-muted-box">
+          <p>Start the local server from the repo root:</p>
+          <pre class="admin-inline-code">python server.py</pre>
+          <p>Then open:</p>
+          <pre id="admin-local-url" class="admin-inline-code">http://127.0.0.1:5057/admin.html</pre>
+        </div>
+      </div>
+    </section>
+
     <section id="admin-auth-panel" class="card section-card admin-auth-panel">
       <div class="section-head">
         <div>
