@@ -96,7 +96,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         open: false,
         busy: false,
         source: 'ready',
-        messages: []
+        messages: [],
+        currentStarters: [],
+        suggestedReason: 'manual'
     };
 
     // ========== NAME CHECK ==========
@@ -237,11 +239,46 @@ document.addEventListener('DOMContentLoaded', async () => {
         el.textContent = label;
     }
 
-    function renderDashboardChatStarters() {
+    function buildDashboardChatStarters(snapshot = buildDashboardChatContext()) {
+        const recent = snapshot?.recent_incorrect || null;
+        const wrongDue = snapshot?.wrong_bank?.due_now || 0;
+        const notebookOpen = snapshot?.coach_notebook?.open_lessons || 0;
+        const topFocus = snapshot?.coach_notebook?.top_focuses?.[0] || null;
+        const topFocusTitle = coachChatFocusTitle(topFocus);
+        const recentTitle = String(recent?.title || '').trim();
+        if (recentTitle) {
+            return [
+                { label: 'Last miss', prompt: `Why did I miss ${recentTitle}, and what should I train next?` },
+                { label: 'Best tool', prompt: `For ${recentTitle}, should I use AI Notebook, Wrong-bank, or a guided drill first?` },
+                { label: 'Corrective drill', prompt: `Build me a corrective practice plan for ${recentTitle}.` }
+            ];
+        }
+        if (wrongDue >= 3) {
+            return [
+                { label: 'Wrong-bank first', prompt: `I have ${wrongDue} due wrong-bank cards. Should I clear those before anything else?` },
+                { label: 'After review', prompt: 'After my due wrong-bank review, what should I practice next from the dashboard?' },
+                { label: 'Fresh drill', prompt: topFocusTitle ? `After wrong-bank, should I turn ${topFocusTitle} into a fresh drill?` : 'What is the best fresh drill after my due wrong-bank review?' }
+            ];
+        }
+        if ((dashboardChat.suggestedReason === 'notebook' || notebookOpen > 0) && topFocusTitle) {
+            return [
+                { label: 'Notebook focus', prompt: `Which AI Notebook focus should I train next if ${topFocusTitle} keeps showing up?` },
+                { label: 'From lesson to drill', prompt: `How should I turn ${topFocusTitle} from AI Notebook into actual practice?` },
+                { label: 'Before assignment', prompt: `Before my next assignment, is ${topFocusTitle} better for notebook review or a targeted drill?` }
+            ];
+        }
+        return DASHBOARD_CHAT_STARTERS;
+    }
+
+    function renderDashboardChatStarters(snapshot) {
         const el = document.getElementById('coach-chat-starters');
         if (!el) return;
-        el.innerHTML = DASHBOARD_CHAT_STARTERS.map((starter, index) => `
-            <button class="coach-chat-starter" type="button" data-starter-index="${index}">${esc(starter.label)}</button>
+        dashboardChat.currentStarters = buildDashboardChatStarters(snapshot);
+        el.innerHTML = dashboardChat.currentStarters.map((starter, index) => `
+            <button class="coach-chat-starter" type="button" data-starter-index="${index}">
+                <span class="coach-chat-starter-label">${esc(starter.label || 'Suggested question')}</span>
+                <span class="coach-chat-starter-text">${esc(starter.prompt || '')}</span>
+            </button>
         `).join('');
     }
 
@@ -278,7 +315,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         ` : '';
         el.innerHTML = messagesHtml || loadingHtml
             ? `${messagesHtml}${loadingHtml}`
-            : `<div class="coach-chat-message assistant"><p class="coach-chat-message-text">Ask what to train next, whether to use AI Notebook or Wrong-bank, or where to focus before an assignment.</p></div>`;
+            : `<div class="coach-chat-empty">
+                <div class="coach-chat-empty-title">Choose a suggested question or ask your own.</div>
+                <p class="coach-chat-empty-text">Nothing has been sent yet. The assistant will only answer after you click one of the suggested questions or submit your own prompt.</p>
+            </div>`;
         el.scrollTop = el.scrollHeight;
     }
 
@@ -328,13 +368,11 @@ document.addEventListener('DOMContentLoaded', async () => {
             countEl.classList.toggle('hidden', !count);
         }
         if (hintEl) {
-            hintEl.textContent = snapshot?.coach_notebook?.top_focuses?.[0]?.title
-                ? 'DeepSeek can send you into a guided or generated drill from this dashboard.'
-                : 'DeepSeek can point you to notebook review, analytics, or the Practice Hub.';
+            hintEl.textContent = 'Click a suggested question or type your own. Nothing is sent automatically.';
         }
         if (sendBtn) sendBtn.disabled = !!dashboardChat.busy;
 
-        renderDashboardChatStarters();
+        renderDashboardChatStarters(snapshot);
         renderDashboardChatMessages();
         updateDashboardChatSourceLabel();
         setDashboardChatOpenState(dashboardChat.open);
@@ -462,12 +500,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     function openDashboardChat() {
+        dashboardChat.suggestedReason = 'manual';
         dashboardChat.open = true;
         renderDashboardChatChrome();
         setTimeout(() => document.getElementById('coach-chat-input')?.focus(), 60);
-        if (!dashboardChat.messages.length) {
-            void sendDashboardChatMessage(DASHBOARD_CHAT_STARTERS[0].prompt);
-        }
     }
 
     function closeDashboardChat() {
@@ -546,7 +582,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('coach-chat-starters')?.addEventListener('click', (event) => {
         const button = event.target.closest('.coach-chat-starter');
         if (!button) return;
-        const starter = DASHBOARD_CHAT_STARTERS[Number(button.dataset.starterIndex) || 0];
+        const starter = dashboardChat.currentStarters?.[Number(button.dataset.starterIndex) || 0];
         if (!starter?.prompt) return;
         void sendDashboardChatMessage(starter.prompt);
     });

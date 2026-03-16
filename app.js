@@ -548,7 +548,9 @@ const CoachChat = {
   source: 'ready',
   messages: [],
   autoReasons: new Set(),
-  recentIncorrect: null
+  recentIncorrect: null,
+  currentStarters: [],
+  suggestedReason: 'manual'
 };
 
 function trimCoachChatMessages() {
@@ -724,11 +726,46 @@ function renderCoachChatStatus(snapshot) {
   }
 }
 
-function renderCoachChatStarters() {
+function buildCoachChatStarters(snapshot = buildCoachChatStudyContext()) {
+  const recent = snapshot?.recent_incorrect || null;
+  const wrongDue = snapshot?.wrong_bank?.due_now || 0;
+  const notebookOpen = snapshot?.coach_notebook?.open_lessons || 0;
+  const topFocus = snapshot?.coach_notebook?.top_focuses?.[0] || null;
+  const topFocusTitle = topFocus?.title || coachChatFocusTitle(topFocus);
+  const recentTitle = String(recent?.title || '').trim();
+  if (CoachChat.suggestedReason === 'miss' && recentTitle) {
+    return [
+      { label: 'Last miss', prompt: `Why did I miss ${recentTitle}, and what should I practice next?` },
+      { label: 'Best tool', prompt: `For ${recentTitle}, should I use Wrong-bank, AI Notebook, or a generated drill first?` },
+      { label: 'Corrective drill', prompt: `Build me a corrective practice plan for ${recentTitle}.` }
+    ];
+  }
+  if (wrongDue >= 3) {
+    return [
+      { label: 'Wrong-bank first', prompt: `I have ${wrongDue} due wrong-bank cards. Should I clear those before anything else?` },
+      { label: 'After SRS', prompt: 'After I finish my due wrong-bank cards, what should I train next?' },
+      { label: 'Fresh drill', prompt: topFocusTitle ? `Turn ${topFocusTitle} into a fresh drill after my due review.` : 'Recommend the best fresh drill after my due wrong-bank review.' }
+    ];
+  }
+  if ((CoachChat.suggestedReason === 'notebook' || notebookOpen > 0) && topFocusTitle) {
+    return [
+      { label: 'Notebook focus', prompt: `Which AI Notebook focus should I train next if ${topFocusTitle} keeps showing up?` },
+      { label: 'From lesson to drill', prompt: `How should I turn ${topFocusTitle} from AI Notebook into actual practice?` },
+      { label: 'Best next move', prompt: `Is ${topFocusTitle} better for Wrong-bank, AI Notebook review, or a fresh generated drill right now?` }
+    ];
+  }
+  return COACH_CHAT_STARTERS;
+}
+
+function renderCoachChatStarters(snapshot) {
   const startersEl = $('coach-chat-starters');
   if (!startersEl) return;
-  startersEl.innerHTML = COACH_CHAT_STARTERS.map((starter, index) => `
-    <button class="coach-chat-starter" type="button" data-starter-index="${index}">${escHtml(starter.label)}</button>
+  CoachChat.currentStarters = buildCoachChatStarters(snapshot);
+  startersEl.innerHTML = CoachChat.currentStarters.map((starter, index) => `
+    <button class="coach-chat-starter" type="button" data-starter-index="${index}">
+      <span class="coach-chat-starter-label">${escHtml(starter.label || 'Suggested question')}</span>
+      <span class="coach-chat-starter-text">${escHtml(starter.prompt || '')}</span>
+    </button>
   `).join('');
 }
 
@@ -773,7 +810,10 @@ function renderCoachChatMessages() {
   ` : '';
   messagesEl.innerHTML = html || busyHtml
     ? `${html}${busyHtml}`
-    : `<div class="coach-chat-message assistant"><p class="coach-chat-message-text">Ask DeepSeek what to practice next, when to use Wrong-bank, or how to turn AI Notebook lessons into a drill.</p></div>`;
+    : `<div class="coach-chat-empty">
+        <div class="coach-chat-empty-title">Choose a suggested question or ask your own.</div>
+        <p class="coach-chat-empty-text">Nothing has been sent yet. The assistant will only respond after you click one of the suggested questions or submit your own prompt.</p>
+      </div>`;
   messagesEl.scrollTop = messagesEl.scrollHeight;
 }
 
@@ -794,7 +834,7 @@ function setCoachChatOpenState(open) {
 function renderCoachChatChrome() {
   const snapshot = buildCoachChatStudyContext();
   renderCoachChatStatus(snapshot);
-  renderCoachChatStarters();
+  renderCoachChatStarters(snapshot);
   renderCoachChatMessages();
   updateCoachChatSourceLabel();
   setCoachChatOpenState(CoachChat.open);
@@ -802,11 +842,7 @@ function renderCoachChatChrome() {
   const hintEl = $('coach-chat-hint');
   if (sendBtn) sendBtn.disabled = !!CoachChat.busy;
   if (hintEl) {
-    hintEl.textContent = snapshot?.recent_incorrect?.title
-      ? 'One click can reopen the lesson or generate a corrective drill.'
-      : ((snapshot?.wrong_bank?.due_now || 0) > 0
-        ? 'One click can start the due wrong-bank queue.'
-        : 'DeepSeek can recommend a drill and launch it from here.');
+    hintEl.textContent = 'Click a suggested question or type your own. Nothing is sent automatically.';
   }
 }
 
@@ -969,16 +1005,11 @@ function openCoachChat(options = {}) {
   if (!options.auto) {
     try { sessionStorage.removeItem(COACH_CHAT_SUPPRESS_KEY); } catch { /* noop */ }
   }
+  CoachChat.suggestedReason = String(options.reason || 'manual').trim() || 'manual';
   CoachChat.open = true;
   renderCoachChatChrome();
   if (options.focusInput !== false) {
     setTimeout(() => $('coach-chat-input')?.focus(), 80);
-  }
-  if (!CoachChat.messages.length && options.seed !== false) {
-    const starterPrompt = String(options.prompt || coachChatPromptForReason(options.reason || 'manual')).trim();
-    if (starterPrompt) {
-      void sendCoachChatMessage(starterPrompt, { hiddenUserMessage: true });
-    }
   }
 }
 
@@ -993,24 +1024,14 @@ function closeCoachChat({ manual = true } = {}) {
 function maybeAutoOpenCoachChat(reason = 'init') {
   if (CoachChat.open || CoachChat.busy || isCoachChatAutoSuppressed() || CoachChat.autoReasons.has(reason)) return false;
   const snapshot = buildCoachChatStudyContext();
-  let prompt = '';
   if (reason === 'miss' && snapshot?.recent_incorrect?.title) {
-    prompt = coachChatPromptForReason('miss');
   } else if ((snapshot?.wrong_bank?.due_now || 0) >= 3) {
-    prompt = coachChatPromptForReason('wrong-bank');
   } else if ((snapshot?.coach_notebook?.open_lessons || 0) >= 2 && snapshot?.coach_notebook?.top_focuses?.[0]?.title) {
-    prompt = coachChatPromptForReason('notebook');
   } else {
     return false;
   }
   CoachChat.autoReasons.add(reason);
-  CoachChat.open = true;
-  renderCoachChatChrome();
-  if (CoachChat.messages.length) {
-    void sendCoachChatMessage(prompt, { hiddenUserMessage: true });
-  } else {
-    openCoachChat({ auto: true, focusInput: false, prompt, reason, seed: true });
-  }
+  openCoachChat({ auto: true, focusInput: false, reason, seed: false });
   return true;
 }
 
@@ -3575,7 +3596,7 @@ $('overlay')?.addEventListener('click', (e) => { if (e.target && e.target.id ===
 
 // DeepSeek sidebar chat
 $('coach-chat-launcher')?.addEventListener('click', () => {
-  openCoachChat({ auto: false, seed: true, reason: 'manual' });
+  openCoachChat({ auto: false, seed: false, reason: 'manual' });
 });
 $('coach-chat-close')?.addEventListener('click', () => closeCoachChat({ manual: true }));
 $('coach-chat-backdrop')?.addEventListener('click', () => closeCoachChat({ manual: true }));
@@ -3590,7 +3611,7 @@ $('coach-chat-form')?.addEventListener('submit', (e) => {
 $('coach-chat-starters')?.addEventListener('click', (e) => {
   const button = e.target.closest('.coach-chat-starter');
   if (!button) return;
-  const starter = COACH_CHAT_STARTERS[Number(button.dataset.starterIndex) || 0];
+  const starter = CoachChat.currentStarters?.[Number(button.dataset.starterIndex) || 0];
   if (!starter?.prompt) return;
   void sendCoachChatMessage(starter.prompt);
 });
