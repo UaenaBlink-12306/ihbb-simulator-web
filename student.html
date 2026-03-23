@@ -443,21 +443,37 @@
     <aside id="coach-chat-sidebar" class="coach-chat-sidebar" aria-hidden="true">
         <div class="coach-chat-panel">
             <div class="coach-chat-head">
-                <div>
+                <div class="coach-chat-head-copy">
                     <div class="eyebrow">DeepSeek sidebar</div>
                     <h2 class="card-title">Training Assistant</h2>
                     <p id="coach-chat-context-summary" class="coach-chat-context-summary">Reviewing your coach and analytics history.</p>
                 </div>
                 <div class="coach-chat-head-actions">
                     <span id="coach-chat-source" class="pill">Ready</span>
+                    <button id="coach-chat-new" class="btn ghost coach-chat-utility-btn" type="button">New Chat</button>
+                    <button id="coach-chat-fullscreen" class="btn ghost coach-chat-utility-btn" type="button" aria-pressed="false">Full Screen</button>
                     <button id="coach-chat-close" class="btn ghost coach-chat-close" type="button" aria-label="Close sidebar">×</button>
                 </div>
             </div>
 
+            <div class="coach-chat-toolbar">
+                <div id="coach-chat-mode-switch" class="coach-chat-mode-switch" role="tablist" aria-label="Assistant mode">
+                    <button class="coach-chat-mode-btn" type="button" data-mode="auto" aria-pressed="true">Auto</button>
+                    <button class="coach-chat-mode-btn" type="button" data-mode="coach" aria-pressed="false">Coach</button>
+                    <button class="coach-chat-mode-btn" type="button" data-mode="knowledge" aria-pressed="false">Knowledge</button>
+                </div>
+                <div id="coach-chat-size-presets" class="coach-chat-size-presets" aria-label="Assistant size">
+                    <button class="coach-chat-size-btn" type="button" data-size="standard">Balanced</button>
+                    <button class="coach-chat-size-btn" type="button" data-size="wide">Wide</button>
+                    <button class="coach-chat-size-btn" type="button" data-size="focus">Focus</button>
+                </div>
+            </div>
+
             <div id="coach-chat-status-pills" class="coach-chat-status-pills"></div>
+            <div id="coach-chat-workspace" class="coach-chat-workspace"></div>
             <div id="coach-chat-messages" class="coach-chat-messages" aria-live="polite"></div>
             <div class="coach-chat-starter-block">
-                <div class="coach-chat-section-label">Suggested questions</div>
+                <div class="coach-chat-section-label">Suggested prompts</div>
                 <div id="coach-chat-starters" class="coach-chat-starters"></div>
             </div>
 
@@ -465,7 +481,7 @@
                 <div class="coach-chat-section-label">Ask your own question</div>
                 <label class="coach-chat-input-wrap" for="coach-chat-input">
                     <textarea id="coach-chat-input" rows="2"
-                        placeholder="Ask what to train next, whether to use AI Notebook, or where to focus before an assignment."></textarea>
+                        placeholder="Ask what to train next, ask for a concept explanation, compare topics, or get a plan before an assignment."></textarea>
                 </label>
                 <div class="coach-chat-form-actions">
                     <div id="coach-chat-hint" class="muted">DeepSeek can send you straight into a targeted drill.</div>
@@ -473,6 +489,7 @@
                 </div>
             </form>
         </div>
+        <div id="coach-chat-resize-handle" class="coach-chat-resize-handle" aria-hidden="true"></div>
     </aside>
 </body>
 

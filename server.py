@@ -8,7 +8,7 @@ import time
 import base64
 import hmac
 import hashlib
-from typing import List, Dict, Any, Tuple
+from typing import List, Dict, Any, Tuple, Optional
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import socket
 from urllib.parse import urlparse, quote, parse_qs
@@ -867,7 +867,21 @@ COACH_CHAT_ALLOWED_ACTIONS = {
     "start_current_session",
     "open_setup",
     "open_review",
+    "open_library",
 }
+
+COACH_CHAT_ALLOWED_MODES = {"auto", "coach", "knowledge"}
+COACH_CHAT_INTENT_TERMS = (
+    "wrong bank", "srs", "notebook", "ai notebook", "lesson", "coach",
+    "practice", "train", "drill", "session", "review", "setup", "focus",
+    "due card", "due now", "assignment",
+)
+COACH_CHAT_KNOWLEDGE_TERMS = (
+    "who ", "what ", "when ", "where ", "why ", "how ", "explain", "define",
+    "describe", "summarize", "summary", "timeline", "compare", "contrast",
+    "significance", "importance", "overview", "background", "concept",
+    "cause", "causes", "effect", "effects", "turning point",
+)
 
 
 def safe_int(value: Any, default: int = 0) -> int:
@@ -875,6 +889,24 @@ def safe_int(value: Any, default: int = 0) -> int:
         return int(value)
     except Exception:
         return default
+
+
+def normalize_coach_chat_mode(value: Any, default: str = "auto") -> str:
+    mode = string_value(value).lower()
+    return mode if mode in COACH_CHAT_ALLOWED_MODES else default
+
+
+def coach_chat_looks_like_coach_intent(message: str) -> bool:
+    return any(term in message for term in COACH_CHAT_INTENT_TERMS)
+
+
+def coach_chat_looks_like_knowledge_intent(message: str) -> bool:
+    return any(term in message for term in COACH_CHAT_KNOWLEDGE_TERMS)
+
+
+def coach_chat_topic_link(topic: str) -> str:
+    clean = string_value(topic).rstrip("?.!").strip()
+    return wiki_link_for_answer(clean) if clean else ""
 
 
 def normalize_coach_chat_focus(raw: Any) -> Dict[str, Any]:
@@ -953,15 +985,71 @@ def coach_chat_focus_title(focus: Dict[str, Any]) -> str:
     ] if part) or "your top focus"
 
 
-def coach_chat_action(action_id: str, label: str, reason: str, focus_key: str = "") -> Dict[str, Any]:
+def resolve_coach_chat_mode(payload: Dict[str, Any], context: Optional[Dict[str, Any]] = None) -> str:
+    context = context or normalize_coach_chat_context(payload)
+    requested = normalize_coach_chat_mode(payload.get("assistant_mode"), "auto")
+    if requested in ("coach", "knowledge"):
+        return requested
+    message = normalize(string_value(payload.get("message")))
+    if not message:
+        return "coach"
+    if coach_chat_looks_like_coach_intent(message):
+        return "coach"
+    if coach_chat_looks_like_knowledge_intent(message):
+        return "knowledge"
+    if not context.get("session_history", {}).get("total_sessions") and not context.get("coach_notebook", {}).get("total"):
+        return "knowledge"
+    return "coach"
+
+
+def extract_coach_chat_topic(payload: Dict[str, Any], context: Optional[Dict[str, Any]] = None, resolved_mode: Optional[str] = None) -> str:
+    direct = string_value(payload.get("topic"))
+    if direct:
+        return direct[:120]
+    context = context or normalize_coach_chat_context(payload)
+    resolved_mode = resolved_mode or resolve_coach_chat_mode(payload, context)
+    message = string_value(payload.get("message"))
+    normalized = normalize(message)
+    recent_title = coach_chat_focus_title(context.get("recent_incorrect", {}))
+    top_title = coach_chat_focus_title((context.get("coach_notebook", {}).get("top_focuses") or [{}])[0])
+    if not message:
+        return (recent_title or top_title) if resolved_mode == "knowledge" else recent_title
+    if resolved_mode != "knowledge" and coach_chat_looks_like_coach_intent(normalized):
+        return recent_title or top_title
+
+    topic = re.sub(
+        r"^[^a-zA-Z0-9]*(who|what|when|where|why|how)\s+(is|was|were|are|did|do|does)\s+",
+        "",
+        message,
+        flags=re.IGNORECASE,
+    )
+    topic = re.sub(
+        r"^(explain|define|describe|outline|summarize|compare|contrast|tell me about|give me (a )?timeline of|what is the significance of|what was the significance of|what caused|what were the causes of|what happened in)\s+",
+        "",
+        topic,
+        flags=re.IGNORECASE,
+    ).rstrip("?.!").strip()
+    if not topic:
+        topic = message.rstrip("?.!").strip()
+    if len(topic) > 120:
+        topic = topic[:117].rstrip() + "..."
+    if not topic or coach_chat_looks_like_coach_intent(normalize(topic)):
+        return recent_title or top_title
+    return topic
+
+
+def coach_chat_action(action_id: str, label: str, reason: str, focus_key: str = "", query: str = "") -> Dict[str, Any]:
     out = {
         "id": action_id,
         "label": label,
         "reason": reason,
     }
     focus_key = string_value(focus_key)
+    query = string_value(query)
     if focus_key:
         out["focus_key"] = focus_key
+    if query:
+        out["query"] = query
     return out
 
 
@@ -975,17 +1063,80 @@ def dedupe_coach_chat_actions(actions: List[Dict[str, Any]]) -> List[Dict[str, A
         if action_id not in COACH_CHAT_ALLOWED_ACTIONS:
             continue
         focus_key = string_value(action.get("focus_key"))
-        key = f"{action_id}|{focus_key}"
+        query = string_value(action.get("query"))
+        key = f"{action_id}|{focus_key}|{query}"
         if key in seen:
             continue
         seen.add(key)
-        out.append(action)
+        out.append(coach_chat_action(
+            action_id,
+            string_value(action.get("label")) or string_value(action.get("title")) or action_id.replace("_", " ").title(),
+            string_value(action.get("reason")) or "Recommended from your current study context.",
+            focus_key,
+            query,
+        ))
     return out[:3]
+
+
+def normalize_coach_chat_highlights(raw: Any) -> List[str]:
+    if not isinstance(raw, list):
+        return []
+    return [string_value(item) for item in raw if string_value(item)][:4]
+
+
+def normalize_coach_chat_sections(raw: Any) -> List[Dict[str, str]]:
+    out: List[Dict[str, str]] = []
+    if not isinstance(raw, list):
+        return out
+    for item in raw[:4]:
+        if not isinstance(item, dict):
+            continue
+        heading = string_value(item.get("heading") or item.get("title"))
+        body = string_value(item.get("body") or item.get("text") or item.get("content"))
+        if not heading or not body:
+            continue
+        out.append({"heading": heading, "body": body})
+    return out
+
+
+def normalize_coach_chat_links(raw: Any) -> List[Dict[str, str]]:
+    out: List[Dict[str, str]] = []
+    if not isinstance(raw, list):
+        return out
+    for item in raw[:4]:
+        if not isinstance(item, dict):
+            continue
+        label = string_value(item.get("label") or item.get("title"))
+        url = string_value(item.get("url"))
+        if not label or not url.lower().startswith("https://"):
+            continue
+        out.append({
+            "label": label,
+            "url": url,
+            "kind": string_value(item.get("kind") or item.get("type")) or "reference",
+        })
+    return out
+
+
+def normalize_coach_chat_followups(raw: Any) -> List[Dict[str, str]]:
+    out: List[Dict[str, str]] = []
+    if not isinstance(raw, list):
+        return out
+    for item in raw[:4]:
+        if not isinstance(item, dict):
+            continue
+        label = string_value(item.get("label") or item.get("title"))
+        prompt = string_value(item.get("prompt") or item.get("message"))
+        if not label or not prompt:
+            continue
+        out.append({"label": label, "prompt": prompt})
+    return out
 
 
 def fallback_coach_chat(payload: Dict[str, Any]) -> Dict[str, Any]:
     context = normalize_coach_chat_context(payload)
     user_message = normalize(string_value(payload.get("message")))
+    resolved_mode = resolve_coach_chat_mode(payload, context)
     wrong_due = context["wrong_bank"]["due_now"]
     wrong_total = context["wrong_bank"]["total"]
     notebook_open = context["coach_notebook"]["open_lessons"]
@@ -999,24 +1150,104 @@ def fallback_coach_chat(payload: Dict[str, Any]) -> Dict[str, Any]:
     focus_key = string_value(top_focus.get("key"))
     recent_focus_title = coach_chat_focus_title(recent_incorrect)
     recent_focus_key = string_value(recent_incorrect.get("key"))
-
+    library_topic = recent_focus_title or focus_title
+    highlights: List[str] = []
     actions: List[Dict[str, Any]] = []
+    sections: List[Dict[str, str]] = []
+    follow_ups: List[Dict[str, str]] = []
+
+    if resolved_mode == "knowledge":
+        topic = extract_coach_chat_topic(payload, context, "knowledge")
+        wiki = coach_chat_topic_link(topic)
+        if topic:
+            actions.append(coach_chat_action("open_library", f"Search {topic}", "Open the question library and search this topic.", query=topic))
+        if focus_key and len(actions) < 3:
+            actions.append(coach_chat_action("apply_top_focus", f"Apply {focus_title}", "Turn your top notebook focus into a targeted practice block.", focus_key))
+        return {
+            "source": "fallback",
+            "mode": "knowledge",
+            "title": f"Study brief: {topic}" if topic else "Study brief",
+            "topic": topic,
+            "message": (
+                f"This looks like a knowledge question about {topic}. When DeepSeek is available, I can give a full detailed explanation here. "
+                "Right now I can still structure the topic, point you to the right reference, and suggest the best follow-up questions."
+                if topic else
+                "This looks like a knowledge question. When DeepSeek is available, I can answer it in full detail here. "
+                "Right now I can still frame the topic and point you to the best follow-up prompts."
+            ),
+            "highlights": [x for x in [
+                "Knowledge mode",
+                "Wikipedia reference ready" if topic else "Reference lookup ready",
+                f"Top focus: {focus_title}" if focus_title else "Use follow-up prompts for depth",
+            ] if x][:4],
+            "sections": [
+                {
+                    "heading": "What to lock in first",
+                    "body": (
+                        f"Start with the definition, timeframe, main actors, and why {topic} matters in the broader historical story."
+                        if topic else
+                        "Start with the definition, timeframe, main actors, and why the topic matters in the broader historical story."
+                    ),
+                },
+                {
+                    "heading": "What IHBB usually rewards",
+                    "body": "Be ready to explain causes, turning points, significance, comparisons, and the larger regional or chronological pattern around the concept.",
+                },
+                {
+                    "heading": "Best follow-up prompts",
+                    "body": "Ask for a timeline, significance, comparison, common confusions, or likely clue patterns if you want a stronger study brief.",
+                },
+            ],
+            "links": ([{"label": f"Wikipedia: {topic}", "url": wiki, "kind": "wikipedia"}] if wiki else []),
+            "follow_ups": [
+                {"label": "Give me a timeline", "prompt": f"Give me a clear timeline of {topic}." if topic else "Give me a clear timeline of this topic."},
+                {"label": "Why it matters", "prompt": f"Why is {topic} historically significant?" if topic else "Why is this topic historically significant?"},
+                {"label": "Common confusions", "prompt": f"What are the most common confusions or mix-ups around {topic}?" if topic else "What are the most common confusions around this topic?"},
+            ],
+            "quick_actions": dedupe_coach_chat_actions(actions),
+        }
+
+    if wrong_due > 0:
+        highlights.append(f"{wrong_due} due in Wrong-bank")
+    if notebook_open > 0:
+        highlights.append(f"{notebook_open} notebook lesson{'s' if notebook_open != 1 else ''} open")
+    if context["session_history"]["recent_accuracy"] > 0:
+        highlights.append(f"Recent accuracy {context['session_history']['recent_accuracy']}%")
+    if context["setup"]["mode"]:
+        highlights.append(context["setup"]["mode"])
+
     if "wrong bank" in user_message or "srs" in user_message:
+        title = "Clear the due review loop first" if wrong_due > 0 else "Wrong-bank is not the blocker right now"
         if wrong_due > 0:
             message = (
                 f"Wrong-bank is the right tool when you want spaced repetition on misses instead of fresh coverage. "
                 f"You currently have {wrong_due} due card{'s' if wrong_due != 1 else ''} out of {wrong_total} tracked."
             )
             actions.append(coach_chat_action("practice_due_now", f"Practice {wrong_due} due card{'s' if wrong_due != 1 else ''}", "Start the due SRS queue immediately."))
+            if focus_key:
+                actions.append(coach_chat_action("generate_focus_drill", f"Generate {focus_title}", "Follow due review with a short fresh drill in the same lane.", focus_key))
+            sections = [
+                {"heading": "Why this tool fits", "body": "Wrong-bank is for repetition on misses you have already created, not for brand-new coverage."},
+                {"heading": "Best next move", "body": f"Clear the {wrong_due} due card{'s' if wrong_due != 1 else ''} first, then decide whether you still need a fresh focused drill."},
+                {"heading": "Do this after review", "body": f"If {focus_title} still feels shaky, generate a short corrective set before returning to mixed practice." if focus_key else "If something still feels shaky after review, switch to a short focused drill before returning to mixed practice."},
+            ]
         else:
-            message = (
-                "Wrong-bank works best after you build up misses in regular drills. "
-                "Right now nothing is due, so a fresh targeted session is the better move."
-            )
+            message = "Wrong-bank works best after you build up misses in regular drills. Right now nothing is due, so a fresh targeted session is the better move."
             if focus_key:
                 actions.append(coach_chat_action("generate_focus_drill", f"Generate {focus_title}", "Create fresh questions around the recurring blind spot.", focus_key))
             actions.append(coach_chat_action("open_review", "Open Review", "Check your wrong-bank status and recent session debrief."))
+            sections = [
+                {"heading": "Why not Wrong-bank", "body": "There is nothing due right now, so SRS will not give you enough reps to move the needle."},
+                {"heading": "Better option", "body": f"Use {focus_title} for a short targeted block." if focus_key else "Use a short targeted or mixed block to create new evidence."},
+                {"heading": "When to return", "body": "Come back to Wrong-bank after you create a few new misses and the queue starts to mature."},
+            ]
+        follow_ups = [
+            {"label": "When should I use Wrong-bank?", "prompt": "When is Wrong-bank better than a fresh drill?"},
+            {"label": "What after review?", "prompt": "After I finish my due wrong-bank cards, what should I do next?"},
+            {"label": "Build a corrective block", "prompt": "Turn my current weak spot into a short corrective practice block."},
+        ]
     elif "notebook" in user_message or "ai notebook" in user_message or "lesson" in user_message or "coach" in user_message:
+        title = f"Notebook plan for {focus_title}" if focus_key else "Use AI Notebook for explanation, not repetition"
         message = (
             "AI Notebook is best when you need explanation and pattern review, not repetition of the exact same misses. "
             f"You have {notebook_open} open lesson{'s' if notebook_open != 1 else ''}"
@@ -1026,7 +1257,18 @@ def fallback_coach_chat(payload: Dict[str, Any]) -> Dict[str, Any]:
         if focus_key:
             actions.append(coach_chat_action("apply_top_focus", f"Apply {focus_title}", "Load that focus into the practice builder.", focus_key))
             actions.append(coach_chat_action("generate_focus_drill", f"Generate {focus_title}", "Turn that notebook pattern into a fresh drill.", focus_key))
+        sections = [
+            {"heading": "What Notebook is for", "body": "Use it to understand why you missed something, spot recurring patterns, and collect the right mental model."},
+            {"heading": "Best next move", "body": f"Review the lesson for {focus_title}, then either apply that focus to setup or generate a short drill from it." if focus_key else "Open the lesson, review the explanation once, and then test yourself in practice."},
+            {"heading": "What not to do", "body": "Do not sit in explanation mode for too long. Use it to clarify, then go back into active recall quickly."},
+        ]
+        follow_ups = [
+            {"label": "Turn a lesson into practice", "prompt": f"How should I turn {focus_title} from AI Notebook into actual practice?" if focus_key else "How should I turn an AI Notebook lesson into actual practice?"},
+            {"label": "Notebook or Wrong-bank?", "prompt": "When is AI Notebook better than Wrong-bank?"},
+            {"label": "Best focus next", "prompt": "Which notebook focus should I train next?"},
+        ]
     elif recent_focus_key:
+        title = f"Recover from {recent_focus_title}"
         message = (
             f"You just hit a miss tied to {recent_focus_title}. Do not jump straight back to mixed drilling. "
             "Review the notebook explanation once, then run a short focused set before returning to broader practice."
@@ -1034,7 +1276,18 @@ def fallback_coach_chat(payload: Dict[str, Any]) -> Dict[str, Any]:
         actions.append(coach_chat_action("open_ai_notebook", "Open the lesson", "Review the saved DeepSeek explanation for this miss."))
         actions.append(coach_chat_action("generate_focus_drill", f"Generate {recent_focus_title}", "Build a short corrective drill from the same lane.", recent_focus_key))
         actions.append(coach_chat_action("review_last_misses", "Review recent misses", "Revisit the review queue before resuming mixed practice."))
+        sections = [
+            {"heading": "Why this matters", "body": "A fresh miss is the highest-signal evidence you have. Fixing it immediately usually pays off faster than adding more random volume."},
+            {"heading": "Best sequence", "body": "Review the explanation, run a short corrective drill, then return to mixed practice once the mistake is no longer repeating."},
+            {"heading": "What to watch for", "body": string_value(recent_incorrect.get("reason")) or "Pay attention to whether this miss came from chronology, identification, or confusing similar concepts."},
+        ]
+        follow_ups = [
+            {"label": "Why did I miss it?", "prompt": f"Why did I miss {recent_focus_title}, and what pattern should I fix?"},
+            {"label": "Corrective drill", "prompt": f"Build me a corrective practice plan for {recent_focus_title}."},
+            {"label": "Explain the concept", "prompt": f"Explain {recent_focus_title} in detail and why it matters in IHBB."},
+        ]
     elif wrong_due >= 3:
+        title = "Close the due queue before adding new volume"
         message = (
             f"You have {wrong_due} due wrong-bank card{'s' if wrong_due != 1 else ''}. "
             "That is the cleanest next move because it closes the loop on known misses before you add more volume."
@@ -1042,7 +1295,18 @@ def fallback_coach_chat(payload: Dict[str, Any]) -> Dict[str, Any]:
         actions.append(coach_chat_action("practice_due_now", f"Practice {wrong_due} due card{'s' if wrong_due != 1 else ''}", "Start the due SRS queue now."))
         if focus_key:
             actions.append(coach_chat_action("generate_focus_drill", f"Generate {focus_title}", "Follow SRS with a short fresh drill in the same lane.", focus_key))
+        sections = [
+            {"heading": "Why this comes first", "body": "Due SRS cards represent known mistakes that are ready for reinforcement right now."},
+            {"heading": "Best next move", "body": f"Clear the {wrong_due} due card{'s' if wrong_due != 1 else ''} before starting another long mixed session."},
+            {"heading": "What after that", "body": f"If {focus_title} still looks shaky, run a short focused drill next." if focus_key else "If you still feel shaky after the due queue, add one short focused block."},
+        ]
+        follow_ups = [
+            {"label": "After due cards", "prompt": "After I finish my due wrong-bank cards, what should I practice next?"},
+            {"label": "Use my top focus", "prompt": f"How should I train {focus_title} after wrong-bank?" if focus_key else "How should I train my top weak area after wrong-bank?"},
+            {"label": "Build a short plan", "prompt": "Build me a 15-minute practice plan from my current state."},
+        ]
     elif focus_key and (notebook_open > 0 or recent_accuracy < 70):
+        title = f"Make {focus_title} the next targeted block"
         message = (
             f"Your notebook keeps pointing back to {focus_title}. "
             "Use that as the next targeted block, then return to mixed practice after accuracy stabilizes."
@@ -1050,19 +1314,41 @@ def fallback_coach_chat(payload: Dict[str, Any]) -> Dict[str, Any]:
         actions.append(coach_chat_action("apply_top_focus", f"Apply {focus_title}", "Load the recurring notebook focus into setup.", focus_key))
         actions.append(coach_chat_action("generate_focus_drill", f"Generate {focus_title}", "Create fresh questions in the same lane.", focus_key))
         actions.append(coach_chat_action("open_ai_notebook", "Open AI Notebook", "Review the supporting explanations first."))
+        sections = [
+            {"heading": "Why this focus", "body": "It is the strongest repeated signal in your notebook and recent accuracy is still soft enough that focused reps should help."},
+            {"heading": "Best next move", "body": "Apply the focus or generate a short drill so your next practice block attacks the right lane directly."},
+            {"heading": "Exit condition", "body": "Go back to broader mixed drilling once accuracy stops dipping on this lane."},
+        ]
+        follow_ups = [
+            {"label": "Explain this focus", "prompt": f"Explain {focus_title} in detail and give me the most important background."},
+            {"label": "Build the drill", "prompt": f"Turn {focus_title} into the best next targeted drill."},
+            {"label": "Why this lane?", "prompt": f"Why does {focus_title} keep showing up as a weak lane for me?"},
+        ]
     elif total_sessions <= 0:
+        title = "Get one clean baseline session first"
         message = (
             "Start with one normal mixed drill to create enough evidence for better recommendations. "
             "Once you miss a few questions, Wrong-bank and AI Notebook become much more valuable."
         )
         actions.append(coach_chat_action("start_current_session", "Start current session", "Begin the drill you have configured now."))
         actions.append(coach_chat_action("open_setup", "Open setup", "Tune region, era, and mode before starting."))
+        sections = [
+            {"heading": "Why start simple", "body": "The assistant gets much better once it can see what you actually miss and how you perform in a real session."},
+            {"heading": "Best next move", "body": "Run one normal mixed drill from your current setup and let the data come in."},
+            {"heading": "What the assistant will use later", "body": "Recent misses feed AI Notebook, repeated misses feed Wrong-bank, and session history makes later recommendations sharper."},
+        ]
+        follow_ups = [
+            {"label": "Design my first drill", "prompt": "Help me set up the best first practice drill."},
+            {"label": "How long should it be?", "prompt": "What is the best session length for my first drill?"},
+            {"label": "What after my first run?", "prompt": "After my first session, what should I look at next?"},
+        ]
     else:
         freshness = (
             f"Your last session was about {last_days} day{'s' if last_days != 1 else ''} ago. "
             if last_days else
             "You already have recent practice data. "
         )
+        title = f"Use {focus_title} as the next smart block" if focus_key else "Keep momentum with one targeted block and one mixed block"
         message = (
             freshness
             + "The best structure is one targeted block for a weak lane and one mixed block to test transfer. "
@@ -1072,10 +1358,34 @@ def fallback_coach_chat(payload: Dict[str, Any]) -> Dict[str, Any]:
             actions.append(coach_chat_action("apply_top_focus", f"Apply {focus_title}", "Set up a targeted block first.", focus_key))
         actions.append(coach_chat_action("start_current_session", "Start current session", "Run the current practice setup."))
         actions.append(coach_chat_action("open_review", "Open Review", "Check wrong-bank and session debrief before deciding."))
+        sections = [
+            {"heading": "Why this structure works", "body": "A targeted block fixes one weak lane while a mixed block checks whether the improvement transfers under wider pressure."},
+            {"heading": "Best next move", "body": f"Use {focus_title} first, then finish with a mixed round." if focus_key else "Start a short mixed round and watch what the next weak lane turns out to be."},
+            {"heading": "What to inspect after", "body": "Check review data, wrong-bank status, and notebook patterns before choosing the following session."},
+        ]
+        follow_ups = [
+            {"label": "Make this a 20-minute plan", "prompt": "Turn my current study state into a 20-minute practice plan."},
+            {"label": "Use the top focus", "prompt": f"How should I use {focus_title} in my next drill?" if focus_key else "How should I use my top focus in the next drill?"},
+            {"label": "Explain the weak lane", "prompt": f"Explain {focus_title} in detail so I stop missing it." if focus_key else "Explain my current weak lane in detail."},
+        ]
+
+    links: List[Dict[str, str]] = []
+    wiki = coach_chat_topic_link(library_topic)
+    if wiki:
+        links.append({"label": f"Wikipedia: {library_topic}", "url": wiki, "kind": "wikipedia"})
+    if library_topic and len(actions) < 3:
+        actions.append(coach_chat_action("open_library", f"Search {library_topic}", "Open the question library and search this topic.", query=library_topic))
 
     return {
         "source": "fallback",
+        "mode": "coach",
+        "title": title,
+        "topic": library_topic,
         "message": message,
+        "highlights": highlights[:4],
+        "sections": sections,
+        "links": links,
+        "follow_ups": follow_ups,
         "quick_actions": dedupe_coach_chat_actions(actions),
     }
 
@@ -1108,16 +1418,29 @@ def normalize_coach_chat_response(raw: Any, payload: Dict[str, Any]) -> Dict[str
             actions.append(coach_chat_action(
                 action_id,
                 string_value(item.get("label")) or string_value(item.get("title")) or action_id.replace("_", " ").title(),
-                string_value(item.get("reason")) or "Recommended from your current practice context.",
+                string_value(item.get("reason")) or "Recommended from your current study context.",
                 focus_key,
+                string_value(item.get("query")),
             ))
-
-    message = string_value(obj.get("message"))
-    if not message:
-        message = fallback["message"]
+    mode = normalize_coach_chat_mode(obj.get("mode"), "knowledge" if fallback.get("mode") == "knowledge" else "coach")
+    topic = string_value(obj.get("topic")) or string_value(fallback.get("topic"))
+    links = normalize_coach_chat_links(obj.get("links"))
+    if not links and topic:
+        wiki = coach_chat_topic_link(topic)
+        if wiki:
+            links = [{"label": f"Wikipedia: {topic}", "url": wiki, "kind": "wikipedia"}]
+    if not links:
+        links = fallback.get("links", [])
     return {
         "source": "deepseek",
-        "message": message,
+        "mode": mode,
+        "title": string_value(obj.get("title")) or string_value(fallback.get("title")),
+        "topic": topic,
+        "message": string_value(obj.get("message")) or fallback["message"],
+        "highlights": normalize_coach_chat_highlights(obj.get("highlights")) or fallback.get("highlights", []),
+        "sections": normalize_coach_chat_sections(obj.get("sections")) or fallback.get("sections", []),
+        "links": links[:4],
+        "follow_ups": normalize_coach_chat_followups(obj.get("follow_ups")) or fallback.get("follow_ups", []),
         "quick_actions": dedupe_coach_chat_actions(actions or fallback["quick_actions"]),
     }
 
@@ -1128,6 +1451,7 @@ def coach_chat_with_deepseek(payload: Dict[str, Any]) -> Dict[str, Any]:
         return fallback
 
     context = normalize_coach_chat_context(payload)
+    resolved_mode = resolve_coach_chat_mode(payload, context)
     conversation = []
     raw_conversation = payload.get("conversation", [])
     if isinstance(raw_conversation, list):
@@ -1148,19 +1472,23 @@ def coach_chat_with_deepseek(payload: Dict[str, Any]) -> Dict[str, Any]:
         top_focus_keys.append(recent_focus["key"])
 
     system = (
-        "You are the DeepSeek training sidebar inside an IHBB Practice Hub.\n"
-        "Answer the user's study question clearly and accurately using only the provided app capabilities and study context.\n"
-        "You may answer IHBB/history study questions directly, but if you are uncertain, say so instead of bluffing.\n"
-        "Product capabilities you may mention:\n"
+        "You are the DeepSeek personal study assistant inside an IHBB training app.\n"
+        "You have two jobs:\n"
+        "1) Coach mode: recommend the best next study move using the provided app context and built-in app actions.\n"
+        "2) Knowledge mode: answer history and IHBB concept questions in detail, with structured sections and at least one Wikipedia link when a topic is clear.\n"
+        "Respect the requested assistant_mode when it is coach or knowledge. If it is auto, choose the best mode.\n"
+        "Available app actions and surfaces:\n"
         "- Wrong-bank (SRS) practices previously missed questions that are due.\n"
         "- AI Notebook stores DeepSeek lessons from incorrect answers.\n"
         "- Apply Top Focus loads a recurring notebook focus into the practice builder.\n"
         "- Generate Focus Drill creates fresh generated questions for a focus.\n"
         "- Review Last Misses opens review and starts practice on misses.\n"
         "- Start Current Session launches the current practice setup.\n"
-        "- Open Setup, Open Review, and Open AI Notebook navigate to those surfaces.\n"
+        "- Open Setup, Open Review, Open AI Notebook, and Open Library navigate to those surfaces.\n"
         "Do not invent any other controls, tabs, or data.\n"
-        "Keep the answer concise and practical.\n"
+        "If you are uncertain about a historical fact, say so instead of bluffing.\n"
+        "Coach mode should stay practical and tied to the user context.\n"
+        "Knowledge mode should be more detailed and structured.\n"
         "Recommend at most 3 quick actions and only use these action ids: "
         + ", ".join(sorted(COACH_CHAT_ALLOWED_ACTIONS))
         + ".\n"
@@ -1168,23 +1496,21 @@ def coach_chat_with_deepseek(payload: Dict[str, Any]) -> Dict[str, Any]:
         + (", ".join(top_focus_keys) if top_focus_keys else "(none available)")
         + ".\n"
         "Return strict JSON only with this shape:\n"
-        "{\"message\":\"string\",\"quick_actions\":[{\"id\":\"action_id\",\"label\":\"string\",\"reason\":\"string\",\"focus_key\":\"optional\"}]}"
+        "{\"mode\":\"coach|knowledge\",\"title\":\"string\",\"topic\":\"string\",\"message\":\"string\",\"highlights\":[\"string\"],\"sections\":[{\"heading\":\"string\",\"body\":\"string\"}],\"links\":[{\"label\":\"string\",\"url\":\"https://...\",\"kind\":\"reference\"}],\"follow_ups\":[{\"label\":\"string\",\"prompt\":\"string\"}],\"quick_actions\":[{\"id\":\"action_id\",\"label\":\"string\",\"reason\":\"string\",\"focus_key\":\"optional\",\"query\":\"optional\"}]}"
     )
     user = {
+        "assistant_mode": resolved_mode,
         "message": string_value(payload.get("message")) or "What should I practice next?",
         "conversation": conversation,
         "study_context": context,
-        "fallback_plan": {
-            "message": fallback["message"],
-            "quick_actions": fallback["quick_actions"],
-        },
+        "fallback_plan": fallback,
     }
 
     try:
         obj = call_deepseek([
             {"role": "system", "content": system},
             {"role": "user", "content": json.dumps(user, ensure_ascii=False)},
-        ], max_tokens=700, temperature=0.2)
+        ], max_tokens=1200 if resolved_mode == "knowledge" else 900, temperature=0.18 if resolved_mode == "knowledge" else 0.2)
         return normalize_coach_chat_response(obj, payload)
     except requests.exceptions.Timeout as e:
         log.error("DeepSeek coach chat timeout: %s", e)

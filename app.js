@@ -539,9 +539,16 @@ const COACH_CHAT_ALLOWED_ACTIONS = new Set([
   'generate_focus_drill',
   'start_current_session',
   'open_setup',
-  'open_review'
+  'open_review',
+  'open_library'
 ]);
 const COACH_CHAT_SUPPRESS_KEY = 'ihbb_v2_coach_chat_suppressed';
+const COACH_CHAT_UI_KEY = 'ihbb_v2_coach_chat_ui';
+const COACH_CHAT_SIZE_PRESETS = {
+  standard: 820,
+  wide: 980,
+  focus: 1140
+};
 const CoachChat = {
   open: false,
   busy: false,
@@ -550,8 +557,59 @@ const CoachChat = {
   autoReasons: new Set(),
   recentIncorrect: null,
   currentStarters: [],
-  suggestedReason: 'manual'
+  suggestedReason: 'manual',
+  workspaceCards: [],
+  ui: {
+    mode: 'auto',
+    size: 'standard',
+    width: COACH_CHAT_SIZE_PRESETS.standard,
+    fullscreen: false
+  },
+  resizing: null
 };
+
+function clampCoachChatWidth(value) {
+  const min = 720;
+  const max = Math.max(min, window.innerWidth - 32);
+  const parsed = Number(value);
+  return Math.max(min, Math.min(max, Number.isFinite(parsed) ? parsed : COACH_CHAT_SIZE_PRESETS.standard));
+}
+
+function loadCoachChatUiPrefs() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(COACH_CHAT_UI_KEY) || '{}');
+    const mode = ['auto', 'coach', 'knowledge'].includes(String(raw.mode || '').trim()) ? String(raw.mode).trim() : 'auto';
+    const sizeRaw = String(raw.size || '').trim();
+    const size = sizeRaw === 'custom' || Object.prototype.hasOwnProperty.call(COACH_CHAT_SIZE_PRESETS, sizeRaw) ? sizeRaw : 'standard';
+    const width = clampCoachChatWidth(raw.width || COACH_CHAT_SIZE_PRESETS[size] || COACH_CHAT_SIZE_PRESETS.standard);
+    CoachChat.ui = {
+      mode,
+      size,
+      width,
+      fullscreen: !!raw.fullscreen
+    };
+  } catch {
+    CoachChat.ui = {
+      mode: 'auto',
+      size: 'standard',
+      width: COACH_CHAT_SIZE_PRESETS.standard,
+      fullscreen: false
+    };
+  }
+}
+
+function saveCoachChatUiPrefs() {
+  try {
+    localStorage.setItem(COACH_CHAT_UI_KEY, JSON.stringify({
+      mode: CoachChat.ui.mode,
+      size: CoachChat.ui.size,
+      width: CoachChat.ui.width,
+      fullscreen: CoachChat.ui.fullscreen
+    }));
+  } catch { /* noop */ }
+}
+
+loadCoachChatUiPrefs();
 
 function trimCoachChatMessages() {
   if (CoachChat.messages.length > 18) {
@@ -670,6 +728,9 @@ function buildCoachChatStudyContext() {
 function buildCoachChatSummary(snapshot) {
   const recentIncorrect = snapshot?.recent_incorrect;
   const topFocus = snapshot?.coach_notebook?.top_focuses?.[0];
+  if (CoachChat.ui.mode === 'knowledge') {
+    return 'Knowledge mode is ready for concept explanations, timelines, comparisons, and Wikipedia links.';
+  }
   if (recentIncorrect?.title) {
     return `Recent miss: ${recentIncorrect.title}. Ask for a corrective drill or reopen the lesson.`;
   }
@@ -692,7 +753,7 @@ function updateCoachChatSourceLabel() {
   if (CoachChat.busy) label = 'Thinking';
   else if (CoachChat.source === 'deepseek') label = 'DeepSeek';
   else if (CoachChat.source === 'fallback') label = 'Local plan';
-  sourceEl.textContent = label;
+  sourceEl.textContent = `${label} • ${coachChatModeLabel(CoachChat.ui.mode)}`;
 }
 
 function renderCoachChatStatus(snapshot) {
@@ -708,13 +769,14 @@ function renderCoachChatStatus(snapshot) {
     if (snapshot?.active_set?.name) pills.push(snapshot.active_set.name);
     pillsEl.innerHTML = pills.length
       ? pills.slice(0, 4).map(text => `<span class="coach-chat-status-pill">${escHtml(text)}</span>`).join('')
-      : `<span class="coach-chat-status-pill">Ask DeepSeek to recommend your next drill.</span>`;
+      : `<span class="coach-chat-status-pill">${CoachChat.ui.mode === 'knowledge' ? 'Knowledge mode ready for detailed questions.' : 'Ask DeepSeek to recommend your next drill.'}</span>`;
   }
 
   const noteEl = $('coach-chat-launcher-note');
   const countEl = $('coach-chat-launcher-count');
   if (noteEl) {
-    if (snapshot?.recent_incorrect?.title) noteEl.textContent = 'Fix the last miss';
+    if (CoachChat.ui.mode === 'knowledge') noteEl.textContent = 'Ask any concept';
+    else if (snapshot?.recent_incorrect?.title) noteEl.textContent = 'Fix the last miss';
     else if ((snapshot?.wrong_bank?.due_now || 0) > 0) noteEl.textContent = `${snapshot.wrong_bank.due_now} due in Wrong-bank`;
     else if ((snapshot?.coach_notebook?.open_lessons || 0) > 0) noteEl.textContent = `${snapshot.coach_notebook.open_lessons} notebook lesson${snapshot.coach_notebook.open_lessons === 1 ? '' : 's'}`;
     else noteEl.textContent = 'Ask for a drill';
@@ -733,6 +795,14 @@ function buildCoachChatStarters(snapshot = buildCoachChatStudyContext()) {
   const topFocus = snapshot?.coach_notebook?.top_focuses?.[0] || null;
   const topFocusTitle = topFocus?.title || coachChatFocusTitle(topFocus);
   const recentTitle = String(recent?.title || '').trim();
+  const knowledgeTopic = recentTitle || topFocusTitle || snapshot?.active_set?.name || 'this topic';
+  if (CoachChat.ui.mode === 'knowledge') {
+    return [
+      { label: 'Explain it', prompt: `Explain ${knowledgeTopic} in detail and why it matters in IHBB.` },
+      { label: 'Give a timeline', prompt: `Give me a clear timeline of ${knowledgeTopic}.` },
+      { label: 'Common confusions', prompt: `What are the most common confusions or mix-ups around ${knowledgeTopic}?` }
+    ];
+  }
   if (CoachChat.suggestedReason === 'miss' && recentTitle) {
     return [
       { label: 'Last miss', prompt: `Why did I miss ${recentTitle}, and what should I practice next?` },
@@ -769,18 +839,88 @@ function renderCoachChatStarters(snapshot) {
   `).join('');
 }
 
+function renderCoachChatWorkspace(snapshot) {
+  const el = $('coach-chat-workspace');
+  if (!el) return;
+  const topFocus = snapshot?.coach_notebook?.top_focuses?.[0] || null;
+  const cards = [
+    {
+      kicker: 'Wrong-bank',
+      title: (snapshot?.wrong_bank?.due_now || 0) > 0 ? `${snapshot.wrong_bank.due_now} due right now` : 'No due cards right now',
+      copy: (snapshot?.wrong_bank?.due_now || 0) > 0 ? 'Close the loop on known misses before adding new volume.' : 'Use Wrong-bank after you build up misses in regular drills.',
+      action: (snapshot?.wrong_bank?.due_now || 0) > 0
+        ? { kind: 'action', id: 'practice_due_now', label: 'Start due review' }
+        : { kind: 'prompt', label: 'Ask when to use it', prompt: 'When is Wrong-bank better than a fresh drill?' }
+    },
+    {
+      kicker: 'AI Notebook',
+      title: topFocus?.title || `${snapshot?.coach_notebook?.open_lessons || 0} open lesson${(snapshot?.coach_notebook?.open_lessons || 0) === 1 ? '' : 's'}`,
+      copy: topFocus?.title ? 'Your strongest recurring weak lane is ready for explanation or drill building.' : 'Use Notebook for explanation and pattern review, not repetition.',
+      action: topFocus?.key
+        ? { kind: 'action', id: 'apply_top_focus', focus_key: topFocus.key, label: `Apply ${topFocus.title}` }
+        : { kind: 'action', id: 'open_ai_notebook', label: 'Open Notebook' }
+    },
+    {
+      kicker: 'Current drill',
+      title: `${snapshot?.setup?.mode || 'Practice'} • ${snapshot?.setup?.length || 'Flexible'}`,
+      copy: snapshot?.setup?.filters || 'Your current setup is ready to launch or adjust.',
+      action: { kind: 'action', id: 'start_current_session', label: 'Start session' }
+    },
+    {
+      kicker: 'Knowledge',
+      title: 'Ask any concept',
+      copy: 'Switch modes to get long-form explanations, timelines, comparisons, and Wikipedia links.',
+      action: { kind: 'mode', mode: 'knowledge', label: CoachChat.ui.mode === 'knowledge' ? 'Knowledge mode active' : 'Switch to Knowledge' }
+    }
+  ];
+  el.innerHTML = cards.map((card, index) => `
+    <div class="coach-chat-workspace-card">
+      <div class="coach-chat-workspace-kicker">${escHtml(card.kicker)}</div>
+      <div class="coach-chat-workspace-title">${escHtml(card.title)}</div>
+      <p class="coach-chat-workspace-copy">${escHtml(card.copy)}</p>
+      <div class="coach-chat-workspace-actions">
+        <button class="coach-chat-workspace-btn" type="button" data-workspace-index="${index}">${escHtml(card.action.label)}</button>
+      </div>
+    </div>
+  `).join('');
+  CoachChat.workspaceCards = cards;
+}
+
 function coachChatMessageHtml(message, index) {
   const metaLabel = message.role === 'user'
     ? 'You'
     : (message.source === 'deepseek' ? 'DeepSeek' : 'Local plan');
   const actions = Array.isArray(message.actions) ? message.actions : [];
+  const highlights = Array.isArray(message.highlights) ? message.highlights : [];
+  const sections = Array.isArray(message.sections) ? message.sections : [];
+  const links = Array.isArray(message.links) ? message.links : [];
+  const followUps = Array.isArray(message.followUps) ? message.followUps : [];
+  const toolsHtml = message.role === 'assistant' ? `
+    <div class="coach-chat-message-tools">
+      <button class="coach-chat-tool" type="button" data-message-index="${index}" data-tool="copy">Copy answer</button>
+    </div>
+  ` : '';
   return `
     <div class="coach-chat-message ${message.role === 'user' ? 'user' : 'assistant'}">
       <div class="coach-chat-message-meta">
         <span>${escHtml(metaLabel)}</span>
-        <span>${escHtml(message.role === 'user' ? 'Prompt' : 'Practice advice')}</span>
+        <span>${escHtml(message.role === 'user' ? 'Prompt' : (message.mode === 'knowledge' ? 'Knowledge brief' : 'Practice advice'))}</span>
       </div>
+      ${message.role === 'assistant' && message.title ? `<h3 class="coach-chat-message-title">${escHtml(message.title)}</h3>` : ''}
       <p class="coach-chat-message-text">${escHtml(message.text || '')}</p>
+      ${highlights.length ? `<div class="coach-chat-highlights">${highlights.map(item => `<span class="coach-chat-highlight">${escHtml(item)}</span>`).join('')}</div>` : ''}
+      ${sections.length ? `<div class="coach-chat-sections">${sections.map(section => `
+        <div class="coach-chat-section-card">
+          <h4>${escHtml(section.heading)}</h4>
+          <p>${escHtml(section.body)}</p>
+        </div>
+      `).join('')}</div>` : ''}
+      ${links.length ? `<div class="coach-chat-links">${links.map(link => `
+        <a class="coach-chat-link-card" href="${escHtml(link.url)}" target="_blank" rel="noopener noreferrer">${escHtml(link.label)}</a>
+      `).join('')}</div>` : ''}
+      ${followUps.length ? `<div class="coach-chat-followups">${followUps.map((followUp, followUpIndex) => `
+        <button class="coach-chat-followup" type="button" data-message-index="${index}" data-followup-index="${followUpIndex}">${escHtml(followUp.label)}</button>
+      `).join('')}</div>` : ''}
       ${actions.length ? `
         <div class="coach-chat-actions">
           ${actions.map((action, actionIndex) => `
@@ -791,6 +931,7 @@ function coachChatMessageHtml(message, index) {
           `).join('')}
         </div>
       ` : ''}
+      ${toolsHtml}
     </div>
   `;
 }
@@ -805,14 +946,16 @@ function renderCoachChatMessages() {
         <span>DeepSeek</span>
         <span>Preparing</span>
       </div>
-      <div class="coach-chat-loading">Reviewing your wrong-bank, notebook, and setup.</div>
+      <div class="coach-chat-loading">${CoachChat.ui.mode === 'knowledge' ? 'Building a detailed study brief with references.' : 'Reviewing your wrong-bank, notebook, and setup.'}</div>
     </div>
   ` : '';
   messagesEl.innerHTML = html || busyHtml
     ? `${html}${busyHtml}`
     : `<div class="coach-chat-empty">
-        <div class="coach-chat-empty-title">Choose a suggested question or ask your own.</div>
-        <p class="coach-chat-empty-text">Nothing has been sent yet. The assistant will only respond after you click one of the suggested questions or submit your own prompt.</p>
+        <div class="coach-chat-empty-title">${CoachChat.ui.mode === 'knowledge' ? 'Ask for a concept explanation, comparison, or timeline.' : 'Choose a suggested question or ask your own.'}</div>
+        <p class="coach-chat-empty-text">${CoachChat.ui.mode === 'knowledge'
+      ? 'Nothing has been sent yet. Switch topics freely and the assistant will answer only after you click a prompt or submit your own question.'
+      : 'Nothing has been sent yet. The assistant will only respond after you click one of the suggested prompts or submit your own question.'}</p>
       </div>`;
   messagesEl.scrollTop = messagesEl.scrollHeight;
 }
@@ -825,7 +968,9 @@ function setCoachChatOpenState(open) {
   if (launcher) launcher.setAttribute('aria-expanded', CoachChat.open ? 'true' : 'false');
   if (sidebar) {
     sidebar.classList.toggle('open', CoachChat.open);
+    sidebar.classList.toggle('fullscreen', !!CoachChat.ui.fullscreen);
     sidebar.setAttribute('aria-hidden', CoachChat.open ? 'false' : 'true');
+    sidebar.style.setProperty('--coach-chat-width', `${clampCoachChatWidth(CoachChat.ui.width)}px`);
   }
   if (backdrop) backdrop.hidden = !CoachChat.open;
   document.body.classList.toggle('coach-chat-open', CoachChat.open);
@@ -834,22 +979,80 @@ function setCoachChatOpenState(open) {
 function renderCoachChatChrome() {
   const snapshot = buildCoachChatStudyContext();
   renderCoachChatStatus(snapshot);
+  renderCoachChatWorkspace(snapshot);
   renderCoachChatStarters(snapshot);
   renderCoachChatMessages();
   updateCoachChatSourceLabel();
   setCoachChatOpenState(CoachChat.open);
   const sendBtn = $('coach-chat-send');
   const hintEl = $('coach-chat-hint');
+  const modeButtons = Array.from(document.querySelectorAll('#coach-chat-mode-switch .coach-chat-mode-btn'));
+  const sizeButtons = Array.from(document.querySelectorAll('#coach-chat-size-presets .coach-chat-size-btn'));
+  const fullBtn = $('coach-chat-fullscreen');
   if (sendBtn) sendBtn.disabled = !!CoachChat.busy;
   if (hintEl) {
-    hintEl.textContent = 'Click a suggested question or type your own. Nothing is sent automatically.';
+    hintEl.textContent = CoachChat.ui.mode === 'knowledge'
+      ? 'Knowledge mode gives detailed study briefs, follow-up prompts, and Wikipedia links.'
+      : 'Coach mode stays tied to your current practice state. Nothing is sent automatically.';
+  }
+  modeButtons.forEach(button => {
+    const active = String(button.dataset.mode || '') === CoachChat.ui.mode;
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-pressed', active ? 'true' : 'false');
+  });
+  sizeButtons.forEach(button => {
+    const active = String(button.dataset.size || '') === CoachChat.ui.size && !CoachChat.ui.fullscreen;
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-pressed', active ? 'true' : 'false');
+  });
+  if (fullBtn) {
+    fullBtn.textContent = CoachChat.ui.fullscreen ? 'Windowed' : 'Full Screen';
+    fullBtn.setAttribute('aria-pressed', CoachChat.ui.fullscreen ? 'true' : 'false');
   }
 }
 
-function coachChatAction(id, label, reason, focusKey = '') {
+function coachChatModeLabel(mode = 'auto') {
+  if (mode === 'knowledge') return 'Knowledge';
+  if (mode === 'coach') return 'Coach';
+  return 'Auto';
+}
+
+function resolveCoachChatMode(message = '', snapshot = buildCoachChatStudyContext()) {
+  if (CoachChat.ui.mode === 'coach' || CoachChat.ui.mode === 'knowledge') return CoachChat.ui.mode;
+  const prompt = String(message || '').trim().toLowerCase();
+  const coachTerms = ['wrong bank', 'wrong-bank', 'srs', 'notebook', 'ai notebook', 'lesson', 'coach', 'practice', 'train', 'drill', 'session', 'review', 'setup', 'focus', 'assignment'];
+  const knowledgeTerms = ['who ', 'what ', 'when ', 'where ', 'why ', 'how ', 'explain', 'define', 'describe', 'summarize', 'summary', 'timeline', 'compare', 'contrast', 'significance', 'overview', 'background', 'concept'];
+  if (coachTerms.some(term => prompt.includes(term))) return 'coach';
+  if (knowledgeTerms.some(term => prompt.includes(term))) return 'knowledge';
+  if (!(snapshot?.session_history?.total_sessions || 0) && !(snapshot?.coach_notebook?.total || 0)) return 'knowledge';
+  return 'coach';
+}
+
+function coachChatTopicFromMessage(message = '', snapshot = buildCoachChatStudyContext(), resolvedMode = resolveCoachChatMode(message, snapshot)) {
+  const raw = String(message || '').trim();
+  const recentTitle = String(snapshot?.recent_incorrect?.title || '').trim();
+  const topFocusTitle = String(snapshot?.coach_notebook?.top_focuses?.[0]?.title || '').trim();
+  if (!raw) return resolvedMode === 'knowledge' ? (recentTitle || topFocusTitle) : recentTitle;
+  const prompt = raw
+    .replace(/^[^a-zA-Z0-9]*(who|what|when|where|why|how)\s+(is|was|were|are|did|do|does)\s+/i, '')
+    .replace(/^(explain|define|describe|outline|summarize|compare|contrast|tell me about|give me (a )?timeline of|what is the significance of|what was the significance of|what caused|what were the causes of|what happened in)\s+/i, '')
+    .replace(/[?.!]+$/g, '')
+    .trim();
+  return prompt || recentTitle || topFocusTitle;
+}
+
+function coachChatWikipediaLink(topic = '') {
+  const clean = String(topic || '').trim().replace(/[?.!]+$/g, '');
+  if (!clean) return '';
+  return `https://en.wikipedia.org/wiki/${encodeURIComponent(clean.replace(/\s+/g, '_'))}`;
+}
+
+function coachChatAction(id, label, reason, options = {}) {
   const action = { id, label, reason };
-  const key = String(focusKey || '').trim();
+  const key = String(options?.focus_key || options?.focusKey || '').trim();
+  const query = String(options?.query || '').trim();
   if (key) action.focus_key = key;
+  if (query) action.query = query;
   return action;
 }
 
@@ -860,21 +1063,61 @@ function dedupeCoachChatActions(actions) {
     const id = String(action?.id || '').trim();
     if (!COACH_CHAT_ALLOWED_ACTIONS.has(id)) continue;
     const focusKey = String(action?.focus_key || '').trim();
-    const key = `${id}|${focusKey}`;
+    const query = String(action?.query || '').trim();
+    const key = `${id}|${focusKey}|${query}`;
     if (seen.has(key)) continue;
     seen.add(key);
     out.push({
       id,
       label: String(action?.label || '').trim() || id.replace(/_/g, ' '),
-      reason: String(action?.reason || '').trim() || 'Recommended from your current practice context.',
-      focus_key: focusKey
+      reason: String(action?.reason || '').trim() || 'Recommended from your current study context.',
+      focus_key: focusKey,
+      query
     });
   }
   return out.slice(0, 3);
 }
 
+function normalizeCoachChatSections(raw) {
+  return Array.isArray(raw)
+    ? raw.map(section => {
+      const heading = String(section?.heading || section?.title || '').trim();
+      const body = String(section?.body || section?.text || section?.content || '').trim();
+      return heading && body ? { heading, body } : null;
+    }).filter(Boolean).slice(0, 4)
+    : [];
+}
+
+function normalizeCoachChatLinks(raw) {
+  return Array.isArray(raw)
+    ? raw.map(link => {
+      const label = String(link?.label || link?.title || '').trim();
+      const url = String(link?.url || '').trim();
+      if (!label || !/^https:\/\//i.test(url)) return null;
+      return { label, url, kind: String(link?.kind || link?.type || 'reference').trim() || 'reference' };
+    }).filter(Boolean).slice(0, 4)
+    : [];
+}
+
+function normalizeCoachChatFollowUps(raw) {
+  return Array.isArray(raw)
+    ? raw.map(item => {
+      const label = String(item?.label || item?.title || '').trim();
+      const prompt = String(item?.prompt || item?.message || '').trim();
+      return label && prompt ? { label, prompt } : null;
+    }).filter(Boolean).slice(0, 4)
+    : [];
+}
+
+function normalizeCoachChatHighlights(raw) {
+  return Array.isArray(raw)
+    ? raw.map(item => String(item || '').trim()).filter(Boolean).slice(0, 4)
+    : [];
+}
+
 function buildLocalCoachChatReply(message, snapshot = buildCoachChatStudyContext()) {
   const prompt = String(message || '').trim().toLowerCase();
+  const mode = resolveCoachChatMode(message, snapshot);
   const wrongDue = snapshot?.wrong_bank?.due_now || 0;
   const wrongTotal = snapshot?.wrong_bank?.total || 0;
   const notebookOpen = snapshot?.coach_notebook?.open_lessons || 0;
@@ -885,40 +1128,93 @@ function buildLocalCoachChatReply(message, snapshot = buildCoachChatStudyContext
   const recentAccuracy = snapshot?.session_history?.recent_accuracy || 0;
   const totalSessions = snapshot?.session_history?.total_sessions || 0;
   const daysSinceLastSession = snapshot?.session_history?.days_since_last_session || 0;
+  const topic = coachChatTopicFromMessage(message, snapshot, mode);
   const actions = [];
+  const highlights = [];
   let reply = '';
+  let title = 'Practice plan';
+  let sections = [];
+  let followUps = [];
+
+  if (mode === 'knowledge') {
+    const wiki = coachChatWikipediaLink(topic);
+    return {
+      source: 'fallback',
+      mode: 'knowledge',
+      title: topic ? `Study brief: ${topic}` : 'Study brief',
+      topic,
+      message: topic
+        ? `This looks like a knowledge question about ${topic}. When DeepSeek is available, I can answer it in detail here. Right now I can still structure the topic, suggest the best follow-up prompts, and give you a reference link.`
+        : 'This looks like a knowledge question. When DeepSeek is available, I can answer it in detail here. Right now I can still frame the topic and give you the best follow-up prompts.',
+      highlights: ['Knowledge mode', topic ? 'Wikipedia reference ready' : 'Reference lookup ready'].filter(Boolean),
+      sections: [
+        { heading: 'What to lock in first', body: topic ? `Start with the definition, timeframe, main actors, and why ${topic} matters in the broader historical story.` : 'Start with the definition, timeframe, main actors, and why the topic matters in the broader historical story.' },
+        { heading: 'What IHBB usually rewards', body: 'Be ready to explain causes, turning points, significance, comparisons, and the larger regional or chronological pattern around the concept.' },
+        { heading: 'Best follow-up prompts', body: 'Ask for a timeline, significance, comparison, common confusions, or likely clue patterns if you want a stronger study brief.' }
+      ],
+      links: wiki ? [{ label: `Wikipedia: ${topic}`, url: wiki, kind: 'wikipedia' }] : [],
+      follow_ups: [
+        { label: 'Give me a timeline', prompt: topic ? `Give me a clear timeline of ${topic}.` : 'Give me a clear timeline of this topic.' },
+        { label: 'Why it matters', prompt: topic ? `Why is ${topic} historically significant?` : 'Why is this topic historically significant?' },
+        { label: 'Common confusions', prompt: topic ? `What are the most common confusions around ${topic}?` : 'What are the most common confusions around this topic?' }
+      ],
+      quick_actions: dedupeCoachChatActions(topic ? [coachChatAction('open_library', `Search ${topic}`, 'Open the question library and search this topic.', { query: topic })] : [])
+    };
+  }
 
   if (prompt.includes('wrong-bank') || prompt.includes('wrong bank') || prompt.includes('srs')) {
+    title = wrongDue > 0 ? 'Clear the due review loop first' : 'Wrong-bank is not the blocker right now';
     if (wrongDue > 0) {
       reply = `Wrong-bank is the right tool when you want spaced repetition on misses instead of fresh coverage. You have ${wrongDue} due card${wrongDue === 1 ? '' : 's'} out of ${wrongTotal} tracked right now.`;
       actions.push(coachChatAction('practice_due_now', `Practice ${wrongDue} due card${wrongDue === 1 ? '' : 's'}`, 'Start the due SRS queue immediately.'));
+      sections = [
+        { heading: 'Why this tool fits', body: 'Wrong-bank is for repetition on misses you have already created, not for brand-new coverage.' },
+        { heading: 'Best next move', body: `Clear the ${wrongDue} due card${wrongDue === 1 ? '' : 's'} first, then decide whether you still need a fresh focused drill.` }
+      ];
     } else {
       reply = 'Wrong-bank works best after regular drills create misses to revisit. Nothing is due right now, so a fresh targeted block is the better move.';
-      if (topFocusKey) actions.push(coachChatAction('generate_focus_drill', `Generate ${topFocusTitle}`, 'Create fresh questions around the recurring blind spot.', topFocusKey));
+      if (topFocusKey) actions.push(coachChatAction('generate_focus_drill', `Generate ${topFocusTitle}`, 'Create fresh questions around the recurring blind spot.', { focus_key: topFocusKey }));
       actions.push(coachChatAction('open_review', 'Open Review', 'Check your review state before deciding.'));
+      sections = [
+        { heading: 'Why not Wrong-bank', body: 'There is nothing due right now, so SRS will not give you enough reps to move the needle.' },
+        { heading: 'Better option', body: topFocusKey ? `Use ${topFocusTitle} for a short targeted block.` : 'Use a short targeted or mixed block to create new evidence.' }
+      ];
     }
   } else if (prompt.includes('notebook') || prompt.includes('lesson') || prompt.includes('coach')) {
+    title = topFocusKey ? `Notebook plan for ${topFocusTitle}` : 'Use AI Notebook for explanation, not repetition';
     reply = `AI Notebook is best when you need explanation and pattern review, not repetition of the exact same misses. You have ${notebookOpen} open lesson${notebookOpen === 1 ? '' : 's'}${topFocusKey ? `, and ${topFocusTitle} is the clearest recurring lane.` : '.'}`;
     actions.push(coachChatAction('open_ai_notebook', 'Open AI Notebook', 'Review saved DeepSeek lessons and mastery state.'));
     if (topFocusKey) {
-      actions.push(coachChatAction('apply_top_focus', `Apply ${topFocusTitle}`, 'Load that focus into the practice builder.', topFocusKey));
-      actions.push(coachChatAction('generate_focus_drill', `Generate ${topFocusTitle}`, 'Turn that notebook pattern into a fresh drill.', topFocusKey));
+      actions.push(coachChatAction('apply_top_focus', `Apply ${topFocusTitle}`, 'Load that focus into the practice builder.', { focus_key: topFocusKey }));
+      actions.push(coachChatAction('generate_focus_drill', `Generate ${topFocusTitle}`, 'Turn that notebook pattern into a fresh drill.', { focus_key: topFocusKey }));
     }
+    sections = [
+      { heading: 'What Notebook is for', body: 'Use it to understand why you missed something, spot recurring patterns, and collect the right mental model.' },
+      { heading: 'Best next move', body: topFocusKey ? `Review the lesson for ${topFocusTitle}, then either apply that focus to setup or generate a short drill from it.` : 'Open the lesson, review the explanation once, and then test yourself in practice.' }
+    ];
   } else if (recentIncorrect?.title) {
+    title = `Recover from ${recentIncorrect.title}`;
     reply = `You just missed ${recentIncorrect.title}. Review the notebook explanation once, then run a short focused set before going back to mixed drilling.`;
     actions.push(coachChatAction('open_ai_notebook', 'Open the lesson', 'Reopen the saved explanation for this miss.'));
-    actions.push(coachChatAction('generate_focus_drill', `Generate ${recentIncorrect.title}`, 'Build a short corrective drill from the same lane.', recentIncorrect.key));
+    actions.push(coachChatAction('generate_focus_drill', `Generate ${recentIncorrect.title}`, 'Build a short corrective drill from the same lane.', { focus_key: recentIncorrect.key }));
     actions.push(coachChatAction('review_last_misses', 'Review recent misses', 'Revisit the review queue before resuming mixed practice.'));
+    sections = [
+      { heading: 'Why this matters', body: 'A fresh miss is the highest-signal evidence you have. Fixing it immediately usually pays off faster than adding more random volume.' },
+      { heading: 'Best sequence', body: 'Review the explanation, run a short corrective drill, then return to mixed practice once the mistake is no longer repeating.' }
+    ];
   } else if (wrongDue >= 3) {
+    title = 'Close the due queue before adding new volume';
     reply = `You have ${wrongDue} due wrong-bank cards. That is the cleanest next move because it closes the loop on known misses before you add more volume.`;
     actions.push(coachChatAction('practice_due_now', `Practice ${wrongDue} due card${wrongDue === 1 ? '' : 's'}`, 'Start the due SRS queue now.'));
-    if (topFocusKey) actions.push(coachChatAction('generate_focus_drill', `Generate ${topFocusTitle}`, 'Follow SRS with a short fresh drill in the same lane.', topFocusKey));
+    if (topFocusKey) actions.push(coachChatAction('generate_focus_drill', `Generate ${topFocusTitle}`, 'Follow SRS with a short fresh drill in the same lane.', { focus_key: topFocusKey }));
   } else if (topFocusKey && (notebookOpen > 0 || recentAccuracy < 70)) {
+    title = `Make ${topFocusTitle} the next targeted block`;
     reply = `Your notebook keeps pointing back to ${topFocusTitle}. Use that as the next targeted block, then return to mixed practice after accuracy stabilizes.`;
-    actions.push(coachChatAction('apply_top_focus', `Apply ${topFocusTitle}`, 'Load the recurring notebook focus into setup.', topFocusKey));
-    actions.push(coachChatAction('generate_focus_drill', `Generate ${topFocusTitle}`, 'Create fresh questions in the same lane.', topFocusKey));
+    actions.push(coachChatAction('apply_top_focus', `Apply ${topFocusTitle}`, 'Load the recurring notebook focus into setup.', { focus_key: topFocusKey }));
+    actions.push(coachChatAction('generate_focus_drill', `Generate ${topFocusTitle}`, 'Create fresh questions in the same lane.', { focus_key: topFocusKey }));
     actions.push(coachChatAction('open_ai_notebook', 'Open AI Notebook', 'Review the supporting explanations first.'));
   } else if (totalSessions <= 0) {
+    title = 'Get one clean baseline session first';
     reply = 'Start with one normal mixed drill to create enough evidence for stronger recommendations. Once you miss a few questions, Wrong-bank and AI Notebook become much more useful.';
     actions.push(coachChatAction('start_current_session', 'Start current session', 'Begin the drill you have configured now.'));
     actions.push(coachChatAction('open_setup', 'Open setup', 'Tune region, era, and mode before starting.'));
@@ -927,20 +1223,41 @@ function buildLocalCoachChatReply(message, snapshot = buildCoachChatStudyContext
       ? `Your last session was about ${daysSinceLastSession} day${daysSinceLastSession === 1 ? '' : 's'} ago. `
       : 'You already have recent practice data. ';
     reply = `${freshness}The best structure is one targeted block for a weak lane and one mixed block to test transfer.${topFocusKey ? ` Right now ${topFocusTitle} is the clearest place to focus first.` : ' Right now a short mixed drill is enough to keep momentum.'}`;
-    if (topFocusKey) actions.push(coachChatAction('apply_top_focus', `Apply ${topFocusTitle}`, 'Set up a targeted block first.', topFocusKey));
+    title = topFocusKey ? `Use ${topFocusTitle} as the next smart block` : 'Keep momentum with one targeted block and one mixed block';
+    if (topFocusKey) actions.push(coachChatAction('apply_top_focus', `Apply ${topFocusTitle}`, 'Set up a targeted block first.', { focus_key: topFocusKey }));
     actions.push(coachChatAction('start_current_session', 'Start current session', 'Run the current practice setup.'));
     actions.push(coachChatAction('open_review', 'Open Review', 'Check wrong-bank and session debrief before deciding.'));
   }
 
+  if (wrongDue > 0) highlights.push(`${wrongDue} due in Wrong-bank`);
+  if (notebookOpen > 0) highlights.push(`${notebookOpen} notebook lesson${notebookOpen === 1 ? '' : 's'} open`);
+  if (recentAccuracy > 0) highlights.push(`Recent accuracy ${recentAccuracy}%`);
+  followUps = followUps.length ? followUps : [
+    { label: 'Make this more detailed', prompt: `${String(reply || '').trim()} Give me the more detailed version.`.trim() },
+    { label: 'Turn this into a plan', prompt: 'Turn this into a short practice plan I can follow right now.' }
+  ];
+  const links = [];
+  const linkTopic = recentIncorrect?.title || topFocusTitle || topic;
+  const wiki = coachChatWikipediaLink(linkTopic);
+  if (wiki && linkTopic) links.push({ label: `Wikipedia: ${linkTopic}`, url: wiki, kind: 'wikipedia' });
+  if (linkTopic && actions.length < 3) actions.push(coachChatAction('open_library', `Search ${linkTopic}`, 'Open the question library and search this topic.', { query: linkTopic }));
+
   return {
     source: 'fallback',
+    mode: 'coach',
+    title,
+    topic: linkTopic,
     message: reply,
+    highlights,
+    sections,
+    links,
+    follow_ups: followUps,
     quick_actions: dedupeCoachChatActions(actions)
   };
 }
 
 function normalizeCoachChatReply(raw, payload, snapshot) {
-  const fallback = buildLocalCoachChatReply(payload?.message || '', snapshot);
+  const fallback = buildLocalCoachChatReply(payload?.message || '', snapshot, payload?.assistant_mode || CoachChat.ui.mode);
   const validFocusKeys = new Set([
     ...(snapshot?.coach_notebook?.top_focuses || []).map(focus => String(focus?.key || '').trim()),
     String(snapshot?.recent_incorrect?.key || '').trim()
@@ -951,12 +1268,21 @@ function normalizeCoachChatReply(raw, payload, snapshot) {
       id: String(action?.id || '').trim(),
       label: String(action?.label || action?.title || '').trim(),
       reason: String(action?.reason || '').trim(),
-      focus_key: validFocusKeys.has(String(action?.focus_key || '').trim()) ? String(action?.focus_key || '').trim() : ''
+      focus_key: validFocusKeys.has(String(action?.focus_key || '').trim()) ? String(action?.focus_key || '').trim() : '',
+      query: String(action?.query || '').trim()
     })))
     : [];
+  const links = normalizeCoachChatLinks(obj?.links);
   return {
     source: String(obj?.source || '').trim().toLowerCase() === 'deepseek' ? 'deepseek' : 'fallback',
+    mode: String(obj?.mode || '').trim() === 'knowledge' ? 'knowledge' : fallback.mode,
+    title: String(obj?.title || '').trim() || fallback.title,
+    topic: String(obj?.topic || '').trim() || fallback.topic,
     message: String(obj?.message || '').trim() || fallback.message,
+    highlights: normalizeCoachChatHighlights(obj?.highlights).length ? normalizeCoachChatHighlights(obj?.highlights) : fallback.highlights,
+    sections: normalizeCoachChatSections(obj?.sections).length ? normalizeCoachChatSections(obj?.sections) : fallback.sections,
+    links: links.length ? links : fallback.links,
+    follow_ups: normalizeCoachChatFollowUps(obj?.follow_ups).length ? normalizeCoachChatFollowUps(obj?.follow_ups) : fallback.follow_ups,
     quick_actions: actions.length ? actions : fallback.quick_actions
   };
 }
@@ -970,7 +1296,8 @@ async function requestCoachChatReply(message) {
       .slice(-8)
       .map(entry => ({ role: entry.role, content: String(entry.text || '').trim() }))
       .filter(entry => entry.content),
-    study_context: snapshot
+    study_context: snapshot,
+    assistant_mode: CoachChat.ui.mode
   };
   const response = await fetch('/api/coach-chat', {
     method: 'POST',
@@ -982,6 +1309,41 @@ async function requestCoachChatReply(message) {
     throw new Error(`Coach chat failed (${response.status})`);
   }
   return normalizeCoachChatReply(raw, payload, snapshot);
+}
+
+function clearCoachChatConversation() {
+  CoachChat.messages = [];
+  CoachChat.source = 'ready';
+  renderCoachChatChrome();
+}
+
+function setCoachChatMode(mode = 'auto') {
+  const next = ['auto', 'coach', 'knowledge'].includes(String(mode || '').trim()) ? String(mode).trim() : 'auto';
+  CoachChat.ui.mode = next;
+  saveCoachChatUiPrefs();
+  renderCoachChatChrome();
+}
+
+function setCoachChatSizePreset(size = 'standard') {
+  const next = Object.prototype.hasOwnProperty.call(COACH_CHAT_SIZE_PRESETS, String(size || '').trim()) ? String(size).trim() : 'standard';
+  CoachChat.ui.size = next;
+  CoachChat.ui.width = clampCoachChatWidth(COACH_CHAT_SIZE_PRESETS[next]);
+  CoachChat.ui.fullscreen = false;
+  saveCoachChatUiPrefs();
+  renderCoachChatChrome();
+}
+
+function toggleCoachChatFullscreen() {
+  CoachChat.ui.fullscreen = !CoachChat.ui.fullscreen;
+  saveCoachChatUiPrefs();
+  renderCoachChatChrome();
+}
+
+function beginCoachChatResize(event) {
+  if (window.innerWidth <= 900 || CoachChat.ui.fullscreen) return;
+  CoachChat.resizing = { startX: event.clientX };
+  document.body.classList.add('coach-chat-resizing');
+  event.preventDefault();
 }
 
 function coachChatPromptForReason(reason = 'manual') {
@@ -1089,6 +1451,13 @@ async function performCoachChatAction(action = {}) {
       await refreshCoachNotebook(true);
       renderCoachChatChrome();
       return;
+    case 'open_library':
+      closeCoachChat({ manual: false });
+      navSet('nav-library');
+      SHOW('view-library');
+      if ($('lib-search')) $('lib-search').value = String(action?.query || '').trim();
+      renderLibraryTable();
+      return;
     default:
       return;
   }
@@ -1098,7 +1467,7 @@ async function sendCoachChatMessage(rawMessage, options = {}) {
   const message = String(rawMessage || '').trim();
   if (!message || CoachChat.busy) return false;
   if (!options.hiddenUserMessage) {
-    pushCoachChatMessage({ role: 'user', text: message, source: 'user', actions: [] });
+    pushCoachChatMessage({ role: 'user', text: message, source: 'user', actions: [], highlights: [], sections: [], links: [], followUps: [] });
   }
   CoachChat.busy = true;
   CoachChat.source = 'ready';
@@ -1110,6 +1479,13 @@ async function sendCoachChatMessage(rawMessage, options = {}) {
       role: 'assistant',
       text: String(reply.message || '').trim(),
       source: CoachChat.source,
+      mode: String(reply.mode || '').trim() === 'knowledge' ? 'knowledge' : 'coach',
+      title: String(reply.title || '').trim(),
+      topic: String(reply.topic || '').trim(),
+      highlights: Array.isArray(reply.highlights) ? reply.highlights : [],
+      sections: Array.isArray(reply.sections) ? reply.sections : [],
+      links: Array.isArray(reply.links) ? reply.links : [],
+      followUps: Array.isArray(reply.follow_ups) ? reply.follow_ups : [],
       actions: Array.isArray(reply.quick_actions) ? reply.quick_actions : []
     });
   } catch (err) {
@@ -1119,6 +1495,13 @@ async function sendCoachChatMessage(rawMessage, options = {}) {
       role: 'assistant',
       text: String(fallback.message || '').trim(),
       source: 'fallback',
+      mode: String(fallback.mode || '').trim() === 'knowledge' ? 'knowledge' : 'coach',
+      title: String(fallback.title || '').trim(),
+      topic: String(fallback.topic || '').trim(),
+      highlights: Array.isArray(fallback.highlights) ? fallback.highlights : [],
+      sections: Array.isArray(fallback.sections) ? fallback.sections : [],
+      links: Array.isArray(fallback.links) ? fallback.links : [],
+      followUps: Array.isArray(fallback.follow_ups) ? fallback.follow_ups : [],
       actions: Array.isArray(fallback.quick_actions) ? fallback.quick_actions : []
     });
   } finally {
@@ -1369,6 +1752,13 @@ async function applyPendingCoachChatAction() {
     renderWrongBank();
     drawCharts();
     await refreshCoachNotebook(false);
+    return true;
+  }
+  if (mode === 'open_library') {
+    navSet('nav-library');
+    SHOW('view-library');
+    if ($('lib-search')) $('lib-search').value = String(pending.query || '').trim();
+    renderLibraryTable();
     return true;
   }
   if (mode === 'start_current_session') {
@@ -3598,8 +3988,21 @@ $('overlay')?.addEventListener('click', (e) => { if (e.target && e.target.id ===
 $('coach-chat-launcher')?.addEventListener('click', () => {
   openCoachChat({ auto: false, seed: false, reason: 'manual' });
 });
+$('coach-chat-new')?.addEventListener('click', clearCoachChatConversation);
+$('coach-chat-fullscreen')?.addEventListener('click', toggleCoachChatFullscreen);
+$('coach-chat-mode-switch')?.addEventListener('click', (e) => {
+  const button = e.target.closest('.coach-chat-mode-btn');
+  if (!button) return;
+  setCoachChatMode(button.dataset.mode || 'auto');
+});
+$('coach-chat-size-presets')?.addEventListener('click', (e) => {
+  const button = e.target.closest('.coach-chat-size-btn');
+  if (!button) return;
+  setCoachChatSizePreset(button.dataset.size || 'standard');
+});
 $('coach-chat-close')?.addEventListener('click', () => closeCoachChat({ manual: true }));
 $('coach-chat-backdrop')?.addEventListener('click', () => closeCoachChat({ manual: true }));
+$('coach-chat-resize-handle')?.addEventListener('pointerdown', beginCoachChatResize);
 $('coach-chat-form')?.addEventListener('submit', (e) => {
   e.preventDefault();
   const input = $('coach-chat-input');
@@ -3607,6 +4010,21 @@ $('coach-chat-form')?.addEventListener('submit', (e) => {
   if (!message) return;
   if (input) input.value = '';
   void sendCoachChatMessage(message);
+});
+$('coach-chat-workspace')?.addEventListener('click', (e) => {
+  const button = e.target.closest('.coach-chat-workspace-btn');
+  if (!button) return;
+  const card = CoachChat.workspaceCards?.[Number(button.dataset.workspaceIndex) || 0];
+  if (!card?.action) return;
+  if (card.action.kind === 'mode') {
+    setCoachChatMode(card.action.mode || 'knowledge');
+    return;
+  }
+  if (card.action.kind === 'prompt') {
+    void sendCoachChatMessage(card.action.prompt || '');
+    return;
+  }
+  void performCoachChatAction(card.action);
 });
 $('coach-chat-starters')?.addEventListener('click', (e) => {
   const button = e.target.closest('.coach-chat-starter');
@@ -3616,6 +4034,27 @@ $('coach-chat-starters')?.addEventListener('click', (e) => {
   void sendCoachChatMessage(starter.prompt);
 });
 $('coach-chat-messages')?.addEventListener('click', (e) => {
+  const followUpButton = e.target.closest('.coach-chat-followup');
+  if (followUpButton) {
+    const messageIndex = Number(followUpButton.dataset.messageIndex);
+    const followUpIndex = Number(followUpButton.dataset.followupIndex);
+    const followUp = CoachChat.messages?.[messageIndex]?.followUps?.[followUpIndex];
+    if (followUp?.prompt) void sendCoachChatMessage(followUp.prompt);
+    return;
+  }
+  const toolButton = e.target.closest('.coach-chat-tool');
+  if (toolButton) {
+    const messageIndex = Number(toolButton.dataset.messageIndex);
+    const message = CoachChat.messages?.[messageIndex];
+    if (message?.text) {
+      if (navigator.clipboard?.writeText) {
+        navigator.clipboard.writeText(String(message.text || '').trim()).then(() => toast('Assistant answer copied')).catch(() => toast('Copy failed'));
+      } else {
+        toast('Copy unavailable');
+      }
+    }
+    return;
+  }
   const button = e.target.closest('.coach-chat-action');
   if (!button) return;
   const messageIndex = Number(button.dataset.messageIndex);
@@ -3644,6 +4083,8 @@ document.addEventListener('click', (e) => {
 document.addEventListener('keydown', (e) => {
   if (e.key === '?') { e.preventDefault(); const ov = $('overlay'); if (ov?.classList.contains('show')) ov.classList.remove('show'); else openHelp(); return; }
   if (e.key === 'Escape' && CoachChat.open) { e.preventDefault(); closeCoachChat({ manual: true }); return; }
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); CoachChat.open ? closeCoachChat({ manual: true }) : openCoachChat({ auto: false, seed: false, reason: 'manual' }); return; }
+  if (CoachChat.open && e.key.toLowerCase() === 'f') { e.preventDefault(); toggleCoachChatFullscreen(); return; }
   if (['INPUT', 'TEXTAREA', 'SELECT'].includes((document.activeElement && document.activeElement.tagName) || '')) return;
   const vp = $('view-practice'); if (vp && vp.classList.contains('active')) {
     if (e.code === 'Space') { e.preventDefault(); buzz(); }
@@ -3659,6 +4100,18 @@ $('coach-chat-input')?.addEventListener('keydown', (e) => {
     e.preventDefault();
     $('coach-chat-form')?.requestSubmit();
   }
+});
+document.addEventListener('pointermove', (e) => {
+  if (!CoachChat.resizing) return;
+  CoachChat.ui.width = clampCoachChatWidth(window.innerWidth - e.clientX - 16);
+  CoachChat.ui.size = 'custom';
+  saveCoachChatUiPrefs();
+  renderCoachChatChrome();
+});
+document.addEventListener('pointerup', () => {
+  if (!CoachChat.resizing) return;
+  CoachChat.resizing = null;
+  document.body.classList.remove('coach-chat-resizing');
 });
 
 /********************* Default fetch — loads categorized JSON only *********************/
