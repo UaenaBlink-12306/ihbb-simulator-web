@@ -15,7 +15,7 @@
   <script src="admin.js" defer></script>
 </head>
 
-<body>
+<body class="app-admin-view">
   <div class="shell page-shell admin-shell">
     <header class="page-hero admin-hero">
       <div class="hero-copy">
@@ -89,64 +89,68 @@
     <section id="admin-console" class="stack hidden">
       <div id="admin-config-banner" class="card section-card admin-banner hidden"></div>
 
-      <section class="card section-card">
-        <div class="section-head">
-          <div>
-            <div class="eyebrow">Overview</div>
-            <h2 class="card-title">Summary</h2>
+      <div class="admin-console-grid">
+        <section class="card section-card">
+          <div class="section-head">
+            <div>
+              <div class="eyebrow">Overview</div>
+              <h2 class="card-title">Summary</h2>
+            </div>
           </div>
-        </div>
-        <div id="admin-summary" class="admin-summary-grid"></div>
-      </section>
+          <div id="admin-summary" class="admin-summary-grid"></div>
+        </section>
 
-      <section class="card section-card">
-        <div class="section-head">
-          <div>
-            <div class="eyebrow">DeepSeek moderation</div>
-            <h2 class="card-title">Generated Questions</h2>
-            <p class="section-subtitle">Pending questions are merged immediately, but you can approve them in bulk or
-              delete them from both generated storage and the main question bank.</p>
+        <section class="card section-card">
+          <div class="section-head">
+            <div>
+              <div class="eyebrow">DeepSeek moderation</div>
+              <h2 class="card-title">Generated Questions</h2>
+              <p class="section-subtitle">Pending questions are merged immediately, but you can approve them in bulk or
+                delete them from both generated storage and the main question bank.</p>
+            </div>
+            <div class="admin-toolbar">
+              <input id="admin-generated-search" type="search" placeholder="Search generated questions">
+              <select id="admin-generated-filter">
+                <option value="all">All statuses</option>
+                <option value="pending">Pending</option>
+                <option value="approved">Approved</option>
+                <option value="deleted">Deleted</option>
+              </select>
+              <button id="admin-approve-all" class="btn pri" type="button">Accept All</button>
+            </div>
           </div>
-          <div class="admin-toolbar">
-            <input id="admin-generated-search" type="search" placeholder="Search generated questions">
-            <select id="admin-generated-filter">
-              <option value="all">All statuses</option>
-              <option value="pending">Pending</option>
-              <option value="approved">Approved</option>
-              <option value="deleted">Deleted</option>
-            </select>
-            <button id="admin-approve-all" class="btn pri" type="button">Accept All</button>
-          </div>
-        </div>
-        <div id="admin-generated-list" class="admin-generated-list"></div>
-      </section>
+          <div id="admin-generated-list" class="admin-generated-list"></div>
+        </section>
+      </div>
 
-      <section class="card section-card">
-        <div class="section-head">
-          <div>
-            <div class="eyebrow">Users</div>
-            <h2 class="card-title">Accounts and Profiles</h2>
-            <p class="section-subtitle">This view is populated from the Supabase service-role-backed snapshot when that
-              key is configured.</p>
+      <div class="admin-console-grid admin-console-grid-secondary">
+        <section class="card section-card">
+          <div class="section-head">
+            <div>
+              <div class="eyebrow">Users</div>
+              <h2 class="card-title">Accounts and Profiles</h2>
+              <p class="section-subtitle">This view is populated from the Supabase service-role-backed snapshot when that
+                key is configured.</p>
+            </div>
+            <div class="admin-toolbar">
+              <input id="admin-user-search" type="search" placeholder="Search users">
+            </div>
           </div>
-          <div class="admin-toolbar">
-            <input id="admin-user-search" type="search" placeholder="Search users">
-          </div>
-        </div>
-        <div id="admin-users" class="admin-table-wrap"></div>
-      </section>
+          <div id="admin-users" class="admin-table-wrap"></div>
+        </section>
 
-      <section class="card section-card">
-        <div class="section-head">
-          <div>
-            <div class="eyebrow">Database</div>
-            <h2 class="card-title">Raw Tables</h2>
-            <p class="section-subtitle">Recent rows from each app table plus counts. This section stays empty until the
-              service role key is configured on the server.</p>
+        <section class="card section-card">
+          <div class="section-head">
+            <div>
+              <div class="eyebrow">Database</div>
+              <h2 class="card-title">Raw Tables</h2>
+              <p class="section-subtitle">Recent rows from each app table plus counts. This section stays empty until the
+                service role key is configured on the server.</p>
+            </div>
           </div>
-        </div>
-        <div id="admin-database" class="admin-database-list"></div>
-      </section>
+          <div id="admin-database" class="admin-database-list"></div>
+        </section>
+      </div>
     </section>
   </div>
 </body>

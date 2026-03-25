@@ -24,7 +24,7 @@
     <script src="profile.js" defer></script>
 </head>
 
-<body>
+<body class="app-profile-view">
     <div class="shell page-shell">
         <header class="page-hero">
             <div class="hero-copy">
@@ -47,45 +47,77 @@
         <div id="alert-box" class="alert hidden"></div>
 
         <section id="profile-main" class="view active">
-            <div class="card section-card">
-                <div class="section-head">
-                    <div>
-                        <h2 id="profile-title" class="card-title">Loading profile...</h2>
-                        <p id="profile-subtitle" class="section-subtitle">Please wait.</p>
+            <div class="profile-layout">
+                <div class="profile-main-column">
+                    <div class="card section-card">
+                        <div class="section-head">
+                            <div>
+                                <h2 id="profile-title" class="card-title">Loading profile...</h2>
+                                <p id="profile-subtitle" class="section-subtitle">Please wait.</p>
+                            </div>
+                        </div>
+
+                        <div class="form-grid">
+                            <div class="input-group">
+                                <label>Display Name</label>
+                                <input id="pf-display-name" type="text" readonly>
+                            </div>
+                            <div class="input-group">
+                                <label>Role</label>
+                                <input id="pf-role" type="text" readonly>
+                            </div>
+                            <div class="input-group">
+                                <label>Class Code</label>
+                                <input id="pf-class-code" type="text" readonly>
+                            </div>
+                            <div class="input-group">
+                                <label>Created At</label>
+                                <input id="pf-created-at" type="text" readonly>
+                            </div>
+                            <div class="input-group full-width">
+                                <label>User ID</label>
+                                <input id="pf-user-id" type="text" readonly>
+                            </div>
+                        </div>
+
+                        <div class="sep"></div>
+
+                        <div class="card-muted-box">
+                            <div class="eyebrow">Placeholder</div>
+                            <h3 style="margin: 10px 0 6px;">Student data</h3>
+                            <p class="muted" style="margin: 0;">Additional academic profile details can be added here
+                                later without changing the current account flow.</p>
+                        </div>
                     </div>
                 </div>
 
-                <div class="form-grid">
-                    <div class="input-group">
-                        <label>Display Name</label>
-                        <input id="pf-display-name" type="text" readonly>
-                    </div>
-                    <div class="input-group">
-                        <label>Role</label>
-                        <input id="pf-role" type="text" readonly>
-                    </div>
-                    <div class="input-group">
-                        <label>Class Code</label>
-                        <input id="pf-class-code" type="text" readonly>
-                    </div>
-                    <div class="input-group">
-                        <label>Created At</label>
-                        <input id="pf-created-at" type="text" readonly>
-                    </div>
-                    <div class="input-group full-width">
-                        <label>User ID</label>
-                        <input id="pf-user-id" type="text" readonly>
-                    </div>
-                </div>
+                <aside class="profile-side-column stack">
+                    <div class="card section-card sticky-card">
+                        <div class="section-head">
+                            <div>
+                                <div class="eyebrow">Workspace context</div>
+                                <h2 class="card-title">How this profile is used</h2>
+                                <p class="section-subtitle">The student and teacher dashboards pull these core account
+                                    details into classes, assignments, and live competition.</p>
+                            </div>
+                        </div>
 
-                <div class="sep"></div>
-
-                <div class="card-muted-box">
-                    <div class="eyebrow">Placeholder</div>
-                    <h3 style="margin: 10px 0 6px;">Student data</h3>
-                    <p class="muted" style="margin: 0;">Additional academic profile details can be added here later
-                        without changing the current account flow.</p>
-                </div>
+                        <div class="summary-list">
+                            <div class="summary-item">
+                                <span>Identity</span>
+                                <strong>Display name and email stay consistent across every workspace.</strong>
+                            </div>
+                            <div class="summary-item">
+                                <span>Membership</span>
+                                <strong>Role and class code determine which dashboard loads first.</strong>
+                            </div>
+                            <div class="summary-item">
+                                <span>Audit trail</span>
+                                <strong>Created date and user ID remain visible for admin and classroom checks.</strong>
+                            </div>
+                        </div>
+                    </div>
+                </aside>
             </div>
         </section>
     </div>

@@ -24,7 +24,7 @@
     <script src="student.js" defer></script>
 </head>
 
-<body>
+<body class="app-dashboard-view app-student-view">
     <div class="shell dashboard-shell">
         <header class="page-hero">
             <div class="hero-copy">
@@ -97,14 +97,25 @@
                             see the spaces you belong to.</p>
                     </div>
                 </div>
-                <div class="card-muted-box">
-                    <div class="inline-form">
-                        <input type="text" id="join-code" placeholder="Enter class code (e.g. ABC123)">
-                        <button id="btn-join" class="btn pri">Join Class</button>
+                <div class="dashboard-split">
+                    <div class="panel-stack">
+                        <div class="card-muted-box">
+                            <div class="inline-form">
+                                <input type="text" id="join-code" placeholder="Enter class code (e.g. ABC123)">
+                                <button id="btn-join" class="btn pri">Join Class</button>
+                            </div>
+                        </div>
+                        <div id="student-classes" class="list-container" style="margin-top: 18px;">
+                            <p class="muted">Loading...</p>
+                        </div>
                     </div>
-                </div>
-                <div id="student-classes" class="list-container" style="margin-top: 18px;">
-                    <p class="muted">Loading...</p>
+                    <aside class="panel-stack">
+                        <div class="card-muted-box student-side-note">
+                            <div class="empty-kicker">Classroom flow</div>
+                            <p class="empty-copy">Join with an invite code first, then use the class list as your stable
+                                launch point for assignments and live rounds.</p>
+                        </div>
+                    </aside>
                 </div>
             </div>
         </section>
@@ -119,36 +130,41 @@
                     </div>
                 </div>
 
-                <div class="tab-strip subtab-strip">
-                    <button class="assign-sub-tab active" data-sub="todo">To Do</button>
-                    <button class="assign-sub-tab" data-sub="completed">Completed</button>
-                </div>
-
-                <div id="assign-todo" class="assign-panel" style="margin-top: 18px;">
-                    <div id="student-assignments-todo" class="list-container">
-                        <p class="muted">Loading...</p>
-                    </div>
-                </div>
-                <div id="assign-completed" class="assign-panel hidden" style="margin-top: 18px;">
-                    <div id="student-assignments-completed" class="list-container">
-                        <p class="muted">Loading...</p>
-                    </div>
-                </div>
-
-                <div id="assignments-coach-brief" class="coach-brief-card">
-                    <div class="coach-brief-head">
-                        <div>
-                            <div class="eyebrow">Coach prep</div>
-                            <h3>DeepSeek assignment support</h3>
+                <div class="dashboard-split">
+                    <div class="panel-stack">
+                        <div class="tab-strip subtab-strip">
+                            <button class="assign-sub-tab active" data-sub="todo">To Do</button>
+                            <button class="assign-sub-tab" data-sub="completed">Completed</button>
                         </div>
-                        <div class="inline-actions">
-                            <button id="btn-assignments-coach-drill" class="btn pri" type="button">Open Guided Drill</button>
-                            <button id="btn-assignments-coach-tab" class="btn ghost" type="button">Open Coach Workspace</button>
+
+                        <div id="assign-todo" class="assign-panel" style="margin-top: 18px;">
+                            <div id="student-assignments-todo" class="list-container">
+                                <p class="muted">Loading...</p>
+                            </div>
+                        </div>
+                        <div id="assign-completed" class="assign-panel hidden" style="margin-top: 18px;">
+                            <div id="student-assignments-completed" class="list-container">
+                                <p class="muted">Loading...</p>
+                            </div>
                         </div>
                     </div>
-                    <div id="assignments-coach-summary" class="coach-brief-copy muted">DeepSeek prep suggestions will
-                        appear here once you build up some coach notes or analytics history.</div>
-                    <div id="assignments-coach-focuses" class="coach-focus-grid"></div>
+                    <aside class="panel-stack">
+                        <div id="assignments-coach-brief" class="coach-brief-card sticky-card">
+                            <div class="coach-brief-head">
+                                <div>
+                                    <div class="eyebrow">Coach prep</div>
+                                    <h3>DeepSeek assignment support</h3>
+                                </div>
+                                <div class="inline-actions">
+                                    <button id="btn-assignments-coach-drill" class="btn pri" type="button">Open Guided Drill</button>
+                                    <button id="btn-assignments-coach-tab" class="btn ghost" type="button">Open Coach Workspace</button>
+                                </div>
+                            </div>
+                            <div id="assignments-coach-summary" class="coach-brief-copy muted">DeepSeek prep suggestions will
+                                appear here once you build up some coach notes or analytics history.</div>
+                            <div id="assignments-coach-focuses" class="coach-focus-grid"></div>
+                        </div>
+                    </aside>
                 </div>
             </div>
         </section>
@@ -367,59 +383,67 @@
                     </div>
                 </div>
 
-                <div class="account-profile-card">
-                    <h3 style="margin: 0 0 12px;">My Profile</h3>
-                    <div class="form-grid">
-                        <div class="input-group">
-                            <label>Display Name</label>
-                            <input id="acc-display-name" type="text" maxlength="80" placeholder="Your name">
+                <div class="dashboard-split account-layout">
+                    <div class="account-profile-card">
+                        <h3 style="margin: 0 0 12px;">My Profile</h3>
+                        <div class="form-grid">
+                            <div class="input-group">
+                                <label>Display Name</label>
+                                <input id="acc-display-name" type="text" maxlength="80" placeholder="Your name">
+                            </div>
+                            <div class="input-group">
+                                <label>Role</label>
+                                <input id="acc-role" type="text" readonly>
+                            </div>
+                            <div class="input-group">
+                                <label>Email</label>
+                                <input id="acc-email" type="email" maxlength="160" placeholder="name@example.com">
+                            </div>
+                            <div class="input-group">
+                                <label>Class Code</label>
+                                <input id="acc-class-code" type="text" readonly>
+                            </div>
+                            <div class="input-group">
+                                <label>Created At</label>
+                                <input id="acc-created-at" type="text" readonly>
+                            </div>
+                            <div class="input-group full-width">
+                                <label>User ID</label>
+                                <input id="acc-user-id" type="text" readonly>
+                            </div>
                         </div>
-                        <div class="input-group">
-                            <label>Role</label>
-                            <input id="acc-role" type="text" readonly>
+                        <div class="form-actions" style="margin-top: 14px;">
+                            <button id="btn-save-account" class="btn pri">Save Profile Changes</button>
                         </div>
-                        <div class="input-group">
-                            <label>Email</label>
-                            <input id="acc-email" type="email" maxlength="160" placeholder="name@example.com">
-                        </div>
-                        <div class="input-group">
-                            <label>Class Code</label>
-                            <input id="acc-class-code" type="text" readonly>
-                        </div>
-                        <div class="input-group">
-                            <label>Created At</label>
-                            <input id="acc-created-at" type="text" readonly>
-                        </div>
-                        <div class="input-group full-width">
-                            <label>User ID</label>
-                            <input id="acc-user-id" type="text" readonly>
-                        </div>
+                        <p class="muted" style="margin: 8px 0 0;">Email changes may require inbox verification depending on
+                            your auth settings.</p>
                     </div>
-                    <div class="form-actions" style="margin-top: 14px;">
-                        <button id="btn-save-account" class="btn pri">Save Profile Changes</button>
-                    </div>
-                    <p class="muted" style="margin: 8px 0 0;">Email changes may require inbox verification depending on
-                        your auth settings.</p>
-                </div>
 
-                <div class="sep"></div>
-
-                <div class="account-danger">
-                    <div class="section-head" style="margin-bottom: 10px;">
-                        <div>
-                            <h3 style="margin: 0;">Danger Zone</h3>
-                            <p class="section-subtitle">Delete is hidden until you explicitly reveal it.</p>
+                    <aside class="panel-stack">
+                        <div class="card-muted-box student-side-note">
+                            <div class="empty-kicker">Account note</div>
+                            <p class="empty-copy">Keep routine profile edits in the main column and isolate destructive
+                                actions to the side so they never compete with day-to-day settings.</p>
                         </div>
-                        <button id="btn-reveal-delete" type="button" class="btn ghost">Show Delete Option</button>
-                    </div>
-                    <div id="account-danger-panel" class="hidden">
-                        <label class="account-danger-confirm">
-                            <input id="confirm-delete-reveal" type="checkbox">
-                            I understand this permanently deletes my account and all data.
-                        </label>
-                        <button id="btn-delete-account" class="btn warn" disabled style="margin-top: 12px;">Delete My
-                            Account Permanently</button>
-                    </div>
+
+                        <div class="account-danger">
+                            <div class="section-head" style="margin-bottom: 10px;">
+                                <div>
+                                    <h3 style="margin: 0;">Danger Zone</h3>
+                                    <p class="section-subtitle">Delete is hidden until you explicitly reveal it.</p>
+                                </div>
+                                <button id="btn-reveal-delete" type="button" class="btn ghost">Show Delete Option</button>
+                            </div>
+                            <div id="account-danger-panel" class="hidden">
+                                <label class="account-danger-confirm">
+                                    <input id="confirm-delete-reveal" type="checkbox">
+                                    I understand this permanently deletes my account and all data.
+                                </label>
+                                <button id="btn-delete-account" class="btn warn" disabled style="margin-top: 12px;">Delete My
+                                    Account Permanently</button>
+                            </div>
+                        </div>
+                    </aside>
                 </div>
             </div>
         </section>
