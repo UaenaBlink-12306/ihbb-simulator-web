@@ -444,7 +444,7 @@
         <div class="coach-chat-panel">
             <div class="coach-chat-head">
                 <div class="coach-chat-head-copy">
-                    <div class="eyebrow">DeepSeek sidebar</div>
+                    <div class="eyebrow">DeepSeek assistant</div>
                     <h2 class="card-title">Training Assistant</h2>
                     <p id="coach-chat-context-summary" class="coach-chat-context-summary">Reviewing your coach and analytics history.</p>
                 </div>
@@ -462,15 +462,13 @@
                     <button class="coach-chat-mode-btn" type="button" data-mode="coach" aria-pressed="false">Coach</button>
                     <button class="coach-chat-mode-btn" type="button" data-mode="knowledge" aria-pressed="false">Knowledge</button>
                 </div>
-                <div id="coach-chat-size-presets" class="coach-chat-size-presets" aria-label="Assistant size">
-                    <button class="coach-chat-size-btn" type="button" data-size="standard">Balanced</button>
-                    <button class="coach-chat-size-btn" type="button" data-size="wide">Wide</button>
-                    <button class="coach-chat-size-btn" type="button" data-size="focus">Focus</button>
-                </div>
             </div>
 
             <div id="coach-chat-status-pills" class="coach-chat-status-pills"></div>
-            <div id="coach-chat-workspace" class="coach-chat-workspace"></div>
+            <div class="coach-chat-section-block">
+                <div class="coach-chat-section-label">Quick access</div>
+                <div id="coach-chat-workspace" class="coach-chat-workspace"></div>
+            </div>
             <div id="coach-chat-messages" class="coach-chat-messages" aria-live="polite"></div>
             <div class="coach-chat-starter-block">
                 <div class="coach-chat-section-label">Suggested prompts</div>

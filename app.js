@@ -729,19 +729,19 @@ function buildCoachChatSummary(snapshot) {
   const recentIncorrect = snapshot?.recent_incorrect;
   const topFocus = snapshot?.coach_notebook?.top_focuses?.[0];
   if (CoachChat.ui.mode === 'knowledge') {
-    return 'Knowledge mode is ready for concept explanations, timelines, comparisons, and Wikipedia links.';
+    return 'Ask for explanations, timelines, comparisons, or background on any IHBB topic.';
   }
   if (recentIncorrect?.title) {
-    return `Recent miss: ${recentIncorrect.title}. Ask for a corrective drill or reopen the lesson.`;
+    return `Last miss: ${recentIncorrect.title}.`;
   }
   if ((snapshot?.wrong_bank?.due_now || 0) > 0) {
-    return `${snapshot.wrong_bank.due_now} wrong-bank card${snapshot.wrong_bank.due_now === 1 ? '' : 's'} are due right now.`;
+    return `${snapshot.wrong_bank.due_now} wrong-bank card${snapshot.wrong_bank.due_now === 1 ? '' : 's'} due now.`;
   }
   if (topFocus?.title) {
-    return `Notebook focus: ${topFocus.title}. Ask DeepSeek to turn it into a drill or apply it to setup.`;
+    return `Top notebook focus: ${topFocus.title}.`;
   }
   if ((snapshot?.session_history?.total_sessions || 0) <= 0) {
-    return 'No recent drill history yet. Ask for a first practice plan.';
+    return 'No recent practice history yet.';
   }
   return `Current setup: ${snapshot?.setup?.mode || 'Practice'} • ${snapshot?.setup?.filters || 'All filters'}`;
 }
@@ -763,13 +763,14 @@ function renderCoachChatStatus(snapshot) {
   const pillsEl = $('coach-chat-status-pills');
   if (pillsEl) {
     const pills = [];
+    if (CoachChat.ui.mode === 'knowledge') pills.push('Knowledge mode');
     if ((snapshot?.wrong_bank?.due_now || 0) > 0) pills.push(`Wrong-bank due ${snapshot.wrong_bank.due_now}`);
     if ((snapshot?.coach_notebook?.open_lessons || 0) > 0) pills.push(`Notebook open ${snapshot.coach_notebook.open_lessons}`);
-    if ((snapshot?.session_history?.recent_accuracy || 0) > 0) pills.push(`Recent accuracy ${snapshot.session_history.recent_accuracy}%`);
-    if (snapshot?.active_set?.name) pills.push(snapshot.active_set.name);
+    if (CoachChat.ui.mode !== 'knowledge' && (snapshot?.session_history?.recent_accuracy || 0) > 0) pills.push(`Recent accuracy ${snapshot.session_history.recent_accuracy}%`);
+    if (!pills.length && snapshot?.active_set?.name) pills.push(snapshot.active_set.name);
     pillsEl.innerHTML = pills.length
-      ? pills.slice(0, 4).map(text => `<span class="coach-chat-status-pill">${escHtml(text)}</span>`).join('')
-      : `<span class="coach-chat-status-pill">${CoachChat.ui.mode === 'knowledge' ? 'Knowledge mode ready for detailed questions.' : 'Ask DeepSeek to recommend your next drill.'}</span>`;
+      ? pills.slice(0, 2).map(text => `<span class="coach-chat-status-pill">${escHtml(text)}</span>`).join('')
+      : `<span class="coach-chat-status-pill">${CoachChat.ui.mode === 'knowledge' ? 'Concept help ready.' : 'Study help ready.'}</span>`;
   }
 
   const noteEl = $('coach-chat-launcher-note');
@@ -788,6 +789,14 @@ function renderCoachChatStatus(snapshot) {
   }
 }
 
+function isCoachChatPristine() {
+  return !CoachChat.busy && !CoachChat.messages.length;
+}
+
+function limitCoachChatStarters(list = []) {
+  return list.slice(0, isCoachChatPristine() ? 2 : 3);
+}
+
 function buildCoachChatStarters(snapshot = buildCoachChatStudyContext()) {
   const recent = snapshot?.recent_incorrect || null;
   const wrongDue = snapshot?.wrong_bank?.due_now || 0;
@@ -797,34 +806,34 @@ function buildCoachChatStarters(snapshot = buildCoachChatStudyContext()) {
   const recentTitle = String(recent?.title || '').trim();
   const knowledgeTopic = recentTitle || topFocusTitle || snapshot?.active_set?.name || 'this topic';
   if (CoachChat.ui.mode === 'knowledge') {
-    return [
+    return limitCoachChatStarters([
       { label: 'Explain it', prompt: `Explain ${knowledgeTopic} in detail and why it matters in IHBB.` },
       { label: 'Give a timeline', prompt: `Give me a clear timeline of ${knowledgeTopic}.` },
       { label: 'Common confusions', prompt: `What are the most common confusions or mix-ups around ${knowledgeTopic}?` }
-    ];
+    ]);
   }
   if (CoachChat.suggestedReason === 'miss' && recentTitle) {
-    return [
+    return limitCoachChatStarters([
       { label: 'Last miss', prompt: `Why did I miss ${recentTitle}, and what should I practice next?` },
       { label: 'Best tool', prompt: `For ${recentTitle}, should I use Wrong-bank, AI Notebook, or a generated drill first?` },
       { label: 'Corrective drill', prompt: `Build me a corrective practice plan for ${recentTitle}.` }
-    ];
+    ]);
   }
   if (wrongDue >= 3) {
-    return [
+    return limitCoachChatStarters([
       { label: 'Wrong-bank first', prompt: `I have ${wrongDue} due wrong-bank cards. Should I clear those before anything else?` },
       { label: 'After SRS', prompt: 'After I finish my due wrong-bank cards, what should I train next?' },
       { label: 'Fresh drill', prompt: topFocusTitle ? `Turn ${topFocusTitle} into a fresh drill after my due review.` : 'Recommend the best fresh drill after my due wrong-bank review.' }
-    ];
+    ]);
   }
   if ((CoachChat.suggestedReason === 'notebook' || notebookOpen > 0) && topFocusTitle) {
-    return [
+    return limitCoachChatStarters([
       { label: 'Notebook focus', prompt: `Which AI Notebook focus should I train next if ${topFocusTitle} keeps showing up?` },
       { label: 'From lesson to drill', prompt: `How should I turn ${topFocusTitle} from AI Notebook into actual practice?` },
       { label: 'Best next move', prompt: `Is ${topFocusTitle} better for Wrong-bank, AI Notebook review, or a fresh generated drill right now?` }
-    ];
+    ]);
   }
-  return COACH_CHAT_STARTERS;
+  return limitCoachChatStarters(COACH_CHAT_STARTERS);
 }
 
 function renderCoachChatStarters(snapshot) {
@@ -843,45 +852,65 @@ function renderCoachChatWorkspace(snapshot) {
   const el = $('coach-chat-workspace');
   if (!el) return;
   const topFocus = snapshot?.coach_notebook?.top_focuses?.[0] || null;
-  const cards = [
-    {
-      kicker: 'Wrong-bank',
-      title: (snapshot?.wrong_bank?.due_now || 0) > 0 ? `${snapshot.wrong_bank.due_now} due right now` : 'No due cards right now',
-      copy: (snapshot?.wrong_bank?.due_now || 0) > 0 ? 'Close the loop on known misses before adding new volume.' : 'Use Wrong-bank after you build up misses in regular drills.',
-      action: (snapshot?.wrong_bank?.due_now || 0) > 0
-        ? { kind: 'action', id: 'practice_due_now', label: 'Start due review' }
-        : { kind: 'prompt', label: 'Ask when to use it', prompt: 'When is Wrong-bank better than a fresh drill?' }
-    },
-    {
-      kicker: 'AI Notebook',
-      title: topFocus?.title || `${snapshot?.coach_notebook?.open_lessons || 0} open lesson${(snapshot?.coach_notebook?.open_lessons || 0) === 1 ? '' : 's'}`,
-      copy: topFocus?.title ? 'Your strongest recurring weak lane is ready for explanation or drill building.' : 'Use Notebook for explanation and pattern review, not repetition.',
-      action: topFocus?.key
-        ? { kind: 'action', id: 'apply_top_focus', focus_key: topFocus.key, label: `Apply ${topFocus.title}` }
-        : { kind: 'action', id: 'open_ai_notebook', label: 'Open Notebook' }
-    },
-    {
-      kicker: 'Current drill',
-      title: `${snapshot?.setup?.mode || 'Practice'} • ${snapshot?.setup?.length || 'Flexible'}`,
-      copy: snapshot?.setup?.filters || 'Your current setup is ready to launch or adjust.',
-      action: { kind: 'action', id: 'start_current_session', label: 'Start session' }
-    },
-    {
-      kicker: 'Knowledge',
-      title: 'Ask any concept',
-      copy: 'Switch modes to get long-form explanations, timelines, comparisons, and Wikipedia links.',
-      action: { kind: 'mode', mode: 'knowledge', label: CoachChat.ui.mode === 'knowledge' ? 'Knowledge mode active' : 'Switch to Knowledge' }
+  const knowledgeCard = {
+    kicker: 'Ask',
+    title: CoachChat.ui.mode === 'knowledge' ? 'Knowledge mode' : 'Concept help',
+    copy: 'Explain a topic, get a timeline, or compare two ideas.',
+    action: { kind: 'mode', mode: 'knowledge', label: CoachChat.ui.mode === 'knowledge' ? 'Knowledge mode active' : 'Switch to Knowledge' }
+  };
+  const primaryCard = (snapshot?.wrong_bank?.due_now || 0) > 0
+    ? {
+      kicker: 'Next step',
+      title: `Review ${snapshot.wrong_bank.due_now} due`,
+      copy: 'Clear the due queue first.',
+      action: { kind: 'action', id: 'practice_due_now', label: 'Start due review' }
     }
-  ];
+    : topFocus?.key
+      ? {
+        kicker: 'Next step',
+        title: topFocus.title,
+        copy: 'Top saved focus.',
+        action: { kind: 'action', id: 'apply_top_focus', focus_key: topFocus.key, label: `Apply ${topFocus.title}` }
+      }
+      : {
+        kicker: 'Next step',
+        title: 'Start practice',
+        copy: `${snapshot?.setup?.mode || 'Practice'} • ${snapshot?.setup?.length || 'Flexible'}`,
+        action: { kind: 'action', id: 'start_current_session', label: 'Start session' }
+      };
+  const cards = isCoachChatPristine()
+    ? [primaryCard, knowledgeCard]
+    : [
+      {
+        kicker: 'Wrong-bank',
+        title: (snapshot?.wrong_bank?.due_now || 0) > 0 ? `Review ${snapshot.wrong_bank.due_now} due` : 'Wrong-bank',
+        copy: (snapshot?.wrong_bank?.due_now || 0) > 0 ? 'Best next review block' : 'Use after new misses',
+        action: (snapshot?.wrong_bank?.due_now || 0) > 0
+          ? { kind: 'action', id: 'practice_due_now', label: 'Start due review' }
+          : { kind: 'prompt', label: 'Ask when to use it', prompt: 'When is Wrong-bank better than a fresh drill?' }
+      },
+      {
+        kicker: 'AI Notebook',
+        title: topFocus?.title || 'Open Notebook',
+        copy: topFocus?.title ? 'Top saved focus' : `${snapshot?.coach_notebook?.open_lessons || 0} open lesson${(snapshot?.coach_notebook?.open_lessons || 0) === 1 ? '' : 's'}`,
+        action: topFocus?.key
+          ? { kind: 'action', id: 'apply_top_focus', focus_key: topFocus.key, label: `Apply ${topFocus.title}` }
+          : { kind: 'action', id: 'open_ai_notebook', label: 'Open Notebook' }
+      },
+      {
+        kicker: 'Current drill',
+        title: 'Start practice',
+        copy: `${snapshot?.setup?.mode || 'Practice'} • ${snapshot?.setup?.length || 'Flexible'}`,
+        action: { kind: 'action', id: 'start_current_session', label: 'Start session' }
+      },
+      knowledgeCard
+    ];
   el.innerHTML = cards.map((card, index) => `
-    <div class="coach-chat-workspace-card">
-      <div class="coach-chat-workspace-kicker">${escHtml(card.kicker)}</div>
-      <div class="coach-chat-workspace-title">${escHtml(card.title)}</div>
-      <p class="coach-chat-workspace-copy">${escHtml(card.copy)}</p>
-      <div class="coach-chat-workspace-actions">
-        <button class="coach-chat-workspace-btn" type="button" data-workspace-index="${index}">${escHtml(card.action.label)}</button>
-      </div>
-    </div>
+    <button class="coach-chat-workspace-card" type="button" data-workspace-index="${index}">
+      <span class="coach-chat-workspace-kicker">${escHtml(card.kicker)}</span>
+      <span class="coach-chat-workspace-title">${escHtml(card.title)}</span>
+      <span class="coach-chat-workspace-copy">${escHtml(card.copy)}</span>
+    </button>
   `).join('');
   CoachChat.workspaceCards = cards;
 }
@@ -952,10 +981,10 @@ function renderCoachChatMessages() {
   messagesEl.innerHTML = html || busyHtml
     ? `${html}${busyHtml}`
     : `<div class="coach-chat-empty">
-        <div class="coach-chat-empty-title">${CoachChat.ui.mode === 'knowledge' ? 'Ask for a concept explanation, comparison, or timeline.' : 'Choose a suggested question or ask your own.'}</div>
+        <div class="coach-chat-empty-title">${CoachChat.ui.mode === 'knowledge' ? 'Ask about any IHBB topic.' : 'Start with one quick question.'}</div>
         <p class="coach-chat-empty-text">${CoachChat.ui.mode === 'knowledge'
-      ? 'Nothing has been sent yet. Switch topics freely and the assistant will answer only after you click a prompt or submit your own question.'
-      : 'Nothing has been sent yet. The assistant will only respond after you click one of the suggested prompts or submit your own question.'}</p>
+      ? 'Pick a prompt or type a topic when you want an explanation, timeline, or comparison.'
+      : 'Pick a prompt or type what you want to practice next.'}</p>
       </div>`;
   messagesEl.scrollTop = messagesEl.scrollHeight;
 }
@@ -970,6 +999,7 @@ function setCoachChatOpenState(open) {
     sidebar.classList.toggle('open', CoachChat.open);
     sidebar.classList.toggle('fullscreen', !!CoachChat.ui.fullscreen);
     sidebar.setAttribute('aria-hidden', CoachChat.open ? 'false' : 'true');
+    sidebar.dataset.chatPristine = isCoachChatPristine() ? 'true' : 'false';
     sidebar.style.setProperty('--coach-chat-width', `${clampCoachChatWidth(CoachChat.ui.width)}px`);
   }
   if (backdrop) backdrop.hidden = !CoachChat.open;
@@ -992,8 +1022,8 @@ function renderCoachChatChrome() {
   if (sendBtn) sendBtn.disabled = !!CoachChat.busy;
   if (hintEl) {
     hintEl.textContent = CoachChat.ui.mode === 'knowledge'
-      ? 'Knowledge mode gives detailed study briefs, follow-up prompts, and Wikipedia links.'
-      : 'Coach mode stays tied to your current practice state. Nothing is sent automatically.';
+      ? 'Knowledge mode gives long-form explanations and reference links.'
+      : 'Coach mode stays tied to your practice state and only answers when asked.';
   }
   modeButtons.forEach(button => {
     const active = String(button.dataset.mode || '') === CoachChat.ui.mode;
@@ -4012,7 +4042,7 @@ $('coach-chat-form')?.addEventListener('submit', (e) => {
   void sendCoachChatMessage(message);
 });
 $('coach-chat-workspace')?.addEventListener('click', (e) => {
-  const button = e.target.closest('.coach-chat-workspace-btn');
+  const button = e.target.closest('.coach-chat-workspace-card');
   if (!button) return;
   const card = CoachChat.workspaceCards?.[Number(button.dataset.workspaceIndex) || 0];
   if (!card?.action) return;
