@@ -1,0 +1,14 @@
+127.0.0.1 - - [14/Mar/2026 16:15:55] "GET /index.html?drill=1 HTTP/1.1" 200 -
+127.0.0.1 - - [14/Mar/2026 16:17:44] "GET /index.html?drill=1 HTTP/1.1" 200 -
+127.0.0.1 - - [14/Mar/2026 16:17:44] "GET /styles.css HTTP/1.1" 200 -
+127.0.0.1 - - [14/Mar/2026 16:17:44] "GET /config.js HTTP/1.1" 200 -
+127.0.0.1 - - [14/Mar/2026 16:17:44] "GET /app.js HTTP/1.1" 200 -
+127.0.0.1 - - [14/Mar/2026 16:17:45] "GET /questions.json HTTP/1.1" 200 -
+127.0.0.1 - - [14/Mar/2026 16:17:47] "GET /favicon.svg HTTP/1.1" 200 -
+2026-03-14 16:19:36,383 [ERROR] DeepSeek coach chat HTTP error: 401 Client Error: Unauthorized for url: https://api.deepseek.com/v1/chat/completions, response: {"error":{"message":"Authentication Fails, Your api key: ****-... is invalid","type":"authentication_error","param":null,"code":"invalid_request_error"}}
+127.0.0.1 - - [14/Mar/2026 16:19:36] "POST /api/coach-chat HTTP/1.1" 200 -
+127.0.0.1 - - [14/Mar/2026 16:20:32] "GET /student.html HTTP/1.1" 200 -
+127.0.0.1 - - [14/Mar/2026 16:20:32] "GET /styles.css HTTP/1.1" 200 -
+127.0.0.1 - - [14/Mar/2026 16:20:32] "GET /config.js HTTP/1.1" 200 -
+127.0.0.1 - - [14/Mar/2026 16:20:32] "GET /student.js HTTP/1.1" 200 -
+127.0.0.1 - - [14/Mar/2026 16:20:35] "GET /favicon.svg HTTP/1.1" 200 -

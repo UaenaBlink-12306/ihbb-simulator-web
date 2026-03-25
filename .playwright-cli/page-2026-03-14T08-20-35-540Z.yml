@@ -1,0 +1,68 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - banner [ref=e3]:
+      - generic [ref=e4]:
+        - generic [ref=e5]:
+          - generic [ref=e6]: HB
+          - generic [ref=e7]:
+            - generic [ref=e8]: Student workspace
+            - heading "Student Dashboard" [level=1] [ref=e9]
+            - paragraph [ref=e10]: Manage classes, launch assignments, review blind spots, and jump into live play without switching tools.
+        - generic [ref=e11]:
+          - generic [ref=e12]:
+            - generic [ref=e13]: Classes
+            - generic [ref=e14]: "0"
+            - generic [ref=e15]: Active classrooms you belong to.
+          - generic [ref=e16]:
+            - generic [ref=e17]: To do
+            - generic [ref=e18]: "0"
+            - generic [ref=e19]: Assignments waiting for a first attempt.
+          - generic [ref=e20]:
+            - generic [ref=e21]: Completed
+            - generic [ref=e22]: "0"
+            - generic [ref=e23]: Finished assignments you can revisit anytime.
+          - generic [ref=e24]:
+            - generic [ref=e25]: Coach notes
+            - generic [ref=e26]: "0"
+            - generic [ref=e27]: DeepSeek lessons still worth reviewing.
+      - generic [ref=e28]:
+        - link "Practice Drill" [ref=e29] [cursor=pointer]:
+          - /url: index.html?drill=1
+        - link "Live Bee" [ref=e30] [cursor=pointer]:
+          - /url: livebee.html
+        - link "Logout" [ref=e31] [cursor=pointer]:
+          - /url: "#"
+    - navigation [ref=e32]:
+      - button "My Classes" [ref=e33] [cursor=pointer]
+      - button "Assignments" [ref=e34] [cursor=pointer]
+      - button "Coach" [ref=e35] [cursor=pointer]
+      - button "Live Bee" [ref=e36] [cursor=pointer]
+      - button "Analytics" [ref=e37] [cursor=pointer]
+      - button "Leaderboard" [ref=e38] [cursor=pointer]
+      - button "Account" [ref=e39] [cursor=pointer]
+    - generic [ref=e41]:
+      - generic [ref=e43]:
+        - heading "My Classes" [level=2] [ref=e44]
+        - paragraph [ref=e45]: Join a classroom with an invite code, then return here anytime to see the spaces you belong to.
+      - generic [ref=e47]:
+        - textbox "Enter class code (e.g. ABC123)" [ref=e48]
+        - button "Join Class" [ref=e49] [cursor=pointer]
+      - paragraph [ref=e51]: Loading...
+  - button "Open DeepSeek training assistant" [ref=e52] [cursor=pointer]:
+    - generic [ref=e53]: DS
+  - complementary:
+    - generic [ref=e54]:
+      - generic [ref=e55]:
+        - generic [ref=e56]:
+          - generic [ref=e57]: DeepSeek sidebar
+          - heading [level=2] [ref=e58]: Training Assistant
+          - paragraph [ref=e59]: Reviewing your coach and analytics history.
+        - generic [ref=e60]:
+          - generic [ref=e61]: Ready
+          - button [ref=e62] [cursor=pointer]: ×
+      - generic [ref=e64]:
+        - textbox [ref=e66]:
+          - /placeholder: Ask what to train next, whether to use AI Notebook, or where to focus before an assignment.
+        - generic [ref=e67]:
+          - generic [ref=e68]: DeepSeek can send you straight into a targeted drill.
+          - button [ref=e69] [cursor=pointer]: Send

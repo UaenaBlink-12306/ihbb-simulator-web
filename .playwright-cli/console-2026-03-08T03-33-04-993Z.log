@@ -1,0 +1,7 @@
+[    8441ms] [ERROR] Failed to load resource: the server responded with a status of 404 () @ https://ihbb-training.vercel.app/favicon.ico:0
+[   51133ms] [ERROR] [IHBB Import] questions.json fetch/parse failed {name: TypeError, message: Failed to fetch, stack: TypeError: Failed to fetch
+    at tryFetchDefault …(https://ihbb-training.vercel.app/app.js:3030:11)} @ https://ihbb-training.vercel.app/app.js:1521
+[   51134ms] [WARNING] Coach notebook cloud fetch failed; using local. {message: TypeError: Failed to fetch, details: TypeError: Failed to fetch
+    at https://cdn.jsde… (https://ihbb-training.vercel.app/app.js:2370:3), hint: , code: } @ https://ihbb-training.vercel.app/app.js:2293
+[   56848ms] [ERROR] Failed to load resource: the server responded with a status of 404 () @ https://laexxsgzldivvizwfjcn.supabase.co/rest/v1/generated_questions?select=id%2Cquestion_text%2Canswer_text%2Caliases%2Ccategory%2Cera%2Csource%2Ctopic%2Ccreated_at&user_id=eq.006453e9-9883-438a-bc48-9dbb8839805a&order=created_at.desc:0
+[   56849ms] [WARNING] [Teacher Generated Questions] unavailable {code: PGRST205, details: null, hint: Perhaps you meant the table 'public.user_wrong_questions', message: Could not find the table 'public.generated_questions' in the schema cache} @ https://ihbb-training.vercel.app/teacher.js:182

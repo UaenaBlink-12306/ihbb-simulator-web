@@ -280,7 +280,7 @@ h1 {
 .sep {
   height: 1px;
   background: linear-gradient(90deg, transparent, var(--line) 20%, var(--line) 80%, transparent);
-  margin: 20px 0;
+  margin: 12px 0;
 }
 
 .muted {
@@ -293,12 +293,12 @@ h1 {
   background: rgba(255, 255, 255, 0.04);
   backdrop-filter: blur(8px);
   border: 1px solid var(--line);
-  padding: 10px 16px;
-  border-radius: 14px;
+  padding: 7px 12px;
+  border-radius: 12px;
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  font-size: 14px;
+  gap: 6px;
+  font-size: 13px;
   font-weight: 500;
   box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.03);
 }
@@ -437,11 +437,11 @@ input[type=range] {
 }
 
 .chip {
-  padding: 8px 16px;
+  padding: 6px 12px;
   border-radius: 999px;
   border: 1px solid var(--line);
   background: rgba(255, 255, 255, 0.03);
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
@@ -3050,9 +3050,9 @@ body.coach-chat-resizing {
   --panel-shadow-hover: 0 32px 60px -30px rgba(0, 0, 0, 0.82), 0 20px 38px -24px rgba(40, 210, 176, 0.22);
   --glass-blur: 16px;
   --glass-blur-soft: 10px;
-  --float-distance: 6px;
+  --float-distance: 3px;
   --page-max: 1280px;
-  --section-gap: 24px;
+  --section-gap: 16px;
 }
 
 @media (prefers-color-scheme: light) {
@@ -3142,10 +3142,11 @@ body::after {
 
 .shell {
   max-width: var(--page-max);
-  padding: 36px 24px 88px;
+  padding: 28px 24px 72px;
   position: relative;
   z-index: 1;
 }
+
 
 .page-shell,
 .dashboard-shell,
@@ -3158,10 +3159,10 @@ body::after {
 .page-hero,
 .auth-header {
   display: grid;
-  gap: 24px;
+  gap: 16px;
   align-items: start;
-  padding: clamp(24px, 3vw, 32px);
-  border-radius: 30px;
+  padding: clamp(16px, 2vw, 22px);
+  border-radius: 24px;
   border: 1px solid rgba(255, 255, 255, 0.1);
   overflow: hidden;
   background:
@@ -3170,6 +3171,7 @@ body::after {
     var(--surface-glass-strong);
   box-shadow: var(--glass-border), var(--panel-shadow);
 }
+
 
 .page-hero {
   grid-template-columns: minmax(0, 1fr) auto;
@@ -3190,9 +3192,10 @@ body::after {
 .auth-header-copy {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 10px;
   min-width: 0;
 }
+
 
 .hero-brand {
   display: flex;
@@ -3203,38 +3206,37 @@ body::after {
 .hero-brand h1,
 .auth-header h1 {
   margin: 0;
-  font-size: clamp(32px, 4.2vw, 44px);
+  font-size: clamp(24px, 3vw, 32px);
   letter-spacing: -0.03em;
 }
+
 
 .hero-kicker,
 .eyebrow {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   width: fit-content;
-  padding: 8px 12px;
+  padding: 5px 10px;
   border-radius: 999px;
   border: 1px solid var(--line);
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.04)),
     var(--surface-glass);
   color: var(--muted);
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.12em;
   text-transform: uppercase;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
 }
 
+
 .hero-blurb,
 .auth-header .sub {
-  margin: 0;
-  max-width: 760px;
-  color: var(--muted);
-  font-size: 15px;
-  line-height: 1.7;
+  display: none;
 }
+
 
 .hero-actions {
   display: flex;
@@ -3251,21 +3253,23 @@ body::after {
 .hero-metrics,
 .stat-band {
   display: grid;
-  gap: 12px;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
 }
 
+
 .metric-card {
-  min-height: 104px;
-  padding: 18px 20px;
+  min-height: auto;
+  padding: 12px 14px;
   border: 1px solid var(--line);
-  border-radius: 18px;
+  border-radius: 14px;
   background:
     var(--glass-highlight-soft),
     var(--glass-overlay-soft),
     var(--surface-glass);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), var(--panel-shadow-soft);
 }
+
 
 .metric-label {
   color: var(--muted);
@@ -3276,23 +3280,23 @@ body::after {
 }
 
 .metric-value {
-  margin-top: 10px;
+  margin-top: 6px;
   font-family: 'Outfit', system-ui, sans-serif;
-  font-size: clamp(28px, 4vw, 36px);
+  font-size: clamp(20px, 3vw, 26px);
   font-weight: 800;
   line-height: 1;
 }
 
+
 .metric-note {
-  margin-top: 10px;
-  color: var(--muted);
-  font-size: 13px;
-  line-height: 1.5;
+  display: none;
 }
+
 
 .card {
   overflow: hidden;
   border: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 20px;
   background:
     var(--glass-highlight),
     var(--glass-overlay),
@@ -3300,6 +3304,7 @@ body::after {
   box-shadow: var(--glass-border), var(--panel-shadow);
   transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1), border-color 0.28s ease, background-color 0.28s ease, box-shadow 0.28s ease;
 }
+
 
 .card:hover {
   transform: translateY(calc(var(--float-distance) * -1));
@@ -3535,17 +3540,19 @@ body::after {
 }
 
 .section-card {
-  padding: 24px;
+  padding: 18px;
 }
+
 
 .section-head {
   display: flex;
   flex-wrap: wrap;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 14px;
-  margin-bottom: 18px;
+  gap: 10px;
+  margin-bottom: 12px;
 }
+
 
 .section-head .card-title,
 .section-head h2,
@@ -3554,11 +3561,17 @@ body::after {
 }
 
 .section-subtitle {
-  margin: 6px 0 0;
+  margin: 4px 0 0;
   color: var(--muted);
-  font-size: 14px;
-  line-height: 1.6;
+  font-size: 13px;
+  line-height: 1.5;
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  line-clamp: 1;
+  overflow: hidden;
 }
+
 
 .stack {
   display: flex;
@@ -3601,12 +3614,12 @@ body::after {
 .nav,
 .tab-strip {
   display: flex;
-  gap: 10px;
+  gap: 8px;
   flex-wrap: wrap;
   align-items: center;
-  padding: 10px;
+  padding: 8px;
   border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 20px;
+  border-radius: 16px;
   overflow: hidden;
   background:
     var(--glass-highlight),
@@ -3614,6 +3627,7 @@ body::after {
     var(--surface-glass);
   box-shadow: var(--glass-border), var(--panel-shadow-soft);
 }
+
 
 .tab-strip a,
 .tab-strip button,
@@ -3627,9 +3641,9 @@ body::after {
     rgba(255, 255, 255, 0.02);
   color: var(--muted);
   text-decoration: none;
-  border-radius: 14px;
-  padding: 11px 18px;
-  font-size: 14px;
+  border-radius: 12px;
+  padding: 9px 14px;
+  font-size: 13px;
   font-weight: 700;
   letter-spacing: 0.01em;
   cursor: pointer;
@@ -3637,6 +3651,7 @@ body::after {
   white-space: nowrap;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 10px 24px -22px rgba(0, 0, 0, 0.72);
 }
+
 
 .tab-strip a:hover,
 .tab-strip button:hover,
@@ -3667,8 +3682,9 @@ body::after {
 }
 
 .dashboard-tabs {
-  padding: 12px;
+  padding: 8px;
 }
+
 
 .subtab-strip {
   padding: 6px;

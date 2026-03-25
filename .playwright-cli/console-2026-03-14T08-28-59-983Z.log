@@ -1,0 +1,3 @@
+[    1132ms] [WARNING] Supabase SDK not loaded. Ensure the CDN script is included. @ http://127.0.0.1:5057/config.js:10
+[    1361ms] [WARNING] Supabase not loaded. @ http://127.0.0.1:5057/index.html?drill=1:33
+[   33058ms] [ERROR] Failed to load resource: the server responded with a status of 405 (Method Not Allowed) @ http://127.0.0.1:5057/api/coach-chat:0

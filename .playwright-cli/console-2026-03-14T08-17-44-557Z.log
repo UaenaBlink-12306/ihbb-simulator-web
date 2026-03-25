@@ -1,0 +1,2 @@
+[    1109ms] [WARNING] Supabase SDK not loaded. Ensure the CDN script is included. @ http://127.0.0.1:5057/config.js:10
+[    1244ms] [WARNING] Supabase not loaded. @ http://127.0.0.1:5057/index.html?drill=1:33

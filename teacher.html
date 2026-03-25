@@ -33,25 +33,20 @@
                     <div>
                         <div class="hero-kicker">Teacher workspace</div>
                         <h1>Teacher Dashboard</h1>
-                        <p class="hero-blurb">Create classes, build assignments from the question bank, and track which
-                            students are actually finishing the work.</p>
                     </div>
                 </div>
                 <div class="hero-metrics">
                     <div class="metric-card">
                         <div class="metric-label">Classes</div>
                         <div id="teacher-hero-classes" class="metric-value">0</div>
-                        <div class="metric-note">Active class spaces you manage.</div>
                     </div>
                     <div class="metric-card">
                         <div class="metric-label">Assignments</div>
                         <div id="teacher-hero-assignments" class="metric-value">0</div>
-                        <div class="metric-note">Published work across all classes.</div>
                     </div>
                     <div class="metric-card">
                         <div class="metric-label">Selected questions</div>
                         <div id="teacher-hero-selected" class="metric-value">0</div>
-                        <div class="metric-note">Current draft selection in the assignment builder.</div>
                     </div>
                 </div>
             </div>
@@ -78,8 +73,6 @@
                 <div class="section-head">
                     <div>
                         <h2 class="card-title">My Classes</h2>
-                        <p class="section-subtitle">Create a class once, copy its invite code, and inspect student
-                            rosters from the same list.</p>
                     </div>
                     <button id="btn-new-class" class="btn pri">New Class</button>
                 </div>
@@ -112,8 +105,6 @@
                 <div class="section-head">
                     <div>
                         <h2 class="card-title">Assignments</h2>
-                        <p class="section-subtitle">Review what has already been assigned, inspect completion, and
-                            remove outdated work.</p>
                     </div>
                 </div>
                 <div class="dashboard-split">
@@ -137,8 +128,6 @@
                     <div class="section-head">
                         <div>
                             <h2 class="card-title">Create Assignment</h2>
-                            <p class="section-subtitle">Set the assignment details first, then choose a selection
-                                strategy for questions.</p>
                         </div>
                     </div>
 
@@ -167,8 +156,6 @@
                     <div class="section-head">
                         <div>
                             <h3 style="margin: 0;">Select Questions</h3>
-                            <p class="section-subtitle">Switch between random, filtered, or hand-picked selection
-                                without losing your current preview.</p>
                         </div>
                     </div>
 
@@ -176,8 +163,6 @@
                         <div class="section-head" style="margin-bottom: 12px;">
                             <div>
                                 <h3 style="margin: 0;">DeepSeek Draft Builder</h3>
-                                <p class="section-subtitle">Generate a focused batch of fresh questions, preview them,
-                                    and drop them straight into this assignment.</p>
                             </div>
                             <div class="inline-actions">
                                 <button id="btn-teacher-generate" class="btn pri" type="button">Generate Draft</button>
@@ -202,7 +187,6 @@
                                 <select id="teacher-gen-era"></select>
                             </div>
                         </div>
-                        <p id="teacher-gen-status" class="section-subtitle" style="margin-top: 12px;">Generated drafts stay private to your account and can be reused later in your own builder.</p>
                         <div id="teacher-gen-preview" class="generator-preview hidden"></div>
                     </div>
 
@@ -264,8 +248,6 @@
                             <div>
                                 <div class="eyebrow">Publish rail</div>
                                 <h2 class="card-title">Selection preview</h2>
-                                <p class="section-subtitle">Keep the live preview and publish action in a dedicated side
-                                    rail so the builder stays easier to scan.</p>
                             </div>
                         </div>
                         <div id="preview-area" class="preview-area hidden">
@@ -279,7 +261,7 @@
                             </div>
                             <div id="preview-list" class="preview-list"></div>
                         </div>
-                        <div class="card-muted-box teacher-side-note">
+                        <div class="card-muted-box summary-note">
                             <div class="empty-kicker">Publishing checklist</div>
                             <p class="empty-copy">Name the assignment, attach it to a class, preview the question set,
                                 then publish once the side rail looks clean.</p>
@@ -329,8 +311,6 @@
                 <div class="section-head">
                     <div>
                         <h2 class="card-title">Account Settings</h2>
-                        <p class="section-subtitle">Update profile details here and keep the full profile view available
-                            as a separate page.</p>
                     </div>
                 </div>
 
@@ -367,8 +347,6 @@
                             <button id="btn-save-account" class="btn pri">Save Profile Changes</button>
                             <a href="profile.html" class="btn ghost">View My Profile</a>
                         </div>
-                        <p class="muted" style="margin: 8px 0 0;">Email changes may require inbox verification depending on
-                            your auth settings.</p>
                     </div>
 
                     <aside class="panel-stack">

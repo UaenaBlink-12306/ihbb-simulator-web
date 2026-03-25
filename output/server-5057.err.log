@@ -1,0 +1,136 @@
+127.0.0.1 - - [16/Mar/2026 10:29:10] "GET /health HTTP/1.1" 200 -
+127.0.0.1 - - [16/Mar/2026 10:29:20] "GET / HTTP/1.1" 200 -
+127.0.0.1 - - [16/Mar/2026 10:30:30] "GET /index.html?drill=1 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Mar/2026 10:30:30] "GET /styles.css HTTP/1.1" 200 -
+127.0.0.1 - - [16/Mar/2026 10:30:30] "GET /config.js HTTP/1.1" 200 -
+127.0.0.1 - - [16/Mar/2026 10:30:30] "GET /app.js HTTP/1.1" 200 -
+127.0.0.1 - - [16/Mar/2026 10:30:36] "GET /login.html HTTP/1.1" 200 -
+127.0.0.1 - - [16/Mar/2026 10:30:36] "GET /questions.json HTTP/1.1" 200 -
+127.0.0.1 - - [16/Mar/2026 10:30:36] "GET /questions.json HTTP/1.1" 500 -
+----------------------------------------
+Exception occurred during processing of request from ('127.0.0.1', 57193)
+Traceback (most recent call last):
+  File "C:\Users\alpac\Desktop\ihbb-simulator-web-main\server.py", line 2215, in do_GET
+    self.wfile.write(data)
+    ~~~~~~~~~~~~~~~~^^^^^^
+  File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.13_3.13.3312.0_x64__qbz5n2kfra8p0\Lib\socketserver.py", line 845, in write
+    self._sock.sendall(b)
+    ~~~~~~~~~~~~~~~~~~^^^
+ConnectionAbortedError: [WinError 10053] 你的主机中的软件中止了一个已建立的连接。
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.13_3.13.3312.0_x64__qbz5n2kfra8p0\Lib\socketserver.py", line 318, in _handle_request_noblock
+    self.process_request(request, client_address)
+    ~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.13_3.13.3312.0_x64__qbz5n2kfra8p0\Lib\socketserver.py", line 349, in process_request
+    self.finish_request(request, client_address)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.13_3.13.3312.0_x64__qbz5n2kfra8p0\Lib\socketserver.py", line 362, in finish_request
+    self.RequestHandlerClass(request, client_address, self)
+    ~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.13_3.13.3312.0_x64__qbz5n2kfra8p0\Lib\socketserver.py", line 766, in __init__
+    self.handle()
+    ~~~~~~~~~~~^^
+  File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.13_3.13.3312.0_x64__qbz5n2kfra8p0\Lib\http\server.py", line 447, in handle
+    self.handle_one_request()
+    ~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.13_3.13.3312.0_x64__qbz5n2kfra8p0\Lib\http\server.py", line 435, in handle_one_request
+    method()
+    ~~~~~~^^
+  File "C:\Users\alpac\Desktop\ihbb-simulator-web-main\server.py", line 2217, in do_GET
+    self._write_json(500, {"error": "read failed"})
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\alpac\Desktop\ihbb-simulator-web-main\server.py", line 2082, in _write_json
+    self._set_headers(code, "application/json", extra_headers=extra_headers)
+    ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\alpac\Desktop\ihbb-simulator-web-main\server.py", line 2079, in _set_headers
+    self.end_headers()
+    ~~~~~~~~~~~~~~~~^^
+  File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.13_3.13.3312.0_x64__qbz5n2kfra8p0\Lib\http\server.py", line 549, in end_headers
+    self.flush_headers()
+    ~~~~~~~~~~~~~~~~~~^^
+  File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.13_3.13.3312.0_x64__qbz5n2kfra8p0\Lib\http\server.py", line 553, in flush_headers
+    self.wfile.write(b"".join(self._headers_buffer))
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.13_3.13.3312.0_x64__qbz5n2kfra8p0\Lib\socketserver.py", line 845, in write
+    self._sock.sendall(b)
+    ~~~~~~~~~~~~~~~~~~^^^
+ConnectionAbortedError: [WinError 10053] 你的主机中的软件中止了一个已建立的连接。
+----------------------------------------
+127.0.0.1 - - [16/Mar/2026 10:30:36] "GET /styles.css HTTP/1.1" 200 -
+127.0.0.1 - - [16/Mar/2026 10:30:36] "GET /config.js HTTP/1.1" 200 -
+127.0.0.1 - - [16/Mar/2026 10:30:36] "GET /login.js HTTP/1.1" 200 -
+127.0.0.1 - - [16/Mar/2026 10:31:27] "GET /index.html?drill=1 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Mar/2026 10:31:27] "GET /styles.css HTTP/1.1" 200 -
+127.0.0.1 - - [16/Mar/2026 10:31:27] "GET /config.js HTTP/1.1" 200 -
+127.0.0.1 - - [16/Mar/2026 10:31:27] "GET /app.js HTTP/1.1" 200 -
+127.0.0.1 - - [16/Mar/2026 10:31:29] "GET /login.html HTTP/1.1" 200 -
+127.0.0.1 - - [16/Mar/2026 10:31:29] "GET /questions.json HTTP/1.1" 200 -
+127.0.0.1 - - [16/Mar/2026 10:31:29] "GET /questions.json HTTP/1.1" 500 -
+----------------------------------------
+Exception occurred during processing of request from ('127.0.0.1', 50486)
+Traceback (most recent call last):
+  File "C:\Users\alpac\Desktop\ihbb-simulator-web-main\server.py", line 2215, in do_GET
+    self.wfile.write(data)
+    ~~~~~~~~~~~~~~~~^^^^^^
+  File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.13_3.13.3312.0_x64__qbz5n2kfra8p0\Lib\socketserver.py", line 845, in write
+    self._sock.sendall(b)
+    ~~~~~~~~~~~~~~~~~~^^^
+ConnectionAbortedError: [WinError 10053] 你的主机中的软件中止了一个已建立的连接。
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.13_3.13.3312.0_x64__qbz5n2kfra8p0\Lib\socketserver.py", line 318, in _handle_request_noblock
+    self.process_request(request, client_address)
+    ~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.13_3.13.3312.0_x64__qbz5n2kfra8p0\Lib\socketserver.py", line 349, in process_request
+    self.finish_request(request, client_address)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.13_3.13.3312.0_x64__qbz5n2kfra8p0\Lib\socketserver.py", line 362, in finish_request
+    self.RequestHandlerClass(request, client_address, self)
+    ~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.13_3.13.3312.0_x64__qbz5n2kfra8p0\Lib\socketserver.py", line 766, in __init__
+    self.handle()
+    ~~~~~~~~~~~^^
+  File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.13_3.13.3312.0_x64__qbz5n2kfra8p0\Lib\http\server.py", line 447, in handle
+    self.handle_one_request()
+    ~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.13_3.13.3312.0_x64__qbz5n2kfra8p0\Lib\http\server.py", line 435, in handle_one_request
+    method()
+    ~~~~~~^^
+  File "C:\Users\alpac\Desktop\ihbb-simulator-web-main\server.py", line 2217, in do_GET
+    self._write_json(500, {"error": "read failed"})
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\alpac\Desktop\ihbb-simulator-web-main\server.py", line 2082, in _write_json
+    self._set_headers(code, "application/json", extra_headers=extra_headers)
+    ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\alpac\Desktop\ihbb-simulator-web-main\server.py", line 2079, in _set_headers
+    self.end_headers()
+    ~~~~~~~~~~~~~~~~^^
+  File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.13_3.13.3312.0_x64__qbz5n2kfra8p0\Lib\http\server.py", line 549, in end_headers
+    self.flush_headers()
+    ~~~~~~~~~~~~~~~~~~^^
+  File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.13_3.13.3312.0_x64__qbz5n2kfra8p0\Lib\http\server.py", line 553, in flush_headers
+    self.wfile.write(b"".join(self._headers_buffer))
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.13_3.13.3312.0_x64__qbz5n2kfra8p0\Lib\socketserver.py", line 845, in write
+    self._sock.sendall(b)
+    ~~~~~~~~~~~~~~~~~~^^^
+ConnectionAbortedError: [WinError 10053] 你的主机中的软件中止了一个已建立的连接。
+----------------------------------------
+127.0.0.1 - - [16/Mar/2026 10:31:29] "GET /styles.css HTTP/1.1" 200 -
+127.0.0.1 - - [16/Mar/2026 10:31:29] "GET /config.js HTTP/1.1" 200 -
+127.0.0.1 - - [16/Mar/2026 10:31:29] "GET /login.js HTTP/1.1" 200 -
+127.0.0.1 - - [16/Mar/2026 10:33:12] "GET /questions.json HTTP/1.1" 200 -
+127.0.0.1 - - [16/Mar/2026 10:33:36] "GET /questions.json HTTP/1.1" 200 -
+127.0.0.1 - - [16/Mar/2026 10:35:09] "GET /index.html?drill=1 HTTP/1.1" 200 -
+127.0.0.1 - - [16/Mar/2026 10:35:09] "GET /styles.css HTTP/1.1" 200 -
+127.0.0.1 - - [16/Mar/2026 10:35:09] "GET /app.js HTTP/1.1" 200 -
+127.0.0.1 - - [16/Mar/2026 10:35:11] "GET /questions.json HTTP/1.1" 200 -
+127.0.0.1 - - [16/Mar/2026 10:35:12] "GET /generated_questions_bank.json HTTP/1.1" 200 -
+127.0.0.1 - - [16/Mar/2026 10:35:27] "GET /student.html HTTP/1.1" 200 -
+127.0.0.1 - - [16/Mar/2026 10:35:27] "GET /styles.css HTTP/1.1" 200 -
+127.0.0.1 - - [16/Mar/2026 10:35:27] "GET /student.js HTTP/1.1" 200 -

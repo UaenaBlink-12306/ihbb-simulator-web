@@ -1,0 +1,46 @@
+- generic [active]:
+  - generic:
+    - banner:
+      - generic:
+        - generic:
+          - generic: HB
+          - generic:
+            - generic: Teacher workspace
+            - heading "Teacher Dashboard" [level=1]
+            - paragraph: Create classes, build assignments from the question bank, and track which students are actually finishing the work.
+        - generic:
+          - generic:
+            - generic: Classes
+            - generic: "0"
+            - generic: Active class spaces you manage.
+          - generic:
+            - generic: Assignments
+            - generic: "0"
+            - generic: Published work across all classes.
+          - generic:
+            - generic: Selected questions
+            - generic: "0"
+            - generic: Current draft selection in the assignment builder.
+      - generic:
+        - link "Practice Drill":
+          - /url: index.html?drill=1
+        - link "Host Live Bee":
+          - /url: livebee.html
+        - link "Logout":
+          - /url: "#"
+    - navigation:
+      - button "My Classes"
+      - button "Assignments"
+      - button "Create Assignment"
+      - button "Live Bee"
+      - button "Leaderboard"
+      - button "Account"
+    - generic:
+      - generic:
+        - generic:
+          - generic:
+            - heading "My Classes" [level=2]
+            - paragraph: Create a class once, copy its invite code, and inspect student rosters from the same list.
+          - button "New Class"
+        - generic:
+          - paragraph: Loading classes...

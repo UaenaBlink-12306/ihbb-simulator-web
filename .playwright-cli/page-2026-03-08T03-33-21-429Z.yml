@@ -1,0 +1,40 @@
+- generic [ref=e2]:
+  - banner [ref=e3]:
+    - generic [ref=e4]: HB
+    - generic [ref=e5]:
+      - generic [ref=e6]: IHBB Premium Drill
+      - heading "Welcome Back" [level=1] [ref=e7]
+      - paragraph [ref=e8]: Sign in to access drills, assignments, analytics, and live rooms.
+      - generic [ref=e9]:
+        - generic [ref=e10]: Drill setup
+        - generic [ref=e11]: Student + teacher dashboards
+        - generic [ref=e12]: Live Bee rooms
+  - generic [ref=e13]:
+    - generic [ref=e14]:
+      - link "Login" [ref=e15] [cursor=pointer]:
+        - /url: "#"
+      - link "Sign Up" [ref=e16] [cursor=pointer]:
+        - /url: "#"
+    - generic [ref=e17]:
+      - generic [ref=e18]:
+        - generic [ref=e19]: Email address
+        - textbox "Email address" [ref=e20]:
+          - /placeholder: you@example.com
+      - generic [ref=e21]:
+        - generic [ref=e22]:
+          - generic [ref=e23]: Password
+          - link "Forgot password?" [ref=e24] [cursor=pointer]:
+            - /url: "#"
+        - textbox "Password" [ref=e25]:
+          - /placeholder: Enter your password
+      - button "Sign In" [ref=e26] [cursor=pointer]
+    - generic [ref=e28]: or continue with
+    - generic [ref=e29]:
+      - button "Continue with Google" [ref=e30] [cursor=pointer]:
+        - img [ref=e31]
+        - text: Continue with Google
+      - button "Continue with Microsoft" [ref=e36] [cursor=pointer]:
+        - img [ref=e37]
+        - text: Continue with Microsoft
+      - button "Send Magic Link" [ref=e42] [cursor=pointer]
+    - paragraph [ref=e43]: Use your email and password to return to your dashboard and continue where you left off.

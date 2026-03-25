@@ -1,0 +1,161 @@
+- generic [active]:
+  - generic:
+    - banner:
+      - generic:
+        - generic:
+          - generic: HB
+          - generic:
+            - generic: Practice hub
+            - heading "IHBB Practice Hub" [level=1]
+            - paragraph: Build a session, buzz quickly, and turn every round into something you can review later. The drill flow stays fast, but the setup is now easier to scan and adjust.
+        - generic:
+          - generic:
+            - generic: Buzz flow
+            - generic: Space → 5s
+            - generic: Read, buzz, answer, mark, and move on without extra clicks.
+          - generic:
+            - generic: Review loop
+            - generic: Wrong-bank
+            - generic: Missed questions feed SRS review and post-session analysis.
+          - generic:
+            - generic: Session control
+            - generic: Saved presets
+            - generic: Lock favorite voices, pacing, filters, and pool sizes once.
+      - generic:
+        - link "Back to Dashboard":
+          - /url: index.html
+        - link "Logout":
+          - /url: "#"
+    - navigation:
+      - link "Setup":
+        - /url: index.html
+      - link "Practice":
+        - /url: "#"
+      - link "Review":
+        - /url: "#"
+      - link "AI Notebook":
+        - /url: "#"
+      - link "Library":
+        - /url: "#"
+      - link "Shortcuts":
+        - /url: "#"
+    - generic:
+      - generic:
+        - generic:
+          - generic:
+            - generic:
+              - generic:
+                - generic: Session builder
+                - heading "Build your drill" [level=2]
+                - paragraph: Choose a source, narrow the pool, then lock the mode and session length before you start.
+            - generic:
+              - generic:
+                - generic:
+                  - generic:
+                    - generic: Question set
+                    - combobox:
+                      - option "(no sets — run build_db.py or import)" [selected]
+                    - generic: Run build_db.py to generate questions.json
+                  - generic:
+                    - button "Preview 5"
+                    - button "Upload questions.json"
+                    - button "Reload questions.json"
+              - generic:
+                - generic: Practice by region
+              - generic:
+                - generic:
+                  - generic: Mode
+                  - generic:
+                    - generic: Random
+                    - generic: Sequential
+                    - generic: Wrong-bank (SRS)
+                - generic:
+                  - generic: Session length
+                  - generic:
+                    - generic: "10"
+                    - generic: "15"
+                    - generic: "20"
+                    - generic: "50"
+                    - generic: All
+                    - generic: Custom
+              - generic:
+                - button "Start Session"
+                - button "Start last settings"
+                - button "Save preset"
+                - combobox:
+                  - option "Load preset…" [selected]
+                - button "Delete"
+        - complementary:
+          - generic:
+            - generic:
+              - generic:
+                - generic: Session overview
+                - heading "Ready to drill" [level=2]
+                - paragraph: This side panel stays synced with your current selections.
+            - generic:
+              - generic:
+                - generic: Set
+                - strong: No set loaded
+              - generic:
+                - generic: Mode
+                - strong: Random
+              - generic:
+                - generic: Length
+                - strong: 10 questions
+              - generic:
+                - generic: Filters
+                - strong: All regions • All eras • All sources
+              - generic:
+                - generic: Advanced
+                - strong: Flexible grading • Manual pacing • Haptics on
+            - generic:
+              - generic: Next step
+              - paragraph: Upload or reload questions.json to unlock the full drill builder.
+          - generic:
+            - generic:
+              - generic:
+                - generic: Session controls
+                - heading "Advanced settings" [level=2]
+                - paragraph: Voice, pacing, feedback, and grading controls live here.
+              - button "▾ Toggle":
+                - generic: ▾
+                - text: Toggle
+            - generic:
+              - generic: Auto voice
+              - generic: Rate 1.00x
+              - generic: Countdown ticks
+              - generic: Feedback cues on
+            - generic:
+              - generic:
+                - generic:
+                  - generic:
+                    - generic:
+                      - generic: Voice
+                      - combobox
+                    - generic:
+                      - generic: Rate
+                      - slider: "1"
+                  - generic:
+                    - button "Pronunciation test"
+                    - button "Open help"
+                  - generic:
+                    - generic:
+                      - checkbox "Strict Mode"
+                      - text: Strict Mode
+                    - generic:
+                      - checkbox "Auto-advance"
+                      - text: Auto-advance
+                    - generic:
+                      - checkbox "Countdown ticks" [checked]
+                      - text: Countdown ticks
+                    - generic:
+                      - checkbox "Feedback cues" [checked]
+                      - text: Feedback cues
+                    - generic:
+                      - checkbox "Haptics" [checked]
+                      - text: Haptics
+                    - generic:
+                      - text: Delay
+                      - spinbutton "Delay s": "1"
+                      - text: s
+                  - generic: "Shortcuts: Space = Buzz • R = Right • W = Wrong • N = Next • L = Replay • ? = Help"

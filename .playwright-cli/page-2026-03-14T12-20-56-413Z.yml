@@ -1,0 +1,194 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - banner [ref=e3]:
+      - generic [ref=e5]:
+        - generic [ref=e6]: HB
+        - generic [ref=e7]:
+          - generic [ref=e8]: Practice hub
+          - heading "IHBB Practice Hub" [level=1] [ref=e9]
+      - generic [ref=e10]:
+        - link "Back to Dashboard" [ref=e11] [cursor=pointer]:
+          - /url: index.html
+        - link "Logout" [ref=e12] [cursor=pointer]:
+          - /url: "#"
+        - button "Open DeepSeek training assistant" [ref=e13] [cursor=pointer]:
+          - generic [ref=e14]: DS
+    - navigation [ref=e15]:
+      - link "Setup" [ref=e16] [cursor=pointer]:
+        - /url: index.html
+      - link "Practice" [ref=e17] [cursor=pointer]:
+        - /url: "#"
+      - link "Review" [ref=e18] [cursor=pointer]:
+        - /url: "#"
+      - link "AI Notebook" [ref=e19] [cursor=pointer]:
+        - /url: "#"
+      - link "Library" [ref=e20] [cursor=pointer]:
+        - /url: "#"
+      - link "Shortcuts" [ref=e21] [cursor=pointer]:
+        - /url: "#"
+    - generic [ref=e23]:
+      - generic [ref=e25]:
+        - generic [ref=e27]:
+          - generic [ref=e28]: Session builder
+          - heading "Build your drill" [level=2] [ref=e29]
+          - paragraph [ref=e30]: Choose a source, narrow the pool, then lock the mode and session length before you start.
+        - generic [ref=e31]:
+          - generic [ref=e33]:
+            - generic [ref=e34]:
+              - generic [ref=e35]: Question set
+              - combobox [ref=e36]:
+                - option "IHBB Questions (categorized by region)" [selected]
+              - generic [ref=e37]: "Items: 5998"
+            - generic [ref=e38]:
+              - button "Preview 5" [ref=e39] [cursor=pointer]
+              - button "Upload questions.json" [ref=e40] [cursor=pointer]
+              - button "Reload questions.json" [ref=e41] [cursor=pointer]
+          - generic [ref=e42]:
+            - generic [ref=e43]: Practice by region
+            - generic [ref=e44]:
+              - generic [ref=e45] [cursor=pointer]: All regions
+              - generic [ref=e46] [cursor=pointer]: Africa
+              - generic [ref=e47] [cursor=pointer]: Central Asia
+              - generic [ref=e48] [cursor=pointer]: East Asia
+              - generic [ref=e49] [cursor=pointer]: Europe
+              - generic [ref=e50] [cursor=pointer]: Latin America
+              - generic [ref=e51] [cursor=pointer]: Middle East
+              - generic [ref=e52] [cursor=pointer]: North America
+              - generic [ref=e53] [cursor=pointer]: Oceania
+              - generic [ref=e54] [cursor=pointer]: South Asia
+              - generic [ref=e55] [cursor=pointer]: Southeast Asia
+              - generic [ref=e56] [cursor=pointer]: World
+          - generic [ref=e57]:
+            - generic [ref=e58]:
+              - generic [ref=e59]: Mode
+              - generic [ref=e60]:
+                - generic [ref=e61] [cursor=pointer]: Random
+                - generic [ref=e62] [cursor=pointer]: Sequential
+                - generic [ref=e63] [cursor=pointer]: Wrong-bank (SRS)
+            - generic [ref=e64]:
+              - generic [ref=e65]: Session length
+              - generic [ref=e66]:
+                - generic [ref=e67] [cursor=pointer]: "10"
+                - generic [ref=e68] [cursor=pointer]: "15"
+                - generic [ref=e69] [cursor=pointer]: "20"
+                - generic [ref=e70] [cursor=pointer]: "50"
+                - generic [ref=e71] [cursor=pointer]: All
+                - generic [ref=e72] [cursor=pointer]: Custom
+          - generic [ref=e73]:
+            - generic [ref=e74]:
+              - generic [ref=e75]: Eras (multi-select)
+              - generic [ref=e76]:
+                - generic [ref=e77] [cursor=pointer]: All eras
+                - generic [ref=e78] [cursor=pointer]: 8000 BCE – 600 BCE
+                - generic [ref=e79] [cursor=pointer]: 600 BCE – 600 CE
+                - generic [ref=e80] [cursor=pointer]: 600 CE – 1450 CE
+                - generic [ref=e81] [cursor=pointer]: 1450 CE – 1750 CE
+                - generic [ref=e82] [cursor=pointer]: 1750 – 1914
+                - generic [ref=e83] [cursor=pointer]: 1914 – 1991
+                - generic [ref=e84] [cursor=pointer]: 1991 – Present
+            - generic [ref=e85]:
+              - generic [ref=e86]: Source
+              - combobox [ref=e87]:
+                - option "All" [selected]
+                - option "original"
+          - generic [ref=e88]:
+            - button "Start Session" [ref=e89] [cursor=pointer]
+            - button "Start last settings" [ref=e90] [cursor=pointer]
+            - button "Save preset" [ref=e91] [cursor=pointer]
+            - combobox [ref=e92]:
+              - option "Load preset…" [selected]
+            - button "Delete" [ref=e93] [cursor=pointer]
+      - complementary [ref=e94]:
+        - generic [ref=e95]:
+          - generic [ref=e97]:
+            - generic [ref=e98]: Session overview
+            - heading "Ready to drill" [level=2] [ref=e99]
+            - paragraph [ref=e100]: This side panel stays synced with your current selections.
+          - generic [ref=e101]:
+            - generic [ref=e102]:
+              - generic [ref=e103]: Set
+              - strong [ref=e104]: IHBB Questions (categorized by region) (5998 items)
+            - generic [ref=e105]:
+              - generic [ref=e106]: Mode
+              - strong [ref=e107]: Random
+            - generic [ref=e108]:
+              - generic [ref=e109]: Length
+              - strong [ref=e110]: 10 questions
+            - generic [ref=e111]:
+              - generic [ref=e112]: Filters
+              - strong [ref=e113]: All regions • All eras • All sources
+            - generic [ref=e114]:
+              - generic [ref=e115]: Advanced
+              - strong [ref=e116]: Flexible grading • Manual pacing • Haptics on
+          - generic [ref=e117]:
+            - generic [ref=e118]: Next step
+            - paragraph [ref=e119]: Choose a set and tighten filters only if you want a more focused drill.
+        - generic [ref=e120]:
+          - generic [ref=e121]:
+            - generic [ref=e122]:
+              - generic [ref=e123]: Session controls
+              - heading "Advanced settings" [level=2] [ref=e124]
+              - paragraph [ref=e125]: Voice, pacing, feedback, and grading controls live here.
+            - button "▾ Toggle" [ref=e126] [cursor=pointer]:
+              - generic [ref=e127]: ▾
+              - text: Toggle
+          - generic [ref=e128]:
+            - generic [ref=e129]: Auto voice
+            - generic [ref=e130]: Rate 1.00x
+            - generic [ref=e131]: Countdown ticks
+            - generic [ref=e132]: Feedback cues on
+          - generic [ref=e134]:
+            - generic [ref=e135]:
+              - generic [ref=e136]:
+                - generic [ref=e137]: Voice
+                - combobox [ref=e138]
+              - generic [ref=e139]:
+                - generic [ref=e140]: Rate
+                - slider [ref=e141]: "1"
+            - generic [ref=e142]:
+              - button "Pronunciation test" [ref=e143] [cursor=pointer]
+              - button "Open help" [ref=e144] [cursor=pointer]
+            - generic [ref=e145]:
+              - generic [ref=e146]:
+                - checkbox "Strict Mode" [ref=e147]
+                - text: Strict Mode
+              - generic [ref=e148]:
+                - checkbox "Auto-advance" [ref=e149]
+                - text: Auto-advance
+              - generic [ref=e150]:
+                - checkbox "Countdown ticks" [checked] [ref=e151]
+                - text: Countdown ticks
+              - generic [ref=e152]:
+                - checkbox "Feedback cues" [checked] [ref=e153]
+                - text: Feedback cues
+              - generic [ref=e154]:
+                - checkbox "Haptics" [checked] [ref=e155]
+                - text: Haptics
+              - generic [ref=e156]:
+                - text: Delay
+                - spinbutton "Delay s" [ref=e157]: "1"
+                - text: s
+            - generic [ref=e158]: "Shortcuts: Space = Buzz • R = Right • W = Wrong • N = Next • L = Replay • ? = Help"
+  - complementary:
+    - generic [ref=e159]:
+      - generic [ref=e160]:
+        - generic [ref=e161]:
+          - generic [ref=e162]: DeepSeek sidebar
+          - heading [level=2] [ref=e163]: Training Assistant
+          - paragraph [ref=e164]: No recent drill history yet. Ask for a first practice plan.
+        - generic [ref=e165]:
+          - generic [ref=e166]: Ready
+          - button [ref=e167] [cursor=pointer]: ×
+      - generic [ref=e169]: IHBB Questions (categorized by region)
+      - paragraph [ref=e172]: Ask DeepSeek what to practice next, when to use Wrong-bank, or how to turn AI Notebook lessons into a drill.
+      - generic [ref=e173]:
+        - button [ref=e174] [cursor=pointer]: What next?
+        - button [ref=e175] [cursor=pointer]: Wrong-bank or notebook?
+        - button [ref=e176] [cursor=pointer]: Build a focused drill
+      - generic [ref=e177]:
+        - textbox [ref=e179]:
+          - /placeholder: Ask what to practice next, when to use Wrong-bank, or how to use AI Notebook.
+        - generic [ref=e180]:
+          - generic [ref=e181]: DeepSeek can recommend a drill and launch it from here.
+          - button [ref=e182] [cursor=pointer]: Send
+  - generic [ref=e183]: Loaded 5998 questions • 11 categories
