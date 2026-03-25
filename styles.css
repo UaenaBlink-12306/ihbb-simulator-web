@@ -2240,6 +2240,7 @@ tr:hover td {
   max-width: calc(100vw - 32px);
   z-index: 89;
   pointer-events: none;
+  overflow: hidden;
 }
 
 .coach-chat-panel {
@@ -2275,6 +2276,7 @@ tr:hover td {
 
 .coach-chat-sidebar.open {
   pointer-events: auto;
+  overflow: visible;
 }
 
 .coach-chat-sidebar.open .coach-chat-panel {
@@ -2930,6 +2932,9 @@ body.coach-chat-resizing {
   align-items: center;
   justify-content: center;
   cursor: ew-resize;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.18s ease;
 }
 
 .coach-chat-resize-handle::before {
@@ -2938,6 +2943,16 @@ body.coach-chat-resizing {
   height: 86px;
   border-radius: 999px;
   background: linear-gradient(180deg, rgba(31, 111, 255, 0.16), rgba(13, 154, 131, 0.16));
+}
+
+.coach-chat-sidebar.open .coach-chat-resize-handle {
+  opacity: 1;
+  visibility: visible;
+}
+
+.coach-chat-sidebar.fullscreen .coach-chat-resize-handle {
+  opacity: 0;
+  visibility: hidden;
 }
 
 @media (max-width: 860px) {
