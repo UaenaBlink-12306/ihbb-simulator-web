@@ -1005,17 +1005,26 @@ tr:hover td {
     min-height: 56vh;
   }
 
-  .practice-bottom {
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    display: flex;
+  .practice-control-dock {
     gap: 12px;
-    padding: 16px;
-    background: linear-gradient(180deg, transparent, rgba(3, 6, 10, 0.9) 20%);
-    z-index: 20;
-    padding-bottom: env(safe-area-inset-bottom, 16px);
+  }
+
+  .practice-bottom {
+    position: static;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    padding: 0;
+    background: none;
+    z-index: auto;
+  }
+
+  .practice-bottom .grow {
+    display: none;
+  }
+
+  .practice-bottom .btn {
+    flex: 1 1 calc(50% - 6px);
   }
 }
 
@@ -4684,9 +4693,17 @@ input[type=datetime-local]:focus {
 }
 
 .sticky-card {
+  align-self: start;
+}
+
+.setup-side > .sticky-card,
+.review-side-column > .sticky-card,
+.profile-side-column > .sticky-card,
+.dashboard-split > .panel-stack > .sticky-card,
+.teacher-builder-shell > .panel-stack > .sticky-card,
+.bee-sidebar > .sticky-card {
   position: sticky;
   top: 18px;
-  align-self: start;
 }
 
 .app-auth-view .auth-shell {
