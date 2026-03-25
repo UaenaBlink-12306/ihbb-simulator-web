@@ -4515,3 +4515,388 @@ input[type=datetime-local]:focus {
     flex: 1 1 180px;
   }
 }
+
+/* ===== Hierarchy Refresh ===== */
+:root {
+  --page-max: 1180px;
+  --section-gap: 28px;
+  --float-distance: 0px;
+  --layout-gap: clamp(18px, 2.4vw, 30px);
+  --panel-padding: clamp(22px, 2.8vw, 30px);
+}
+
+.shell {
+  max-width: var(--page-max);
+  padding: 30px 22px 96px;
+}
+
+.page-shell,
+.dashboard-shell,
+.auth-shell {
+  gap: var(--layout-gap);
+}
+
+.page-hero,
+.auth-header {
+  gap: 28px;
+  padding: clamp(28px, 3.8vw, 40px);
+  border-radius: 34px;
+}
+
+.page-hero {
+  grid-template-columns: minmax(0, 1.4fr) minmax(280px, 0.9fr);
+}
+
+.hero-copy,
+.auth-header-copy {
+  gap: 20px;
+}
+
+.hero-brand {
+  gap: 20px;
+}
+
+.hero-actions {
+  align-content: start;
+}
+
+.hero-metrics {
+  gap: 14px;
+}
+
+.metric-card {
+  min-height: auto;
+}
+
+.section-card {
+  padding: var(--panel-padding);
+}
+
+.dashboard-tabs,
+.nav.tab-strip,
+.auth-tabs {
+  padding: 8px;
+  border-radius: 24px;
+}
+
+.card:hover,
+.metric-card:hover,
+.summary-item:hover,
+.list-item:hover,
+.question-surface:hover,
+.preview-area:hover,
+.analytics-kpi:hover,
+.analytics-panel:hover,
+.analytics-ai-block:hover,
+.analytics-ai-focus:hover,
+.analytics-perf-row:hover,
+.analytics-blind-card:hover,
+.coach-brief-card:hover,
+.coach-focus-card:hover,
+.coach-note:hover,
+.account-profile-card:hover,
+.role-card:hover {
+  transform: none;
+}
+
+.auth-stage,
+.profile-layout,
+.review-shell,
+.dashboard-split,
+.teacher-builder-shell,
+.admin-console-grid {
+  display: grid;
+  gap: var(--layout-gap);
+  align-items: start;
+}
+
+.auth-stage {
+  grid-template-columns: minmax(0, 1.08fr) minmax(360px, 0.92fr);
+}
+
+.profile-layout,
+.review-shell,
+.teacher-builder-shell {
+  grid-template-columns: minmax(0, 1.34fr) minmax(300px, 0.9fr);
+}
+
+.dashboard-split {
+  grid-template-columns: minmax(0, 1.3fr) minmax(260px, 0.82fr);
+}
+
+.admin-console-grid {
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+}
+
+.admin-console-grid-secondary {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.auth-stage > *,
+.profile-layout > *,
+.review-shell > *,
+.dashboard-split > *,
+.teacher-builder-shell > *,
+.admin-console-grid > * {
+  min-width: 0;
+}
+
+.panel-stack,
+.profile-main-column,
+.profile-side-column,
+.review-main-column,
+.review-side-column {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.sticky-card {
+  position: sticky;
+  top: 18px;
+  align-self: start;
+}
+
+.app-auth-view .auth-shell {
+  min-height: auto;
+  justify-content: unset;
+}
+
+.app-auth-view .auth-header {
+  justify-items: start;
+  text-align: left;
+  min-height: 100%;
+}
+
+.app-auth-view .auth-header-copy {
+  align-items: flex-start;
+}
+
+.app-auth-view .auth-helper-list {
+  justify-content: flex-start;
+}
+
+.app-auth-view .auth-card {
+  width: 100%;
+  min-height: 100%;
+  margin: 0;
+  padding: clamp(24px, 3vw, 34px);
+}
+
+.practice-shell {
+  display: flex;
+  flex-direction: column;
+  gap: var(--layout-gap);
+}
+
+.practice-stage-card {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.practice-status-band,
+.practice-command-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+.practice-stage {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  padding: clamp(18px, 3vw, 28px);
+  border-radius: 24px;
+  border: 1px solid var(--line);
+  background:
+    var(--glass-highlight-soft),
+    var(--glass-overlay-soft),
+    var(--surface-glass);
+}
+
+.practice-stage .buzz-wrap {
+  width: 100%;
+  min-height: clamp(260px, 46vh, 520px);
+  margin: 0;
+}
+
+.practice-stage .counter {
+  text-align: center;
+}
+
+.practice-stage .practice-answer-entry,
+.practice-stage .answer,
+.practice-stage .coach-card {
+  width: min(760px, 100%);
+}
+
+.practice-stage .answer {
+  display: block;
+}
+
+.practice-control-dock {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+}
+
+.practice-shortcuts {
+  font-size: 13px;
+}
+
+.review-kpi-band {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
+
+.review-chart-stack {
+  display: grid;
+  gap: 16px;
+}
+
+.review-toolbar {
+  margin-top: 12px;
+}
+
+.table-frame {
+  overflow: auto;
+  max-height: 420px;
+  padding-right: 4px;
+}
+
+.library-shell {
+  display: flex;
+  flex-direction: column;
+  gap: var(--layout-gap);
+}
+
+.library-toolbar-grid {
+  display: grid;
+  gap: 14px;
+}
+
+.library-table-frame {
+  max-height: 560px;
+}
+
+.teacher-builder-shell .sticky-card {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.teacher-builder-shell .preview-area {
+  margin-top: 0;
+}
+
+.item-copy {
+  min-width: min(340px, 100%);
+  display: flex;
+  flex: 1 1 280px;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.list-item {
+  gap: 14px 18px;
+  padding: 18px 20px;
+  align-items: center;
+}
+
+.list-item .item-title {
+  font-size: 17px;
+  font-weight: 800;
+}
+
+.list-item .item-meta {
+  display: block;
+  line-height: 1.6;
+}
+
+.list-item .item-badge,
+.list-item .status-pill,
+.list-item .item-score {
+  align-self: center;
+}
+
+.student-side-note,
+.teacher-side-note {
+  height: 100%;
+}
+
+.dashboard-split .coach-brief-card {
+  margin: 0;
+}
+
+.account-layout .account-profile-card {
+  height: 100%;
+}
+
+.admin-console-grid .section-card {
+  height: 100%;
+}
+
+@media (max-width: 1180px) {
+  .auth-stage,
+  .profile-layout,
+  .review-shell,
+  .dashboard-split,
+  .teacher-builder-shell,
+  .admin-console-grid,
+  .admin-console-grid-secondary {
+    grid-template-columns: 1fr;
+  }
+
+  .sticky-card {
+    position: static;
+  }
+}
+
+@media (max-width: 900px) {
+  .page-hero {
+    grid-template-columns: 1fr;
+  }
+
+  .hero-actions {
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 760px) {
+  .shell {
+    padding: 22px 16px 88px;
+  }
+
+  .practice-status-band,
+  .practice-command-row,
+  .inline-actions {
+    align-items: stretch;
+  }
+
+  .list-item {
+    align-items: flex-start;
+  }
+
+  .list-item .item-badge,
+  .list-item .status-pill,
+  .list-item .item-score,
+  .list-item .item-actions {
+    width: 100%;
+    margin-left: 0;
+  }
+
+  .list-item .item-actions {
+    justify-content: flex-start;
+  }
+
+  .practice-stage .buzz-wrap {
+    min-height: 320px;
+  }
+}

@@ -24,110 +24,112 @@
     </style>
 </head>
 
-<body class="auth-page">
+<body class="auth-page app-auth-view">
     <div class="shell auth-shell">
-        <header class="auth-header">
-            <div class="logo auth-logo">HB</div>
-            <div class="auth-header-copy">
-                <div class="eyebrow">Account setup</div>
-                <h1 id="onboarding-title">Welcome to IHBB Drill</h1>
-                <p id="onboarding-subtitle" class="sub">Choose your role first, then finish the minimum setup to enter
-                    the right workspace.</p>
-                <div class="wizard-progress">
-                    <div id="progress-step-role" class="wizard-step active">1. Choose role</div>
-                    <div id="progress-step-setup" class="wizard-step">2. Finish setup</div>
-                </div>
-            </div>
-        </header>
-
-        <section class="card auth-card auth-card-wide">
-            <div id="alert-box" class="alert hidden"></div>
-
-            <div id="step-role" class="view active">
-                <div class="section-head">
-                    <div>
-                        <div class="eyebrow">Step 1</div>
-                        <h2 class="card-title">What kind of workspace do you need?</h2>
-                        <p class="section-subtitle">Students join classes and practice assignments. Teachers create
-                            classes, assign work, and host live competition.</p>
+        <div class="auth-stage">
+            <header class="auth-header">
+                <div class="logo auth-logo">HB</div>
+                <div class="auth-header-copy">
+                    <div class="eyebrow">Account setup</div>
+                    <h1 id="onboarding-title">Welcome to IHBB Drill</h1>
+                    <p id="onboarding-subtitle" class="sub">Choose your role first, then finish the minimum setup to
+                        enter the right workspace.</p>
+                    <div class="wizard-progress">
+                        <div id="progress-step-role" class="wizard-step active">1. Choose role</div>
+                        <div id="progress-step-setup" class="wizard-step">2. Finish setup</div>
                     </div>
                 </div>
-                <div class="role-cards">
-                    <div class="role-card" data-role="student">
-                        <div class="role-icon">S</div>
-                        <h4>Join a class</h4>
-                        <p class="muted">See assignments, practice independently, and compete in Live Bee rooms.</p>
-                    </div>
-                    <div class="role-card" data-role="teacher">
-                        <div class="role-icon">T</div>
-                        <h4>Run the room</h4>
-                        <p class="muted">Create classes, assign curated question sets, and track student progress.</p>
-                    </div>
-                </div>
-                <button id="btn-next-role" class="btn pri auth-option" disabled>Continue</button>
-            </div>
+            </header>
 
-            <div id="step-student" class="view hidden">
-                <div class="section-head">
-                    <div>
-                        <div class="eyebrow">Step 2</div>
-                        <h2 class="card-title">Join your class</h2>
-                        <p class="section-subtitle">If you already have a class code, enter it now. If not, skip and
-                            join later from the dashboard.</p>
-                    </div>
-                </div>
+            <section class="card auth-card auth-card-wide">
+                <div id="alert-box" class="alert hidden"></div>
 
-                <div class="card-muted-box">
-                    <div class="input-group">
-                        <label for="student-class-code">Class Code</label>
-                        <input type="text" id="student-class-code" placeholder="e.g. HIST26">
-                        <span class="muted">Ask your teacher for the invite code if you do not have it yet.</span>
+                <div id="step-role" class="view active">
+                    <div class="section-head">
+                        <div>
+                            <div class="eyebrow">Step 1</div>
+                            <h2 class="card-title">What kind of workspace do you need?</h2>
+                            <p class="section-subtitle">Students join classes and practice assignments. Teachers create
+                                classes, assign work, and host live competition.</p>
+                        </div>
                     </div>
+                    <div class="role-cards">
+                        <div class="role-card" data-role="student">
+                            <div class="role-icon">S</div>
+                            <h4>Join a class</h4>
+                            <p class="muted">See assignments, practice independently, and compete in Live Bee rooms.</p>
+                        </div>
+                        <div class="role-card" data-role="teacher">
+                            <div class="role-icon">T</div>
+                            <h4>Run the room</h4>
+                            <p class="muted">Create classes, assign curated question sets, and track student progress.</p>
+                        </div>
+                    </div>
+                    <button id="btn-next-role" class="btn pri auth-option" disabled>Continue</button>
                 </div>
 
-                <div class="wizard-actions">
-                    <button id="btn-skip-student" class="btn ghost">Skip for now</button>
-                    <button id="btn-finish-student" class="btn pri">Join and finish</button>
-                </div>
-            </div>
-
-            <div id="step-teacher" class="view hidden">
-                <div class="section-head">
-                    <div>
-                        <div class="eyebrow">Step 2</div>
-                        <h2 class="card-title">Create your first class</h2>
-                        <p class="section-subtitle">Give the class a name and generate the invite code your students
-                            will use during signup.</p>
-                    </div>
-                </div>
-
-                <div class="stack">
-                    <div class="card-muted-box">
-                        <div class="input-group">
-                            <label for="teacher-class-name">Class Name</label>
-                            <input type="text" id="teacher-class-name" placeholder="e.g. History 101 - Fall 2026">
+                <div id="step-student" class="view hidden">
+                    <div class="section-head">
+                        <div>
+                            <div class="eyebrow">Step 2</div>
+                            <h2 class="card-title">Join your class</h2>
+                            <p class="section-subtitle">If you already have a class code, enter it now. If not, skip
+                                and join later from the dashboard.</p>
                         </div>
                     </div>
 
                     <div class="card-muted-box">
                         <div class="input-group">
-                            <label for="generated-code">Invite Code</label>
-                            <div class="inline-form">
-                                <input type="text" id="generated-code" readonly placeholder="Generate a code">
-                                <button id="btn-generate-code" class="btn ghost" type="button">Generate</button>
+                            <label for="student-class-code">Class Code</label>
+                            <input type="text" id="student-class-code" placeholder="e.g. HIST26">
+                            <span class="muted">Ask your teacher for the invite code if you do not have it yet.</span>
+                        </div>
+                    </div>
+
+                    <div class="wizard-actions">
+                        <button id="btn-skip-student" class="btn ghost">Skip for now</button>
+                        <button id="btn-finish-student" class="btn pri">Join and finish</button>
+                    </div>
+                </div>
+
+                <div id="step-teacher" class="view hidden">
+                    <div class="section-head">
+                        <div>
+                            <div class="eyebrow">Step 2</div>
+                            <h2 class="card-title">Create your first class</h2>
+                            <p class="section-subtitle">Give the class a name and generate the invite code your
+                                students will use during signup.</p>
+                        </div>
+                    </div>
+
+                    <div class="stack">
+                        <div class="card-muted-box">
+                            <div class="input-group">
+                                <label for="teacher-class-name">Class Name</label>
+                                <input type="text" id="teacher-class-name" placeholder="e.g. History 101 - Fall 2026">
                             </div>
-                            <span class="muted">Codes can be shared immediately with students, or you can skip and set
-                                up classes later.</span>
+                        </div>
+
+                        <div class="card-muted-box">
+                            <div class="input-group">
+                                <label for="generated-code">Invite Code</label>
+                                <div class="inline-form">
+                                    <input type="text" id="generated-code" readonly placeholder="Generate a code">
+                                    <button id="btn-generate-code" class="btn ghost" type="button">Generate</button>
+                                </div>
+                                <span class="muted">Codes can be shared immediately with students, or you can skip and
+                                    set up classes later.</span>
+                            </div>
                         </div>
                     </div>
-                </div>
 
-                <div class="wizard-actions">
-                    <button id="btn-skip-teacher" class="btn ghost">Skip for now</button>
-                    <button id="btn-finish-teacher" class="btn pri">Create and finish</button>
+                    <div class="wizard-actions">
+                        <button id="btn-skip-teacher" class="btn ghost">Skip for now</button>
+                        <button id="btn-finish-teacher" class="btn pri">Create and finish</button>
+                    </div>
                 </div>
-            </div>
-        </section>
+            </section>
+        </div>
     </div>
 </body>
 

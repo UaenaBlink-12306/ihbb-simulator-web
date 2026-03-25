@@ -85,7 +85,7 @@
   </script>
 </head>
 
-<body>
+<body class="app-practice-view">
   <div class="shell page-shell">
     <header class="page-hero">
       <div class="hero-copy">
@@ -206,7 +206,7 @@
         </div>
 
         <aside class="setup-side stack">
-          <div class="card section-card">
+          <div class="card section-card sticky-card">
             <div class="section-head">
               <div>
                 <div class="eyebrow">Session overview</div>
@@ -298,143 +298,185 @@
 
   <!-- PRACTICE -->
   <section id="view-practice" class="view">
-    <div class="card">
-      <div class="row">
-        <div class="pill">Total: <span id="drill-total">—</span></div>
-        <div class="pill">Correct: <span id="drill-correct" class="stat">0</span></div>
-        <div class="pill">Accuracy: <span id="drill-acc" class="stat">—</span></div>
-        <div class="bar" style="flex:1 1 280px"><span id="barfill"></span></div>
-        <div class="pill right muted" id="drill-progress">0 / 0</div>
-      </div>
-      <div class="sep"></div>
+    <div class="practice-shell">
+      <div class="card section-card practice-stage-card">
+        <div class="practice-status-band">
+          <div class="pill">Total: <span id="drill-total">—</span></div>
+          <div class="pill">Correct: <span id="drill-correct" class="stat">0</span></div>
+          <div class="pill">Accuracy: <span id="drill-acc" class="stat">—</span></div>
+          <div class="bar" style="flex:1 1 280px"><span id="barfill"></span></div>
+          <div class="pill muted" id="drill-progress">0 / 0</div>
+        </div>
 
-      <div class="row" style="align-items:center">
-        <div class="big" id="status">Ready.</div>
-        <div class="pill">Buzz time: <span id="buzz-time" class="stat">—</span></div>
-        <div class="grow"></div>
-        <button id="btn-pause" class="btn ghost">Pause</button>
-        <button id="btn-quit" class="btn ghost">Quit</button>
-      </div>
+        <div class="practice-command-row">
+          <div class="big" id="status">Ready.</div>
+          <div class="pill">Buzz time: <span id="buzz-time" class="stat">—</span></div>
+          <div class="grow"></div>
+          <button id="btn-pause" class="btn ghost">Pause</button>
+          <button id="btn-quit" class="btn ghost">Quit</button>
+        </div>
 
-      <div class="buzz-wrap">
-        <button id="btn-buzz" class="buzz pulse">B U Z Z (Space)</button>
-      </div>
+        <div class="practice-stage">
+          <div class="counter" id="countdown"></div>
+          <div class="buzz-wrap">
+            <button id="btn-buzz" class="buzz pulse">B U Z Z (Space)</button>
+          </div>
+          <div class="row practice-answer-entry" id="typing-row" style="display:none;">
+            <input id="user-answer" type="text" placeholder="Type your answer…" style="flex:1 1 420px" />
+            <button id="btn-submit-answer" class="btn pri">Submit</button>
+          </div>
+          <div class="answer" id="answer"></div>
+          <div id="coach-card" class="coach-card" style="display:none"></div>
+        </div>
 
-      <div class="counter" id="countdown"></div>
-      <div class="row" id="typing-row" style="display:none; margin-top:10px">
-        <input id="user-answer" type="text" placeholder="Type your answer…" style="flex:1 1 420px" />
-        <button id="btn-submit-answer" class="btn pri">Submit</button>
-      </div>
-      <div class="answer" id="answer"></div>
-      <div id="coach-card" class="coach-card" style="display:none"></div>
+        <div class="practice-control-dock">
+          <div class="row practice-bottom">
+            <button id="btn-replay" class="btn ghost" disabled>Replay last line (L)</button>
+            <button id="btn-next" class="btn ghost" disabled>Next (N)</button>
+            <button id="btn-right" class="btn good" disabled style="display:none">✔ Right (R)</button>
+            <button id="btn-wrong" class="btn bad" disabled style="display:none">✖ Wrong (W)</button>
+            <div class="grow"></div>
+            <button id="btn-copy-answer" class="btn ghost" disabled>Copy answer (C)</button>
+            <button id="btn-alias" class="btn ghost" disabled>Add alias</button>
+            <button id="btn-flag" class="btn ghost" disabled>Flag</button>
+          </div>
 
-      <div class="row practice-bottom" style="margin-top:14px">
-        <button id="btn-replay" class="btn ghost" disabled>Replay last line (L)</button>
-        <button id="btn-next" class="btn ghost" disabled>Next (N)</button>
-        <!-- Manual grading disabled when auto-grade is on -->
-        <button id="btn-right" class="btn good" disabled style="display:none">✔ Right (R)</button>
-        <button id="btn-wrong" class="btn bad" disabled style="display:none">✖ Wrong (W)</button>
-        <div class="grow"></div>
-        <button id="btn-copy-answer" class="btn ghost" disabled>Copy answer (C)</button>
-        <button id="btn-alias" class="btn ghost" disabled>Add alias</button>
-        <button id="btn-flag" class="btn ghost" disabled>Flag</button>
+          <div class="muted practice-shortcuts">Space = Buzz • R = Right • W = Wrong • N = Next • L = Replay • ? =
+            Help</div>
+        </div>
       </div>
-
-      <div class="muted" style="margin-top:10px">Space = Buzz • R = Right • W = Wrong • N = Next • L = Replay • ? =
-        Help</div>
     </div>
   </section>
 
   <!-- REVIEW -->
   <section id="view-review" class="view">
-    <div class="grid grid-2">
-      <div class="card">
-        <div class="card-title">Last session</div>
-        <div class="row">
-          <div class="pill">Total: <span id="r-last-total">—</span></div>
-          <div class="pill">Correct: <span id="r-last-correct">—</span></div>
-          <div class="pill">Accuracy: <span id="r-last-acc">—</span></div>
-          <div class="pill">Duration: <span id="r-last-dur">—</span></div>
+    <div class="review-shell">
+      <div class="review-main-column stack">
+        <div class="card section-card">
+          <div class="section-head">
+            <div>
+              <div class="eyebrow">Performance recap</div>
+              <h2 class="card-title">Last session</h2>
+              <p class="section-subtitle">Use the charts to read speed and accuracy first, then decide what to repeat.</p>
+            </div>
+          </div>
+          <div class="review-kpi-band">
+            <div class="summary-item">
+              <span>Total</span>
+              <strong id="r-last-total">—</strong>
+            </div>
+            <div class="summary-item">
+              <span>Correct</span>
+              <strong id="r-last-correct">—</strong>
+            </div>
+            <div class="summary-item">
+              <span>Accuracy</span>
+              <strong id="r-last-acc">—</strong>
+            </div>
+            <div class="summary-item">
+              <span>Duration</span>
+              <strong id="r-last-dur">—</strong>
+            </div>
+          </div>
+          <div class="review-chart-stack">
+            <svg id="chart-buzz" class="chart" viewBox="0 0 640 180" aria-label="Time to buzz histogram"></svg>
+            <svg id="chart-acc-cat" class="chart" viewBox="0 0 640 180" aria-label="Accuracy by region"></svg>
+          </div>
+          <div class="inline-actions">
+            <button id="btn-review-misses" class="btn pri">Review missed now</button>
+            <button id="btn-export-wrong" class="btn ghost">Export wrong.txt</button>
+            <button id="btn-clear-wrong" class="btn ghost">Clear wrong bank</button>
+          </div>
         </div>
-        <div class="sep"></div>
-        <svg id="chart-buzz" class="chart" viewBox="0 0 640 180" aria-label="Time to buzz histogram"></svg>
-        <div class="sep"></div>
-        <svg id="chart-acc-cat" class="chart" viewBox="0 0 640 180" aria-label="Accuracy by region"></svg>
-        <div class="sep"></div>
-        <div class="row">
-          <button id="btn-review-misses" class="btn pri">Review missed now</button>
-          <button id="btn-export-wrong" class="btn ghost">Export wrong.txt</button>
-          <div class="grow"></div>
-          <button id="btn-clear-wrong" class="btn ghost">Clear wrong bank</button>
+
+        <div class="card section-card">
+          <div class="section-head">
+            <div>
+              <div class="eyebrow">DeepSeek recap</div>
+              <h2 class="card-title">Session debrief</h2>
+              <p class="section-subtitle">Keep the AI takeaways separate from your raw stats so the next drill feels
+                more intentional.</p>
+            </div>
+          </div>
+          <div id="review-coach-summary" class="card-muted-box summary-note">
+            <div class="empty-kicker">Session coach</div>
+            <p id="review-coach-note" class="empty-copy">Finish a session and the review page will surface the coach
+              lesson patterns worth drilling next.</p>
+          </div>
+          <div id="review-coach-focuses" class="coach-focus-grid" style="margin-top: 16px;"></div>
+          <div class="inline-actions" style="margin-top: 16px;">
+            <button id="btn-review-coach-apply" class="btn pri" type="button">Practice Top Focus</button>
+            <button id="btn-review-coach-notebook" class="btn ghost" type="button">Jump to AI Notebook</button>
+          </div>
         </div>
       </div>
 
-      <div class="card">
-        <div class="card-title">Wrong bank (SRS)</div>
-        <div class="row">
-          <div class="pill">Due today: <span id="due-today">0</span></div>
-          <div class="pill">Total tracked: <span id="wrong-count">0</span></div>
-          <div class="grow"></div>
-          <button id="btn-practice-due" class="btn ghost">Practice due now</button>
+      <aside class="review-side-column stack">
+        <div class="card section-card sticky-card">
+          <div class="section-head">
+            <div>
+              <div class="eyebrow">Spaced repetition</div>
+              <h2 class="card-title">Wrong bank</h2>
+              <p class="section-subtitle">Keep today’s due material in a smaller side rail instead of letting it compete
+                with the full review summary.</p>
+            </div>
+          </div>
+          <div class="inline-actions">
+            <div class="pill">Due today: <span id="due-today">0</span></div>
+            <div class="pill">Total tracked: <span id="wrong-count">0</span></div>
+            <button id="btn-practice-due" class="btn ghost">Practice due now</button>
+          </div>
+          <div class="inline-form review-toolbar">
+            <input id="wrong-search" type="text" placeholder="Search in wrong bank…" style="flex:1 1 auto">
+            <button id="wrong-refresh" class="btn ghost">Refresh</button>
+          </div>
+          <div class="table-frame">
+            <table id="tbl-wrong">
+              <thead>
+                <tr>
+                  <th>Answer</th>
+                  <th>Box</th>
+                  <th>Due</th>
+                  <th>Aliases</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
         </div>
-        <div class="sep"></div>
-        <div class="row" style="margin-bottom:6px">
-          <input id="wrong-search" type="text" placeholder="Search in wrong bank…" style="flex:1 1 auto">
-          <button id="wrong-refresh" class="btn ghost">Refresh</button>
+
+        <div class="card section-card">
+          <div class="section-head">
+            <div>
+              <div class="eyebrow">Past runs</div>
+              <h2 class="card-title">History</h2>
+              <p class="section-subtitle">Older sessions stay available, but they no longer share the same canvas as the
+                live recap.</p>
+            </div>
+          </div>
+          <div class="table-frame">
+            <table id="tbl-history">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Total</th>
+                  <th>Correct</th>
+                  <th>Accuracy</th>
+                  <th>Duration</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+          <div class="inline-actions" style="margin-top: 16px;">
+            <button id="btn-clear-history" class="btn ghost">Clear history</button>
+          </div>
         </div>
-        <div style="max-height:320px; overflow:auto">
-          <table id="tbl-wrong">
-            <thead>
-              <tr>
-                <th>Answer</th>
-                <th>Box</th>
-                <th>Due</th>
-                <th>Aliases</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody></tbody>
-          </table>
-        </div>
-      </div>
+      </aside>
     </div>
-
-      <div class="card" style="margin-top:14px">
-        <div class="card-title">DeepSeek session debrief</div>
-        <div id="review-coach-summary" class="card-muted-box summary-note" style="margin-top: 12px;">
-        <div class="empty-kicker">Session coach</div>
-        <p id="review-coach-note" class="empty-copy">Finish a session and the review page will surface the coach lesson patterns worth drilling next.</p>
-      </div>
-      <div id="review-coach-focuses" class="coach-focus-grid" style="margin-top: 16px;"></div>
-      <div class="row" style="margin-top: 16px">
-        <button id="btn-review-coach-apply" class="btn pri" type="button">Practice Top Focus</button>
-        <button id="btn-review-coach-notebook" class="btn ghost" type="button">Jump to AI Notebook</button>
-      </div>
-    </div>
-
-      <div class="card" style="margin-top:14px">
-        <div class="card-title">History</div>
-        <div style="overflow:auto">
-        <table id="tbl-history">
-          <thead>
-            <tr>
-              <th>Date</th>
-              <th>Total</th>
-              <th>Correct</th>
-              <th>Accuracy</th>
-              <th>Duration</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody></tbody>
-        </table>
-      </div>
-      <div class="sep"></div>
-      <div class="row">
-        <button id="btn-clear-history" class="btn ghost">Clear history</button>
-      </div>
-      </div>
-    </section>
+  </section>
 
     <section id="view-coach" class="view">
       <div class="stack">
@@ -480,51 +522,71 @@
 
   <!-- LIBRARY -->
   <section id="view-library" class="view">
-    <div class="card">
-      <div class="row">
-        <div class="card-title">Library — manage sets, tags, filters</div>
-        <div class="grow"></div>
-        <button id="lib-new-set" class="btn ghost">New set from file</button>
-        <button id="lib-sanitize-all" class="btn ghost">Sanitize current set</button>
-        <button id="lib-import-btn" class="btn ghost">Import JSON</button>
-        <button id="lib-export-all" class="btn ghost">Export all sets</button>
-        <button id="lib-merge-dupes" class="btn ghost">Merge duplicates</button>
+    <div class="library-shell">
+      <div class="card section-card">
+        <div class="section-head">
+          <div>
+            <div class="eyebrow">Question bank</div>
+            <h2 class="card-title">Library controls</h2>
+            <p class="section-subtitle">Keep set management, filtering, and bulk actions in a compact control layer so
+              the table stays readable.</p>
+          </div>
+          <div class="inline-actions">
+            <button id="lib-new-set" class="btn ghost">New set from file</button>
+            <button id="lib-sanitize-all" class="btn ghost">Sanitize current set</button>
+            <button id="lib-import-btn" class="btn ghost">Import JSON</button>
+            <button id="lib-export-all" class="btn ghost">Export all sets</button>
+            <button id="lib-merge-dupes" class="btn ghost">Merge duplicates</button>
+          </div>
+        </div>
+
+        <div class="library-toolbar-grid">
+          <div class="inline-form">
+            <select id="lib-set-sel" style="min-width:260px"></select>
+            <button id="lib-export-json" class="btn ghost">Export JSON</button>
+          </div>
+          <div class="inline-actions">
+            <div class="pill">Items: <span id="lib-count">0</span></div>
+            <div class="pill">Categories: <span id="lib-cats">—</span></div>
+            <div class="pill">Eras: <span id="lib-eras">—</span></div>
+          </div>
+          <div class="inline-form">
+            <input id="lib-search" type="text" placeholder="Search question/answer…" style="flex:1 1 auto">
+            <select id="lib-filter-cat" style="min-width:160px">
+              <option value="">All regions</option>
+            </select>
+            <select id="lib-filter-era" style="min-width:140px">
+              <option value="">All eras</option>
+            </select>
+            <button id="lib-practice-filtered" class="btn pri">Practice filtered</button>
+          </div>
+        </div>
       </div>
-      <div class="sep"></div>
-      <div class="row">
-        <select id="lib-set-sel" style="min-width:260px"></select>
-        <div class="pill">Items: <span id="lib-count">0</span></div>
-        <div class="pill">Categories: <span id="lib-cats">—</span></div>
-        <div class="pill">Eras: <span id="lib-eras">—</span></div>
-        <div class="grow"></div>
-        <button id="lib-export-json" class="btn ghost">Export JSON</button>
-      </div>
-      <div class="sep"></div>
-      <div class="row" style="margin-bottom:6px">
-        <input id="lib-search" type="text" placeholder="Search question/answer…" style="flex:1 1 auto">
-        <select id="lib-filter-cat" style="min-width:160px">
-          <option value="">All regions</option>
-        </select>
-        <select id="lib-filter-era" style="min-width:140px">
-          <option value="">All eras</option>
-        </select>
-        <div class="grow"></div>
-        <button id="lib-practice-filtered" class="btn pri">Practice filtered</button>
-      </div>
-      <div style="max-height:420px; overflow:auto">
-        <table id="tbl-lib">
-          <thead>
-            <tr>
-              <th>#</th>
-              <th>Answer</th>
-              <th>Aliases</th>
-              <th>Region</th>
-              <th>Era</th>
-              <th>Source</th>
-            </tr>
-          </thead>
-          <tbody></tbody>
-        </table>
+
+      <div class="card section-card">
+        <div class="section-head">
+          <div>
+            <div class="eyebrow">Set contents</div>
+            <h2 class="card-title">Filtered question list</h2>
+            <p class="section-subtitle">The table is isolated below the control band so the current set and its filters
+              remain obvious while you scan rows.</p>
+          </div>
+        </div>
+        <div class="table-frame library-table-frame">
+          <table id="tbl-lib">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Answer</th>
+                <th>Aliases</th>
+                <th>Region</th>
+                <th>Era</th>
+                <th>Source</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
       </div>
     </div>
   </section>

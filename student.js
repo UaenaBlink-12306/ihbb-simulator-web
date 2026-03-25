@@ -1171,7 +1171,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         el.innerHTML = list.map(cs => {
             const c = cs.classes;
             return `<div class="list-item">
-                <span class="item-title">${esc(c.name)}</span>
+                <div class="item-copy">
+                    <span class="item-title">${esc(c.name)}</span>
+                    <span class="item-meta">Invite code ready for assignments and live play.</span>
+                </div>
                 <span class="item-badge">${c.code}</span>
                 <div class="item-actions">
                     <button class="btn bad" onclick="leaveClass('${cs.class_id}')">Leave</button>
@@ -1307,8 +1310,11 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const due = a.due_date ? new Date(a.due_date).toLocaleDateString() : 'No deadline';
                 const cls = a.classes?.name || '';
                 return `<div class="list-item">
-                    <span class="item-title">${esc(a.title)}</span>
-                    <span class="item-meta">${esc(cls)} · Due: ${due}</span>
+                    <div class="item-copy">
+                        <span class="item-title">${esc(a.title)}</span>
+                        <span class="item-meta">${esc(cls)} · Due: ${due}</span>
+                    </div>
+                    <span class="status-pill pending">Pending</span>
                     <div class="item-actions">
                         <button class="btn pri" onclick="startAssignment('${a.id}', '${esc(a.title)}')">Start</button>
                     </div>
@@ -1326,8 +1332,11 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const sub = subMap[a.id];
                 const pct = sub.total ? Math.round(sub.correct / sub.total * 100) : 0;
                 return `<div class="list-item">
-                    <span class="item-title">${esc(a.title)}</span>
-                    <span class="item-meta">${esc(cls)} · Due: ${due}</span>
+                    <div class="item-copy">
+                        <span class="item-title">${esc(a.title)}</span>
+                        <span class="item-meta">${esc(cls)} · Due: ${due}</span>
+                    </div>
+                    <span class="status-pill done">Completed</span>
                     <span class="item-score ${pct >= 50 ? 'good' : 'bad'}">${sub.correct}/${sub.total} (${pct}%)</span>
                     <div class="item-actions">
                         <button class="btn ghost" onclick="startAssignment('${a.id}', '${esc(a.title)}')">Redo</button>
@@ -1338,8 +1347,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         // Update sub-tab labels with counts
         document.querySelectorAll('.assign-sub-tab').forEach(t => {
-            if (t.dataset.sub === 'todo') t.textContent = `📋 To Do (${todoList.length})`;
-            if (t.dataset.sub === 'completed') t.textContent = `✅ Completed (${doneList.length})`;
+            if (t.dataset.sub === 'todo') t.textContent = `To Do · ${todoList.length}`;
+            if (t.dataset.sub === 'completed') t.textContent = `Completed · ${doneList.length}`;
         });
         renderAssignmentsCoachBrief();
     }

@@ -24,7 +24,7 @@
     <script src="teacher.js" defer></script>
 </head>
 
-<body>
+<body class="app-dashboard-view app-teacher-view">
     <div class="shell dashboard-shell">
         <header class="page-hero">
             <div class="hero-copy">
@@ -83,15 +83,26 @@
                     </div>
                     <button id="btn-new-class" class="btn pri">New Class</button>
                 </div>
-                <div id="new-class-form" class="card-muted-box hidden">
-                    <div class="inline-form">
-                        <input type="text" id="new-class-name" placeholder="Class name (e.g. History 101)">
-                        <button id="btn-save-class" class="btn pri">Create</button>
-                        <button id="btn-cancel-class" class="btn ghost">Cancel</button>
+                <div class="dashboard-split">
+                    <div class="panel-stack">
+                        <div id="new-class-form" class="card-muted-box hidden">
+                            <div class="inline-form">
+                                <input type="text" id="new-class-name" placeholder="Class name (e.g. History 101)">
+                                <button id="btn-save-class" class="btn pri">Create</button>
+                                <button id="btn-cancel-class" class="btn ghost">Cancel</button>
+                            </div>
+                        </div>
+                        <div id="classes-list" class="list-container" style="margin-top: 18px;">
+                            <p class="muted">Loading classes...</p>
+                        </div>
                     </div>
-                </div>
-                <div id="classes-list" class="list-container" style="margin-top: 18px;">
-                    <p class="muted">Loading classes...</p>
+                    <aside class="panel-stack">
+                        <div class="card-muted-box teacher-side-note">
+                            <div class="empty-kicker">Invite workflow</div>
+                            <p class="empty-copy">Create the class once, copy the code from the roster card, then use
+                                the list as the control surface for students and assignments.</p>
+                        </div>
+                    </aside>
                 </div>
             </div>
         </section>
@@ -105,151 +116,177 @@
                             remove outdated work.</p>
                     </div>
                 </div>
-                <div id="assignments-list" class="list-container">
-                    <p class="muted">Loading assignments...</p>
+                <div class="dashboard-split">
+                    <div id="assignments-list" class="list-container">
+                        <p class="muted">Loading assignments...</p>
+                    </div>
+                    <aside class="panel-stack">
+                        <div class="card-muted-box teacher-side-note">
+                            <div class="empty-kicker">Assignment view</div>
+                            <p class="empty-copy">Published work stays in a single management column, while class and
+                                score details open only when you ask for them.</p>
+                        </div>
+                    </aside>
                 </div>
             </div>
         </section>
 
         <section id="tab-create" class="view">
-            <div class="card section-card">
-                <div class="section-head">
-                    <div>
-                        <h2 class="card-title">Create Assignment</h2>
-                        <p class="section-subtitle">Set the assignment details first, then choose a selection strategy
-                            for questions.</p>
-                    </div>
-                </div>
-
-                <div class="form-grid">
-                    <div class="input-group">
-                        <label>Title</label>
-                        <input type="text" id="assign-title" placeholder="e.g. Week 3 Quiz">
-                    </div>
-                    <div class="input-group">
-                        <label>Assign to Class</label>
-                        <select id="assign-class"></select>
-                    </div>
-                    <div class="input-group">
-                        <label>Due Date</label>
-                        <input type="datetime-local" id="assign-due">
-                    </div>
-                    <div class="input-group full-width">
-                        <label>Instructions (optional)</label>
-                        <textarea id="assign-instructions" rows="3"
-                            placeholder="Any special instructions for students..."></textarea>
-                    </div>
-                </div>
-
-                <div class="sep"></div>
-
-                <div class="section-head">
-                    <div>
-                        <h3 style="margin: 0;">Select Questions</h3>
-                        <p class="section-subtitle">Switch between random, filtered, or hand-picked selection without
-                            losing your current preview.</p>
-                    </div>
-                </div>
-
-                <div class="card-muted-box generator-card" style="margin-bottom: 18px;">
-                    <div class="section-head" style="margin-bottom: 12px;">
+            <div class="teacher-builder-shell">
+                <div class="card section-card">
+                    <div class="section-head">
                         <div>
-                            <h3 style="margin: 0;">DeepSeek Draft Builder</h3>
-                            <p class="section-subtitle">Generate a focused batch of fresh questions, preview them, and
-                                drop them straight into this assignment.</p>
-                        </div>
-                        <div class="inline-actions">
-                            <button id="btn-teacher-generate" class="btn pri" type="button">Generate Draft</button>
-                            <button id="btn-teacher-add-draft" class="btn ghost" type="button" disabled>Add Draft to Assignment</button>
+                            <h2 class="card-title">Create Assignment</h2>
+                            <p class="section-subtitle">Set the assignment details first, then choose a selection
+                                strategy for questions.</p>
                         </div>
                     </div>
-                    <div class="setup-grid">
-                        <div class="input-group" style="margin: 0;">
-                            <label for="teacher-gen-topic">Focus Topic</label>
-                            <input type="text" id="teacher-gen-topic" placeholder="e.g. Meiji Japan, Cold War diplomacy">
+
+                    <div class="form-grid">
+                        <div class="input-group">
+                            <label>Title</label>
+                            <input type="text" id="assign-title" placeholder="e.g. Week 3 Quiz">
                         </div>
-                        <div class="input-group" style="margin: 0;">
-                            <label for="teacher-gen-count">Count</label>
-                            <input type="number" id="teacher-gen-count" value="5" min="1" max="12">
+                        <div class="input-group">
+                            <label>Assign to Class</label>
+                            <select id="assign-class"></select>
                         </div>
-                        <div class="input-group" style="margin: 0;">
-                            <label for="teacher-gen-region">Region</label>
-                            <select id="teacher-gen-region"></select>
+                        <div class="input-group">
+                            <label>Due Date</label>
+                            <input type="datetime-local" id="assign-due">
                         </div>
-                        <div class="input-group" style="margin: 0;">
-                            <label for="teacher-gen-era">Era</label>
-                            <select id="teacher-gen-era"></select>
+                        <div class="input-group full-width">
+                            <label>Instructions (optional)</label>
+                            <textarea id="assign-instructions" rows="3"
+                                placeholder="Any special instructions for students..."></textarea>
                         </div>
                     </div>
-                    <p id="teacher-gen-status" class="section-subtitle" style="margin-top: 12px;">Generated drafts stay private to your account and can be reused later in your own builder.</p>
-                    <div id="teacher-gen-preview" class="generator-preview hidden"></div>
-                </div>
 
-                <div class="chips">
-                    <div class="chip active mode-btn" data-mode="random">Random</div>
-                    <div class="chip mode-btn" data-mode="filter">By Topic / Era</div>
-                    <div class="chip mode-btn" data-mode="pick">Hand Pick</div>
-                </div>
+                    <div class="sep"></div>
 
-                <div id="mode-random" class="mode-panel view active" style="margin-top: 18px;">
-                    <div class="card-muted-box">
-                        <div class="inline-form">
-                            <div class="input-group" style="margin: 0;">
-                                <label>Number of questions</label>
-                                <input type="number" id="random-count" value="10" min="1" max="200">
+                    <div class="section-head">
+                        <div>
+                            <h3 style="margin: 0;">Select Questions</h3>
+                            <p class="section-subtitle">Switch between random, filtered, or hand-picked selection
+                                without losing your current preview.</p>
+                        </div>
+                    </div>
+
+                    <div class="card-muted-box generator-card" style="margin-bottom: 18px;">
+                        <div class="section-head" style="margin-bottom: 12px;">
+                            <div>
+                                <h3 style="margin: 0;">DeepSeek Draft Builder</h3>
+                                <p class="section-subtitle">Generate a focused batch of fresh questions, preview them,
+                                    and drop them straight into this assignment.</p>
                             </div>
-                            <button id="btn-random-preview" class="btn ghost">Preview Selection</button>
+                            <div class="inline-actions">
+                                <button id="btn-teacher-generate" class="btn pri" type="button">Generate Draft</button>
+                                <button id="btn-teacher-add-draft" class="btn ghost" type="button" disabled>Add Draft to Assignment</button>
+                            </div>
                         </div>
+                        <div class="setup-grid">
+                            <div class="input-group" style="margin: 0;">
+                                <label for="teacher-gen-topic">Focus Topic</label>
+                                <input type="text" id="teacher-gen-topic" placeholder="e.g. Meiji Japan, Cold War diplomacy">
+                            </div>
+                            <div class="input-group" style="margin: 0;">
+                                <label for="teacher-gen-count">Count</label>
+                                <input type="number" id="teacher-gen-count" value="5" min="1" max="12">
+                            </div>
+                            <div class="input-group" style="margin: 0;">
+                                <label for="teacher-gen-region">Region</label>
+                                <select id="teacher-gen-region"></select>
+                            </div>
+                            <div class="input-group" style="margin: 0;">
+                                <label for="teacher-gen-era">Era</label>
+                                <select id="teacher-gen-era"></select>
+                            </div>
+                        </div>
+                        <p id="teacher-gen-status" class="section-subtitle" style="margin-top: 12px;">Generated drafts stay private to your account and can be reused later in your own builder.</p>
+                        <div id="teacher-gen-preview" class="generator-preview hidden"></div>
                     </div>
-                </div>
 
-                <div id="mode-filter" class="mode-panel view hidden" style="margin-top: 18px;">
-                    <div class="stack">
+                    <div class="chips">
+                        <div class="chip active mode-btn" data-mode="random">Random</div>
+                        <div class="chip mode-btn" data-mode="filter">By Topic / Era</div>
+                        <div class="chip mode-btn" data-mode="pick">Hand Pick</div>
+                    </div>
+
+                    <div id="mode-random" class="mode-panel view active" style="margin-top: 18px;">
                         <div class="card-muted-box">
-                            <div class="setup-grid">
+                            <div class="inline-form">
                                 <div class="input-group" style="margin: 0;">
-                                    <label>Regions</label>
-                                    <div id="filter-category-chips" class="chips"></div>
+                                    <label>Number of questions</label>
+                                    <input type="number" id="random-count" value="10" min="1" max="200">
                                 </div>
-                                <div class="input-group" style="margin: 0;">
-                                    <label>Eras</label>
-                                    <div id="filter-era-chips" class="chips"></div>
-                                </div>
+                                <button id="btn-random-preview" class="btn ghost">Preview Selection</button>
                             </div>
                         </div>
-                        <div class="inline-form">
-                            <div class="input-group" style="margin: 0;">
-                                <label>Count</label>
-                                <input type="number" id="filter-count" value="10" min="1" max="200">
+                    </div>
+
+                    <div id="mode-filter" class="mode-panel view hidden" style="margin-top: 18px;">
+                        <div class="stack">
+                            <div class="card-muted-box">
+                                <div class="setup-grid">
+                                    <div class="input-group" style="margin: 0;">
+                                        <label>Regions</label>
+                                        <div id="filter-category-chips" class="chips"></div>
+                                    </div>
+                                    <div class="input-group" style="margin: 0;">
+                                        <label>Eras</label>
+                                        <div id="filter-era-chips" class="chips"></div>
+                                    </div>
+                                </div>
                             </div>
-                            <button id="btn-filter-preview" class="btn ghost">Preview</button>
-                            <button id="btn-filter-reset" class="btn ghost">Clear Filters</button>
+                            <div class="inline-form">
+                                <div class="input-group" style="margin: 0;">
+                                    <label>Count</label>
+                                    <input type="number" id="filter-count" value="10" min="1" max="200">
+                                </div>
+                                <button id="btn-filter-preview" class="btn ghost">Preview</button>
+                                <button id="btn-filter-reset" class="btn ghost">Clear Filters</button>
+                            </div>
                         </div>
                     </div>
-                </div>
 
-                <div id="mode-pick" class="mode-panel view hidden" style="margin-top: 18px;">
-                    <div class="input-group" style="margin: 0;">
-                        <label for="pick-search">Search the question bank</label>
-                        <input type="text" id="pick-search" placeholder="Search questions by answer or text...">
-                    </div>
-                    <div id="pick-results" class="pick-list"></div>
-                </div>
-
-                <div id="preview-area" class="preview-area hidden">
-                    <div class="section-head" style="margin-bottom: 12px;">
-                        <div>
-                            <h4 style="margin: 0;">Selected Questions</h4>
-                            <p class="section-subtitle"><span id="preview-count">0</span> questions ready for this
-                                assignment.</p>
+                    <div id="mode-pick" class="mode-panel view hidden" style="margin-top: 18px;">
+                        <div class="input-group" style="margin: 0;">
+                            <label for="pick-search">Search the question bank</label>
+                            <input type="text" id="pick-search" placeholder="Search questions by answer or text...">
                         </div>
-                        <button id="btn-clear-selection" class="btn ghost">Clear Selection</button>
+                        <div id="pick-results" class="pick-list"></div>
                     </div>
-                    <div id="preview-list" class="preview-list"></div>
                 </div>
 
-                <div class="sep"></div>
-                <button id="btn-create-assignment" class="btn pri auth-option">Create Assignment</button>
+                <aside class="panel-stack">
+                    <div class="card section-card sticky-card">
+                        <div class="section-head">
+                            <div>
+                                <div class="eyebrow">Publish rail</div>
+                                <h2 class="card-title">Selection preview</h2>
+                                <p class="section-subtitle">Keep the live preview and publish action in a dedicated side
+                                    rail so the builder stays easier to scan.</p>
+                            </div>
+                        </div>
+                        <div id="preview-area" class="preview-area hidden">
+                            <div class="section-head" style="margin-bottom: 12px;">
+                                <div>
+                                    <h4 style="margin: 0;">Selected Questions</h4>
+                                    <p class="section-subtitle"><span id="preview-count">0</span> questions ready for this
+                                        assignment.</p>
+                                </div>
+                                <button id="btn-clear-selection" class="btn ghost">Clear Selection</button>
+                            </div>
+                            <div id="preview-list" class="preview-list"></div>
+                        </div>
+                        <div class="card-muted-box teacher-side-note">
+                            <div class="empty-kicker">Publishing checklist</div>
+                            <p class="empty-copy">Name the assignment, attach it to a class, preview the question set,
+                                then publish once the side rail looks clean.</p>
+                        </div>
+                        <button id="btn-create-assignment" class="btn pri auth-option">Create Assignment</button>
+                    </div>
+                </aside>
             </div>
         </section>
 
@@ -297,44 +334,52 @@
                     </div>
                 </div>
 
-                <div class="account-profile-card">
-                    <h3 style="margin: 0 0 12px;">My Profile</h3>
-                    <div class="form-grid">
-                        <div class="input-group">
-                            <label>Display Name</label>
-                            <input id="acc-display-name" type="text" maxlength="80" placeholder="Your name">
+                <div class="dashboard-split account-layout">
+                    <div class="account-profile-card">
+                        <h3 style="margin: 0 0 12px;">My Profile</h3>
+                        <div class="form-grid">
+                            <div class="input-group">
+                                <label>Display Name</label>
+                                <input id="acc-display-name" type="text" maxlength="80" placeholder="Your name">
+                            </div>
+                            <div class="input-group">
+                                <label>Role</label>
+                                <input id="acc-role" type="text" readonly>
+                            </div>
+                            <div class="input-group">
+                                <label>Email</label>
+                                <input id="acc-email" type="email" maxlength="160" placeholder="name@example.com">
+                            </div>
+                            <div class="input-group">
+                                <label>Class Code</label>
+                                <input id="acc-class-code" type="text" readonly>
+                            </div>
+                            <div class="input-group">
+                                <label>Created At</label>
+                                <input id="acc-created-at" type="text" readonly>
+                            </div>
+                            <div class="input-group full-width">
+                                <label>User ID</label>
+                                <input id="acc-user-id" type="text" readonly>
+                            </div>
                         </div>
-                        <div class="input-group">
-                            <label>Role</label>
-                            <input id="acc-role" type="text" readonly>
+                        <div class="form-actions" style="margin-top: 14px;">
+                            <button id="btn-save-account" class="btn pri">Save Profile Changes</button>
+                            <a href="profile.html" class="btn ghost">View My Profile</a>
                         </div>
-                        <div class="input-group">
-                            <label>Email</label>
-                            <input id="acc-email" type="email" maxlength="160" placeholder="name@example.com">
-                        </div>
-                        <div class="input-group">
-                            <label>Class Code</label>
-                            <input id="acc-class-code" type="text" readonly>
-                        </div>
-                        <div class="input-group">
-                            <label>Created At</label>
-                            <input id="acc-created-at" type="text" readonly>
-                        </div>
-                        <div class="input-group full-width">
-                            <label>User ID</label>
-                            <input id="acc-user-id" type="text" readonly>
-                        </div>
+                        <p class="muted" style="margin: 8px 0 0;">Email changes may require inbox verification depending on
+                            your auth settings.</p>
                     </div>
-                    <div class="form-actions" style="margin-top: 14px;">
-                        <button id="btn-save-account" class="btn pri">Save Profile Changes</button>
-                        <a href="profile.html" class="btn ghost">View My Profile</a>
-                    </div>
-                    <p class="muted" style="margin: 8px 0 0;">Email changes may require inbox verification depending on
-                        your auth settings.</p>
-                </div>
 
-                <div class="sep"></div>
-                <button id="btn-delete-account" class="btn warn">Delete My Account Permanently</button>
+                    <aside class="panel-stack">
+                        <div class="card-muted-box teacher-side-note">
+                            <div class="empty-kicker">Account note</div>
+                            <p class="empty-copy">Routine profile edits stay separated from destructive actions so the
+                                account page reads like settings first, not risk management first.</p>
+                        </div>
+                        <button id="btn-delete-account" class="btn warn">Delete My Account Permanently</button>
+                    </aside>
+                </div>
             </div>
         </section>
     </div>

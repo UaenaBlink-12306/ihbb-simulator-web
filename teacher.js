@@ -330,7 +330,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
         el.innerHTML = myClasses.map(c => `
             <div class="list-item">
-                <span class="item-title">${esc(c.name)}</span>
+                <div class="item-copy">
+                    <span class="item-title">${esc(c.name)}</span>
+                    <span class="item-meta">Invite code ready to share with the next roster.</span>
+                </div>
                 <span class="item-badge">${c.code}</span>
                 <div class="item-actions">
                     <button class="btn ghost" onclick="copyCode('${c.code}')">Copy Code</button>
@@ -366,8 +369,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         const html = data.map(s => `
             <div class="list-item">
                 <span style="font-size: 20px;">👤</span>
-                <span class="item-title">${esc(nameMap[s.student_id] || 'Unnamed')}</span>
-                <span class="item-meta">Joined ${new Date(s.joined_at).toLocaleDateString()}</span>
+                <div class="item-copy">
+                    <span class="item-title">${esc(nameMap[s.student_id] || 'Unnamed')}</span>
+                    <span class="item-meta">Joined ${new Date(s.joined_at).toLocaleDateString()}</span>
+                </div>
                 <a class="btn ghost" href="profile.html?user=${encodeURIComponent(s.student_id)}">Profile</a>
             </div>
         `).join('');
@@ -422,8 +427,10 @@ document.addEventListener('DOMContentLoaded', async () => {
             const due = a.due_date ? new Date(a.due_date).toLocaleDateString() : 'No due date';
             const cls = a.classes ? a.classes.name : '';
             return `<div class="list-item">
-                <span class="item-title">${esc(a.title)}</span>
-                <span class="item-meta">${esc(cls)} · Due: ${due}</span>
+                <div class="item-copy">
+                    <span class="item-title">${esc(a.title)}</span>
+                    <span class="item-meta">${esc(cls)} · Due: ${due}</span>
+                </div>
                 <div class="item-actions">
                     <button class="btn ghost" onclick="viewScores('${a.id}')">View Scores</button>
                     <button class="btn bad" onclick="deleteAssignment('${a.id}')">Delete</button>
@@ -458,7 +465,10 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const pct = sub.total ? Math.round(sub.correct / sub.total * 100) : 0;
                 return `<div class="list-item">
                     <span style="font-size: 20px;">👤</span>
-                    <span class="item-title">${esc(name)}</span>
+                    <div class="item-copy">
+                        <span class="item-title">${esc(name)}</span>
+                        <span class="item-meta">Submission recorded for this assignment.</span>
+                    </div>
                     <span class="item-score ${pct >= 50 ? 'good' : 'bad'}">${sub.correct}/${sub.total} (${pct}%)</span>
                     <span class="status-pill done">✓ Completed</span>
                     <a class="btn ghost" href="profile.html?user=${encodeURIComponent(sid)}">Profile</a>
@@ -466,7 +476,10 @@ document.addEventListener('DOMContentLoaded', async () => {
             } else {
                 return `<div class="list-item">
                     <span style="font-size: 20px;">👤</span>
-                    <span class="item-title">${esc(name)}</span>
+                    <div class="item-copy">
+                        <span class="item-title">${esc(name)}</span>
+                        <span class="item-meta">No submission has been recorded yet.</span>
+                    </div>
                     <span class="status-pill pending">⏳ Not Completed</span>
                     <a class="btn ghost" href="profile.html?user=${encodeURIComponent(sid)}">Profile</a>
                 </div>`;
