@@ -3561,6 +3561,16 @@ body::after {
     content-visibility: auto;
     contain-intrinsic-size: 1px 280px;
   }
+
+  .setup-side > .sticky-card,
+  .review-side-column > .sticky-card,
+  .profile-side-column > .sticky-card,
+  .dashboard-split > .panel-stack > .sticky-card,
+  .teacher-builder-shell > .panel-stack > .sticky-card,
+  .bee-sidebar > .sticky-card {
+    content-visibility: visible;
+    contain-intrinsic-size: auto;
+  }
 }
 
 .section-card {
