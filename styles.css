@@ -3562,7 +3562,6 @@ body::after {
     contain-intrinsic-size: 1px 280px;
   }
 
-  .setup-side > .sticky-card,
   .review-side-column > .sticky-card,
   .profile-side-column > .sticky-card,
   .dashboard-split > .panel-stack > .sticky-card,
@@ -4706,7 +4705,6 @@ input[type=datetime-local]:focus {
   align-self: start;
 }
 
-.setup-side > .sticky-card,
 .review-side-column > .sticky-card,
 .profile-side-column > .sticky-card,
 .dashboard-split > .panel-stack > .sticky-card,
