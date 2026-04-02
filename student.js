@@ -2399,22 +2399,22 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     function ensureAnalyticsChartTooltip(svg) {
-        const panel = svg.closest('.analytics-panel');
-        if (!panel) return null;
-        let tooltip = panel.querySelector('.analytics-chart-tooltip');
+        const shell = svg.closest('.analytics-chart-shell');
+        if (!shell) return null;
+        let tooltip = shell.querySelector('.analytics-chart-tooltip');
         if (!tooltip) {
             tooltip = document.createElement('div');
             tooltip.className = 'analytics-chart-tooltip';
             tooltip.setAttribute('aria-hidden', 'true');
-            panel.appendChild(tooltip);
+            shell.appendChild(tooltip);
         }
         return tooltip;
     }
 
     function showAnalyticsChartTooltip(svg, clientX, clientY, label, value, detail = '') {
-        const panel = svg.closest('.analytics-panel');
+        const shell = svg.closest('.analytics-chart-shell');
         const tooltip = ensureAnalyticsChartTooltip(svg);
-        if (!panel || !tooltip) return;
+        if (!shell || !tooltip) return;
         tooltip.innerHTML = `
             <span class="analytics-chart-tooltip-label">${esc(label)}</span>
             <span class="analytics-chart-tooltip-value">${esc(value)}</span>
@@ -2422,20 +2422,27 @@ document.addEventListener('DOMContentLoaded', async () => {
         `;
         tooltip.classList.add('is-visible');
 
-        const panelRect = panel.getBoundingClientRect();
-        const pad = 16;
-        let left = clientX - panelRect.left + 18;
-        let top = clientY - panelRect.top - tooltip.offsetHeight - 18;
-        if (left + tooltip.offsetWidth > panel.clientWidth - pad) {
-            left = panel.clientWidth - tooltip.offsetWidth - pad;
+        const shellRect = shell.getBoundingClientRect();
+        const pad = 12;
+        const anchorX = clientX - shellRect.left;
+        const anchorY = clientY - shellRect.top;
+
+        let left = anchorX + 16;
+        let top = anchorY - tooltip.offsetHeight - 16;
+
+        const minLeft = pad;
+        const maxLeft = shell.clientWidth - tooltip.offsetWidth - pad;
+        if (left > maxLeft) left = maxLeft;
+        if (left < minLeft) left = minLeft;
+
+        const minTop = pad;
+        const maxTop = shell.clientHeight - tooltip.offsetHeight - pad;
+        if (top < minTop) {
+            top = anchorY + 16;
         }
-        if (left < pad) left = pad;
-        if (top < pad) {
-            top = clientY - panelRect.top + 18;
-        }
-        if (top + tooltip.offsetHeight > panel.clientHeight - pad) {
-            top = panel.clientHeight - tooltip.offsetHeight - pad;
-        }
+        if (top > maxTop) top = maxTop;
+        if (top < minTop) top = minTop;
+
         tooltip.style.left = `${left}px`;
         tooltip.style.top = `${top}px`;
     }

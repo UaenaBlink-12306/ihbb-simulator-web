@@ -1538,6 +1538,12 @@ tr:hover td {
   line-height: 1.6;
 }
 
+.analytics-chart-shell {
+  position: relative;
+  overflow: hidden;
+  border-radius: 18px;
+}
+
 .analytics-chart {
   width: 100%;
   min-height: 302px;
