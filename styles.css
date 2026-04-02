@@ -3002,6 +3002,10 @@ body.coach-chat-resizing {
   padding-top: 8px;
 }
 
+.coach-chat-sidebar[data-chat-asked="true"] .coach-chat-starter-block {
+  display: none;
+}
+
 .coach-chat-resize-handle {
   position: absolute;
   top: 86px;

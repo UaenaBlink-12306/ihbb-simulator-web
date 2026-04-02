@@ -794,6 +794,10 @@ function isCoachChatPristine() {
   return !CoachChat.busy && !CoachChat.messages.length;
 }
 
+function hasCoachChatUserQuestion() {
+  return CoachChat.messages.some(message => String(message?.role || '').trim() === 'user');
+}
+
 function limitCoachChatStarters(list = []) {
   return list.slice(0, isCoachChatPristine() ? 2 : 3);
 }
@@ -840,6 +844,11 @@ function buildCoachChatStarters(snapshot = buildCoachChatStudyContext()) {
 function renderCoachChatStarters(snapshot) {
   const startersEl = $('coach-chat-starters');
   if (!startersEl) return;
+  if (hasCoachChatUserQuestion()) {
+    CoachChat.currentStarters = [];
+    startersEl.innerHTML = '';
+    return;
+  }
   CoachChat.currentStarters = buildCoachChatStarters(snapshot);
   startersEl.innerHTML = CoachChat.currentStarters.map((starter, index) => `
     <button class="coach-chat-starter" type="button" data-starter-index="${index}">
@@ -1006,6 +1015,7 @@ function setCoachChatOpenState(open) {
     sidebar.classList.toggle('fullscreen', !!CoachChat.ui.fullscreen);
     sidebar.setAttribute('aria-hidden', CoachChat.open ? 'false' : 'true');
     sidebar.dataset.chatPristine = isCoachChatPristine() ? 'true' : 'false';
+    sidebar.dataset.chatAsked = hasCoachChatUserQuestion() ? 'true' : 'false';
     sidebar.style.setProperty('--coach-chat-width', `${clampCoachChatWidth(CoachChat.ui.width)}px`);
   }
   if (backdrop) backdrop.hidden = !CoachChat.open;
@@ -4264,7 +4274,6 @@ document.addEventListener('click', (e) => {
 
 // Keyboard shortcuts
 document.addEventListener('keydown', (e) => {
-  if (e.key === '?') { e.preventDefault(); const ov = $('overlay'); if (ov?.classList.contains('show')) ov.classList.remove('show'); else openHelp(); return; }
   if (e.key === 'Escape' && CoachChat.open) { e.preventDefault(); closeCoachChat({ manual: true }); return; }
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); CoachChat.open ? closeCoachChat({ manual: true }) : openCoachChat({ auto: false, seed: false, reason: 'manual' }); return; }
   if (CoachChat.open && e.key.toLowerCase() === 'f') { e.preventDefault(); toggleCoachChatFullscreen(); return; }
