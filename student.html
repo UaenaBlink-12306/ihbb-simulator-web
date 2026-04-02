@@ -234,6 +234,7 @@
                     <div class="section-head">
                         <div>
                             <h2 class="card-title">Blind Spot Analytics</h2>
+                            <p class="section-subtitle">Start with the numbers and trendlines, then use DeepSeek for interpretation once the weak areas are obvious.</p>
                         </div>
                         <div class="inline-actions">
                             <span class="pill">30-day window</span>
@@ -249,6 +250,24 @@
                     </div>
 
                     <div id="analytics-content">
+                        <div class="analytics-hero" style="margin-top: 18px;">
+                            <div class="analytics-hero-copy">
+                                <div class="eyebrow">Performance readout</div>
+                                <h3 id="analytics-hero-title">Your last 30 days at a glance</h3>
+                                <p id="analytics-hero-summary" class="analytics-hero-summary">Track volume, accuracy, and buzz timing before you move on to AI interpretation.</p>
+                            </div>
+                            <div class="analytics-hero-meta">
+                                <div class="analytics-hero-chip">
+                                    <span>Active days</span>
+                                    <strong id="analytics-hero-active-days">0 / 30</strong>
+                                </div>
+                                <div class="analytics-hero-chip">
+                                    <span>Fastest buzz</span>
+                                    <strong id="analytics-hero-fastest">—</strong>
+                                </div>
+                            </div>
+                        </div>
+
                         <div class="analytics-kpis" style="margin-top: 18px;">
                             <div class="analytics-kpi">
                                 <div class="analytics-kpi-label">Questions Answered</div>
@@ -276,12 +295,95 @@
                             </div>
                         </div>
 
-                        <div class="analytics-panel analytics-ai-card" style="margin-top: 16px;">
+                        <div class="analytics-chart-grid" style="margin-top: 16px;">
+                            <div class="analytics-panel analytics-panel-featured">
+                                <div class="analytics-panel-head">
+                                    <div>
+                                        <div class="analytics-panel-kicker">Signal</div>
+                                        <h3>Accuracy Trend</h3>
+                                        <p class="analytics-panel-note">Watch whether recent drills are stabilizing or drifting before you change your study plan.</p>
+                                    </div>
+                                </div>
+                                <svg id="analytics-chart-accuracy" class="analytics-chart" viewBox="0 0 720 220"
+                                    aria-label="Accuracy trend over last 30 days"></svg>
+                            </div>
+                            <div class="analytics-panel">
+                                <div class="analytics-panel-head">
+                                    <div>
+                                        <div class="analytics-panel-kicker">Timing</div>
+                                        <h3>Buzz Speed Trend</h3>
+                                        <p class="analytics-panel-note">Use this curve to decide whether your speed gains are helping accuracy or undercutting it.</p>
+                                    </div>
+                                </div>
+                                <svg id="analytics-chart-buzz" class="analytics-chart" viewBox="0 0 720 220"
+                                    aria-label="Average buzz speed trend over last 30 days"></svg>
+                            </div>
+                            <div class="analytics-panel">
+                                <div class="analytics-panel-head">
+                                    <div>
+                                        <div class="analytics-panel-kicker">Load</div>
+                                        <h3>Daily Volume</h3>
+                                        <p class="analytics-panel-note">See whether your best stretches come from steady repetition or from isolated cram sessions.</p>
+                                    </div>
+                                </div>
+                                <svg id="analytics-chart-volume" class="analytics-chart" viewBox="0 0 720 220"
+                                    aria-label="Daily question volume over last 30 days"></svg>
+                            </div>
+                        </div>
+
+                        <div class="analytics-split-grid" style="margin-top: 16px;">
+                            <div class="analytics-panel">
+                                <div class="analytics-panel-head">
+                                    <div>
+                                        <div class="analytics-panel-kicker">Breakdown</div>
+                                        <h3>Era Performance</h3>
+                                        <p class="analytics-panel-note">Use this ladder to spot which eras are lowering your floor in mixed practice.</p>
+                                    </div>
+                                </div>
+                                <div id="analytics-era-list" class="analytics-perf-list"></div>
+                            </div>
+                            <div class="analytics-panel">
+                                <div class="analytics-panel-head">
+                                    <div>
+                                        <div class="analytics-panel-kicker">Breakdown</div>
+                                        <h3>Region Performance</h3>
+                                        <p class="analytics-panel-note">Compare regions side by side so weak clusters stand out before you generate coach advice.</p>
+                                    </div>
+                                </div>
+                                <div id="analytics-region-list" class="analytics-perf-list"></div>
+                            </div>
+                        </div>
+
+                        <div class="analytics-split-grid" style="margin-top: 16px;">
+                            <div class="analytics-panel">
+                                <div class="analytics-panel-head">
+                                    <div>
+                                        <div class="analytics-panel-kicker">Diagnosis</div>
+                                        <h3>Blind Spot Radar</h3>
+                                        <p class="analytics-panel-note">These are the places where volume and accuracy are combining into the clearest study targets.</p>
+                                    </div>
+                                </div>
+                                <div id="analytics-blind-spots" class="analytics-blind-list"></div>
+                            </div>
+                            <div class="analytics-panel">
+                                <div class="analytics-panel-head">
+                                    <div>
+                                        <div class="analytics-panel-kicker">Cadence</div>
+                                        <h3>Consistency Heatmap</h3>
+                                        <p class="analytics-panel-note">Read this as a practice rhythm map instead of a scorecard: consistency matters as much as single big days.</p>
+                                    </div>
+                                </div>
+                                <div id="analytics-heatmap" class="analytics-heatmap"></div>
+                                <div id="analytics-heatmap-caption" class="muted" style="margin-top: 10px;"></div>
+                            </div>
+                        </div>
+
+                        <div class="analytics-panel analytics-ai-card analytics-ai-secondary" style="margin-top: 16px;">
                             <div class="analytics-ai-head">
                                 <div>
+                                    <div class="analytics-panel-kicker">Interpretation</div>
                                     <h3>DeepSeek Weak-Area Coach</h3>
-                                    <p class="section-subtitle">Generate a focused readout of the eras and regions that
-                                        need the most work, plus a short study plan.</p>
+                                    <p class="section-subtitle">Once the trends and blind spots are clear, generate a focused readout of the eras and regions that need the most work.</p>
                                 </div>
                                 <div class="inline-actions">
                                     <span id="analytics-ai-badge" class="pill">Ready</span>
@@ -296,47 +398,6 @@
                                     <p class="muted">Once you have enough drill history, generate a DeepSeek summary to
                                         turn your blind spots into a short study plan.</p>
                                 </div>
-                            </div>
-                        </div>
-
-                        <div class="analytics-chart-grid" style="margin-top: 16px;">
-                            <div class="analytics-panel">
-                                <h3>Accuracy Trend</h3>
-                                <svg id="analytics-chart-accuracy" class="analytics-chart" viewBox="0 0 720 220"
-                                    aria-label="Accuracy trend over last 30 days"></svg>
-                            </div>
-                            <div class="analytics-panel">
-                                <h3>Buzz Speed Trend</h3>
-                                <svg id="analytics-chart-buzz" class="analytics-chart" viewBox="0 0 720 220"
-                                    aria-label="Average buzz speed trend over last 30 days"></svg>
-                            </div>
-                            <div class="analytics-panel">
-                                <h3>Daily Volume</h3>
-                                <svg id="analytics-chart-volume" class="analytics-chart" viewBox="0 0 720 220"
-                                    aria-label="Daily question volume over last 30 days"></svg>
-                            </div>
-                        </div>
-
-                        <div class="analytics-split-grid" style="margin-top: 16px;">
-                            <div class="analytics-panel">
-                                <h3>Era Performance</h3>
-                                <div id="analytics-era-list" class="analytics-perf-list"></div>
-                            </div>
-                            <div class="analytics-panel">
-                                <h3>Region Performance</h3>
-                                <div id="analytics-region-list" class="analytics-perf-list"></div>
-                            </div>
-                        </div>
-
-                        <div class="analytics-split-grid" style="margin-top: 16px;">
-                            <div class="analytics-panel">
-                                <h3>Blind Spot Radar</h3>
-                                <div id="analytics-blind-spots" class="analytics-blind-list"></div>
-                            </div>
-                            <div class="analytics-panel">
-                                <h3>Consistency Heatmap</h3>
-                                <div id="analytics-heatmap" class="analytics-heatmap"></div>
-                                <div id="analytics-heatmap-caption" class="muted" style="margin-top: 10px;"></div>
                             </div>
                         </div>
                     </div>
@@ -474,15 +535,17 @@
                 </div>
             </div>
 
-            <div id="coach-chat-status-pills" class="coach-chat-status-pills"></div>
-            <div class="coach-chat-section-block">
-                <div class="coach-chat-section-label">Quick access</div>
-                <div id="coach-chat-workspace" class="coach-chat-workspace"></div>
-            </div>
-            <div id="coach-chat-messages" class="coach-chat-messages" aria-live="polite"></div>
-            <div class="coach-chat-starter-block">
-                <div class="coach-chat-section-label">Suggested prompts</div>
-                <div id="coach-chat-starters" class="coach-chat-starters"></div>
+            <div id="coach-chat-body" class="coach-chat-body">
+                <div id="coach-chat-status-pills" class="coach-chat-status-pills"></div>
+                <div class="coach-chat-section-block">
+                    <div class="coach-chat-section-label">Quick access</div>
+                    <div id="coach-chat-workspace" class="coach-chat-workspace"></div>
+                </div>
+                <div id="coach-chat-messages" class="coach-chat-messages" aria-live="polite"></div>
+                <div class="coach-chat-starter-block">
+                    <div class="coach-chat-section-label">Suggested prompts</div>
+                    <div id="coach-chat-starters" class="coach-chat-starters"></div>
+                </div>
             </div>
 
             <form id="coach-chat-form" class="coach-chat-form">

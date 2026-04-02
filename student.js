@@ -490,6 +490,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     function renderDashboardChatMessages() {
+        const bodyEl = document.getElementById('coach-chat-body');
         const el = document.getElementById('coach-chat-messages');
         if (!el) return;
         const messagesHtml = dashboardChat.messages.map((message, messageIndex) => `
@@ -527,12 +528,15 @@ document.addEventListener('DOMContentLoaded', async () => {
             </div>
         `).join('');
         const loadingHtml = dashboardChat.busy ? `
-            <div class="coach-chat-message assistant">
+            <div class="coach-chat-message assistant coach-chat-thinking">
                 <div class="coach-chat-message-meta">
                     <span>DeepSeek</span>
-                    <span>Preparing</span>
+                    <span>Thinking</span>
                 </div>
-                <div class="coach-chat-loading">${dashboardChat.ui.mode === 'knowledge' ? 'Building a detailed study brief with references.' : 'Reviewing your coach history, wrong-bank, and analytics.'}</div>
+                <div class="coach-chat-thinking-bubble">
+                    <div class="coach-chat-thinking-dots" aria-hidden="true"><span></span><span></span><span></span></div>
+                    <div class="coach-chat-loading">${dashboardChat.ui.mode === 'knowledge' ? 'DeepSeek is building a detailed study brief with references.' : 'DeepSeek is reviewing your coach history, wrong-bank, and analytics.'}</div>
+                </div>
             </div>
         ` : '';
         el.innerHTML = messagesHtml || loadingHtml
@@ -543,6 +547,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     ? 'Pick a prompt or type a topic when you want an explanation, timeline, or comparison.'
                     : 'Pick a prompt or type what you want to practice next.'}</p>
             </div>`;
+        if (bodyEl) bodyEl.scrollTop = bodyEl.scrollHeight;
         el.scrollTop = el.scrollHeight;
     }
 
@@ -2563,6 +2568,31 @@ document.addEventListener('DOMContentLoaded', async () => {
         el.classList.add(improved ? 'analytics-delta-up' : 'analytics-delta-down');
     }
 
+    function renderAnalyticsHero(snapshot) {
+        const titleEl = document.getElementById('analytics-hero-title');
+        const summaryEl = document.getElementById('analytics-hero-summary');
+        const activeEl = document.getElementById('analytics-hero-active-days');
+        const fastestEl = document.getElementById('analytics-hero-fastest');
+        if (titleEl) {
+            if (snapshot.totalAttempts <= 0) {
+                titleEl.textContent = 'Your last 30 days at a glance';
+            } else if (snapshot.totalAccuracy >= 80) {
+                titleEl.textContent = 'Your recent drill rhythm is holding up well.';
+            } else if (snapshot.totalAccuracy >= 65) {
+                titleEl.textContent = 'Your analytics show a workable base with a few leaks.';
+            } else {
+                titleEl.textContent = 'Your weakest slices are visible enough to attack directly.';
+            }
+        }
+        if (summaryEl) {
+            summaryEl.textContent = snapshot.totalAttempts > 0
+                ? `You answered ${snapshot.totalAttempts.toLocaleString()} questions across ${snapshot.sessionsCount} sessions. Read the charts first, then use the blind-spot panels to decide what deserves a focused drill.`
+                : 'Track volume, accuracy, and buzz timing before you move on to AI interpretation.';
+        }
+        if (activeEl) activeEl.textContent = `${snapshot.activeDays || 0} / 30`;
+        if (fastestEl) fastestEl.textContent = snapshot.fastestBuzz ? `${snapshot.fastestBuzz.toFixed(2)}s` : '—';
+    }
+
     async function loadAnalytics() {
         let sessionsRaw = [];
         if (analyticsCloudReady) {
@@ -2589,6 +2619,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const hasData = snapshot.totalAttempts > 0;
         if (emptyEl) emptyEl.classList.toggle('hidden', hasData);
         if (contentEl) contentEl.classList.toggle('hidden', !hasData);
+        renderAnalyticsHero(snapshot);
         prepareAnalyticsInsights(snapshot, hasData);
         if (!hasData) {
             renderDashboardChatChrome();
