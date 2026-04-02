@@ -3440,7 +3440,7 @@ function renderCoachNotebook() {
   const masteredCountEl = $('coach-mastered-count');
   const clearBtn = $('btn-coach-clear');
   const q = (($('coach-search') && $('coach-search').value) || '').trim().toLowerCase();
-  const filter = (($('coach-filter') && $('coach-filter').value) || 'all').toLowerCase();
+  const filter = (($('coach-filter') && $('coach-filter').value) || 'todo').toLowerCase();
   const allRows = Array.isArray(CoachNotebook.records) ? CoachNotebook.records : [];
   if (countEl) countEl.textContent = String(allRows.length);
   if (openCountEl) openCountEl.textContent = String(allRows.filter(r => !r.mastered).length);
