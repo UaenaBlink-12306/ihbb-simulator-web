@@ -3,7 +3,7 @@
 A fast, browser-based IHBB practice app for running tossup drills, buzzing in, tracking mistakes, and reviewing progress.
 
 ## Live App (Vercel)
-👉 **Vercel URL:** `https://your-vercel-deployment-url.vercel.app`
+👉 **Vercel URL:** `ihbb-simulator-web.vercel.app`
 
 > Replace the URL above with your real Vercel deployment link.
 
@@ -23,20 +23,6 @@ IHBB Simulator Web is designed to feel like real competition practice while stay
 - Turn mistakes into repeatable drills.
 - Keep everything in one place: practice, review, and question management.
 
-## Tech Snapshot (Short)
-- Frontend: `index.html`, `app.js`, `styles.css`
-- Backend/runtime: `server.py`
-- Data prep: `cleanquestions.py`, `build_db.py`
-
-## Minimal Local Run (Optional)
-This repo is primarily intended to be used via the Vercel deployment, but you can also run it locally:
-
-```bash
-python -m pip install -r requirements.txt
-python server.py
-```
-
-Then open `http://127.0.0.1:5057`.
 
 ---
 
@@ -60,12 +46,3 @@ Then open `http://127.0.0.1:5057`.
 - **题库管理**：支持导入/导出与题集管理。
 - **数据构建能力**：可将原始文本处理为 `questions.json`。
 
-## 极简本地运行（可选）
-如果你想在本地运行：
-
-```bash
-python -m pip install -r requirements.txt
-python server.py
-```
-
-访问 `http://127.0.0.1:5057`。
