@@ -2367,6 +2367,85 @@ document.addEventListener('DOMContentLoaded', async () => {
         return `<text x="50%" y="50%" text-anchor="middle" dominant-baseline="middle" fill="currentColor" opacity=".55">${esc(text)}</text>`;
     }
 
+    function configureAnalyticsSvg(svg, width, height) {
+        svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+        svg.setAttribute('preserveAspectRatio', 'none');
+        svg.classList.add('interactive');
+    }
+
+    function chartAxisLabel(value, options = {}) {
+        if (typeof options.axisLabelFn === 'function') return options.axisLabelFn(value);
+        if (typeof options.yLabelFn === 'function') return options.yLabelFn(value);
+        return String(Math.round(value));
+    }
+
+    function chartTooltipLabel(value, options = {}) {
+        if (typeof options.tooltipLabelFn === 'function') return options.tooltipLabelFn(value);
+        return chartAxisLabel(value, options);
+    }
+
+    function pointerWithinChartPlot(point, width, height, pad) {
+        return point.x >= pad.l && point.x <= width - pad.r && point.y >= pad.t && point.y <= height - pad.b;
+    }
+
+    function chartPointerPoint(event, svg, width, height) {
+        const rect = svg.getBoundingClientRect();
+        return {
+            x: (event.clientX - rect.left) * (width / rect.width),
+            y: (event.clientY - rect.top) * (height / rect.height),
+            clientX: event.clientX,
+            clientY: event.clientY
+        };
+    }
+
+    function ensureAnalyticsChartTooltip(svg) {
+        const panel = svg.closest('.analytics-panel');
+        if (!panel) return null;
+        let tooltip = panel.querySelector('.analytics-chart-tooltip');
+        if (!tooltip) {
+            tooltip = document.createElement('div');
+            tooltip.className = 'analytics-chart-tooltip';
+            tooltip.setAttribute('aria-hidden', 'true');
+            panel.appendChild(tooltip);
+        }
+        return tooltip;
+    }
+
+    function showAnalyticsChartTooltip(svg, clientX, clientY, label, value, detail = '') {
+        const panel = svg.closest('.analytics-panel');
+        const tooltip = ensureAnalyticsChartTooltip(svg);
+        if (!panel || !tooltip) return;
+        tooltip.innerHTML = `
+            <span class="analytics-chart-tooltip-label">${esc(label)}</span>
+            <span class="analytics-chart-tooltip-value">${esc(value)}</span>
+            ${detail ? `<span class="analytics-chart-tooltip-detail">${esc(detail)}</span>` : ''}
+        `;
+        tooltip.classList.add('is-visible');
+
+        const panelRect = panel.getBoundingClientRect();
+        const pad = 16;
+        let left = clientX - panelRect.left + 18;
+        let top = clientY - panelRect.top - tooltip.offsetHeight - 18;
+        if (left + tooltip.offsetWidth > panel.clientWidth - pad) {
+            left = panel.clientWidth - tooltip.offsetWidth - pad;
+        }
+        if (left < pad) left = pad;
+        if (top < pad) {
+            top = clientY - panelRect.top + 18;
+        }
+        if (top + tooltip.offsetHeight > panel.clientHeight - pad) {
+            top = panel.clientHeight - tooltip.offsetHeight - pad;
+        }
+        tooltip.style.left = `${left}px`;
+        tooltip.style.top = `${top}px`;
+    }
+
+    function hideAnalyticsChartTooltip(svg) {
+        const tooltip = ensureAnalyticsChartTooltip(svg);
+        if (!tooltip) return;
+        tooltip.classList.remove('is-visible');
+    }
+
     function renderLineChart(svgId, points, labels, options = {}) {
         const svg = document.getElementById(svgId);
         if (!svg) return;
@@ -2378,14 +2457,17 @@ document.addEventListener('DOMContentLoaded', async () => {
             return;
         }
 
-        const w = 720, h = 220;
-        const pad = { l: 42, r: 16, t: 16, b: 32 };
+        const w = 820, h = 320;
+        const pad = { l: 56, r: 24, t: 28, b: 44 };
         const plotW = w - pad.l - pad.r;
         const plotH = h - pad.t - pad.b;
         const min = Number.isFinite(options.min) ? Number(options.min) : Math.min(...valid);
         const max = Number.isFinite(options.max) ? Number(options.max) : Math.max(...valid);
         const yMin = options.minZero ? Math.min(0, min) : min;
         const yMax = max === yMin ? yMin + 1 : max;
+        const color = options.color || 'var(--accent)';
+        const gradientId = `${svgId}-gradient`.replace(/[^a-zA-Z0-9_-]/g, '-');
+        configureAnalyticsSvg(svg, w, h);
 
         const xFor = i => pad.l + (numeric.length <= 1 ? 0 : (i * plotW / (numeric.length - 1)));
         const yFor = v => pad.t + ((yMax - v) * plotH / (yMax - yMin));
@@ -2397,16 +2479,21 @@ document.addEventListener('DOMContentLoaded', async () => {
             const ratio = t / gridTicks;
             const y = pad.t + ratio * plotH;
             const value = yMax - ((yMax - yMin) * ratio);
-            const text = options.yLabelFn ? options.yLabelFn(value) : String(Math.round(value));
-            grids.push(`<line x1="${pad.l}" y1="${y.toFixed(2)}" x2="${w - pad.r}" y2="${y.toFixed(2)}" stroke="rgba(148,163,184,0.18)" stroke-width="1" />`);
-            yLabels.push(`<text x="${pad.l - 8}" y="${(y + 4).toFixed(2)}" text-anchor="end" fill="currentColor" opacity=".6" font-size="11">${esc(text)}</text>`);
+            const text = chartAxisLabel(value, options);
+            grids.push(`<line x1="${pad.l}" y1="${y.toFixed(2)}" x2="${w - pad.r}" y2="${y.toFixed(2)}" stroke="rgba(148,163,184,0.18)" stroke-width="1.2" />`);
+            yLabels.push(`<text x="${pad.l - 10}" y="${(y + 4).toFixed(2)}" text-anchor="end" fill="currentColor" opacity=".72" font-size="12">${esc(text)}</text>`);
         }
 
         let path = '';
         let open = false;
         const circles = [];
+        const segments = [];
+        let activeSegment = [];
+        const validPoints = [];
         numeric.forEach((v, i) => {
             if (v === null) {
+                if (activeSegment.length) segments.push(activeSegment);
+                activeSegment = [];
                 open = false;
                 return;
             }
@@ -2414,7 +2501,17 @@ document.addEventListener('DOMContentLoaded', async () => {
             const y = yFor(v);
             path += open ? ` L ${x.toFixed(2)} ${y.toFixed(2)}` : ` M ${x.toFixed(2)} ${y.toFixed(2)}`;
             open = true;
-            circles.push(`<circle cx="${x.toFixed(2)}" cy="${y.toFixed(2)}" r="3.2" fill="${options.color || 'var(--accent)'}" />`);
+            activeSegment.push({ index: i, x, y, value: v, label: labels[i] || '' });
+            validPoints.push({ index: i, x, y, value: v, label: labels[i] || '' });
+            circles.push(`<circle class="analytics-line-point" data-index="${i}" cx="${x.toFixed(2)}" cy="${y.toFixed(2)}" r="6.2" fill="${color}" stroke="rgba(255,255,255,0.92)" stroke-width="2.2" />`);
+        });
+        if (activeSegment.length) segments.push(activeSegment);
+
+        const areaPaths = segments.map(segment => {
+            const first = segment[0];
+            const last = segment[segment.length - 1];
+            const line = segment.map((point, idx) => `${idx === 0 ? 'L' : 'L'} ${point.x.toFixed(2)} ${point.y.toFixed(2)}`).join(' ');
+            return `<path d="M ${first.x.toFixed(2)} ${(h - pad.b).toFixed(2)} ${line} L ${last.x.toFixed(2)} ${(h - pad.b).toFixed(2)} Z" fill="url(#${gradientId})" opacity="0.88"></path>`;
         });
 
         const mid = Math.floor((labels.length - 1) / 2);
@@ -2422,16 +2519,77 @@ document.addEventListener('DOMContentLoaded', async () => {
             { i: 0, txt: labels[0] || '' },
             { i: mid, txt: labels[mid] || '' },
             { i: labels.length - 1, txt: labels[labels.length - 1] || '' }
-        ].map(xl => `<text x="${xFor(xl.i).toFixed(2)}" y="${h - 8}" text-anchor="middle" fill="currentColor" opacity=".7" font-size="11">${esc(xl.txt)}</text>`);
+        ].map(xl => `<text x="${xFor(xl.i).toFixed(2)}" y="${h - 10}" text-anchor="middle" fill="currentColor" opacity=".76" font-size="12">${esc(xl.txt)}</text>`);
 
         svg.innerHTML = `
+            <defs>
+                <linearGradient id="${gradientId}" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stop-color="${color}" stop-opacity="0.26"></stop>
+                    <stop offset="100%" stop-color="${color}" stop-opacity="0"></stop>
+                </linearGradient>
+            </defs>
             <rect x="0" y="0" width="${w}" height="${h}" fill="transparent"></rect>
             ${grids.join('')}
             ${yLabels.join('')}
-            <path d="${path}" fill="none" stroke="${options.color || 'var(--accent)'}" stroke-width="2.6" stroke-linejoin="round" stroke-linecap="round"></path>
+            ${areaPaths.join('')}
+            <path d="${path}" fill="none" stroke="${color}" stroke-width="10" stroke-linejoin="round" stroke-linecap="round" opacity="0.16"></path>
+            <path d="${path}" fill="none" stroke="${color}" stroke-width="4.6" stroke-linejoin="round" stroke-linecap="round"></path>
             ${circles.join('')}
             ${xLabels.join('')}
+            <g class="analytics-hover-layer" opacity="0" pointer-events="none">
+                <line class="analytics-chart-focus-line" x1="${pad.l}" y1="${pad.t}" x2="${pad.l}" y2="${h - pad.b}" stroke="${color}" stroke-width="1.8" opacity="0.34" stroke-dasharray="5 6"></line>
+                <circle class="analytics-chart-focus-halo" cx="${pad.l}" cy="${pad.t}" r="13" fill="${color}" opacity="0.18"></circle>
+                <circle class="analytics-chart-focus-dot" cx="${pad.l}" cy="${pad.t}" r="7.4" fill="${color}" stroke="rgba(255,255,255,0.95)" stroke-width="2.4"></circle>
+            </g>
         `;
+
+        const hoverLayer = svg.querySelector('.analytics-hover-layer');
+        const hoverLine = svg.querySelector('.analytics-chart-focus-line');
+        const hoverHalo = svg.querySelector('.analytics-chart-focus-halo');
+        const hoverDot = svg.querySelector('.analytics-chart-focus-dot');
+        const pointEls = Array.from(svg.querySelectorAll('.analytics-line-point'));
+
+        const clearHover = () => {
+            hoverLayer?.setAttribute('opacity', '0');
+            pointEls.forEach(el => el.classList.remove('is-active', 'is-dim'));
+            hideAnalyticsChartTooltip(svg);
+        };
+
+        svg.onpointerleave = clearHover;
+        svg.onpointermove = event => {
+            const point = chartPointerPoint(event, svg, w, h);
+            if (!pointerWithinChartPlot(point, w, h, pad)) {
+                clearHover();
+                return;
+            }
+            const nearest = validPoints.reduce((best, current) =>
+                !best || Math.abs(current.x - point.x) < Math.abs(best.x - point.x) ? current : best, null);
+            if (!nearest) {
+                clearHover();
+                return;
+            }
+            hoverLayer?.setAttribute('opacity', '1');
+            hoverLine?.setAttribute('x1', nearest.x.toFixed(2));
+            hoverLine?.setAttribute('x2', nearest.x.toFixed(2));
+            hoverHalo?.setAttribute('cx', nearest.x.toFixed(2));
+            hoverHalo?.setAttribute('cy', nearest.y.toFixed(2));
+            hoverDot?.setAttribute('cx', nearest.x.toFixed(2));
+            hoverDot?.setAttribute('cy', nearest.y.toFixed(2));
+            pointEls.forEach(el => {
+                const active = Number(el.getAttribute('data-index')) === nearest.index;
+                el.classList.toggle('is-active', active);
+                el.classList.toggle('is-dim', !active);
+            });
+            const rect = svg.getBoundingClientRect();
+            showAnalyticsChartTooltip(
+                svg,
+                rect.left + ((nearest.x / w) * rect.width),
+                rect.top + ((nearest.y / h) * rect.height),
+                nearest.label || `Point ${nearest.index + 1}`,
+                chartTooltipLabel(nearest.value, options),
+                options.seriesName || ''
+            );
+        };
     }
 
     function renderBarChart(svgId, values, labels, options = {}) {
@@ -2444,19 +2602,43 @@ document.addEventListener('DOMContentLoaded', async () => {
             return;
         }
 
-        const w = 720, h = 220;
-        const pad = { l: 20, r: 12, t: 16, b: 32 };
+        const w = 820, h = 320;
+        const pad = { l: 38, r: 24, t: 28, b: 44 };
         const plotW = w - pad.l - pad.r;
         const plotH = h - pad.t - pad.b;
-        const bw = Math.max(3, plotW / vals.length * 0.72);
-        const gap = Math.max(1, plotW / vals.length * 0.28);
+        const bw = Math.max(10, plotW / vals.length * 0.8);
+        const gap = Math.max(4, plotW / vals.length * 0.16);
+        const color = options.color || 'var(--accent2)';
+        const gradientId = `${svgId}-gradient`.replace(/[^a-zA-Z0-9_-]/g, '-');
+        configureAnalyticsSvg(svg, w, h);
 
-        const bars = vals.map((v, i) => {
+        const gridTicks = 4;
+        const grids = [];
+        const yLabels = [];
+        for (let t = 0; t <= gridTicks; t++) {
+            const ratio = t / gridTicks;
+            const y = pad.t + ratio * plotH;
+            const value = max - (max * ratio);
+            grids.push(`<line x1="${pad.l}" y1="${y.toFixed(2)}" x2="${w - pad.r}" y2="${y.toFixed(2)}" stroke="rgba(148,163,184,0.16)" stroke-width="1.2" />`);
+            yLabels.push(`<text x="${pad.l - 10}" y="${(y + 4).toFixed(2)}" text-anchor="end" fill="currentColor" opacity=".72" font-size="12">${esc(chartAxisLabel(value, options))}</text>`);
+        }
+
+        const barsData = vals.map((v, i) => {
             const x = pad.l + i * (bw + gap);
             const hh = Math.max(2, (v / max) * plotH);
             const y = h - pad.b - hh;
-            return `<rect x="${x.toFixed(2)}" y="${y.toFixed(2)}" width="${bw.toFixed(2)}" height="${hh.toFixed(2)}" rx="5" fill="${options.color || 'var(--accent2)'}" opacity="0.82" />`;
+            return {
+                index: i,
+                label: labels[i] || '',
+                value: v,
+                x,
+                y,
+                width: bw,
+                height: hh,
+                centerX: x + (bw / 2)
+            };
         });
+        const bars = barsData.map(bar => `<rect class="analytics-bar" data-index="${bar.index}" x="${bar.x.toFixed(2)}" y="${bar.y.toFixed(2)}" width="${bar.width.toFixed(2)}" height="${bar.height.toFixed(2)}" rx="9" fill="url(#${gradientId})" stroke="rgba(255,255,255,0.42)" stroke-width="1.4" opacity="0.94" />`);
 
         const mid = Math.floor((labels.length - 1) / 2);
         const xLabelPos = i => pad.l + i * (bw + gap) + (bw / 2);
@@ -2464,13 +2646,68 @@ document.addEventListener('DOMContentLoaded', async () => {
             { i: 0, txt: labels[0] || '' },
             { i: mid, txt: labels[mid] || '' },
             { i: labels.length - 1, txt: labels[labels.length - 1] || '' }
-        ].map(xl => `<text x="${xLabelPos(xl.i).toFixed(2)}" y="${h - 8}" text-anchor="middle" fill="currentColor" opacity=".7" font-size="11">${esc(xl.txt)}</text>`);
+        ].map(xl => `<text x="${xLabelPos(xl.i).toFixed(2)}" y="${h - 10}" text-anchor="middle" fill="currentColor" opacity=".76" font-size="12">${esc(xl.txt)}</text>`);
 
         svg.innerHTML = `
+            <defs>
+                <linearGradient id="${gradientId}" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stop-color="${color}" stop-opacity="0.98"></stop>
+                    <stop offset="100%" stop-color="${color}" stop-opacity="0.54"></stop>
+                </linearGradient>
+            </defs>
             <rect x="0" y="0" width="${w}" height="${h}" fill="transparent"></rect>
+            ${grids.join('')}
+            ${yLabels.join('')}
             ${bars.join('')}
             ${xLabels.join('')}
+            <g class="analytics-hover-layer" opacity="0" pointer-events="none">
+                <rect class="analytics-bar-focus" x="${pad.l}" y="${pad.t}" width="${bw.toFixed(2)}" height="12" rx="10" fill="${color}" opacity="0.2"></rect>
+            </g>
         `;
+
+        const hoverLayer = svg.querySelector('.analytics-hover-layer');
+        const hoverBar = svg.querySelector('.analytics-bar-focus');
+        const barEls = Array.from(svg.querySelectorAll('.analytics-bar'));
+
+        const clearHover = () => {
+            hoverLayer?.setAttribute('opacity', '0');
+            barEls.forEach(el => el.classList.remove('is-active', 'is-dim'));
+            hideAnalyticsChartTooltip(svg);
+        };
+
+        svg.onpointerleave = clearHover;
+        svg.onpointermove = event => {
+            const point = chartPointerPoint(event, svg, w, h);
+            if (!pointerWithinChartPlot(point, w, h, pad)) {
+                clearHover();
+                return;
+            }
+            const nearest = barsData.reduce((best, current) =>
+                !best || Math.abs(current.centerX - point.x) < Math.abs(best.centerX - point.x) ? current : best, null);
+            if (!nearest) {
+                clearHover();
+                return;
+            }
+            hoverLayer?.setAttribute('opacity', '1');
+            hoverBar?.setAttribute('x', nearest.x.toFixed(2));
+            hoverBar?.setAttribute('y', nearest.y.toFixed(2));
+            hoverBar?.setAttribute('width', nearest.width.toFixed(2));
+            hoverBar?.setAttribute('height', nearest.height.toFixed(2));
+            barEls.forEach(el => {
+                const active = Number(el.getAttribute('data-index')) === nearest.index;
+                el.classList.toggle('is-active', active);
+                el.classList.toggle('is-dim', !active);
+            });
+            const rect = svg.getBoundingClientRect();
+            showAnalyticsChartTooltip(
+                svg,
+                rect.left + ((nearest.centerX / w) * rect.width),
+                rect.top + ((nearest.y / h) * rect.height),
+                nearest.label || `Bar ${nearest.index + 1}`,
+                chartTooltipLabel(nearest.value, options),
+                options.seriesName || ''
+            );
+        };
     }
 
     function perfGradient(accuracy) {
@@ -2638,19 +2875,40 @@ document.addEventListener('DOMContentLoaded', async () => {
             'analytics-chart-accuracy',
             snapshot.days.map(d => d.accuracy),
             labels,
-            { min: 0, max: 100, color: '#60a5fa', yLabelFn: v => `${Math.round(v)}%`, emptyText: 'No accuracy data' }
+            {
+                min: 0,
+                max: 100,
+                color: '#60a5fa',
+                yLabelFn: v => `${Math.round(v)}%`,
+                tooltipLabelFn: v => `${Math.round(v)}% accuracy`,
+                seriesName: 'Accuracy trend',
+                emptyText: 'No accuracy data'
+            }
         );
         renderLineChart(
             'analytics-chart-buzz',
             snapshot.days.map(d => d.avgBuzz),
             labels,
-            { minZero: true, color: '#22c55e', yLabelFn: v => `${v.toFixed(1)}s`, emptyText: 'No buzz speed data' }
+            {
+                minZero: true,
+                color: '#22c55e',
+                yLabelFn: v => `${v.toFixed(1)}s`,
+                tooltipLabelFn: v => `${v.toFixed(2)}s average buzz`,
+                seriesName: 'Buzz speed trend',
+                emptyText: 'No buzz speed data'
+            }
         );
         renderBarChart(
             'analytics-chart-volume',
             snapshot.days.map(d => d.attempts),
             labels,
-            { color: '#f59e0b', emptyText: 'No attempts yet' }
+            {
+                color: '#f59e0b',
+                axisLabelFn: v => `${Math.round(v)}`,
+                tooltipLabelFn: v => `${Math.round(v)} questions answered`,
+                seriesName: 'Daily volume',
+                emptyText: 'No attempts yet'
+            }
         );
 
         renderPerformanceList('analytics-era-list', snapshot.eraStats, 'No era-tagged questions yet.');
