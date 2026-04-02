@@ -355,8 +355,22 @@
                             <p class="empty-copy">Routine profile edits stay separated from destructive actions so the
                                 account page reads like settings first, not risk management first.</p>
                         </div>
-                        <button id="btn-delete-account" class="btn warn">Delete My Account Permanently</button>
                     </aside>
+                </div>
+
+                <div class="account-delete-footer">
+                    <p class="account-delete-copy">Need to permanently remove this account? The delete option lives at the
+                        bottom of the page and stays low emphasis until you deliberately open it.</p>
+                    <button id="btn-reveal-delete" type="button" class="btn ghost account-delete-trigger">Delete
+                        account</button>
+                    <div id="account-danger-panel" class="account-delete-panel hidden">
+                        <label class="account-danger-confirm">
+                            <input id="confirm-delete-reveal" type="checkbox">
+                            I understand this permanently deletes my account and all data.
+                        </label>
+                        <button id="btn-delete-account" type="button" class="btn warn account-delete-action"
+                            disabled>Delete My Account Permanently</button>
+                    </div>
                 </div>
             </div>
         </section>

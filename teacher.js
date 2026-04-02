@@ -219,7 +219,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
 
     // Account profile
+    const deleteBtn = document.getElementById('btn-delete-account');
     const saveAccountBtn = document.getElementById('btn-save-account');
+    const revealDeleteBtn = document.getElementById('btn-reveal-delete');
+    const dangerPanel = document.getElementById('account-danger-panel');
+    const confirmDeleteReveal = document.getElementById('confirm-delete-reveal');
     function setInput(id, value) {
         const el = document.getElementById(id);
         if (!el) return;
@@ -305,8 +309,23 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     });
 
+    revealDeleteBtn?.addEventListener('click', () => {
+        if (!dangerPanel) return;
+        const show = dangerPanel.classList.contains('hidden');
+        dangerPanel.classList.toggle('hidden', !show);
+        revealDeleteBtn.textContent = show ? 'Hide delete option' : 'Delete account';
+        if (!show && confirmDeleteReveal) {
+            confirmDeleteReveal.checked = false;
+            if (deleteBtn) deleteBtn.disabled = true;
+        }
+    });
+
+    confirmDeleteReveal?.addEventListener('change', () => {
+        if (deleteBtn) deleteBtn.disabled = !confirmDeleteReveal.checked;
+    });
+
     // Delete account
-    document.getElementById('btn-delete-account').addEventListener('click', async () => {
+    deleteBtn?.addEventListener('click', async () => {
         if (!confirm('⚠️ Permanently delete your account and ALL data?')) return;
         if (!confirm('FINAL WARNING: This cannot be undone!')) return;
         try { await sb.rpc('delete_user'); await sb.auth.signOut(); window.location.replace('login.html'); }

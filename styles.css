@@ -907,6 +907,54 @@ tr:hover td {
   background: rgba(248, 113, 113, 0.06);
 }
 
+.account-delete-footer {
+  margin-top: 28px;
+  padding-top: 18px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.account-delete-copy {
+  margin: 0;
+  max-width: 620px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.account-delete-trigger {
+  padding: 7px 12px;
+  border-radius: 999px;
+  border-color: rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.025);
+  color: rgba(226, 232, 240, 0.68);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  box-shadow: none;
+}
+
+.account-delete-trigger:hover:not(:disabled) {
+  background: rgba(248, 113, 113, 0.08);
+  border-color: rgba(248, 113, 113, 0.18);
+  color: #fecaca;
+}
+
+.account-delete-panel {
+  width: min(100%, 520px);
+  margin-top: 2px;
+  padding: 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(248, 113, 113, 0.2);
+  background: rgba(248, 113, 113, 0.05);
+}
+
+.account-delete-action {
+  margin-top: 12px;
+}
+
 .account-danger-confirm {
   display: flex;
   align-items: flex-start;

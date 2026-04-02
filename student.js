@@ -1141,7 +1141,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (!dangerPanel) return;
         const show = dangerPanel.classList.contains('hidden');
         dangerPanel.classList.toggle('hidden', !show);
-        revealDeleteBtn.textContent = show ? 'Hide Delete Option' : 'Show Delete Option';
+        revealDeleteBtn.textContent = show ? 'Hide delete option' : 'Delete account';
         if (!show && confirmDeleteReveal) {
             confirmDeleteReveal.checked = false;
             if (deleteBtn) deleteBtn.disabled = true;

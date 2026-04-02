@@ -476,27 +476,24 @@
                         <div class="card-muted-box student-side-note">
                             <div class="empty-kicker">Account note</div>
                             <p class="empty-copy">Keep routine profile edits in the main column and isolate destructive
-                                actions to the side so they never compete with day-to-day settings.</p>
-                        </div>
-
-                        <div class="account-danger">
-                            <div class="section-head" style="margin-bottom: 10px;">
-                                <div>
-                                    <h3 style="margin: 0;">Danger Zone</h3>
-                                    <p class="section-subtitle">Delete is hidden until you explicitly reveal it.</p>
-                                </div>
-                                <button id="btn-reveal-delete" type="button" class="btn ghost">Show Delete Option</button>
-                            </div>
-                            <div id="account-danger-panel" class="hidden">
-                                <label class="account-danger-confirm">
-                                    <input id="confirm-delete-reveal" type="checkbox">
-                                    I understand this permanently deletes my account and all data.
-                                </label>
-                                <button id="btn-delete-account" class="btn warn" disabled style="margin-top: 12px;">Delete My
-                                    Account Permanently</button>
-                            </div>
+                                actions so they never compete with day-to-day settings.</p>
                         </div>
                     </aside>
+                </div>
+
+                <div class="account-delete-footer">
+                    <p class="account-delete-copy">Need to permanently remove this account? That option stays tucked away
+                        down here until you intentionally reveal it.</p>
+                    <button id="btn-reveal-delete" type="button" class="btn ghost account-delete-trigger">Delete
+                        account</button>
+                    <div id="account-danger-panel" class="account-delete-panel hidden">
+                        <label class="account-danger-confirm">
+                            <input id="confirm-delete-reveal" type="checkbox">
+                            I understand this permanently deletes my account and all data.
+                        </label>
+                        <button id="btn-delete-account" type="button" class="btn warn account-delete-action"
+                            disabled>Delete My Account Permanently</button>
+                    </div>
                 </div>
             </div>
         </section>
