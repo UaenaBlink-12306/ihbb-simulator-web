@@ -3,6 +3,7 @@ const $ = (id) => document.getElementById(id);
 const SHOW = (id) => {
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
   const el = $(id); if (el) el.classList.add('active');
+  if (typeof updateSetupMobileDock === 'function') updateSetupMobileDock();
 };
 const navSet = (which) => {
   document.querySelectorAll('.nav a').forEach(a => a.classList.remove('active'));
@@ -966,16 +967,20 @@ function coachChatMessageHtml(message, index) {
 }
 
 function renderCoachChatMessages() {
+  const bodyEl = $('coach-chat-body');
   const messagesEl = $('coach-chat-messages');
   if (!messagesEl) return;
   const html = CoachChat.messages.map((message, index) => coachChatMessageHtml(message, index)).join('');
   const busyHtml = CoachChat.busy ? `
-    <div class="coach-chat-message assistant">
+    <div class="coach-chat-message assistant coach-chat-thinking">
       <div class="coach-chat-message-meta">
         <span>DeepSeek</span>
-        <span>Preparing</span>
+        <span>Thinking</span>
       </div>
-      <div class="coach-chat-loading">${CoachChat.ui.mode === 'knowledge' ? 'Building a detailed study brief with references.' : 'Reviewing your wrong-bank, notebook, and setup.'}</div>
+      <div class="coach-chat-thinking-bubble">
+        <div class="coach-chat-thinking-dots" aria-hidden="true"><span></span><span></span><span></span></div>
+        <div class="coach-chat-loading">${CoachChat.ui.mode === 'knowledge' ? 'DeepSeek is building a detailed study brief with references.' : 'DeepSeek is reviewing your wrong-bank, notebook, and setup.'}</div>
+      </div>
     </div>
   ` : '';
   messagesEl.innerHTML = html || busyHtml
@@ -986,6 +991,7 @@ function renderCoachChatMessages() {
       ? 'Pick a prompt or type a topic when you want an explanation, timeline, or comparison.'
       : 'Pick a prompt or type what you want to practice next.'}</p>
       </div>`;
+  if (bodyEl) bodyEl.scrollTop = bodyEl.scrollHeight;
   messagesEl.scrollTop = messagesEl.scrollHeight;
 }
 
@@ -1417,6 +1423,9 @@ function maybeAutoOpenCoachChat(reason = 'init') {
   if (CoachChat.open || CoachChat.busy || isCoachChatAutoSuppressed() || CoachChat.autoReasons.has(reason)) return false;
   const snapshot = buildCoachChatStudyContext();
   if (reason === 'miss' && snapshot?.recent_incorrect?.title) {
+    CoachChat.suggestedReason = 'miss';
+    renderCoachChatChrome();
+    return false;
   } else if ((snapshot?.wrong_bank?.due_now || 0) >= 3) {
   } else if ((snapshot?.coach_notebook?.open_lessons || 0) >= 2 && snapshot?.coach_notebook?.top_focuses?.[0]?.title) {
   } else {
@@ -2843,11 +2852,13 @@ function updateSetupOverview() {
     Settings.autoAdvance ? `Auto-advance ${Settings.autoAdvanceDelay || 1}s` : 'Manual pacing',
     Settings.haptics ? 'Haptics on' : 'Haptics off'
   ].join(' • ');
+  const lengthText = sessionLengthLabel(App.size, set);
+  const filterSummary = `${filterCats} • ${filterEras} • ${filterSrc}`;
 
   const setEl = $('setup-summary-set'); if (setEl) setEl.textContent = setText;
   const modeEl = $('setup-summary-mode'); if (modeEl) modeEl.textContent = modeLabel(App.mode);
-  const lengthEl = $('setup-summary-length'); if (lengthEl) lengthEl.textContent = sessionLengthLabel(App.size, set);
-  const filtersEl = $('setup-summary-filters'); if (filtersEl) filtersEl.textContent = `${filterCats} • ${filterEras} • ${filterSrc}`;
+  const lengthEl = $('setup-summary-length'); if (lengthEl) lengthEl.textContent = lengthText;
+  const filtersEl = $('setup-summary-filters'); if (filtersEl) filtersEl.textContent = filterSummary;
   const advEl = $('setup-summary-advanced'); if (advEl) advEl.textContent = advancedSummary;
 
   const pills = $('setup-summary-advanced-pills');
@@ -2862,8 +2873,8 @@ function updateSetupOverview() {
   }
 
   const nextEl = $('setup-summary-next');
+  let nextText = 'Choose a set and tighten filters only if you want a more focused drill.';
   if (nextEl) {
-    let nextText = 'Choose a set and tighten filters only if you want a more focused drill.';
     if (!set) {
       nextText = 'Upload or reload questions.json to unlock the full drill builder.';
     } else if (App.mode === 'srs' && !wrongRecords().length) {
@@ -2873,8 +2884,34 @@ function updateSetupOverview() {
     }
     nextEl.textContent = nextText;
   }
+
+  const mobileSummaryEl = $('setup-mobile-summary');
+  if (mobileSummaryEl) {
+    mobileSummaryEl.textContent = set
+      ? `${lengthText} • ${filterCats} • ${filterSrc}`
+      : 'Load or reload a question set to unlock a drill.';
+  }
+  const mobileModeEl = $('setup-mobile-mode'); if (mobileModeEl) mobileModeEl.textContent = modeLabel(App.mode);
+  const mobileNextEl = $('setup-mobile-next'); if (mobileNextEl) mobileNextEl.textContent = nextText;
+  const mobileDockModeEl = $('setup-mobile-dock-mode'); if (mobileDockModeEl) mobileDockModeEl.textContent = modeLabel(App.mode);
+  const mobileDockSummaryEl = $('setup-mobile-dock-summary');
+  if (mobileDockSummaryEl) {
+    mobileDockSummaryEl.textContent = set
+      ? `${lengthText} • ${filterCats} • ${filterSrc}`
+      : 'Load or reload a question set to unlock a drill.';
+  }
+  updateSetupMobileDock();
   renderCoachChatChrome();
 }
+
+function updateSetupMobileDock() {
+  const dock = $('setup-mobile-dock');
+  if (!dock) return;
+  const activeViewId = document.querySelector('.view.active')?.id || '';
+  const showDock = shouldRenderMobileRecordLists() && activeViewId === 'view-setup';
+  dock.hidden = !showDock;
+}
+
 function setPracticeButtons({ buzz, next, right, wrong, replay, alias, flag }) {
   const bz = $('btn-buzz'); if (bz) bz.disabled = !buzz;
   const nx = $('btn-next'); if (nx) nx.disabled = !next;
@@ -3485,6 +3522,58 @@ function toggleCoachMastered(attemptId, mastered) {
 }
 
 /********************* Review & Wrong bank *********************/
+function shouldRenderMobileRecordLists() {
+  return !!(window.matchMedia && window.matchMedia('(max-width: 760px)').matches);
+}
+
+function mobileRecordPills(entries = []) {
+  return entries
+    .filter(([_, value]) => value === 0 || String(value || '').trim())
+    .map(([label, value]) => `
+      <span class="mobile-record-pill">
+        <span class="mobile-record-pill-label">${escHtml(label)}</span>
+        <span>${escHtml(String(value))}</span>
+      </span>
+    `)
+    .join('');
+}
+
+function mobileRecordCard({ eyebrow = '', title = '', pills = [], details = [], actionHtml = '' } = {}) {
+  const pillsHtml = mobileRecordPills(pills);
+  const detailsHtml = details
+    .filter(detail => String(detail || '').trim())
+    .map(detail => `<p class="mobile-record-detail">${detail}</p>`)
+    .join('');
+  return `
+    <article class="mobile-record-card">
+      ${eyebrow ? `<div class="mobile-record-eyebrow">${escHtml(eyebrow)}</div>` : ''}
+      <h3 class="mobile-record-title">${escHtml(String(title || '').trim() || 'Untitled')}</h3>
+      ${pillsHtml ? `<div class="mobile-record-pills">${pillsHtml}</div>` : ''}
+      ${detailsHtml ? `<div class="mobile-record-details">${detailsHtml}</div>` : ''}
+      ${actionHtml ? `<div class="mobile-record-actions">${actionHtml}</div>` : ''}
+    </article>
+  `;
+}
+
+function renderMobileRecordList(containerId, cards, emptyTitle, emptyCopy) {
+  const container = $(containerId);
+  if (!container) return;
+  if (!shouldRenderMobileRecordLists()) {
+    container.innerHTML = '';
+    return;
+  }
+  if (!cards.length) {
+    container.innerHTML = `
+      <div class="list-empty mobile-record-empty">
+        <div class="empty-kicker">${escHtml(emptyTitle)}</div>
+        <p class="empty-copy">${escHtml(emptyCopy)}</p>
+      </div>
+    `;
+    return;
+  }
+  container.innerHTML = cards.join('');
+}
+
 function renderHistory() {
   const arr = JSON.parse(localStorage.getItem(KEY_SESS) || '[]');
   const tb = document.querySelector('#tbl-history tbody'); if (!tb) return;
@@ -3500,12 +3589,30 @@ function renderHistory() {
     $('r-last-acc').textContent = '—';
     $('r-last-dur').textContent = '—';
   }
+  const mobileCards = [];
   for (const s of arr) {
     const tr = document.createElement('tr');
     tr.innerHTML = `<td>${fmtDate(s.ts)}</td><td>${s.total}</td><td>${s.correct}</td><td>${s.acc}%</td><td>${prettyDur(s.dur)}</td><td><button class='btn ghost' data-replay='${s.ts}'>Repeat</button></td>`;
     tb.appendChild(tr);
+    mobileCards.push(mobileRecordCard({
+      eyebrow: fmtDate(s.ts),
+      title: `${s.correct}/${s.total} correct`,
+      pills: [
+        ['Accuracy', `${s.acc}%`],
+        ['Duration', prettyDur(s.dur)]
+      ],
+      details: [
+        `Finished on ${escHtml(fmtDate(s.ts))}.`
+      ],
+      actionHtml: `<button class="btn ghost" data-replay="${escHtml(String(s.ts))}">Repeat</button>`
+    }));
   }
-  tb.querySelectorAll('button[data-replay]').forEach(b => b.onclick = () => repeatSession(b.dataset.replay));
+  const bindRepeatButtons = (root) => {
+    root?.querySelectorAll('button[data-replay]').forEach(b => b.onclick = () => repeatSession(b.dataset.replay));
+  };
+  bindRepeatButtons(tb);
+  renderMobileRecordList('history-mobile-list', mobileCards, 'No history yet', 'Complete a drill to store a replayable session here.');
+  bindRepeatButtons($('history-mobile-list'));
 }
 
 function repeatSession(ts) {
@@ -3532,6 +3639,7 @@ function renderWrongBank() {
   const due = srsDueList().length; const dt = $('due-today'); if (dt) dt.textContent = String(due);
   const q = (($('wrong-search') && $('wrong-search').value) || '').toLowerCase();
   const tb = document.querySelector('#tbl-wrong tbody'); if (!tb) return; tb.innerHTML = '';
+  const mobileCards = [];
   for (const { id, rec, item } of recs) {
     const ans = (item?.answer) || rec.answer || '';
     if (q && !ans.toLowerCase().includes(q)) continue;
@@ -3540,16 +3648,33 @@ function renderWrongBank() {
     const tr = document.createElement('tr');
     tr.innerHTML = `<td>${ans}</td><td class='stat'>${rec.box || 1}</td><td>${dueTxt}</td><td>${(aliases || []).slice(0, 3).join(', ')}</td><td><button class='btn ghost' data-del='${id}'>Delete</button></td>`;
     tb.appendChild(tr);
+    mobileCards.push(mobileRecordCard({
+      eyebrow: 'Wrong-bank item',
+      title: ans,
+      pills: [
+        ['Box', rec.box || 1],
+        ['Due', dueTxt]
+      ],
+      details: [
+        (aliases || []).length ? `Aliases: ${escHtml((aliases || []).slice(0, 3).join(', '))}` : 'Aliases: —'
+      ],
+      actionHtml: `<button class="btn ghost" data-del="${escHtml(String(id))}">Delete</button>`
+    }));
   }
-  tb.querySelectorAll('button[data-del]').forEach(b => b.onclick = () => {
-    const id = normalizeQuestionId(b.dataset.del);
-    if (!id) return;
-    const s = getSRS();
-    delete s[id];
-    setSRS(s);
-    syncWrongIdsDelete([id]);
-    renderWrongBank();
-  });
+  const bindDeleteButtons = (root) => {
+    root?.querySelectorAll('button[data-del]').forEach(b => b.onclick = () => {
+      const id = normalizeQuestionId(b.dataset.del);
+      if (!id) return;
+      const s = getSRS();
+      delete s[id];
+      setSRS(s);
+      syncWrongIdsDelete([id]);
+      renderWrongBank();
+    });
+  };
+  bindDeleteButtons(tb);
+  renderMobileRecordList('wrong-mobile-list', mobileCards, 'Wrong-bank is empty', 'Miss a question in practice and it will show up here for spaced repetition.');
+  bindDeleteButtons($('wrong-mobile-list'));
   renderCoachChatChrome();
 }
 
@@ -3765,8 +3890,18 @@ $('autoAdvanceDelay')?.addEventListener('input', () => {
   const el = $('autoAdvanceDelay'); Settings.autoAdvanceDelay = parseInt((el && el.value) || '1', 10) || 1; saveSettings(); updateSetupOverview();
 });
 
+function startLastPresetSession() {
+  const first = Object.values(Presets)[0];
+  if (first) applyPreset(first);
+  startSession();
+}
+
 $('startSession')?.addEventListener('click', startSession);
-$('startLast')?.addEventListener('click', () => { const first = Object.values(Presets)[0]; if (first) { applyPreset(first); } startSession(); });
+$('startSessionMobile')?.addEventListener('click', startSession);
+$('startSessionDock')?.addEventListener('click', startSession);
+$('startLast')?.addEventListener('click', startLastPresetSession);
+$('startLastMobile')?.addEventListener('click', startLastPresetSession);
+$('startLastDock')?.addEventListener('click', startLastPresetSession);
 
 // Practice buttons
 $('btn-buzz')?.addEventListener('click', buzz);
@@ -3994,10 +4129,15 @@ function mergeDuplicatesInActiveSet() {
 $('lib-merge-dupes')?.addEventListener('click', mergeDuplicatesInActiveSet);
 function renderLibraryTable() {
   const set = getActiveSet(); const tb = document.querySelector('#tbl-lib tbody'); if (!tb) return;
-  tb.innerHTML = ''; if (!set) return;
+  tb.innerHTML = '';
+  if (!set) {
+    renderMobileRecordList('lib-mobile-list', [], 'No set loaded', 'Load or import a question set to browse the library.');
+    return;
+  }
   const q = (($('lib-search') && $('lib-search').value) || '').toLowerCase();
   const fc = ($('lib-filter-cat') && $('lib-filter-cat').value) || '';
   const fe = ($('lib-filter-era') && $('lib-filter-era').value) || '';
+  const mobileCards = [];
   set.items.forEach((it, idx) => {
     if (q && !it.answer.toLowerCase().includes(q) && !it.question.toLowerCase().includes(q)) return;
     if (fc && (it.meta?.category || '') !== fc) return;
@@ -4005,7 +4145,20 @@ function renderLibraryTable() {
     const tr = document.createElement('tr');
     tr.innerHTML = `<td class='stat'>${idx + 1}</td><td>${it.answer}</td><td>${(it.aliases || []).slice(0, 3).join(', ')}</td><td>${it.meta?.category || ''}</td><td>${getEraName(it.meta?.era || '')}</td><td>${it.meta?.source || ''}</td>`;
     tb.appendChild(tr);
+    mobileCards.push(mobileRecordCard({
+      eyebrow: `Question ${idx + 1}`,
+      title: it.answer,
+      pills: [
+        ['Region', it.meta?.category || '—'],
+        ['Era', getEraName(it.meta?.era || '') || '—']
+      ],
+      details: [
+        (it.aliases || []).length ? `Aliases: ${escHtml((it.aliases || []).slice(0, 3).join(', '))}` : 'Aliases: —',
+        it.meta?.source ? `Source: ${escHtml(it.meta.source)}` : ''
+      ]
+    }));
   });
+  renderMobileRecordList('lib-mobile-list', mobileCards, 'No questions match', 'Try broadening the search term or clearing one of the active filters.');
 }
 
 // Help overlay
@@ -4142,6 +4295,17 @@ document.addEventListener('pointerup', () => {
   if (!CoachChat.resizing) return;
   CoachChat.resizing = null;
   document.body.classList.remove('coach-chat-resizing');
+});
+
+let responsiveRenderTimer = null;
+window.addEventListener('resize', () => {
+  clearTimeout(responsiveRenderTimer);
+  responsiveRenderTimer = setTimeout(() => {
+    renderHistory();
+    renderWrongBank();
+    renderLibraryTable();
+    updateSetupMobileDock();
+  }, 120);
 });
 
 /********************* Default fetch — loads categorized JSON only *********************/

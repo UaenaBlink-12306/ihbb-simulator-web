@@ -177,6 +177,21 @@
                 </div>
               </div>
 
+              <div class="card-muted-box setup-mobile-quick" aria-live="polite">
+                <div class="setup-mobile-quick-head">
+                  <div>
+                    <div class="empty-kicker">Quick start</div>
+                    <p id="setup-mobile-summary" class="setup-mobile-summary">Random • 10 questions • All regions</p>
+                  </div>
+                  <div class="setup-mobile-mode-pill" id="setup-mobile-mode">Random</div>
+                </div>
+                <div class="form-actions setup-mobile-run-actions">
+                  <button id="startSessionMobile" class="btn pri">Start Session</button>
+                  <button id="startLastMobile" class="btn ghost">Start last settings</button>
+                </div>
+                <p id="setup-mobile-next" class="muted setup-mobile-next">Optional filters stay below if you want a more focused drill.</p>
+              </div>
+
               <div id="filter-row" class="setup-grid">
                 <div class="setup-group">
                   <label class="muted">Eras (multi-select)</label>
@@ -190,9 +205,11 @@
                 </div>
               </div>
 
-              <div class="form-actions">
+              <div class="form-actions setup-run-actions">
                 <button id="startSession" class="btn pri">Start Session</button>
                 <button id="startLast" class="btn ghost">Start last settings</button>
+              </div>
+              <div class="form-actions setup-preset-actions">
                 <button id="savePreset" class="btn ghost">Save preset</button>
                 <select id="presetSel">
                   <option value="">Load preset…</option>
@@ -204,7 +221,7 @@
         </div>
 
         <aside class="setup-side stack">
-          <div class="card section-card">
+          <div class="card section-card setup-overview-card">
             <div class="section-head">
               <div>
                 <div class="eyebrow">Session overview</div>
@@ -242,7 +259,7 @@
             </div>
           </div>
 
-          <div class="card section-card">
+          <div class="card section-card setup-advanced-card">
             <div class="section-head">
               <div>
                 <div class="eyebrow">Session controls</div>
@@ -291,6 +308,17 @@
         </aside>
       </div>
     </section>
+
+    <div id="setup-mobile-dock" class="setup-mobile-dock" hidden aria-live="polite">
+      <div class="setup-mobile-dock-head">
+        <div class="setup-mobile-mode-pill" id="setup-mobile-dock-mode">Random</div>
+        <p id="setup-mobile-dock-summary" class="setup-mobile-dock-summary">10 questions • All regions • All sources</p>
+      </div>
+      <div class="form-actions setup-mobile-dock-actions">
+        <button id="startSessionDock" class="btn pri">Start Session</button>
+        <button id="startLastDock" class="btn ghost">Start last settings</button>
+      </div>
+    </div>
 
   <!-- PRACTICE -->
   <section id="view-practice" class="view">
@@ -439,6 +467,7 @@
               <tbody></tbody>
             </table>
           </div>
+          <div id="wrong-mobile-list" class="mobile-record-list" aria-live="polite"></div>
         </div>
 
         <div class="card section-card">
@@ -465,6 +494,7 @@
               <tbody></tbody>
             </table>
           </div>
+          <div id="history-mobile-list" class="mobile-record-list" aria-live="polite"></div>
           <div class="inline-actions" style="margin-top: 16px;">
             <button id="btn-clear-history" class="btn ghost">Clear history</button>
           </div>
@@ -582,6 +612,7 @@
             <tbody></tbody>
           </table>
         </div>
+        <div id="lib-mobile-list" class="mobile-record-list" aria-live="polite"></div>
       </div>
     </div>
   </section>
@@ -612,15 +643,17 @@
         </div>
       </div>
 
-      <div id="coach-chat-status-pills" class="coach-chat-status-pills"></div>
-      <div class="coach-chat-section-block">
-        <div class="coach-chat-section-label">Quick access</div>
-        <div id="coach-chat-workspace" class="coach-chat-workspace"></div>
-      </div>
-      <div id="coach-chat-messages" class="coach-chat-messages" aria-live="polite"></div>
-      <div class="coach-chat-starter-block">
-        <div class="coach-chat-section-label">Suggested prompts</div>
-        <div id="coach-chat-starters" class="coach-chat-starters"></div>
+      <div id="coach-chat-body" class="coach-chat-body">
+        <div id="coach-chat-status-pills" class="coach-chat-status-pills"></div>
+        <div class="coach-chat-section-block">
+          <div class="coach-chat-section-label">Quick access</div>
+          <div id="coach-chat-workspace" class="coach-chat-workspace"></div>
+        </div>
+        <div id="coach-chat-messages" class="coach-chat-messages" aria-live="polite"></div>
+        <div class="coach-chat-starter-block">
+          <div class="coach-chat-section-label">Suggested prompts</div>
+          <div id="coach-chat-starters" class="coach-chat-starters"></div>
+        </div>
       </div>
 
       <form id="coach-chat-form" class="coach-chat-form">
