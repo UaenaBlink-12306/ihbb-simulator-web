@@ -19,6 +19,7 @@ const prettyDur = (s) => { s = Math.round(s); if (s < 60) return s + 's'; const 
 const fmtDate = (ts) => new Date(ts).toLocaleString();
 const uid = () => Math.random().toString(36).slice(2) + Date.now().toString(36);
 const vibrate = (pat) => { try { if (Settings.haptics && navigator.vibrate) navigator.vibrate(pat); } catch { /* noop */ } };
+const DAY_MS = 24 * 60 * 60 * 1000;
 function setPracticePrompt(text, subtitle = '') {
   const promptEl = $('drill-prompt');
   if (promptEl) promptEl.textContent = String(text || 'Start a session to load your first question.');
@@ -1926,6 +1927,13 @@ function renderSetupCoachGuide() {
   if (notebookApplyBtn) notebookApplyBtn.disabled = !CoachFocusSuggestions.length;
 }
 
+function readWrongBankState() {
+  return {
+    total: wrongRecords().length,
+    dueNow: srsDueList().length
+  };
+}
+
 function openReviewSetup() {
   void openWorkspace('setup', { refresh: false });
 }
@@ -3512,6 +3520,7 @@ async function nextQuestion(first = false) {
   const item = App.pool[App.order[App.i]]; App.curItem = item; App.phase = 'reading';
   const st = $('status'); if (st) st.textContent = Settings.strict ? 'Reading… (strict mode)' : 'Reading…';
   setPracticePrompt(item.question, `Question ${Math.min(App.i + 1, App.order.length)} of ${App.order.length}`);
+  updatePracticeFocusChrome();
   setPracticeButtons({ buzz: true, next: true, right: false, wrong: false, replay: false, alias: false, flag: true });
   const nx = $('btn-next'); if (nx) nx.disabled = true;
   const bz = $('btn-buzz'); if (bz) bz.classList.add('pulse');
@@ -3592,6 +3601,7 @@ function finishMark(isRight) {
     setPracticeButtons({ buzz: false, next: true, right: false, wrong: false, replay: true, alias: true, flag: true });
     const nx = $('btn-next'); if (nx) nx.disabled = false;
   }
+  updatePracticeFocusChrome();
   updateHeader();
 }
 
@@ -4843,11 +4853,13 @@ function startTypingPhase(sec) {
   const row = $('typing-row'); if (row) row.style.display = 'flex';
   const inp = $('user-answer'); if (inp) { inp.disabled = false; inp.value = ''; setTimeout(() => inp.focus(), 0); }
   const sb = $('btn-submit-answer'); if (sb) sb.disabled = false;
+  setPracticePrompt(App.curItem?.question || 'Type your answer', `Type your answer (${sec}s)`);
   unlockPracticeAfterGrade();
   const cp = $('btn-copy-answer'); if (cp) cp.disabled = true;
 
   let t = 10; // fixed 10 seconds
   const cd = $('countdown'); if (cd) cd.textContent = `${t}`;
+  updatePracticeFocusChrome();
   setPracticeButtons({ buzz: false, next: false, right: false, wrong: false, replay: false, alias: false, flag: false });
 
   if (App._cdIv) { clearInterval(App._cdIv); App._cdIv = null; }
