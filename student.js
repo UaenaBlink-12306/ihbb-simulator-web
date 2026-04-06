@@ -1594,11 +1594,11 @@ document.addEventListener('DOMContentLoaded', async () => {
                 <div class="coach-focus-head">
                     <div>
                         <div class="coach-focus-title">${esc(focus.icon || '📘')} ${esc(focus.title)}</div>
-                        <div class="coach-focus-meta">${esc(focus.meta || 'Targeted DeepSeek focus')}</div>
+                        <div class="coach-focus-meta">${esc(focus.meta || 'Coach focus')}</div>
                     </div>
                     <span class="analytics-ai-priority ${esc(focus.priority || 'medium')}">${esc(focus.priority || 'medium')}</span>
                 </div>
-                <p class="coach-focus-reason">${esc(focus.reason || 'This is one of the clearest places to tighten your recall and clue recognition.')}</p>
+                <p class="coach-focus-reason">${esc(focus.reason || 'Best next target from recent work.')}</p>
                 <div class="coach-focus-tags">
                     ${focus.region ? `<span class="coach-focus-pill">Region: ${esc(focus.region)}</span>` : ''}
                     ${focus.era ? `<span class="coach-focus-pill">Era: ${esc(focus.era)}</span>` : ''}
@@ -1621,14 +1621,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         const focuses = coachFocusSuggestionsCurrent.slice(0, 2);
         drillBtn.disabled = !focuses.length;
         if (!focuses.length) {
-            summaryEl.textContent = 'DeepSeek prep suggestions will appear here once you build up some coach notes or analytics history.';
-            focusEl.innerHTML = '<div class="coach-empty">Practice a few more questions to unlock targeted assignment prep.</div>';
+            summaryEl.textContent = 'No coach focus yet.';
+            focusEl.innerHTML = '<div class="coach-empty">Complete a few drills to load a focus.</div>';
             renderDashboardChatChrome();
             return;
         }
         const primary = focuses[0];
-        summaryEl.textContent = `Before your next assignment, put extra attention on ${primary.title}. The coach is seeing repeat friction there across your recent practice.`;
-        renderCoachFocusCards('assignments-coach-focuses', focuses, 'No assignment prep suggestions yet.');
+        summaryEl.textContent = `Current priority: ${primary.title}.`;
+        renderCoachFocusCards('assignments-coach-focuses', focuses, 'No assignment focus yet.');
         renderDashboardChatChrome();
     }
 
@@ -1645,17 +1645,17 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (summaryEl) {
             if (coachFocusSuggestionsCurrent.length) {
                 const lead = coachFocusSuggestionsCurrent[0];
-                summaryEl.textContent = `Your strongest next move is ${lead.title}. DeepSeek has enough history to steer you toward a focused drill instead of another broad mixed session.`;
+                summaryEl.textContent = `Top focus: ${lead.title}.`;
             } else {
-                summaryEl.textContent = 'Once DeepSeek has a few saved lessons or analytics signals, this workspace will start grouping them into actionable drills.';
+                summaryEl.textContent = 'No coach focus yet.';
             }
         }
 
-        renderCoachFocusCards('coach-focus-list', coachFocusSuggestionsCurrent, 'No coach focuses yet. Missed-question lessons from practice will accumulate here.');
+        renderCoachFocusCards('coach-focus-list', coachFocusSuggestionsCurrent, 'No coach focus yet.');
 
         if (noteEl) {
             if (!coachRecordsCurrent.length) {
-                noteEl.innerHTML = '<div class="coach-empty">No DeepSeek coach lessons saved yet.</div>';
+                noteEl.innerHTML = '<div class="coach-empty">No saved lessons yet.</div>';
             } else {
                 noteEl.innerHTML = coachRecordsCurrent.map(record => {
                     const focus = coachFocusFromRecord(record);
@@ -2244,8 +2244,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
         if (statusEl) {
             statusEl.textContent = source === 'deepseek'
-                ? 'DeepSeek analyzed your current 30-day snapshot and highlighted the biggest weak areas to target next.'
-                : 'DeepSeek was unavailable, so this plan was generated from your analytics snapshot locally.';
+                ? 'AI summary ready from current 30-day data.'
+                : 'Local summary ready from current 30-day data.';
         }
         if (contentEl) {
             const weakAreasHtml = (Array.isArray(insights.weak_areas) ? insights.weak_areas : []).map(area => `
@@ -2269,15 +2269,15 @@ document.addEventListener('DOMContentLoaded', async () => {
                 </div>
                 <div class="analytics-ai-grid">
                     <div class="analytics-ai-block">
-                        <h4>Priority Weak Areas</h4>
+                        <h4>Priority Areas</h4>
                         <div class="analytics-ai-list">${weakAreasHtml || '<p class="muted">No major weak area has emerged yet.</p>'}</div>
                     </div>
                     <div class="analytics-ai-block">
-                        <h4>What Is Holding Up</h4>
+                        <h4>Stable Areas</h4>
                         <ul class="analytics-ai-compact-list">${winsHtml || '<li>Keep building attempts so the model can separate true strengths from noise.</li>'}</ul>
                     </div>
                     <div class="analytics-ai-block">
-                        <h4>Next Study Moves</h4>
+                        <h4>Next Moves</h4>
                         <ul class="analytics-ai-compact-list">${stepsHtml || '<li>Run one targeted drill and one mixed drill this week.</li>'}</ul>
                     </div>
                 </div>
@@ -2292,10 +2292,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (!hasData || !snapshot) {
             setAnalyticsInsightsButton('Generate Insights', true);
             renderAnalyticsInsightsPlaceholder(
-                'AI insights are waiting for data',
-                'Complete a few drill questions first so weak-area recommendations have real evidence behind them.',
+                'No insights yet',
+                'More drill data needed.',
                 'No data',
-                'Answer a few questions and refresh analytics to unlock AI insights.'
+                'Run a few questions first.'
             );
             return;
         }
@@ -2309,10 +2309,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         setAnalyticsInsightsButton('Generate Insights', false);
         renderAnalyticsInsightsPlaceholder(
-            'Generate a focused study plan',
-            'Use DeepSeek to summarize your weakest eras and regions from the current 30-day snapshot.',
+            'Generate summary',
+            'Summarize current 30-day data.',
             'Ready',
-            'Generate a DeepSeek summary to translate this analytics snapshot into targeted study moves.'
+            'AI summary ready to generate.'
         );
         renderAssignmentsCoachBrief();
     }
@@ -2819,19 +2819,19 @@ document.addEventListener('DOMContentLoaded', async () => {
         const fastestEl = document.getElementById('analytics-hero-fastest');
         if (titleEl) {
             if (snapshot.totalAttempts <= 0) {
-                titleEl.textContent = 'Your last 30 days at a glance';
+                titleEl.textContent = 'Last 30 days';
             } else if (snapshot.totalAccuracy >= 80) {
-                titleEl.textContent = 'Your recent drill rhythm is holding up well.';
+                titleEl.textContent = 'Strong recent accuracy';
             } else if (snapshot.totalAccuracy >= 65) {
-                titleEl.textContent = 'Your analytics show a workable base with a few leaks.';
+                titleEl.textContent = 'Mixed but workable';
             } else {
-                titleEl.textContent = 'Your weakest slices are visible enough to attack directly.';
+                titleEl.textContent = 'Clear weak areas';
             }
         }
         if (summaryEl) {
             summaryEl.textContent = snapshot.totalAttempts > 0
-                ? `You answered ${snapshot.totalAttempts.toLocaleString()} questions across ${snapshot.sessionsCount} sessions. Read the charts first, then use the blind-spot panels to decide what deserves a focused drill.`
-                : 'Track volume, accuracy, and buzz timing before you move on to AI interpretation.';
+                ? `${snapshot.totalAttempts.toLocaleString()} questions • ${snapshot.sessionsCount} sessions`
+                : 'Volume, accuracy, buzz speed.';
         }
         if (activeEl) activeEl.textContent = `${snapshot.activeDays || 0} / 30`;
         if (fastestEl) fastestEl.textContent = snapshot.fastestBuzz ? `${snapshot.fastestBuzz.toFixed(2)}s` : '—';

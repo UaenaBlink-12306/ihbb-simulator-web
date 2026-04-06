@@ -76,7 +76,7 @@
                     </div>
                     <button id="btn-new-class" class="btn pri">New Class</button>
                 </div>
-                <div class="dashboard-split">
+                <div class="dashboard-split dashboard-split-solo">
                     <div class="panel-stack">
                         <div id="new-class-form" class="card-muted-box hidden">
                             <div class="inline-form">
@@ -89,13 +89,6 @@
                             <p class="muted">Loading classes...</p>
                         </div>
                     </div>
-                    <aside class="panel-stack">
-                        <div class="card-muted-box teacher-side-note">
-                            <div class="empty-kicker">Invite workflow</div>
-                            <p class="empty-copy">Create the class once, copy the code from the roster card, then use
-                                the list as the control surface for students and assignments.</p>
-                        </div>
-                    </aside>
                 </div>
             </div>
         </section>
@@ -107,17 +100,10 @@
                         <h2 class="card-title">Assignments</h2>
                     </div>
                 </div>
-                <div class="dashboard-split">
+                <div class="dashboard-split dashboard-split-solo">
                     <div id="assignments-list" class="list-container">
                         <p class="muted">Loading assignments...</p>
                     </div>
-                    <aside class="panel-stack">
-                        <div class="card-muted-box teacher-side-note">
-                            <div class="empty-kicker">Assignment view</div>
-                            <p class="empty-copy">Published work stays in a single management column, while class and
-                                score details open only when you ask for them.</p>
-                        </div>
-                    </aside>
                 </div>
             </div>
         </section>
@@ -127,7 +113,7 @@
                 <div class="card section-card">
                     <div class="section-head">
                         <div>
-                            <h2 class="card-title">Create Assignment</h2>
+                            <h2 class="card-title">Build Assignment</h2>
                         </div>
                     </div>
 
@@ -155,14 +141,14 @@
 
                     <div class="section-head">
                         <div>
-                            <h3 style="margin: 0;">Select Questions</h3>
+                            <h3 style="margin: 0;">Questions</h3>
                         </div>
                     </div>
 
                     <div class="card-muted-box generator-card" style="margin-bottom: 18px;">
                         <div class="section-head" style="margin-bottom: 12px;">
                             <div>
-                                <h3 style="margin: 0;">DeepSeek Draft Builder</h3>
+                                <h3 style="margin: 0;">Draft Builder</h3>
                             </div>
                             <div class="inline-actions">
                                 <button id="btn-teacher-generate" class="btn pri" type="button">Generate Draft</button>
@@ -246,8 +232,8 @@
                     <div class="card section-card sticky-card">
                         <div class="section-head">
                             <div>
-                                <div class="eyebrow">Publish rail</div>
-                                <h2 class="card-title">Selection preview</h2>
+                                <div class="eyebrow">Publish</div>
+                                <h2 class="card-title">Selected Questions</h2>
                             </div>
                         </div>
                         <div id="preview-area" class="preview-area hidden">
@@ -262,9 +248,8 @@
                             <div id="preview-list" class="preview-list"></div>
                         </div>
                         <div class="card-muted-box summary-note">
-                            <div class="empty-kicker">Publishing checklist</div>
-                            <p class="empty-copy">Name the assignment, attach it to a class, preview the question set,
-                                then publish once the side rail looks clean.</p>
+                            <div class="empty-kicker">Status</div>
+                            <p class="empty-copy">Add a title, class, and question set.</p>
                         </div>
                         <button id="btn-create-assignment" class="btn pri auth-option">Create Assignment</button>
                     </div>
@@ -277,13 +262,7 @@
                 <div class="coming-soon">
                     <div class="cs-icon">Live</div>
                     <h2>Live Bee Rooms</h2>
-                    <p class="cs-desc">Host buzzer rounds for a class, judge answers live, and keep the scoreboard on
-                        screen while students compete.</p>
-                    <div class="cs-features">
-                        <div class="cs-feature">Host / reader mode</div>
-                        <div class="cs-feature">Real-time buzzing</div>
-                        <div class="cs-feature">Live scoreboard</div>
-                    </div>
+                    <p class="cs-desc">Room controls live here.</p>
                     <a href="livebee.html" class="btn pri">Host a Live Bee</a>
                 </div>
             </div>
@@ -294,14 +273,8 @@
                 <div class="coming-soon">
                     <div class="cs-icon">Rank</div>
                     <h2>Class Leaderboards</h2>
-                    <p class="cs-desc">Track weekly performance, reward consistency, and make progress visible once the
-                        ranking system is enabled.</p>
+                    <p class="cs-desc">Ranking view not active yet.</p>
                     <div class="cs-badge">Coming soon</div>
-                    <div class="cs-features">
-                        <div class="cs-feature">Weekly rankings</div>
-                        <div class="cs-feature">Performance trends</div>
-                        <div class="cs-feature">Student badges</div>
-                    </div>
                 </div>
             </div>
         </section>
@@ -350,11 +323,6 @@
                     </div>
 
                     <aside class="panel-stack">
-                        <div class="card-muted-box teacher-side-note">
-                            <div class="empty-kicker">Account note</div>
-                            <p class="empty-copy">Routine profile edits stay separated from destructive actions so the
-                                account page reads like settings first, not risk management first.</p>
-                        </div>
                         <button id="btn-delete-account" class="btn warn">Delete My Account Permanently</button>
                     </aside>
                 </div>

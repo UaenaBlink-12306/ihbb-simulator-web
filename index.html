@@ -225,7 +225,7 @@
             <div class="section-head">
               <div>
                 <div class="eyebrow">Session overview</div>
-                <h2 class="card-title">Ready to drill</h2>
+                <h2 class="card-title">Session summary</h2>
               </div>
             </div>
 
@@ -253,9 +253,8 @@
             </div>
 
             <div class="card-muted-box summary-note">
-              <div class="empty-kicker">Next step</div>
-              <p id="setup-summary-next" class="empty-copy">Choose a set and tighten filters only if you want a more
-                focused drill.</p>
+              <div class="empty-kicker">Status</div>
+              <p id="setup-summary-next" class="empty-copy">Pick a set to start.</p>
             </div>
           </div>
 
@@ -263,7 +262,7 @@
             <div class="section-head">
               <div>
                 <div class="eyebrow">Session controls</div>
-                <h2 class="card-title">Advanced settings</h2>
+                <h2 class="card-title">Session options</h2>
               </div>
               <button id="advToggle" class="btn ghost"><span id="advCaret" class="caret rotate">▾</span> Toggle</button>
             </div>
@@ -380,7 +379,7 @@
             <div>
               <div class="eyebrow">Performance recap</div>
               <h2 class="card-title">Last session</h2>
-              <p class="section-subtitle">Use the charts to read speed and accuracy first, then decide what to repeat.</p>
+              <p class="section-subtitle">Latest run metrics.</p>
             </div>
           </div>
           <div class="review-kpi-band">
@@ -417,14 +416,12 @@
             <div>
               <div class="eyebrow">DeepSeek recap</div>
               <h2 class="card-title">Session debrief</h2>
-              <p class="section-subtitle">Keep the AI takeaways separate from your raw stats so the next drill feels
-                more intentional.</p>
+              <p class="section-subtitle">Coach notes from the latest run.</p>
             </div>
           </div>
           <div id="review-coach-summary" class="card-muted-box summary-note">
-            <div class="empty-kicker">Session coach</div>
-            <p id="review-coach-note" class="empty-copy">Finish a session and the review page will surface the coach
-              lesson patterns worth drilling next.</p>
+            <div class="empty-kicker">Status</div>
+            <p id="review-coach-note" class="empty-copy">Finish a session to load coach notes.</p>
           </div>
           <div id="review-coach-focuses" class="coach-focus-grid" style="margin-top: 16px;"></div>
           <div class="inline-actions" style="margin-top: 16px;">
@@ -440,8 +437,7 @@
             <div>
               <div class="eyebrow">Spaced repetition</div>
               <h2 class="card-title">Wrong bank</h2>
-              <p class="section-subtitle">Keep today’s due material in a smaller side rail instead of letting it compete
-                with the full review summary.</p>
+              <p class="section-subtitle">Due items and tracked misses.</p>
             </div>
           </div>
           <div class="inline-actions">
@@ -475,8 +471,7 @@
             <div>
               <div class="eyebrow">Past runs</div>
               <h2 class="card-title">History</h2>
-              <p class="section-subtitle">Older sessions stay available, but they no longer share the same canvas as the
-                live recap.</p>
+              <p class="section-subtitle">Recent sessions and exports.</p>
             </div>
           </div>
           <div class="table-frame">
@@ -510,7 +505,7 @@
             <div>
               <div class="eyebrow">Saved AI coaching</div>
               <h2 class="card-title">AI Notebook</h2>
-              <p class="section-subtitle">Every DeepSeek lesson generated during practice lives here, so you can search it, mark it mastered, and turn it back into a targeted drill without digging through Review.</p>
+              <p class="section-subtitle">Saved coach notes and mastery status.</p>
             </div>
           </div>
 
@@ -524,10 +519,6 @@
             <button id="btn-coach-back-review" class="btn ghost" type="button">Back to Review</button>
           </div>
 
-          <div class="card-muted-box summary-note" style="margin-top: 12px;">
-            <div class="empty-kicker">Stored here</div>
-            <p class="empty-copy">Saved coach lessons, mastery tracking, and notebook search now live in this dedicated tab instead of the bottom of Review.</p>
-          </div>
         </div>
 
         <div class="card">
@@ -553,8 +544,7 @@
           <div>
             <div class="eyebrow">Question bank</div>
             <h2 class="card-title">Library controls</h2>
-            <p class="section-subtitle">Keep set management, filtering, and bulk actions in a compact control layer so
-              the table stays readable.</p>
+            <p class="section-subtitle">Set, filters, and bulk actions.</p>
           </div>
           <div class="inline-actions">
             <button id="lib-new-set" class="btn ghost">New set from file</button>
@@ -593,8 +583,7 @@
           <div>
             <div class="eyebrow">Set contents</div>
             <h2 class="card-title">Filtered question list</h2>
-            <p class="section-subtitle">The table is isolated below the control band so the current set and its filters
-              remain obvious while you scan rows.</p>
+            <p class="section-subtitle">Current filtered results.</p>
           </div>
         </div>
         <div class="table-frame library-table-frame">

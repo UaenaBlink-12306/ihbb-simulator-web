@@ -1638,11 +1638,11 @@ function coachFocusCardHtml(focus, index, actionClass) {
       <div class="coach-focus-head">
         <div>
           <div class="coach-focus-title">${escHtml(focus.icon || '📘')} ${escHtml(focus.title || 'Coach focus')}</div>
-          <div class="coach-focus-meta">${escHtml(focus.meta || 'DeepSeek focus')}</div>
+          <div class="coach-focus-meta">${escHtml(focus.meta || 'Coach focus')}</div>
         </div>
         <span class="analytics-ai-priority ${escHtml(focus.priority || 'medium')}">${escHtml(focus.priority || 'medium')}</span>
       </div>
-      <p class="coach-focus-reason">${escHtml(focus.reason || 'This area is worth reviewing before your next mixed drill.')}</p>
+      <p class="coach-focus-reason">${escHtml(focus.reason || 'Best next target from recent work.')}</p>
       <div class="coach-focus-tags">
         ${focus.region ? `<span class="coach-focus-pill">Region: ${escHtml(focus.region)}</span>` : ''}
         ${focus.era ? `<span class="coach-focus-pill">Era: ${escHtml(focus.era)}</span>` : ''}
@@ -1944,15 +1944,15 @@ function renderSessionCoachDebrief() {
   ReviewCoachFocusSuggestions = source.slice(0, 2);
   applyBtn.disabled = !source.length;
   if (!source.length) {
-    focusWrap.innerHTML = `<div class="coach-empty">Finish a session and the review page will surface the coach lesson patterns worth drilling next.</div>`;
-    noteEl.textContent = 'Finish a session and the review page will surface the coach lesson patterns worth drilling next.';
+    focusWrap.innerHTML = `<div class="coach-empty">Finish a session to load coach notes.</div>`;
+    noteEl.textContent = 'Finish a session to load coach notes.';
     ReviewCoachFocusSuggestions = [];
     return;
   }
   const lead = source[0];
   noteEl.textContent = sessionFocuses.length
-    ? `This session kept returning to ${lead.title}. Drill that lane now before going back to mixed practice.`
-    : `No session-specific coach lesson is ready yet, so the review page is using your broader top coach focus: ${lead.title}.`;
+    ? `Top session focus: ${lead.title}.`
+    : `Top coach focus: ${lead.title}.`;
   focusWrap.innerHTML = ReviewCoachFocusSuggestions.map((focus, index) => coachFocusCardHtml(focus, index, 'coach-review-focus')).join('');
 }
 
@@ -2883,14 +2883,14 @@ function updateSetupOverview() {
   }
 
   const nextEl = $('setup-summary-next');
-  let nextText = 'Choose a set and tighten filters only if you want a more focused drill.';
+  let nextText = 'Pick a set to start.';
   if (nextEl) {
     if (!set) {
-      nextText = 'Upload or reload questions.json to unlock the full drill builder.';
+      nextText = 'Load a question set.';
     } else if (App.mode === 'srs' && !wrongRecords().length) {
-      nextText = 'Wrong-bank mode becomes useful after you miss questions in a regular session.';
+      nextText = 'No wrong-bank items yet.';
     } else if (cats.length || App.filters.cat || eras.length || App.filters.era || App.filters.src) {
-      nextText = 'This session is ready. Start now or save the combination as a preset for later.';
+      nextText = 'Session ready.';
     }
     nextEl.textContent = nextText;
   }
@@ -2899,7 +2899,7 @@ function updateSetupOverview() {
   if (mobileSummaryEl) {
     mobileSummaryEl.textContent = set
       ? `${lengthText} • ${filterCats} • ${filterSrc}`
-      : 'Load or reload a question set to unlock a drill.';
+      : 'Load a question set.';
   }
   const mobileModeEl = $('setup-mobile-mode'); if (mobileModeEl) mobileModeEl.textContent = modeLabel(App.mode);
   const mobileNextEl = $('setup-mobile-next'); if (mobileNextEl) mobileNextEl.textContent = nextText;
@@ -2908,7 +2908,7 @@ function updateSetupOverview() {
   if (mobileDockSummaryEl) {
     mobileDockSummaryEl.textContent = set
       ? `${lengthText} • ${filterCats} • ${filterSrc}`
-      : 'Load or reload a question set to unlock a drill.';
+      : 'Load a question set.';
   }
   updateSetupMobileDock();
   renderCoachChatChrome();
