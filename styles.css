@@ -5924,3 +5924,543 @@ input[type=datetime-local] {
     radial-gradient(circle at top, rgba(59, 130, 246, 0.12), transparent 32%),
     rgba(238, 243, 249, 0.8);
 }
+
+/* ===== Calm UI Pass ===== */
+:root {
+  --surface: rgba(255, 255, 255, 0.98);
+  --surface-strong: rgba(248, 250, 252, 0.98);
+  --surface-soft: rgba(15, 23, 42, 0.03);
+  --surface-elevated: rgba(255, 255, 255, 1);
+  --surface-glass: rgba(255, 255, 255, 0.96);
+  --surface-glass-strong: rgba(255, 255, 255, 0.99);
+  --ink: #102033;
+  --muted: #5f7287;
+  --line: rgba(15, 23, 42, 0.08);
+  --line-strong: rgba(15, 23, 42, 0.14);
+  --accent: #1f6fff;
+  --accent2: #1f6fff;
+  --ring: rgba(31, 111, 255, 0.18);
+  --shadow: 0 14px 30px -24px rgba(15, 23, 42, 0.16);
+  --glass: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(247, 250, 253, 0.92));
+  --glass-border: inset 0 1px 0 rgba(255, 255, 255, 0.92);
+  --glass-overlay: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(247, 250, 253, 0.9));
+  --glass-overlay-soft: linear-gradient(180deg, rgba(255, 255, 255, 0.93), rgba(247, 250, 253, 0.86));
+  --glass-highlight: none;
+  --glass-highlight-soft: none;
+  --panel-shadow: 0 12px 24px -22px rgba(15, 23, 42, 0.14);
+  --panel-shadow-soft: 0 10px 18px -22px rgba(15, 23, 42, 0.12);
+  --panel-shadow-hover: 0 16px 28px -20px rgba(15, 23, 42, 0.16);
+  --glass-blur: 10px;
+  --glass-blur-soft: 8px;
+  --float-distance: 1px;
+  --page-max: 1240px;
+  --section-gap: 18px;
+  --layout-gap: 18px;
+}
+
+body {
+  background-color: #eef3f9;
+  background-image:
+    radial-gradient(circle at 10% 12%, rgba(31, 111, 255, 0.08), transparent 28%),
+    radial-gradient(circle at 92% 10%, rgba(13, 148, 136, 0.05), transparent 26%),
+    linear-gradient(135deg, #eef3f9 0%, #dde7f3 52%, #f8fbff 100%);
+  animation: none;
+}
+
+body::before,
+body::after {
+  opacity: 0.18;
+  filter: blur(24px);
+}
+
+body::before {
+  width: min(36vw, 460px);
+  height: min(36vw, 460px);
+  top: -14vw;
+  left: -12vw;
+}
+
+body::after {
+  width: min(30vw, 380px);
+  height: min(30vw, 380px);
+  right: -10vw;
+  bottom: -14vw;
+}
+
+.shell {
+  padding: 28px 24px 72px;
+}
+
+.page-hero,
+.auth-header {
+  border-color: var(--line);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.page-hero::before,
+.page-hero::after,
+.auth-header::before,
+.auth-header::after,
+.card::before,
+.sheet::before,
+.modal-card::before,
+.tab-strip::before,
+.metric-card::before,
+.card-muted-box::before,
+.summary-item::before,
+.empty-state::before,
+.list-item::before,
+.question-surface::before,
+.preview-area::before,
+.analytics-kpi::before,
+.analytics-panel::after,
+.analytics-ai-block::before,
+.analytics-ai-focus::before,
+.analytics-perf-row::before,
+.analytics-blind-card::before,
+.coach-brief-card::before,
+.coach-focus-card::before,
+.coach-note::before,
+.account-profile-card::before,
+.coming-soon::before,
+.analytics-empty::before,
+.role-card::before,
+.wizard-step::before,
+.coach-chat-panel::before,
+.coach-chat-workspace-card::before,
+.coach-chat-section-card::before,
+.coach-chat-link-card::before,
+.coach-chat-followup::before,
+.coach-chat-tool::before,
+.coach-chat-action::before,
+.coach-chat-starter::before {
+  content: none;
+}
+
+.card,
+.sheet,
+.modal-card,
+.metric-card,
+.card-muted-box,
+.summary-item,
+.empty-state,
+.list-item,
+.question-surface,
+.preview-area,
+.analytics-kpi,
+.analytics-panel,
+.analytics-ai-block,
+.analytics-ai-focus,
+.analytics-perf-row,
+.analytics-blind-card,
+.coach-brief-card,
+.coach-focus-card,
+.coach-note,
+.account-profile-card,
+.coming-soon,
+.analytics-empty,
+.role-card,
+.wizard-step,
+.coach-chat-panel,
+.coach-chat-workspace-card,
+.coach-chat-message,
+.coach-chat-section-card,
+.coach-chat-link-card,
+.coach-chat-followup,
+.coach-chat-tool,
+.coach-chat-action,
+.coach-chat-starter {
+  background: var(--surface);
+  border-color: var(--line);
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+}
+
+.card:hover,
+.metric-card:hover,
+.summary-item:hover,
+.list-item:hover,
+.question-surface:hover,
+.preview-area:hover,
+.analytics-kpi:hover,
+.analytics-panel:hover,
+.analytics-ai-block:hover,
+.analytics-ai-focus:hover,
+.analytics-perf-row:hover,
+.analytics-blind-card:hover,
+.coach-brief-card:hover,
+.coach-focus-card:hover,
+.coach-note:hover,
+.account-profile-card:hover,
+.role-card:hover {
+  transform: translateY(-1px);
+  border-color: rgba(31, 111, 255, 0.22);
+  box-shadow: 0 16px 28px -22px rgba(15, 23, 42, 0.18);
+}
+
+.nav,
+.tab-strip {
+  padding: 6px;
+  border-color: var(--line);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  gap: 6px;
+}
+
+.nav a,
+.tab-strip a,
+.tab-strip button,
+.tab-strip .tab,
+.dash-tab,
+.assign-sub-tab {
+  border-radius: 11px;
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+}
+
+.nav a:hover,
+.tab-strip a:hover,
+.tab-strip button:hover,
+.dash-tab:hover,
+.assign-sub-tab:hover {
+  background: rgba(31, 111, 255, 0.08);
+  color: var(--ink);
+  border-color: rgba(31, 111, 255, 0.14);
+  transform: translateY(-1px);
+  box-shadow: none;
+}
+
+.tab-strip .active,
+.tab-strip a.active,
+.tab-strip button.active,
+.dash-tab.active,
+.assign-sub-tab.active,
+.nav a.active {
+  background: rgba(31, 111, 255, 0.12);
+  border-color: rgba(31, 111, 255, 0.24);
+  color: var(--accent);
+  box-shadow: none;
+}
+
+.btn,
+.btn.ghost,
+.btn.pri,
+.btn.warn,
+.btn.good,
+.btn.bad {
+  box-shadow: none;
+}
+
+.btn {
+  background: #f6f8fc;
+  border: 1px solid var(--line);
+  color: var(--ink);
+}
+
+.btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.btn.ghost {
+  background: var(--surface);
+  color: var(--ink);
+}
+
+.btn.pri {
+  background: var(--accent);
+  color: #fff;
+  border-color: rgba(31, 111, 255, 0.28);
+}
+
+.btn.pri:hover:not(:disabled) {
+  background: #1b64ea;
+}
+
+.btn.warn,
+.btn.good,
+.btn.bad {
+  border-color: transparent;
+}
+
+.btn.warn {
+  background: rgba(251, 191, 36, 0.14);
+  color: #7c4f00;
+}
+
+.btn.good {
+  background: rgba(52, 211, 153, 0.14);
+  color: #0f6b4f;
+}
+
+.btn.bad {
+  background: rgba(248, 113, 113, 0.14);
+  color: #b42318;
+}
+
+.pill,
+.chip {
+  background: #f5f8fc;
+  border-color: var(--line);
+  box-shadow: none;
+}
+
+.chip.active,
+.pill strong {
+  color: var(--accent);
+}
+
+select,
+textarea,
+input[type=file],
+input[type=range],
+input[type=text],
+input[type=number],
+input[type=email],
+input[type=password],
+input[type=datetime-local] {
+  background: #fff;
+  border-color: var(--line);
+  box-shadow: none;
+}
+
+.section-card {
+  padding: 18px;
+}
+
+.section-head {
+  margin-bottom: 14px;
+}
+
+.section-subtitle,
+.muted,
+.coach-chat-context-summary,
+.analytics-panel-note,
+.analytics-hero-summary,
+.analytics-ai-overview,
+.analytics-perf-bottom,
+.mobile-record-detail {
+  color: var(--muted);
+}
+
+.summary-item,
+.card-muted-box,
+.empty-state,
+.list-item,
+.question-surface,
+.preview-area {
+  background: var(--surface-strong);
+}
+
+.summary-item {
+  padding: 14px 16px;
+}
+
+.summary-item strong,
+.metric-value,
+.counter,
+.stat,
+.score-points,
+.podium-points,
+.analytics-kpi-value,
+.analytics-hero-chip strong,
+.analytics-chart-tooltip-value {
+  color: var(--ink);
+}
+
+.empty-state {
+  border-style: solid;
+}
+
+.empty-kicker,
+.analytics-panel-kicker,
+.coach-chat-section-label,
+.analytics-kpi-label,
+.analytics-perf-meta,
+.mobile-record-eyebrow {
+  color: var(--muted);
+}
+
+.practice-shell,
+.review-shell,
+.library-shell,
+.dashboard-split,
+.stack,
+.panel-stack,
+.review-main-column,
+.review-side-column {
+  gap: 18px;
+}
+
+.practice-stage {
+  background: var(--surface);
+  border-color: var(--line);
+  box-shadow: var(--shadow);
+  padding: clamp(18px, 3vw, 28px);
+}
+
+.practice-status-band,
+.practice-command-row {
+  gap: 10px;
+}
+
+.practice-control-dock {
+  padding-top: 16px;
+  border-top-color: var(--line);
+}
+
+.practice-shortcuts,
+.coach-chat-launcher-note,
+.coach-chat-message-meta,
+.coach-chat-message-text,
+.coach-chat-message-title {
+  color: var(--muted);
+}
+
+.answer {
+  background: rgba(31, 111, 255, 0.08);
+  border-color: rgba(31, 111, 255, 0.18);
+  color: var(--ink);
+}
+
+.buzz {
+  background: linear-gradient(180deg, #ef4444, #d92d20);
+  box-shadow: 0 18px 34px -24px rgba(239, 68, 68, 0.4);
+}
+
+.buzz.pulse::after {
+  border-color: rgba(239, 68, 68, 0.22);
+}
+
+.analytics-empty,
+.analytics-hero,
+.analytics-panel,
+.analytics-ai-secondary,
+.analytics-kpi,
+.analytics-ai-block,
+.analytics-ai-focus,
+.analytics-perf-row,
+.analytics-blind-card,
+.coach-brief-card,
+.coach-focus-card,
+.coach-note,
+.coming-soon,
+.coach-chat-panel {
+  background: var(--surface);
+}
+
+.analytics-hero,
+.analytics-panel,
+.coach-chat-panel {
+  border-color: var(--line);
+}
+
+.analytics-hero::before,
+.analytics-hero::after,
+.analytics-panel::after {
+  content: none;
+}
+
+.analytics-hero h3,
+.analytics-hero-chip strong {
+  color: var(--ink);
+}
+
+.analytics-hero .eyebrow,
+.analytics-hero-chip {
+  background: var(--surface-strong);
+  border-color: var(--line);
+  color: var(--muted);
+  box-shadow: none;
+}
+
+.analytics-chart-tooltip {
+  background: var(--surface);
+  border-color: var(--line);
+  box-shadow: var(--shadow);
+}
+
+.analytics-ai-priority.high,
+.analytics-ai-priority.medium,
+.analytics-ai-priority.low,
+.analytics-heat-1,
+.analytics-heat-2,
+.analytics-heat-3,
+.analytics-heat-4 {
+  filter: saturate(0.82);
+}
+
+.coach-chat-launcher {
+  background: var(--surface);
+  border-color: var(--line);
+  box-shadow: var(--shadow);
+}
+
+.coach-chat-sidebar {
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.coach-chat-workspace-card,
+.coach-chat-starter,
+.coach-chat-action,
+.coach-chat-link-card,
+.coach-chat-followup,
+.coach-chat-tool,
+.coach-chat-section-card {
+  background: var(--surface-strong);
+  border-color: var(--line);
+  box-shadow: none;
+}
+
+.coach-chat-mode-btn,
+.coach-chat-size-btn {
+  background: var(--surface);
+  border-color: var(--line);
+}
+
+.coach-chat-mode-btn.active,
+.coach-chat-mode-btn[aria-pressed="true"],
+.coach-chat-size-btn.active,
+.coach-chat-size-btn[aria-pressed="true"] {
+  background: rgba(31, 111, 255, 0.12);
+  border-color: rgba(31, 111, 255, 0.24);
+  color: var(--accent);
+}
+
+.coach-chat-input-wrap textarea {
+  background: #fff;
+  border-color: var(--line);
+}
+
+.coming-soon .cs-icon,
+.coming-soon .cs-badge {
+  animation: none;
+}
+
+.coming-soon .cs-badge {
+  background: rgba(31, 111, 255, 0.1);
+  border: 1px solid rgba(31, 111, 255, 0.18);
+  color: var(--accent);
+  box-shadow: none;
+}
+
+.coming-soon .cs-feature {
+  background: var(--surface-strong);
+  border-color: var(--line);
+}
+
+.mobile-record-card {
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.table-frame {
+  border-color: var(--line);
+}
+
+.overlay,
+.modal-overlay {
+  backdrop-filter: blur(10px);
+}
