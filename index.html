@@ -43,7 +43,7 @@
 
         // Check if user wants the drill page directly (linked from dashboards)
         const params = new URLSearchParams(window.location.search);
-        const forceDrill = params.get('drill') === '1';
+        const forceDrill = params.get('drill') === '1' || params.has('workspace');
 
         if (!forceDrill) {
           // Fetch profile for role-based routing
@@ -113,12 +113,12 @@
     </header>
 
     <nav class="nav tab-strip">
-      <a href="index.html" id="nav-setup" class="active">Setup</a>
-      <a href="#" id="nav-practice">Practice</a>
-      <a href="#" id="nav-review">Review</a>
-      <a href="#" id="nav-coach">AI Notebook</a>
-      <a href="#" id="nav-library">Library</a>
-      <a href="#" id="nav-help">Shortcuts</a>
+      <a href="index.html?workspace=setup" id="nav-setup" class="active" data-workspace="setup">Setup</a>
+      <a href="index.html?workspace=practice" id="nav-practice" data-workspace="practice">Practice</a>
+      <a href="index.html?workspace=review" id="nav-review" data-workspace="review">Review</a>
+      <a href="index.html?workspace=coach" id="nav-coach" data-workspace="coach">AI Notebook</a>
+      <a href="index.html?workspace=library" id="nav-library" data-workspace="library">Library</a>
+      <a href="index.html?workspace=help" id="nav-help" data-workspace="help">Shortcuts</a>
     </nav>
 
     <section id="view-setup" class="view active">
@@ -229,6 +229,8 @@
               </div>
             </div>
 
+            <div id="setup-first-run" class="setup-first-run" hidden></div>
+
             <div class="summary-list">
               <div class="summary-item">
                 <span>Set</span>
@@ -331,6 +333,11 @@
           <div class="pill muted" id="drill-progress">0 / 0</div>
         </div>
 
+        <div class="practice-prompt-card">
+          <div class="eyebrow">Current prompt</div>
+          <div id="drill-prompt" class="practice-prompt">Start a session to load your first question.</div>
+        </div>
+
         <div class="practice-command-row">
           <div class="big" id="status">Ready.</div>
           <div class="pill">Buzz time: <span id="buzz-time" class="stat">—</span></div>
@@ -377,6 +384,33 @@
         <div class="card section-card">
           <div class="section-head">
             <div>
+              <div class="eyebrow">Guidance</div>
+              <h2 class="card-title">What should I do next?</h2>
+              <p class="section-subtitle">One clear next move, grounded in your session, wrong-bank, notebook, and history.</p>
+            </div>
+          </div>
+          <div id="review-next-step" class="review-next-step">
+            <div class="review-next-step-body">
+              <div class="empty-kicker" id="review-next-step-kicker">Recommended now</div>
+              <h3 id="review-next-step-title" class="review-next-step-title">Start your first 10-question drill</h3>
+              <p id="review-next-step-copy" class="review-next-step-copy">A short drill gives you the first signals needed to make Wrong-bank, coach notes, and analytics useful.</p>
+            </div>
+            <div id="review-next-step-actions" class="review-next-step-actions">
+              <button id="btn-review-primary" class="btn pri" type="button">Start 10-question drill</button>
+              <button id="btn-review-secondary" class="btn ghost" type="button">Open Setup</button>
+            </div>
+            <div id="review-next-step-signals" class="review-next-step-signals"></div>
+          </div>
+          <div id="review-coach-summary" class="card-muted-box summary-note">
+            <div class="empty-kicker">Why this is next</div>
+            <p id="review-coach-note" class="empty-copy">Finish a session to load a recommendation based on your next best signal.</p>
+          </div>
+          <div id="review-coach-focuses" class="coach-focus-grid" style="margin-top: 16px;"></div>
+        </div>
+
+        <div class="card section-card">
+          <div class="section-head">
+            <div>
               <div class="eyebrow">Performance recap</div>
               <h2 class="card-title">Last session</h2>
               <p class="section-subtitle">Latest run metrics.</p>
@@ -405,28 +439,8 @@
             <svg id="chart-acc-cat" class="chart" viewBox="0 0 640 180" aria-label="Accuracy by region"></svg>
           </div>
           <div class="inline-actions">
-            <button id="btn-review-misses" class="btn pri">Review missed now</button>
             <button id="btn-export-wrong" class="btn ghost">Export wrong.txt</button>
             <button id="btn-clear-wrong" class="btn ghost">Clear wrong bank</button>
-          </div>
-        </div>
-
-        <div class="card section-card">
-          <div class="section-head">
-            <div>
-              <div class="eyebrow">DeepSeek recap</div>
-              <h2 class="card-title">Session debrief</h2>
-              <p class="section-subtitle">Coach notes from the latest run.</p>
-            </div>
-          </div>
-          <div id="review-coach-summary" class="card-muted-box summary-note">
-            <div class="empty-kicker">Status</div>
-            <p id="review-coach-note" class="empty-copy">Finish a session to load coach notes.</p>
-          </div>
-          <div id="review-coach-focuses" class="coach-focus-grid" style="margin-top: 16px;"></div>
-          <div class="inline-actions" style="margin-top: 16px;">
-            <button id="btn-review-coach-apply" class="btn pri" type="button">Practice Top Focus</button>
-            <button id="btn-review-coach-notebook" class="btn ghost" type="button">Jump to AI Notebook</button>
           </div>
         </div>
       </div>
@@ -509,6 +523,8 @@
             </div>
           </div>
 
+          <div id="coach-empty-state" class="coach-empty-state" hidden></div>
+
           <div class="row">
             <div class="pill">Saved lessons: <span id="coach-count">0</span></div>
             <div class="pill">To learn: <span id="coach-open-count">0</span></div>
@@ -554,6 +570,8 @@
             <button id="lib-merge-dupes" class="btn ghost">Merge duplicates</button>
           </div>
         </div>
+
+        <div id="library-empty-state" class="library-empty-state" hidden></div>
 
         <div class="library-toolbar-grid">
           <div class="inline-form">
@@ -606,6 +624,59 @@
     </div>
   </section>
   </div>
+
+    <section id="view-help" class="view">
+      <div class="stack">
+        <div class="card section-card">
+          <div class="section-head">
+            <div>
+              <div class="eyebrow">Keyboard shortcuts</div>
+              <h2 class="card-title">Shortcuts</h2>
+              <p class="section-subtitle">Fast controls for live drills.</p>
+            </div>
+            <div class="inline-actions">
+              <button id="closeHelp" class="btn ghost" type="button">Back</button>
+            </div>
+          </div>
+          <div class="table-frame">
+            <table>
+              <thead>
+                <tr>
+                  <th>Key</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Space</td>
+                  <td>Buzz</td>
+                </tr>
+                <tr>
+                  <td>R</td>
+                  <td>Mark Right</td>
+                </tr>
+                <tr>
+                  <td>W</td>
+                  <td>Mark Wrong</td>
+                </tr>
+                <tr>
+                  <td>N</td>
+                  <td>Next</td>
+                </tr>
+                <tr>
+                  <td>L</td>
+                  <td>Replay last line</td>
+                </tr>
+                <tr>
+                  <td>?</td>
+                  <td>Open shortcuts</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
 
   <div id="coach-chat-backdrop" class="coach-chat-backdrop" hidden></div>
   <aside id="coach-chat-sidebar" class="coach-chat-sidebar" aria-hidden="true">
@@ -662,52 +733,6 @@
 
   <!-- Hidden inputs -->
   <input id="lib-import-json" type="file" accept=".json,application/json,text/json" style="display:none">
-
-  <!-- Help Overlay -->
-  <div id="overlay" class="overlay" role="dialog" aria-modal="true">
-    <div class="sheet">
-      <div class="row" style="align-items:center">
-        <div class="card-title" style="margin:0">Keyboard shortcuts</div>
-        <div class="grow"></div>
-        <button id="closeHelp" class="btn ghost">Close</button>
-      </div>
-      <div class="sep"></div>
-      <table>
-        <thead>
-          <tr>
-            <th>Key</th>
-            <th>Action</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td>Space</td>
-            <td>Buzz</td>
-          </tr>
-          <tr>
-            <td>R</td>
-            <td>Mark Right</td>
-          </tr>
-          <tr>
-            <td>W</td>
-            <td>Mark Wrong</td>
-          </tr>
-          <tr>
-            <td>N</td>
-            <td>Next</td>
-          </tr>
-          <tr>
-            <td>L</td>
-            <td>Replay last line</td>
-          </tr>
-          <tr>
-            <td>?</td>
-            <td>Open/close cheatsheet</td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-  </div>
 
   <div id="toast" class="toast"></div>
 

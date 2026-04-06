@@ -4482,6 +4482,49 @@ input[type=datetime-local]:focus {
   max-width: 520px;
 }
 
+.momentum-state {
+  border-style: solid;
+  border-color: rgba(96, 165, 250, 0.14);
+  background:
+    radial-gradient(circle at top right, rgba(96, 165, 250, 0.14), transparent 44%),
+    rgba(255, 255, 255, 0.03);
+}
+
+.momentum-steps {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 8px;
+  color: var(--ink);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.momentum-steps li {
+  padding-left: 4px;
+}
+
+.setup-first-run,
+.coach-empty-state,
+.library-empty-state {
+  margin-bottom: 16px;
+}
+
+.setup-first-run .empty-copy,
+.coach-empty-state .empty-copy,
+.library-empty-state .empty-copy {
+  max-width: 640px;
+}
+
+.table-empty-row td {
+  padding: 0;
+  border: 0;
+}
+
+.table-empty-row .empty-state {
+  margin: 14px 0;
+}
+
 .list-item {
   background:
     linear-gradient(155deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.03) 42%, rgba(255, 255, 255, 0.015) 100%),
@@ -4867,6 +4910,18 @@ input[type=datetime-local]:focus {
   .hero-brand {
     flex-direction: column;
     gap: 14px;
+  }
+
+  body.practice-focus-mode .page-hero .hero-actions > :not(#nav-logout) {
+    display: none !important;
+  }
+
+  body.practice-focus-mode .practice-prompt-card {
+    padding: 16px 18px;
+  }
+
+  body.practice-focus-mode .practice-prompt {
+    font-size: clamp(20px, 6vw, 28px);
   }
 
   .tab-strip,
@@ -5405,6 +5460,24 @@ input[type=datetime-local]:focus {
   gap: var(--layout-gap);
 }
 
+.practice-prompt-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 18px 20px;
+  border-radius: 20px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.practice-prompt {
+  font-size: clamp(22px, 3vw, 34px);
+  line-height: 1.25;
+  font-weight: 800;
+  letter-spacing: -0.35px;
+  color: var(--ink);
+}
+
 .practice-stage-card {
   display: flex;
   flex-direction: column;
@@ -5463,6 +5536,30 @@ input[type=datetime-local]:focus {
 
 .practice-shortcuts {
   font-size: 13px;
+}
+
+body.practice-focus-mode .nav,
+body.practice-focus-mode .view:not(#view-practice),
+body.practice-focus-mode .coach-chat-launcher,
+body.practice-focus-mode .coach-chat-sidebar,
+body.practice-focus-mode .coach-chat-backdrop {
+  display: none !important;
+}
+
+body.practice-focus-mode .page-hero .hero-actions > :not(#nav-logout) {
+  display: none !important;
+}
+
+body.practice-focus-mode .shell {
+  max-width: 1120px;
+}
+
+body.practice-focus-mode .practice-stage-card {
+  gap: 16px;
+}
+
+body.practice-focus-mode .practice-control-dock {
+  padding-top: 12px;
 }
 
 .review-kpi-band {

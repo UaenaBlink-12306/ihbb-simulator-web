@@ -19,6 +19,53 @@ const prettyDur = (s) => { s = Math.round(s); if (s < 60) return s + 's'; const 
 const fmtDate = (ts) => new Date(ts).toLocaleString();
 const uid = () => Math.random().toString(36).slice(2) + Date.now().toString(36);
 const vibrate = (pat) => { try { if (Settings.haptics && navigator.vibrate) navigator.vibrate(pat); } catch { /* noop */ } };
+function setPracticePrompt(text, subtitle = '') {
+  const promptEl = $('drill-prompt');
+  if (promptEl) promptEl.textContent = String(text || 'Start a session to load your first question.');
+  const statusEl = $('status');
+  if (statusEl && subtitle) statusEl.textContent = subtitle;
+}
+function setPracticeFocusMode(active) {
+  document.body.classList.toggle('practice-focus-mode', !!active);
+  if (active) setCoachChatOpenState(false);
+  updatePracticeFocusChrome();
+}
+function updatePracticeFocusChrome() {
+  const isFocus = document.body.classList.contains('practice-focus-mode');
+  const isActiveSession = isFocus && App.phase !== 'idle' && App.phase !== 'done';
+  const phase = App.phase;
+  const showTyping = isActiveSession && phase === 'typing';
+  const showAnswerActions = isActiveSession && (phase === 'answering' || phase === 'graded' || phase === 'coach-loading');
+  const showBuzz = isActiveSession && (phase === 'reading' || phase === 'countdown');
+  const showSubmit = showTyping;
+  const showNext = showAnswerActions;
+  const coachCard = $('coach-card');
+  if (coachCard) coachCard.hidden = isActiveSession;
+  const shortcuts = document.querySelector('.practice-shortcuts');
+  if (shortcuts) shortcuts.hidden = isActiveSession;
+  const dock = document.querySelector('.practice-control-dock');
+  if (dock) dock.classList.toggle('practice-control-dock-focus', isFocus);
+  const buzz = $('btn-buzz');
+  if (buzz) buzz.hidden = isFocus ? !showBuzz : false;
+  const typingRow = $('typing-row');
+  if (typingRow) typingRow.hidden = isFocus ? !showTyping : false;
+  const submit = $('btn-submit-answer');
+  if (submit) submit.hidden = isFocus ? !showSubmit : false;
+  const next = $('btn-next');
+  if (next) next.hidden = isFocus ? !showNext : false;
+  const replay = $('btn-replay');
+  if (replay) replay.hidden = isFocus;
+  const right = $('btn-right');
+  if (right) right.hidden = isFocus || App.autoGrade;
+  const wrong = $('btn-wrong');
+  if (wrong) wrong.hidden = isFocus || App.autoGrade;
+  const copy = $('btn-copy-answer');
+  if (copy) copy.hidden = isFocus;
+  const alias = $('btn-alias');
+  if (alias) alias.hidden = isFocus;
+  const flag = $('btn-flag');
+  if (flag) flag.hidden = isFocus;
+}
 
 /********************* Storage keys *********************/
 const KEY_SETTINGS = 'ihbb_v2_settings';
@@ -527,6 +574,15 @@ function renderCoachCard(coach) {
 const CoachNotebook = { records: [], loaded: false };
 let CoachFocusSuggestions = [];
 let ReviewCoachFocusSuggestions = [];
+const ReviewRecommendation = {
+  primary: null,
+  secondary: null,
+  signals: [],
+  note: '',
+  title: '',
+  kicker: 'Recommended now',
+  empty: false
+};
 const COACH_CHAT_STARTERS = [
   { label: 'What next?', prompt: 'What should I practice next in this practice hub?' },
   { label: 'Wrong-bank or notebook?', prompt: 'Should I use Wrong-bank or AI Notebook right now?' },
@@ -1486,24 +1542,16 @@ async function performCoachChatAction(action = {}) {
       startSession();
       return;
     case 'open_setup':
-      navSet('nav-setup');
-      SHOW('view-setup');
+      void openWorkspace('setup');
       renderCoachChatChrome();
       return;
     case 'open_review':
-      navSet('nav-review');
-      SHOW('view-review');
-      renderHistory();
-      renderWrongBank();
-      drawCharts();
-      flushCoachPending();
-      await refreshCoachNotebook(true);
+      await openWorkspace('review');
       renderCoachChatChrome();
       return;
     case 'open_library':
       closeCoachChat({ manual: false });
-      navSet('nav-library');
-      SHOW('view-library');
+      void openWorkspace('library');
       if ($('lib-search')) $('lib-search').value = String(action?.query || '').trim();
       renderLibraryTable();
       return;
@@ -1781,11 +1829,7 @@ async function applyPendingCoachChatAction() {
   clearPendingCoachChatAction();
   const mode = String(pending.mode || '').trim();
   if (mode === 'practice_due_now' || mode === 'review_last_misses') {
-    navSet('nav-review');
-    SHOW('view-review');
-    renderHistory();
-    renderWrongBank();
-    drawCharts();
+    await openWorkspace('review');
     await refreshCoachNotebook(false);
     if (wrongRecords().length) {
       reviewMissedNow();
@@ -1795,30 +1839,23 @@ async function applyPendingCoachChatAction() {
     return true;
   }
   if (mode === 'open_review') {
-    navSet('nav-review');
-    SHOW('view-review');
-    renderHistory();
-    renderWrongBank();
-    drawCharts();
+    await openWorkspace('review');
     await refreshCoachNotebook(false);
     return true;
   }
   if (mode === 'open_library') {
-    navSet('nav-library');
-    SHOW('view-library');
+    void openWorkspace('library');
     if ($('lib-search')) $('lib-search').value = String(pending.query || '').trim();
     renderLibraryTable();
     return true;
   }
   if (mode === 'start_current_session') {
-    navSet('nav-setup');
-    SHOW('view-setup');
+    void openWorkspace('setup');
     if (getActiveSet()) startSession();
     else toast('Load a set before starting practice');
     return true;
   }
-  navSet('nav-setup');
-  SHOW('view-setup');
+  void openWorkspace('setup');
   return true;
 }
 
@@ -1871,8 +1908,7 @@ async function openCoachFocusDrill(focus, options = {}) {
   if (applied) {
     toast(`Coach focus applied: ${buildFocusTitle(focus)}`);
     if (options.navigate !== false) {
-      navSet('nav-setup');
-      SHOW('view-setup');
+      await openWorkspace('setup');
     }
     return true;
   }
@@ -1887,6 +1923,108 @@ function renderSetupCoachGuide() {
   CoachFocusSuggestions = buildCoachFocusSuggestions(CoachNotebook.records);
   const notebookApplyBtn = $('btn-coach-apply-top');
   if (notebookApplyBtn) notebookApplyBtn.disabled = !CoachFocusSuggestions.length;
+}
+
+function openReviewSetup() {
+  navSet('nav-setup');
+  SHOW('view-setup');
+  updateSetupOverview();
+}
+
+function buildReviewRecommendation() {
+  const sessions = safeReadJson(KEY_SESS, []);
+  const recentSessions = Array.isArray(sessions) ? sessions : [];
+  const lastSession = recentSessions[0] || null;
+  const totalSessions = recentSessions.length;
+  const recentAccuracy = Number(lastSession?.acc || 0);
+  const recentTotal = Number(lastSession?.total || 0);
+  const recentCorrect = Number(lastSession?.correct || 0);
+  const daysSinceLastSession = Number(lastSession?.ts || 0)
+    ? Math.max(0, Math.floor((Date.now() - Number(lastSession.ts)) / DAY_MS))
+    : null;
+  const wrongBank = readWrongBankState();
+  const notebookOpen = Array.isArray(CoachNotebook.records) ? CoachNotebook.records.filter(record => !record.mastered).length : 0;
+  const notebookTotal = Array.isArray(CoachNotebook.records) ? CoachNotebook.records.length : 0;
+  const focusSuggestions = (Array.isArray(CoachFocusSuggestions) && CoachFocusSuggestions.length)
+    ? CoachFocusSuggestions
+    : buildCoachFocusSuggestions(CoachNotebook.records);
+  const topFocus = focusSuggestions[0] || null;
+  const topFocuses = focusSuggestions.slice(0, 2);
+
+  const makeAction = (kind, label, run) => ({ kind, label, run });
+  let primary = makeAction('start_session', 'Start 10-question drill', () => startSession());
+  let secondary = makeAction('open_setup', 'Open Setup', () => openReviewSetup());
+  let kicker = 'Recommended now';
+  let title = 'Start your first 10-question drill';
+  let copy = 'A short drill gives you the first signals needed to make Wrong-bank, coach notes, and analytics useful.';
+  let note = 'This is the cleanest way to turn your next session into a recommendation instead of another empty screen.';
+
+  if (wrongBank.dueNow > 0) {
+    title = `Clear ${wrongBank.dueNow} due wrong-bank card${wrongBank.dueNow === 1 ? '' : 's'}`;
+    copy = 'Those misses are already waiting for spaced repetition, so clearing them is the cleanest next move.';
+    note = `Wrong-bank is telling you to review known misses before adding more volume.`;
+    primary = makeAction('practice_due', 'Practice due now', () => reviewMissedNow());
+    secondary = topFocus
+      ? makeAction('practice_focus', `Practice ${topFocus.title}`, () => openCoachFocusDrill(topFocus, { createdFrom: 'review-recommendation' }))
+      : makeAction('open_notebook', 'Open AI Notebook', () => openCoachNotebook());
+  } else if (topFocus) {
+    title = `Practice ${topFocus.title}`;
+    copy = 'Your notebook keeps pointing to this lane, so it is the strongest next drill.';
+    note = `Coach notes are converging on ${topFocus.title}. Turning that into a focused drill will give you cleaner evidence than opening a separate destination.`;
+    primary = makeAction('practice_focus', `Practice ${topFocus.title}`, () => openCoachFocusDrill(topFocus, { createdFrom: 'review-recommendation' }));
+    secondary = notebookTotal
+      ? makeAction('open_notebook', 'Open AI Notebook', () => openCoachNotebook())
+      : makeAction('open_setup', 'Open Setup', () => openReviewSetup());
+  } else if (totalSessions === 0) {
+    kicker = 'First step';
+    title = 'Start your first 10-question drill';
+    copy = 'A short drill is the fastest way to create your first accuracy, wrong-bank, and analytics signals.';
+    note = 'Nothing else is as useful yet because the app has no session evidence to guide you.';
+    primary = makeAction('start_session', 'Start 10-question drill', () => startSession());
+    secondary = makeAction('open_setup', 'Open Setup', () => openReviewSetup());
+  } else if (recentAccuracy > 0 && recentAccuracy < 75) {
+    title = 'Run a short corrective drill';
+    copy = `Your last session landed at ${recentAccuracy}%, so another short run is the fastest way to lock in the weak spots.`;
+    note = `Analytics are still thin, but your recent accuracy points toward another quick corrective round before you look for deeper patterns.`;
+    primary = makeAction('start_session', 'Run another drill', () => startSession());
+    secondary = topFocus
+      ? makeAction('practice_focus', `Practice ${topFocus.title}`, () => openCoachFocusDrill(topFocus, { createdFrom: 'review-recommendation' }))
+      : makeAction('open_notebook', 'Open AI Notebook', () => openCoachNotebook());
+  } else {
+    if (daysSinceLastSession !== null && daysSinceLastSession > 0) {
+      title = `Keep the momentum with a mixed drill`;
+      copy = `Your last run was ${recentAccuracy}%${recentTotal ? ` across ${recentTotal} questions` : ''}${daysSinceLastSession === 1 ? ' yesterday' : `, ${daysSinceLastSession} days ago`}. Another drill will sharpen the next recommendation.`;
+      note = 'History says you have enough signal to keep practicing, but not enough to stop collecting fresh evidence.';
+    } else {
+      title = 'Keep practicing with a mixed drill';
+      copy = recentTotal
+        ? `Your last run was ${recentCorrect}/${recentTotal} (${recentAccuracy}%), so a fresh mixed set will keep the momentum going.`
+        : 'A fresh mixed set will keep the momentum going and give analytics more recent evidence.';
+      note = 'This is the best default when there is no strong wrong-bank or notebook signal to prioritize.';
+    }
+    primary = makeAction('start_session', 'Run another drill', () => startSession());
+    secondary = topFocus
+      ? makeAction('practice_focus', `Practice ${topFocus.title}`, () => openCoachFocusDrill(topFocus, { createdFrom: 'review-recommendation' }))
+      : makeAction('open_notebook', 'Open AI Notebook', () => openCoachNotebook());
+  }
+
+  const signals = [
+    totalSessions > 0 ? `${totalSessions} session${totalSessions === 1 ? '' : 's'} in history` : 'No session history yet',
+    totalSessions > 0 && recentTotal ? `Last session ${recentCorrect}/${recentTotal} (${recentAccuracy}%)` : 'First session will unlock analytics',
+    wrongBank.dueNow > 0 ? `${wrongBank.dueNow} due in Wrong-bank` : 'Wrong-bank is clear',
+    notebookOpen > 0 ? `${notebookOpen} open notebook lesson${notebookOpen === 1 ? '' : 's'}` : 'Notebook ready when you need it',
+    topFocus ? `Top focus: ${topFocus.title}` : 'No notebook focus yet'
+  ].filter(Boolean);
+
+  ReviewRecommendation.primary = primary;
+  ReviewRecommendation.secondary = secondary;
+  ReviewRecommendation.signals = Array.from(new Set(signals)).slice(0, 4);
+  ReviewRecommendation.note = note;
+  ReviewRecommendation.title = title;
+  ReviewRecommendation.kicker = kicker;
+  ReviewRecommendation.empty = totalSessions === 0;
+  ReviewCoachFocusSuggestions = topFocuses;
+  return ReviewRecommendation;
 }
 
 async function clearCoachNotebook() {
@@ -1931,28 +2069,48 @@ async function clearCoachNotebook() {
 }
 
 function renderSessionCoachDebrief() {
+  const recommendation = buildReviewRecommendation();
+  const headingEl = $('review-next-step-kicker');
+  const titleEl = $('review-next-step-title');
+  const copyEl = $('review-next-step-copy');
+  const primaryBtn = $('btn-review-primary');
+  const secondaryBtn = $('btn-review-secondary');
+  const signalsEl = $('review-next-step-signals');
   const focusWrap = $('review-coach-focuses');
   const noteEl = $('review-coach-note');
-  const applyBtn = $('btn-review-coach-apply');
-  if (!focusWrap || !noteEl || !applyBtn) return;
+  if (!focusWrap || !noteEl || !primaryBtn || !secondaryBtn) return;
   const lastSessionId = String(JSON.parse(localStorage.getItem(KEY_SESS) || '[]')?.[0]?.sid || '').trim();
   const sessionRecords = lastSessionId
     ? (CoachNotebook.records || []).filter(r => String(r?.client_session_id || '') === lastSessionId)
     : [];
   const sessionFocuses = buildCoachFocusSuggestions(sessionRecords);
-  const source = sessionFocuses.length ? sessionFocuses : CoachFocusSuggestions.slice(0, 2);
+  const source = sessionFocuses.length ? sessionFocuses : ReviewCoachFocusSuggestions.slice(0, 2);
   ReviewCoachFocusSuggestions = source.slice(0, 2);
-  applyBtn.disabled = !source.length;
+
+  if (headingEl) headingEl.textContent = recommendation.kicker || 'Recommended now';
+  if (titleEl) titleEl.textContent = recommendation.title || 'Start your first 10-question drill';
+  if (copyEl) copyEl.textContent = recommendation.copy || 'A short drill gives you the first signals needed to make Wrong-bank, coach notes, and analytics useful.';
+  if (noteEl) noteEl.textContent = recommendation.note || 'Finish a session to load a recommendation based on your next best signal.';
+  if (signalsEl) {
+    signalsEl.innerHTML = recommendation.signals.length
+      ? recommendation.signals.map(signal => `<span class="pill review-signal-pill">${escHtml(signal)}</span>`).join('')
+      : `<span class="pill review-signal-pill">No recommendation yet</span>`;
+  }
+
+  if (primaryBtn) {
+    primaryBtn.textContent = recommendation.primary?.label || 'Start 10-question drill';
+    primaryBtn.disabled = !recommendation.primary?.run;
+  }
+  if (secondaryBtn) {
+    secondaryBtn.textContent = recommendation.secondary?.label || 'Open Setup';
+    secondaryBtn.disabled = !recommendation.secondary?.run;
+  }
+
   if (!source.length) {
     focusWrap.innerHTML = `<div class="coach-empty">Finish a session to load coach notes.</div>`;
-    noteEl.textContent = 'Finish a session to load coach notes.';
     ReviewCoachFocusSuggestions = [];
     return;
   }
-  const lead = source[0];
-  noteEl.textContent = sessionFocuses.length
-    ? `Top session focus: ${lead.title}.`
-    : `Top coach focus: ${lead.title}.`;
   focusWrap.innerHTML = ReviewCoachFocusSuggestions.map((focus, index) => coachFocusCardHtml(focus, index, 'coach-review-focus')).join('');
 }
 
@@ -1973,10 +2131,7 @@ function coachFocusFromAttemptId(attemptId) {
 }
 
 async function showCoachView(forceCloud = true) {
-  navSet('nav-coach');
-  SHOW('view-coach');
-  flushCoachPending();
-  await refreshCoachNotebook(forceCloud);
+  await openWorkspace('coach', { refresh: forceCloud });
 }
 
 async function openCoachNotebook(attemptId = '') {
@@ -1989,6 +2144,109 @@ async function openCoachNotebook(attemptId = '') {
     if (details) details.open = true;
     target?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }, 40);
+}
+
+const WORKSPACE_VIEW_IDS = Object.freeze({
+  setup: 'view-setup',
+  practice: 'view-practice',
+  review: 'view-review',
+  coach: 'view-coach',
+  library: 'view-library',
+  help: 'view-help'
+});
+const WORKSPACE_NAV_IDS = Object.freeze({
+  setup: 'nav-setup',
+  practice: 'nav-practice',
+  review: 'nav-review',
+  coach: 'nav-coach',
+  library: 'nav-library',
+  help: 'nav-help'
+});
+let CurrentWorkspace = 'setup';
+let PreviousWorkspace = 'setup';
+
+function normalizeWorkspaceName(value) {
+  const raw = String(value || '').trim().toLowerCase();
+  if (!raw) return 'setup';
+  if (raw === 'notebook' || raw === 'ai notebook' || raw === 'ai-notebook') return 'coach';
+  if (raw === 'shortcuts' || raw === 'shortcut' || raw === 'help') return 'help';
+  if (Object.prototype.hasOwnProperty.call(WORKSPACE_VIEW_IDS, raw)) return raw;
+  if (raw === 'drill') return 'practice';
+  return 'setup';
+}
+
+function workspaceNameFromViewId(viewId) {
+  const normalized = String(viewId || '').trim();
+  for (const [workspace, id] of Object.entries(WORKSPACE_VIEW_IDS)) {
+    if (id === normalized) return workspace;
+  }
+  return 'setup';
+}
+
+function workspaceViewId(workspace) {
+  return WORKSPACE_VIEW_IDS[normalizeWorkspaceName(workspace)] || WORKSPACE_VIEW_IDS.setup;
+}
+
+function workspaceNavId(workspace) {
+  return WORKSPACE_NAV_IDS[normalizeWorkspaceName(workspace)] || WORKSPACE_NAV_IDS.setup;
+}
+
+function getWorkspaceFromLocation() {
+  const params = new URLSearchParams(window.location.search);
+  const requested = params.get('workspace') || params.get('view');
+  if (requested) return normalizeWorkspaceName(requested);
+  if (params.get('drill') === '1') return 'practice';
+  return 'setup';
+}
+
+function commitWorkspaceRoute(workspace, { replace = false } = {}) {
+  const ws = normalizeWorkspaceName(workspace);
+  const url = new URL(window.location.href);
+  if (ws === 'setup') url.searchParams.delete('workspace');
+  else url.searchParams.set('workspace', ws);
+  url.searchParams.delete('view');
+  url.searchParams.delete('drill');
+  const method = replace ? 'replaceState' : 'pushState';
+  window.history[method]({ workspace: ws }, '', url);
+}
+
+async function openWorkspace(workspace, { route = true, replace = false, refresh = true, scroll = false } = {}) {
+  const ws = normalizeWorkspaceName(workspace);
+  if (ws !== 'help') PreviousWorkspace = ws;
+  CurrentWorkspace = ws;
+  navSet(workspaceNavId(ws));
+  SHOW(workspaceViewId(ws));
+  if (route) commitWorkspaceRoute(ws, { replace });
+
+  if (ws === 'practice' && scroll) {
+    setTimeout(() => window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' }), 150);
+  }
+
+  if (ws === 'review') {
+    renderHistory();
+    renderWrongBank();
+    drawCharts();
+    if (refresh) {
+      flushCoachPending();
+      await refreshCoachNotebook(true);
+    }
+  } else if (ws === 'coach') {
+    flushCoachPending();
+    if (refresh) await refreshCoachNotebook(true);
+  } else if (ws === 'library') {
+    renderLibraryTable();
+  }
+
+  renderCoachChatChrome();
+  return ws;
+}
+
+function openHelp() {
+  return openWorkspace('help', { refresh: false });
+}
+
+function closeHelp() {
+  return openWorkspace(PreviousWorkspace || 'setup', { refresh: false });
 }
 
 // Detect assignment launch early so init can avoid overriding the assignment set.
@@ -2157,12 +2415,21 @@ function renderLibrarySelectors() {
   const sel1 = $('qs-picker'); const sel2 = $('lib-set-sel'); if (!sel1 || !sel2) return;
   sel1.innerHTML = ''; sel2.innerHTML = '';
   if (!Library.sets.length) {
-    const o = document.createElement('option'); o.value = ''; o.textContent = '(no sets — run build_db.py or import)';
+    const o = document.createElement('option'); o.value = ''; o.textContent = 'Import questions.json to start';
     sel1.appendChild(o); sel2.appendChild(o.cloneNode(true));
-    const qm = $('qs-meta'); if (qm) qm.textContent = 'Run build_db.py to generate questions.json';
-    const lc = $('lib-count'); if (lc) lc.textContent = '0';
+    const qm = $('qs-meta'); if (qm) qm.textContent = 'Import questions.json or run build_db.py to unlock your first 10-question drill.';
+    const lc = $('lib-count'); if (lc) lc.textContent = '—';
     const lca = $('lib-cats'); if (lca) lca.textContent = '—';
     const le = $('lib-eras'); if (le) le.textContent = '—';
+    renderLibraryEmptyState({
+      title: 'Import a question bank to start practicing',
+      copy: 'The easiest next step is to load questions.json or a saved set. Once a bank is loaded, keep the first drill on Random and 10 questions so you can get to Review quickly.',
+      steps: [
+        'Click Import JSON or New set from file.',
+        'Leave the first drill on Random and 10 questions.',
+        'Return here after the first session to narrow by region or era.'
+      ]
+    });
     updateSetupOverview();
     return;
   }
@@ -2179,7 +2446,7 @@ function getActiveSet() { return Library.sets.find(s => s.id === Library.activeS
 function updateSetMeta() {
   const set = getActiveSet();
   const qm = $('qs-meta'); if (qm) qm.textContent = set ? `Items: ${set.items.length}` : '—';
-  const lc = $('lib-count'); if (lc) lc.textContent = set ? String(set.items.length) : '0';
+  const lc = $('lib-count'); if (lc) lc.textContent = set ? String(set.items.length) : '—';
   const cats = set ? [...new Set(set.items.map(it => it.meta?.category || '').filter(Boolean))] : [];
   const eras = set ? sortEraCodes([...new Set(set.items.map(it => it.meta?.era || '').filter(Boolean))]) : [];
   const lca = $('lib-cats'); if (lca) lca.textContent = cats.length ? String(cats.length) : '—';
@@ -2822,6 +3089,7 @@ function updateHeader() {
   const a = $('drill-acc'); if (a) a.textContent = acc;
   const p = $('drill-progress'); if (p) p.textContent = `${Math.min(App.i, App.order.length)} / ${App.order.length}`;
   const bf = $('barfill'); if (bf) bf.style.width = (App.order.length ? (App.i / App.order.length * 100) : 0) + '%';
+  updatePracticeFocusChrome();
 }
 function modeLabel(mode) {
   if (mode === 'sequential') return 'Sequential';
@@ -2845,11 +3113,129 @@ function compactVoiceName(name) {
     .replace(/\s+Online.*$/i, '')
     .trim() || raw;
 }
+function getSessionHistory() {
+  const arr = safeReadJson(KEY_SESS, []);
+  return Array.isArray(arr) ? arr : [];
+}
+function hasPracticeHistory() {
+  return getSessionHistory().length > 0;
+}
+function momentumStateHtml({ kicker, title, copy, steps = [] }) {
+  const stepsHtml = Array.isArray(steps) && steps.length
+    ? `<ol class="momentum-steps">${steps.map(step => `<li>${escHtml(step)}</li>`).join('')}</ol>`
+    : '';
+  return `
+    <div class="empty-state momentum-state">
+      <div class="empty-kicker">${escHtml(kicker || 'Next step')}</div>
+      <h3 class="empty-title">${escHtml(title || '')}</h3>
+      <p class="empty-copy">${escHtml(copy || '')}</p>
+      ${stepsHtml}
+    </div>
+  `;
+}
+function renderMomentumTarget(id, payload) {
+  const el = $(id);
+  if (!el) return;
+  if (!payload) {
+    el.innerHTML = '';
+    el.hidden = true;
+    return;
+  }
+  el.innerHTML = momentumStateHtml(payload);
+  el.hidden = false;
+}
+function practiceStartButtonLabel() {
+  return hasPracticeHistory() ? 'Start Session' : 'Start 10-question drill';
+}
+function setPracticeStartLabels() {
+  const label = practiceStartButtonLabel();
+  ['startSession', 'startSessionMobile', 'startSessionDock'].forEach(id => {
+    const el = $(id);
+    if (el) el.textContent = label;
+  });
+}
+function buildSetupMomentumState() {
+  const set = getActiveSet();
+  const sessions = getSessionHistory();
+  const hasSet = !!set;
+  const hasHistory = sessions.length > 0;
+  if (hasSet && hasHistory) return null;
+  const title = hasSet
+    ? 'Your first drill is ready'
+    : 'Load a set, then start a 10-question drill';
+  const copy = hasSet
+    ? 'Keep the defaults on your first pass. Random mode, 10 questions, and all regions will get you to useful feedback fast.'
+    : 'Import questions.json or pick a loaded set first. Then keep Random and 10 questions so the app can show you the fastest next step.';
+  const steps = hasSet
+    ? [
+        'Leave mode on Random and length on 10.',
+        'Press Start 10-question drill below.',
+        'Use Review after the first miss to turn it into notebook guidance.'
+      ]
+    : [
+        'Click Import JSON or load a saved set.',
+        'Keep the first drill on Random and 10 questions.',
+        'Come back here after the first session to narrow by region or era.'
+      ];
+  return { kicker: hasSet ? 'First run' : 'Getting started', title, copy, steps };
+}
+function renderSetupFirstRunGuide() {
+  renderMomentumTarget('setup-first-run', buildSetupMomentumState());
+}
+function renderCoachNotebookEmptyState(totalRows, filteredRows) {
+  const host = $('coach-empty-state');
+  if (!host) return;
+  if (totalRows > 0 && filteredRows > 0) {
+    host.innerHTML = '';
+    host.hidden = true;
+    return;
+  }
+  const hasNotebook = totalRows > 0;
+  const payload = hasNotebook
+    ? {
+        kicker: 'No matches',
+        title: 'No notebook lessons match this filter',
+        copy: 'Try switching to All, clearing the search box, or opening a broader notebook lesson to keep moving.',
+        steps: [
+          'Switch the filter back to All if you want every saved lesson.',
+          'Clear the search box to widen the result set.',
+          'Use Apply Top Focus or Back to Review when you are ready for the next drill.'
+        ]
+      }
+    : {
+        kicker: 'Start here',
+        title: 'Your notebook will fill after the first drill',
+        copy: 'The first missed question creates the lesson. Start a 10-question drill, then come back here after grading to turn the miss into a plan.',
+        steps: [
+          'Leave the setup on Random and 10 questions.',
+          'Press Start 10-question drill.',
+          'Return here after the first miss to review the note.'
+        ]
+      };
+  host.innerHTML = momentumStateHtml(payload);
+  host.hidden = false;
+}
+function renderLibraryEmptyState({ title, copy, steps } = {}) {
+  renderMomentumTarget('library-empty-state', {
+    kicker: 'Question bank',
+    title: title || 'Load a set to unlock practice',
+    copy: copy || 'Import questions.json or pick a saved set, then keep the first drill on Random and 10 questions so you can start quickly.',
+    steps: steps || [
+      'Click Import JSON or New set from file.',
+      'Keep the first drill on Random with 10 questions.',
+      'Use filters only after you have one full session under your belt.'
+    ]
+  });
+}
 function updateSetupOverview() {
   const set = getActiveSet();
   const cats = Array.isArray(App.filters.cats) ? App.filters.cats.filter(Boolean) : [];
   const eras = Array.isArray(App.filters.eras) ? App.filters.eras.filter(Boolean) : [];
-  const setText = set ? `${set.name} (${set.items.length} items)` : 'No set loaded';
+  const sessions = getSessionHistory();
+  const hasHistory = sessions.length > 0;
+  const setText = set
+    ? `${set.name} (${set.items.length} items)`
+    : (Library.sets.length ? 'Pick a set to begin' : 'Import questions.json to begin');
   const filterCats = cats.length
     ? `${cats.length} region${cats.length === 1 ? '' : 's'}`
     : (App.filters.cat ? App.filters.cat : 'All regions');
@@ -2858,7 +3244,7 @@ function updateSetupOverview() {
     : (App.filters.era ? getEraName(App.filters.era) : 'All eras');
   const filterSrc = App.filters.src ? App.filters.src : 'All sources';
   const advancedSummary = [
-    Settings.strict ? 'Strict spelling' : 'Flexible grading',
+    Settings.strict ? 'Strict spelling' : (hasHistory ? 'Flexible grading' : 'Flexible grading for the first run'),
     Settings.autoAdvance ? `Auto-advance ${Settings.autoAdvanceDelay || 1}s` : 'Manual pacing',
     Settings.haptics ? 'Haptics on' : 'Haptics off'
   ].join(' • ');
@@ -2883,12 +3269,14 @@ function updateSetupOverview() {
   }
 
   const nextEl = $('setup-summary-next');
-  let nextText = 'Pick a set to start.';
+  let nextText = 'Pick a set, then start a 10-question drill.';
   if (nextEl) {
     if (!set) {
-      nextText = 'Load a question set.';
+      nextText = 'Import or pick a set, then start a 10-question drill.';
+    } else if (!hasHistory) {
+      nextText = 'Keep the defaults, press Start 10-question drill, and let Review capture your first miss.';
     } else if (App.mode === 'srs' && !wrongRecords().length) {
-      nextText = 'No wrong-bank items yet.';
+      nextText = 'No wrong-bank items yet. Use Random for your next fresh drill.';
     } else if (cats.length || App.filters.cat || eras.length || App.filters.era || App.filters.src) {
       nextText = 'Session ready.';
     }
@@ -2898,8 +3286,8 @@ function updateSetupOverview() {
   const mobileSummaryEl = $('setup-mobile-summary');
   if (mobileSummaryEl) {
     mobileSummaryEl.textContent = set
-      ? `${lengthText} • ${filterCats} • ${filterSrc}`
-      : 'Load a question set.';
+      ? `${modeLabel(App.mode)} • ${lengthText} • ${filterCats} • ${filterSrc}`
+      : 'Import questions.json to start your first drill.';
   }
   const mobileModeEl = $('setup-mobile-mode'); if (mobileModeEl) mobileModeEl.textContent = modeLabel(App.mode);
   const mobileNextEl = $('setup-mobile-next'); if (mobileNextEl) mobileNextEl.textContent = nextText;
@@ -2907,9 +3295,11 @@ function updateSetupOverview() {
   const mobileDockSummaryEl = $('setup-mobile-dock-summary');
   if (mobileDockSummaryEl) {
     mobileDockSummaryEl.textContent = set
-      ? `${lengthText} • ${filterCats} • ${filterSrc}`
-      : 'Load a question set.';
+      ? `${modeLabel(App.mode)} • ${lengthText} • ${filterCats} • ${filterSrc}`
+      : 'Import questions.json to start your first drill.';
   }
+  setPracticeStartLabels();
+  renderSetupFirstRunGuide();
   updateSetupMobileDock();
   renderCoachChatChrome();
 }
@@ -3054,6 +3444,7 @@ function startSession() {
   const ans = $('answer'); if (ans) ans.textContent = '';
   const cd = $('countdown'); if (cd) cd.textContent = '';
   const st = $('status'); if (st) st.textContent = 'Preparing…';
+  setPracticePrompt('Preparing your drill…', 'Loading session');
   const bt = $('buzz-time'); if (bt) bt.textContent = '—';
   unlockPracticeAfterGrade();
   const cp = $('btn-copy-answer'); if (cp) cp.disabled = true;
@@ -3085,6 +3476,7 @@ function startSession() {
   App.sessionOverrideItems = null;
 
   App.startTs = performance.now();
+  setPracticeFocusMode(true);
   updateHeader();
   navSet('nav-practice'); SHOW('view-practice');
   playFeedbackCue('start');
@@ -3111,6 +3503,7 @@ async function nextQuestion(first = false) {
 
   const item = App.pool[App.order[App.i]]; App.curItem = item; App.phase = 'reading';
   const st = $('status'); if (st) st.textContent = Settings.strict ? 'Reading… (strict mode)' : 'Reading…';
+  setPracticePrompt(item.question, `Question ${Math.min(App.i + 1, App.order.length)} of ${App.order.length}`);
   setPracticeButtons({ buzz: true, next: true, right: false, wrong: false, replay: false, alias: false, flag: true });
   const nx = $('btn-next'); if (nx) nx.disabled = true;
   const bz = $('btn-buzz'); if (bz) bz.classList.add('pulse');
@@ -3125,6 +3518,7 @@ function startCountdown(sec) {
   App.phase = 'countdown';
   let t = clamp(sec, 1, 30);
   const cd = $('countdown'); if (cd) cd.textContent = `${t}`;
+  updatePracticeFocusChrome();
   setPracticeButtons({ buzz: false, next: false, right: false, wrong: false, replay: false, alias: false, flag: false });
 
   const iv = setInterval(() => {
@@ -3156,6 +3550,7 @@ function buzz() {
 function showAnswer() {
   App.phase = 'answering';
   const item = App.curItem;
+  setPracticePrompt(item.question, 'Answer revealed');
   const ansText = Settings.strict ? `标准答案：${item.answer}` :
     `标准答案：${item.answer}${(item.aliases?.length ? `  (aliases: ${item.aliases.slice(0, 3).join(' • ')})` : '')}`;
   const ans = $('answer'); if (ans) ans.textContent = ansText;
@@ -3164,6 +3559,7 @@ function showAnswer() {
   unlockPracticeAfterGrade();
   setPracticeButtons({ buzz: false, next: false, right: true, wrong: true, replay: true, alias: true, flag: true });
   const cp = $('btn-copy-answer'); if (cp) cp.disabled = false;
+  updatePracticeFocusChrome();
 }
 
 function markRight() {
@@ -3198,8 +3594,10 @@ function finishSession() {
   const durSec = (performance.now() - App.startTs) / 1000;
   const total = App.order.length, correct = App.correct, acc = total ? Math.round(correct / total * 100) : 0;
   const st = $('status'); if (st) st.textContent = `Complete — ${correct}/${total} (${acc}%).`;
+  setPracticePrompt('Session complete', 'Reviewing results');
   setPracticeButtons({ buzz: false, next: false, right: false, wrong: false, replay: false, alias: false, flag: false });
   pushSession(total, correct, durSec, App.sessionBuzzTimes, App.pool, App.order, App.resultsCorrect, App.sessionId);
+  setPracticeFocusMode(false);
   navSet('nav-review'); SHOW('view-review'); renderHistory(); renderWrongBank(); drawCharts();
   void refreshCoachNotebook(false).then(() => {
     renderCoachChatChrome();
@@ -3442,9 +3840,9 @@ function renderCoachNotebook() {
   const q = (($('coach-search') && $('coach-search').value) || '').trim().toLowerCase();
   const filter = (($('coach-filter') && $('coach-filter').value) || 'todo').toLowerCase();
   const allRows = Array.isArray(CoachNotebook.records) ? CoachNotebook.records : [];
-  if (countEl) countEl.textContent = String(allRows.length);
-  if (openCountEl) openCountEl.textContent = String(allRows.filter(r => !r.mastered).length);
-  if (masteredCountEl) masteredCountEl.textContent = String(allRows.filter(r => !!r.mastered).length);
+  if (countEl) countEl.textContent = allRows.length ? String(allRows.length) : '—';
+  if (openCountEl) openCountEl.textContent = allRows.length ? String(allRows.filter(r => !r.mastered).length) : '—';
+  if (masteredCountEl) masteredCountEl.textContent = allRows.length ? String(allRows.filter(r => !!r.mastered).length) : '—';
   if (clearBtn) clearBtn.disabled = !allRows.length;
   const rows = allRows.filter(r => {
     if (filter === 'todo' && r.mastered) return false;
@@ -3454,12 +3852,14 @@ function renderCoachNotebook() {
     return hay.includes(q);
   });
   if (!rows.length) {
-    listEl.innerHTML = `<div class="coach-empty">No coach lessons found.</div>`;
+    listEl.innerHTML = '';
+    renderCoachNotebookEmptyState(allRows.length, rows.length);
     renderSetupCoachGuide();
     renderSessionCoachDebrief();
     renderCoachChatChrome();
     return;
   }
+  renderCoachNotebookEmptyState(allRows.length, rows.length);
   listEl.innerHTML = rows.map(r => {
     const coach = normalizeCoach(r.coach, { question: r.question_text, meta: { category: r.category, era: r.era, source: r.source } }, r.correct, r.reason);
     const focus = coach.study_focus || {};
@@ -3623,6 +4023,7 @@ function renderHistory() {
   bindRepeatButtons(tb);
   renderMobileRecordList('history-mobile-list', mobileCards, 'No history yet', 'Complete a drill to store a replayable session here.');
   bindRepeatButtons($('history-mobile-list'));
+  renderSessionCoachDebrief();
 }
 
 function repeatSession(ts) {
@@ -3685,6 +4086,7 @@ function renderWrongBank() {
   bindDeleteButtons(tb);
   renderMobileRecordList('wrong-mobile-list', mobileCards, 'Wrong-bank is empty', 'Miss a question in practice and it will show up here for spaced repetition.');
   bindDeleteButtons($('wrong-mobile-list'));
+  renderSessionCoachDebrief();
   renderCoachChatChrome();
 }
 
@@ -3766,29 +4168,22 @@ function drawAccByCat() {
 
 /********************* Event wiring *********************/
 // Nav
-$('nav-setup')?.addEventListener('click', (e) => { e.preventDefault(); playFeedbackCue('nav'); navSet('nav-setup'); SHOW('view-setup'); });
+$('nav-setup')?.addEventListener('click', (e) => { e.preventDefault(); playFeedbackCue('nav'); void openWorkspace('setup'); });
 $('nav-practice')?.addEventListener('click', (e) => {
-  e.preventDefault(); playFeedbackCue('nav'); navSet('nav-practice'); SHOW('view-practice');
-  setTimeout(() => window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' }), 150);
+  e.preventDefault(); playFeedbackCue('nav'); void openWorkspace('practice', { scroll: true });
 });
-$('nav-review')?.addEventListener('click', async (e) => {
+$('nav-review')?.addEventListener('click', (e) => {
   e.preventDefault();
   playFeedbackCue('nav');
-  navSet('nav-review');
-  SHOW('view-review');
-  renderHistory();
-  renderWrongBank();
-  drawCharts();
-  flushCoachPending();
-  await refreshCoachNotebook(true);
+  void openWorkspace('review');
 });
-$('nav-coach')?.addEventListener('click', async (e) => {
+$('nav-coach')?.addEventListener('click', (e) => {
   e.preventDefault();
   playFeedbackCue('nav');
-  await showCoachView(true);
+  void showCoachView(true);
 });
-$('nav-library')?.addEventListener('click', (e) => { e.preventDefault(); playFeedbackCue('nav'); navSet('nav-library'); SHOW('view-library'); renderLibraryTable(); });
-$('nav-help')?.addEventListener('click', (e) => { e.preventDefault(); playFeedbackCue('nav'); openHelp(); });
+$('nav-library')?.addEventListener('click', (e) => { e.preventDefault(); playFeedbackCue('nav'); void openWorkspace('library'); });
+$('nav-help')?.addEventListener('click', (e) => { e.preventDefault(); playFeedbackCue('nav'); void openHelp(); });
 
 // Advanced toggle
 $('advToggle')?.addEventListener('click', () => {
@@ -3927,7 +4322,7 @@ $('btn-copy-answer')?.addEventListener('click', async () => {
 $('btn-quit')?.addEventListener('click', () => {
   if (confirm('Quit this session? Progress will be lost for this run.')) {
     playFeedbackCue('nav');
-    stopSpeech(); App.phase = 'idle'; navSet('nav-setup'); SHOW('view-setup');
+    stopSpeech(); App.phase = 'idle'; setPracticeFocusMode(false); navSet('nav-setup'); SHOW('view-setup');
   }
 });
 $('btn-pause')?.addEventListener('click', () => {
@@ -3954,7 +4349,6 @@ $('btn-clear-wrong')?.addEventListener('click', () => {
   renderWrongBank();
   toast('Wrong bank cleared');
 });
-$('btn-review-misses')?.addEventListener('click', reviewMissedNow);
 $('btn-practice-due')?.addEventListener('click', reviewMissedNow);
 $('wrong-refresh')?.addEventListener('click', async () => {
   await initWrongBankSync();
@@ -3967,11 +4361,12 @@ $('coach-refresh')?.addEventListener('click', async () => {
   flushCoachPending();
   await refreshCoachNotebook(true);
 });
-$('btn-review-coach-apply')?.addEventListener('click', () => {
-  const focus = ReviewCoachFocusSuggestions[0] || CoachFocusSuggestions[0] || null;
-  void openCoachFocusDrill(focus, { createdFrom: 'review-top' });
+$('btn-review-primary')?.addEventListener('click', () => {
+  if (ReviewRecommendation.primary?.run) ReviewRecommendation.primary.run();
 });
-$('btn-review-coach-notebook')?.addEventListener('click', () => openCoachNotebook());
+$('btn-review-secondary')?.addEventListener('click', () => {
+  if (ReviewRecommendation.secondary?.run) ReviewRecommendation.secondary.run();
+});
 $('btn-coach-apply-top')?.addEventListener('click', () => {
   const focus = CoachFocusSuggestions[0] || null;
   void openCoachFocusDrill(focus, { createdFrom: 'notebook-top' });
@@ -4141,7 +4536,18 @@ function renderLibraryTable() {
   const set = getActiveSet(); const tb = document.querySelector('#tbl-lib tbody'); if (!tb) return;
   tb.innerHTML = '';
   if (!set) {
-    renderMobileRecordList('lib-mobile-list', [], 'No set loaded', 'Load or import a question set to browse the library.');
+    const payload = {
+      title: 'Import a set to unlock the library',
+      copy: 'Load questions.json or a saved set first. Once a bank exists, the library becomes a fast way to narrow by region, era, and source before your next 10-question drill.',
+      steps: [
+        'Use Import JSON or New set from file above.',
+        'Keep the first drill on Random and 10 questions.',
+        'Come back here to narrow by region or era after you have one full session.'
+      ]
+    };
+    renderLibraryEmptyState(payload);
+    tb.innerHTML = `<tr class="table-empty-row"><td colspan="6">${momentumStateHtml(payload)}</td></tr>`;
+    renderMobileRecordList('lib-mobile-list', [], 'Import a question bank', 'Load questions.json or a saved set, then return here to browse the library.');
     return;
   }
   const q = (($('lib-search') && $('lib-search').value) || '').toLowerCase();
@@ -4168,14 +4574,23 @@ function renderLibraryTable() {
       ]
     }));
   });
+  if (!mobileCards.length) {
+    const payload = {
+      title: 'No questions match your current filters',
+      copy: 'Try broadening the search term or clearing one of the active region and era filters. Once you see some results, you can turn them into a short practice block.',
+      steps: [
+        'Clear search first, then test the result count again.',
+        'Remove region or era filters one at a time.',
+        'Use Practice filtered when the list looks right.'
+      ]
+    };
+    renderLibraryEmptyState(payload);
+    tb.innerHTML = `<tr class="table-empty-row"><td colspan="6">${momentumStateHtml(payload)}</td></tr>`;
+  } else {
+    renderMomentumTarget('library-empty-state', null);
+  }
   renderMobileRecordList('lib-mobile-list', mobileCards, 'No questions match', 'Try broadening the search term or clearing one of the active filters.');
 }
-
-// Help overlay
-function openHelp() { const ov = $('overlay'); if (ov) ov.classList.add('show'); }
-$('openHelp')?.addEventListener('click', openHelp);
-$('closeHelp')?.addEventListener('click', () => { const ov = $('overlay'); if (ov) ov.classList.remove('show'); });
-$('overlay')?.addEventListener('click', (e) => { if (e.target && e.target.id === 'overlay') { const ov = $('overlay'); if (ov) ov.classList.remove('show'); } });
 
 // DeepSeek sidebar chat
 $('coach-chat-launcher')?.addEventListener('click', () => {
@@ -4464,8 +4879,10 @@ async function submitAnswer(auto = false) {
   const item = App.curItem || { question: '', answer: '', aliases: [] };
   App.phase = 'grading';
   const st = $('status'); if (st) st.textContent = 'Grading...';
+  setPracticePrompt(item.question, 'Grading your answer');
   const ans = $('answer'); if (ans) ans.textContent = 'Grading...';
   clearCoachCard();
+  updatePracticeFocusChrome();
   const clientAttemptId = `att_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
   // Fallback matcher
