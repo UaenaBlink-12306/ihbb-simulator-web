@@ -2247,6 +2247,10 @@ async function openWorkspace(workspace, { route = true, replace = false, refresh
   return ws;
 }
 
+window.addEventListener('popstate', () => {
+  void openWorkspace(getWorkspaceFromLocation(), { route: false, refresh: true, scroll: false });
+});
+
 function openHelp() {
   return openWorkspace('help', { refresh: false });
 }
