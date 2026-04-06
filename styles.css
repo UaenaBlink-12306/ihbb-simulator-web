@@ -1026,6 +1026,11 @@ tr:hover td {
   .practice-bottom .btn {
     flex: 1 1 calc(50% - 6px);
   }
+
+  .review-next-step-actions .btn {
+    flex: 1 1 calc(50% - 6px);
+    min-width: 0;
+  }
 }
 
 .tag {
@@ -5562,10 +5567,71 @@ body.practice-focus-mode .practice-control-dock {
   padding-top: 12px;
 }
 
+body.practice-focus-mode .practice-bottom {
+  justify-content: flex-start;
+}
+
+body.practice-focus-mode .practice-bottom .grow {
+  display: none;
+}
+
 .review-kpi-band {
   display: grid;
   gap: 12px;
   grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
+
+.review-next-step {
+  display: grid;
+  gap: 16px;
+  padding: 18px 18px 16px;
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  background:
+    var(--glass-highlight-soft),
+    var(--glass-overlay-soft),
+    var(--surface-glass);
+}
+
+.review-next-step-body {
+  display: grid;
+  gap: 10px;
+  max-width: 72ch;
+}
+
+.review-next-step-title {
+  margin: 0;
+  font-size: clamp(22px, 3vw, 30px);
+  line-height: 1.08;
+  letter-spacing: -0.03em;
+  font-weight: 800;
+}
+
+.review-next-step-copy {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.65;
+  max-width: 62ch;
+}
+
+.review-next-step-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.review-next-step-actions .btn {
+  min-width: 180px;
+}
+
+.review-next-step-signals {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.review-signal-pill {
+  background: rgba(255, 255, 255, 0.05);
 }
 
 .review-chart-stack {
@@ -5765,6 +5831,10 @@ body.practice-focus-mode .practice-control-dock {
 
 .summary-note .empty-kicker,
 .summary-note .empty-copy {
+  margin: 0;
+}
+
+.review-next-step .empty-kicker {
   margin: 0;
 }
 

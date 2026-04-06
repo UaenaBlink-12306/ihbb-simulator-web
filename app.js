@@ -35,14 +35,15 @@ function updatePracticeFocusChrome() {
   const isActiveSession = isFocus && App.phase !== 'idle' && App.phase !== 'done';
   const phase = App.phase;
   const showTyping = isActiveSession && phase === 'typing';
-  const showAnswerActions = isActiveSession && (phase === 'answering' || phase === 'graded' || phase === 'coach-loading');
-  const showBuzz = isActiveSession && (phase === 'reading' || phase === 'countdown');
+  const showManualGrade = isActiveSession && !App.autoGrade && phase === 'answering';
+  const showAnswerActions = isActiveSession && (phase === 'graded' || phase === 'coach-loading' || showManualGrade);
+  const showBuzz = isActiveSession && phase === 'reading';
   const showSubmit = showTyping;
   const showNext = showAnswerActions;
   const coachCard = $('coach-card');
-  if (coachCard) coachCard.hidden = isActiveSession;
+  if (coachCard) coachCard.hidden = isFocus;
   const shortcuts = document.querySelector('.practice-shortcuts');
-  if (shortcuts) shortcuts.hidden = isActiveSession;
+  if (shortcuts) shortcuts.hidden = isFocus;
   const dock = document.querySelector('.practice-control-dock');
   if (dock) dock.classList.toggle('practice-control-dock-focus', isFocus);
   const buzz = $('btn-buzz');
@@ -56,9 +57,9 @@ function updatePracticeFocusChrome() {
   const replay = $('btn-replay');
   if (replay) replay.hidden = isFocus;
   const right = $('btn-right');
-  if (right) right.hidden = isFocus || App.autoGrade;
+  if (right) right.hidden = isFocus ? !showManualGrade : App.autoGrade;
   const wrong = $('btn-wrong');
-  if (wrong) wrong.hidden = isFocus || App.autoGrade;
+  if (wrong) wrong.hidden = isFocus ? !showManualGrade : App.autoGrade;
   const copy = $('btn-copy-answer');
   if (copy) copy.hidden = isFocus;
   const alias = $('btn-alias');
@@ -1829,7 +1830,7 @@ async function applyPendingCoachChatAction() {
   clearPendingCoachChatAction();
   const mode = String(pending.mode || '').trim();
   if (mode === 'practice_due_now' || mode === 'review_last_misses') {
-    await openWorkspace('review');
+    await openWorkspace('review', { refresh: false });
     await refreshCoachNotebook(false);
     if (wrongRecords().length) {
       reviewMissedNow();
@@ -1839,7 +1840,7 @@ async function applyPendingCoachChatAction() {
     return true;
   }
   if (mode === 'open_review') {
-    await openWorkspace('review');
+    await openWorkspace('review', { refresh: false });
     await refreshCoachNotebook(false);
     return true;
   }
@@ -1926,9 +1927,7 @@ function renderSetupCoachGuide() {
 }
 
 function openReviewSetup() {
-  navSet('nav-setup');
-  SHOW('view-setup');
-  updateSetupOverview();
+  void openWorkspace('setup', { refresh: false });
 }
 
 function buildReviewRecommendation() {
@@ -1950,9 +1949,16 @@ function buildReviewRecommendation() {
     : buildCoachFocusSuggestions(CoachNotebook.records);
   const topFocus = focusSuggestions[0] || null;
   const topFocuses = focusSuggestions.slice(0, 2);
+  const startRecommendedSession = () => {
+    if (getActiveSet() || App.mode === 'srs') {
+      startSession();
+      return;
+    }
+    openReviewSetup();
+  };
 
   const makeAction = (kind, label, run) => ({ kind, label, run });
-  let primary = makeAction('start_session', 'Start 10-question drill', () => startSession());
+  let primary = makeAction('start_session', 'Start 10-question drill', startRecommendedSession);
   let secondary = makeAction('open_setup', 'Open Setup', () => openReviewSetup());
   let kicker = 'Recommended now';
   let title = 'Start your first 10-question drill';
@@ -1980,13 +1986,13 @@ function buildReviewRecommendation() {
     title = 'Start your first 10-question drill';
     copy = 'A short drill is the fastest way to create your first accuracy, wrong-bank, and analytics signals.';
     note = 'Nothing else is as useful yet because the app has no session evidence to guide you.';
-    primary = makeAction('start_session', 'Start 10-question drill', () => startSession());
+    primary = makeAction('start_session', 'Start 10-question drill', startRecommendedSession);
     secondary = makeAction('open_setup', 'Open Setup', () => openReviewSetup());
   } else if (recentAccuracy > 0 && recentAccuracy < 75) {
     title = 'Run a short corrective drill';
     copy = `Your last session landed at ${recentAccuracy}%, so another short run is the fastest way to lock in the weak spots.`;
     note = `Analytics are still thin, but your recent accuracy points toward another quick corrective round before you look for deeper patterns.`;
-    primary = makeAction('start_session', 'Run another drill', () => startSession());
+    primary = makeAction('start_session', 'Run another drill', startRecommendedSession);
     secondary = topFocus
       ? makeAction('practice_focus', `Practice ${topFocus.title}`, () => openCoachFocusDrill(topFocus, { createdFrom: 'review-recommendation' }))
       : makeAction('open_notebook', 'Open AI Notebook', () => openCoachNotebook());
@@ -2002,7 +2008,7 @@ function buildReviewRecommendation() {
         : 'A fresh mixed set will keep the momentum going and give analytics more recent evidence.';
       note = 'This is the best default when there is no strong wrong-bank or notebook signal to prioritize.';
     }
-    primary = makeAction('start_session', 'Run another drill', () => startSession());
+    primary = makeAction('start_session', 'Run another drill', startRecommendedSession);
     secondary = topFocus
       ? makeAction('practice_focus', `Practice ${topFocus.title}`, () => openCoachFocusDrill(topFocus, { createdFrom: 'review-recommendation' }))
       : makeAction('open_notebook', 'Open AI Notebook', () => openCoachNotebook());
@@ -3478,10 +3484,8 @@ function startSession() {
   App.startTs = performance.now();
   setPracticeFocusMode(true);
   updateHeader();
-  navSet('nav-practice'); SHOW('view-practice');
+  void openWorkspace('practice', { scroll: true });
   playFeedbackCue('start');
-  // Auto-scroll to the bottom of the practice view
-  setTimeout(() => window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' }), 150);
   nextQuestion(true);
 }
 
@@ -3598,7 +3602,7 @@ function finishSession() {
   setPracticeButtons({ buzz: false, next: false, right: false, wrong: false, replay: false, alias: false, flag: false });
   pushSession(total, correct, durSec, App.sessionBuzzTimes, App.pool, App.order, App.resultsCorrect, App.sessionId);
   setPracticeFocusMode(false);
-  navSet('nav-review'); SHOW('view-review'); renderHistory(); renderWrongBank(); drawCharts();
+  void openWorkspace('review', { refresh: false });
   void refreshCoachNotebook(false).then(() => {
     renderCoachChatChrome();
     maybeAutoOpenCoachChat('review');
@@ -4184,6 +4188,7 @@ $('nav-coach')?.addEventListener('click', (e) => {
 });
 $('nav-library')?.addEventListener('click', (e) => { e.preventDefault(); playFeedbackCue('nav'); void openWorkspace('library'); });
 $('nav-help')?.addEventListener('click', (e) => { e.preventDefault(); playFeedbackCue('nav'); void openHelp(); });
+$('closeHelp')?.addEventListener('click', (e) => { e.preventDefault(); void closeHelp(); });
 
 // Advanced toggle
 $('advToggle')?.addEventListener('click', () => {
@@ -4322,7 +4327,7 @@ $('btn-copy-answer')?.addEventListener('click', async () => {
 $('btn-quit')?.addEventListener('click', () => {
   if (confirm('Quit this session? Progress will be lost for this run.')) {
     playFeedbackCue('nav');
-    stopSpeech(); App.phase = 'idle'; setPracticeFocusMode(false); navSet('nav-setup'); SHOW('view-setup');
+    stopSpeech(); App.phase = 'idle'; setPracticeFocusMode(false); void openWorkspace('setup');
   }
 });
 $('btn-pause')?.addEventListener('click', () => {
@@ -4374,13 +4379,7 @@ $('btn-coach-apply-top')?.addEventListener('click', () => {
 $('btn-coach-clear')?.addEventListener('click', () => { void clearCoachNotebook(); });
 $('btn-coach-back-review')?.addEventListener('click', async () => {
   playFeedbackCue('nav');
-  navSet('nav-review');
-  SHOW('view-review');
-  renderHistory();
-  renderWrongBank();
-  drawCharts();
-  flushCoachPending();
-  await refreshCoachNotebook(true);
+  await openWorkspace('review');
 });
 $('coach-search')?.addEventListener('input', renderCoachNotebook);
 $('coach-filter')?.addEventListener('change', renderCoachNotebook);
@@ -4472,7 +4471,7 @@ $('lib-practice-filtered')?.addEventListener('click', () => {
     renderCategoryChips(cats);
     renderEraChips(eras);
   } catch { }
-  navSet('nav-setup'); SHOW('view-setup');
+  void openWorkspace('setup');
   toast(rc ? `Region set to ${rc}` : 'All regions selected');
 });
 
@@ -4692,6 +4691,7 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && CoachChat.open) { e.preventDefault(); closeCoachChat({ manual: true }); return; }
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); CoachChat.open ? closeCoachChat({ manual: true }) : openCoachChat({ auto: false, seed: false, reason: 'manual' }); return; }
   if (CoachChat.open && e.key.toLowerCase() === 'f') { e.preventDefault(); toggleCoachChatFullscreen(); return; }
+  if (e.key === '?' || (e.shiftKey && e.key === '/')) { e.preventDefault(); void openHelp(); return; }
   if (['INPUT', 'TEXTAREA', 'SELECT'].includes((document.activeElement && document.activeElement.tagName) || '')) return;
   const vp = $('view-practice'); if (vp && vp.classList.contains('active')) {
     if (e.code === 'Space') { e.preventDefault(); buzz(); }
@@ -4818,6 +4818,7 @@ async function tryFetchDefault(force = false) {
   if (!(ASSIGNMENT_ID && HAS_ASSIGNMENT_PAYLOAD)) {
     await tryFetchDefault(false);
   }
+  await openWorkspace(getWorkspaceFromLocation(), { replace: true, refresh: false, scroll: false });
   updateSetupOverview();
   renderCoachChatChrome();
   await applyPendingCoachChatAction();
