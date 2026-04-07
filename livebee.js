@@ -833,17 +833,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         playBeeCue('tap', { sound: false, haptic: true });
     }, true);
 
-    // Keyboard: space to buzz
-    document.addEventListener('keydown', e => {
-        if (e.code === 'Space' && document.activeElement?.tagName !== 'INPUT' && document.activeElement?.tagName !== 'TEXTAREA') {
-            e.preventDefault();
-            const buzzBtn = $('bee-buzz');
-            if (buzzBtn && !buzzBtn.disabled && $('view-game')?.classList.contains('active')) {
-                buzzBtn.click();
-            }
-        }
-    });
-
     function startHostAnswerTimeout() {
         clearTimeout(answerTimeout);
         answerTimeout = setTimeout(() => {
@@ -860,9 +849,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // ==================== ANSWER SUBMISSION ====================
     $('btn-submit-bee-answer')?.addEventListener('click', submitBeeAnswer);
-    $('bee-answer-input')?.addEventListener('keydown', e => {
-        if (e.key === 'Enter') { e.preventDefault(); submitBeeAnswer(); }
-    });
 
     function submitBeeAnswer() {
         if (uid !== currentBuzzer || !activeRoundId) return;

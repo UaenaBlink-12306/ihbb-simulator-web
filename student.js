@@ -1101,27 +1101,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (!action) return;
         void runDashboardChatAction(action);
     });
-    document.addEventListener('keydown', (event) => {
-        if (event.key === 'Escape' && dashboardChat.open) {
-            event.preventDefault();
-            closeDashboardChat();
-            return;
-        }
-        if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
-            event.preventDefault();
-            dashboardChat.open ? closeDashboardChat() : openDashboardChat();
-            return;
-        }
-        if (dashboardChat.open && event.key.toLowerCase() === 'f') {
-            event.preventDefault();
-            toggleDashboardChatFullscreen();
-            return;
-        }
-        if (event.key === 'Enter' && !event.shiftKey && document.activeElement?.id === 'coach-chat-input') {
-            event.preventDefault();
-            document.getElementById('coach-chat-form')?.requestSubmit();
-        }
-    });
     document.addEventListener('pointermove', (event) => {
         if (!dashboardChat.resizing) return;
         dashboardChat.ui.width = clampDashboardChatWidth(window.innerWidth - event.clientX - 16);

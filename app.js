@@ -4367,27 +4367,6 @@ document.addEventListener('click', (e) => {
   playFeedbackCue('tap', { sound: false, haptic: true });
 }, true);
 
-// Keyboard shortcuts
-document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape' && CoachChat.open) { e.preventDefault(); closeCoachChat({ manual: true }); return; }
-  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); CoachChat.open ? closeCoachChat({ manual: true }) : openCoachChat({ auto: false, seed: false, reason: 'manual' }); return; }
-  if (CoachChat.open && e.key.toLowerCase() === 'f') { e.preventDefault(); toggleCoachChatFullscreen(); return; }
-  if (['INPUT', 'TEXTAREA', 'SELECT'].includes((document.activeElement && document.activeElement.tagName) || '')) return;
-  const vp = $('view-practice'); if (vp && vp.classList.contains('active')) {
-    if (e.code === 'Space') { e.preventDefault(); buzz(); }
-    if (e.key === 'r' || e.key === 'R') { e.preventDefault(); markRight(); }
-    if (e.key === 'w' || e.key === 'W') { e.preventDefault(); markWrong(); }
-    if (e.key === 'n' || e.key === 'N') { e.preventDefault(); const nx = $('btn-next'); if (nx && !nx.disabled) nextQuestion(false); }
-    if (e.key === 'l' || e.key === 'L') { e.preventDefault(); const rp = $('btn-replay'); if (rp && !rp.disabled) replayLast(); }
-    if (e.key === 'c' || e.key === 'C') { e.preventDefault(); const b = $('btn-copy-answer'); if (b && !b.disabled) b.click(); }
-  }
-});
-$('coach-chat-input')?.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter' && !e.shiftKey) {
-    e.preventDefault();
-    $('coach-chat-form')?.requestSubmit();
-  }
-});
 document.addEventListener('pointermove', (e) => {
   if (!CoachChat.resizing) return;
   CoachChat.ui.width = clampCoachChatWidth(window.innerWidth - e.clientX - 16);
@@ -4779,7 +4758,6 @@ async function submitAnswer(auto = false) {
 
 // Hook up UI for manual submit (optional early submit)
 $('btn-submit-answer')?.addEventListener('click', () => submitAnswer(false));
-$('user-answer')?.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); submitAnswer(false); } });
 
 // Disable manual R/W when autoGrade is enabled
 try {

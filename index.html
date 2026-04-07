@@ -118,7 +118,7 @@
       <a href="#" id="nav-review">Review</a>
       <a href="#" id="nav-coach">AI Notebook</a>
       <a href="#" id="nav-library">Library</a>
-      <a href="#" id="nav-help">Shortcuts</a>
+      <a href="#" id="nav-help">Help</a>
     </nav>
 
     <section id="view-setup" class="view active">
@@ -298,7 +298,7 @@
                     <label class="pill">Delay <input id="autoAdvanceDelay" type="number" min="0" max="5" value="1" style="width:70px">s</label>
                   </div>
 
-                  <div class="pill">Shortcuts: Space = Buzz • R = Right • W = Wrong • N = Next • L = Replay • ? = Help</div>
+                  <div class="pill">Use the on-screen controls to buzz, score, replay audio, and move to the next question.</div>
                 </div>
               </div>
             </div>
@@ -342,7 +342,7 @@
         <div class="practice-stage">
           <div class="counter" id="countdown"></div>
           <div class="buzz-wrap">
-            <button id="btn-buzz" class="buzz pulse">B U Z Z (Space)</button>
+            <button id="btn-buzz" class="buzz pulse">B U Z Z</button>
           </div>
           <div class="row practice-answer-entry" id="typing-row" style="display:none;">
             <input id="user-answer" type="text" placeholder="Type your answer…" style="flex:1 1 420px" />
@@ -354,18 +354,17 @@
 
         <div class="practice-control-dock">
           <div class="row practice-bottom">
-            <button id="btn-replay" class="btn ghost" disabled>Replay last line (L)</button>
-            <button id="btn-next" class="btn ghost" disabled>Next (N)</button>
-            <button id="btn-right" class="btn good" disabled style="display:none">✔ Right (R)</button>
-            <button id="btn-wrong" class="btn bad" disabled style="display:none">✖ Wrong (W)</button>
+            <button id="btn-replay" class="btn ghost" disabled>Replay last line</button>
+            <button id="btn-next" class="btn ghost" disabled>Next</button>
+            <button id="btn-right" class="btn good" disabled style="display:none">✔ Right</button>
+            <button id="btn-wrong" class="btn bad" disabled style="display:none">✖ Wrong</button>
             <div class="grow"></div>
-            <button id="btn-copy-answer" class="btn ghost" disabled>Copy answer (C)</button>
+            <button id="btn-copy-answer" class="btn ghost" disabled>Copy answer</button>
             <button id="btn-alias" class="btn ghost" disabled>Add alias</button>
             <button id="btn-flag" class="btn ghost" disabled>Flag</button>
           </div>
 
-          <div class="muted practice-shortcuts">Space = Buzz • R = Right • W = Wrong • N = Next • L = Replay • ? =
-            Help</div>
+          <div class="muted practice-shortcuts">Use the buttons below to control practice.</div>
         </div>
     </div>
   </section>
@@ -662,7 +661,7 @@
   <div id="overlay" class="overlay" role="dialog" aria-modal="true">
     <div class="sheet">
       <div class="row" style="align-items:center">
-        <div class="card-title" style="margin:0">Keyboard shortcuts</div>
+        <div class="card-title" style="margin:0">Practice controls</div>
         <div class="grow"></div>
         <button id="closeHelp" class="btn ghost">Close</button>
       </div>
@@ -670,34 +669,34 @@
       <table>
         <thead>
           <tr>
-            <th>Key</th>
+            <th>Control</th>
             <th>Action</th>
           </tr>
         </thead>
         <tbody>
           <tr>
-            <td>Space</td>
-            <td>Buzz</td>
+            <td>Buzz button</td>
+            <td>Stop the reading and lock in your attempt</td>
           </tr>
           <tr>
-            <td>R</td>
-            <td>Mark Right</td>
+            <td>Right button</td>
+            <td>Mark the attempt correct</td>
           </tr>
           <tr>
-            <td>W</td>
-            <td>Mark Wrong</td>
+            <td>Wrong button</td>
+            <td>Mark the attempt incorrect</td>
           </tr>
           <tr>
-            <td>N</td>
-            <td>Next</td>
+            <td>Next button</td>
+            <td>Advance to the next question</td>
           </tr>
           <tr>
-            <td>L</td>
-            <td>Replay last line</td>
+            <td>Replay button</td>
+            <td>Replay the latest clue line</td>
           </tr>
           <tr>
-            <td>?</td>
-            <td>Open/close cheatsheet</td>
+            <td>Copy answer button</td>
+            <td>Copy the revealed answer to your clipboard</td>
           </tr>
         </tbody>
       </table>
