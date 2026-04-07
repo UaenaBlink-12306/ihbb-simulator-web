@@ -3394,6 +3394,11 @@ body.coach-chat-resizing {
   border-color: rgba(31, 111, 255, 0.24);
 }
 
+.coach-chat-form-utility {
+  display: flex;
+  justify-content: flex-end;
+}
+
 .coach-chat-form-actions {
   display: flex;
   align-items: center;
