@@ -9,12 +9,32 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (!session) { window.location.replace('login.html'); return; }
     const uid = session.user.id;
 
-    const { data: profile } = await sb.from('profiles').select('role, display_name').eq('id', uid).single();
+    const avatarCatalog = window.AvatarCatalog || {};
+    const normalizeAvatarId = (value) => {
+        if (typeof avatarCatalog.normalizeAvatarId === 'function') return avatarCatalog.normalizeAvatarId(value);
+        return 'penguin';
+    };
+    const avatarAssetPath = (value) => {
+        if (typeof avatarCatalog.avatarAssetPath === 'function') return avatarCatalog.avatarAssetPath(value);
+        return `/assets/avatars/${normalizeAvatarId(value)}.png`;
+    };
+    const applyAvatarImage = (img, value, altText) => {
+        if (!img) return;
+        if (typeof avatarCatalog.applyAvatarImage === 'function') {
+            avatarCatalog.applyAvatarImage(img, value, altText);
+            return;
+        }
+        img.alt = altText || 'Avatar';
+        img.src = avatarAssetPath(value);
+    };
+
+    const { data: profile } = await sb.from('profiles').select('role, display_name, avatar_id').eq('id', uid).single();
     if (!profile || !profile.role) { window.location.replace('onboarding.html'); return; }
     if (guard) guard.remove();
 
     const isHost = profile.role === 'teacher';
     const myName = profile.display_name || (isHost ? 'Teacher' : 'Student');
+    const myAvatarId = normalizeAvatarId(profile.avatar_id);
 
     // Back button
     document.getElementById('btn-back').href = isHost ? 'teacher.html' : 'student.html';
@@ -49,6 +69,46 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     }
     function esc(s) { const d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; }
+    function userAvatarHtml(value, name, variant = 'default') {
+        const resolvedAvatarId = normalizeAvatarId(value);
+        const sizeMap = {
+            default: 'width:44px;height:44px;border-radius:16px;',
+            'user-avatar-small': 'width:40px;height:40px;border-radius:14px;',
+            'user-avatar-tiny': 'width:28px;height:28px;border-radius:10px;',
+            'user-avatar-podium': 'width:clamp(56px, 10vw, 72px);height:clamp(56px, 10vw, 72px);border-radius:24px;margin:0 auto 4px;'
+        };
+        const shellSize = sizeMap[variant] || sizeMap.default;
+        return `<span style="${shellSize}flex:0 0 auto;display:inline-grid;place-items:center;overflow:hidden;border:1px solid rgba(125,211,252,0.48);background:radial-gradient(circle at 30% 24%, rgba(255,255,255,0.62), transparent 34%), linear-gradient(180deg, #dff4ff, #b8e2ff);box-shadow:inset 0 1px 0 rgba(255,255,255,0.6), 0 14px 24px -24px rgba(8,47,73,0.45);"><img data-avatar-id="${esc(resolvedAvatarId)}" src="${esc(avatarAssetPath(resolvedAvatarId))}" alt="${esc(name || 'Player')} avatar" style="width:80%;height:80%;display:block;object-fit:contain;transform:scale(1.12);transform-origin:center;"></span>`;
+    }
+    function hydrateAvatarImages(root) {
+        const scope = root && typeof root.querySelectorAll === 'function' ? root : document;
+        scope.querySelectorAll('img[data-avatar-id]').forEach((img) => {
+            applyAvatarImage(img, img.dataset.avatarId, img.alt || 'Avatar');
+        });
+    }
+    function normalizePlayerRecord(player = {}) {
+        return {
+            name: String(player?.name || 'Player').trim() || 'Player',
+            score: Number(player?.score) || 0,
+            avatarId: normalizeAvatarId(player?.avatarId ?? player?.avatar_id)
+        };
+    }
+    function upsertPlayer(userId, patch = {}) {
+        const key = String(userId || '').trim();
+        if (!key) return null;
+        const next = normalizePlayerRecord({ ...(players[key] || {}), ...patch });
+        players[key] = next;
+        return next;
+    }
+    function normalizeQueueEntry(entry = {}) {
+        const userId = String(entry?.userId || '').trim();
+        const player = userId ? players[userId] : null;
+        return {
+            userId,
+            name: String(entry?.name || player?.name || 'Player').trim() || 'Player',
+            avatarId: normalizeAvatarId(entry?.avatarId ?? player?.avatarId)
+        };
+    }
     function genCode() { return Math.random().toString(36).substring(2, 8).toUpperCase(); }
 
     // ==================== SOUND EFFECTS ====================
@@ -207,7 +267,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // ==================== GAME STATE ====================
     let room = null;         // { id, code, host_id, status }
     let channel = null;      // Supabase Realtime channel
-    let players = {};        // { [userId]: { name, score } }
+    let players = {};        // { [userId]: { name, score, avatarId } }
     let gameQuestions = [];   // Array of { question, answer, aliases, meta }
     let questionIndex = -1;
     let buzzQueue = [];       // Ordered by arrival at host
@@ -231,7 +291,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const { data, error } = await sb.from('bee_rooms').insert({ code, host_id: uid, status: 'waiting' }).select().single();
         if (error) { showAlert('Failed to create room: ' + error.message); return; }
         room = data;
-        players[uid] = { name: myName, score: 0 };
+        upsertPlayer(uid, { name: myName, score: 0, avatarId: myAvatarId });
         await sb.from('bee_participants').insert({ room_id: room.id, user_id: uid, display_name: myName, score: 0 });
         playBeeCue('join');
         enterWaitingRoom();
@@ -276,7 +336,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         channel = sb.channel('bee:' + room.code, { config: { broadcast: { self: true } } });
 
         channel.on('broadcast', { event: 'player_join' }, ({ payload }) => {
-            players[payload.userId] = { name: payload.name, score: 0 };
+            upsertPlayer(payload.userId, {
+                name: payload.name,
+                avatarId: payload.avatarId,
+                score: players[payload.userId]?.score || 0
+            });
             if (payload.userId !== uid) playBeeCue('tap', { sound: false });
             renderPlayerList();
         });
@@ -361,11 +425,26 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
 
         // Announce presence
-        channel.send({ type: 'broadcast', event: 'player_join', payload: { userId: uid, name: myName } });
+        channel.send({ type: 'broadcast', event: 'player_join', payload: { userId: uid, name: myName, avatarId: myAvatarId } });
 
         // Load current participants from DB
         const { data: parts } = await sb.from('bee_participants').select('user_id, display_name, score').eq('room_id', room.id);
-        (parts || []).forEach(p => { players[p.user_id] = { name: p.display_name || 'Player', score: p.score || 0 }; });
+        const participantIds = (parts || []).map((p) => p.user_id).filter(Boolean);
+        const avatarMap = {};
+        if (participantIds.length) {
+            const { data: participantProfiles } = await sb.from('profiles').select('id, avatar_id').in('id', participantIds);
+            (participantProfiles || []).forEach((participantProfile) => {
+                avatarMap[participantProfile.id] = normalizeAvatarId(participantProfile.avatar_id);
+            });
+        }
+        (parts || []).forEach((p) => {
+            upsertPlayer(p.user_id, {
+                name: p.display_name || 'Player',
+                score: p.score || 0,
+                avatarId: avatarMap[p.user_id]
+            });
+        });
+        upsertPlayer(uid, { name: myName, avatarId: myAvatarId, score: players[uid]?.score || 0 });
         renderPlayerList();
 
         // If room is already active (late join)
@@ -383,9 +462,11 @@ document.addEventListener('DOMContentLoaded', async () => {
             const isMe = id === uid;
             const badge = id === room?.host_id ? ' 👑' : '';
             return `<div class="score-entry">
+                ${userAvatarHtml(p.avatarId, p.name, 'user-avatar-small')}
                 <span class="score-name" style="${isMe ? 'color: var(--accent);' : ''}">${esc(p.name)}${badge}${isMe ? ' (You)' : ''}</span>
             </div>`;
         }).join('');
+        hydrateAvatarImages(el);
         // Update start button
         const btn = $('btn-start-bee');
         if (btn) btn.disabled = selectedQuestions.length === 0;
@@ -651,7 +732,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     function handleBuzzAck(payload) {
         // payload: { queue: [{userId, name}], currentBuzzer: userId }
         if (payload.roundId && activeRoundId && payload.roundId !== activeRoundId) return;
-        buzzQueue = Array.isArray(payload.queue) ? payload.queue : [];
+        buzzQueue = Array.isArray(payload.queue) ? payload.queue.map(normalizeQueueEntry) : [];
         currentBuzzer = payload.currentBuzzer || null;
 
         // Stop TTS for everyone
@@ -704,7 +785,17 @@ document.addEventListener('DOMContentLoaded', async () => {
         const display = $('answer-display');
         display.classList.remove('hidden', 'answer-correct', 'answer-incorrect', 'answer-grading');
         display.classList.add('answer-grading');
-        $('answer-player-name').textContent = payload.name + ' answered:';
+        const answerPlayerName = $('answer-player-name');
+        const playerName = payload.name || players[payload.userId]?.name || 'Player';
+        if (answerPlayerName) {
+            answerPlayerName.innerHTML = `
+                <span style="display:inline-flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap;">
+                    ${userAvatarHtml(payload.avatarId || players[payload.userId]?.avatarId, playerName, 'user-avatar-small')}
+                    <span style="line-height:1.3;">${esc(playerName)} answered:</span>
+                </span>
+            `;
+            hydrateAvatarImages(answerPlayerName);
+        }
         $('answer-text').textContent = payload.text;
         $('answer-verdict').textContent = '⏳ Grading...';
     }
@@ -790,8 +881,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Lock after first accepted buzz.
         if (currentBuzzer) return;
 
+        upsertPlayer(payload.userId, { name: payload.name, avatarId: payload.avatarId });
         const name = payload.name || players[payload.userId]?.name || 'Player';
-        buzzQueue = [{ userId: payload.userId, name }];
+        const avatarId = payload.avatarId || players[payload.userId]?.avatarId;
+        buzzQueue = [normalizeQueueEntry({ userId: payload.userId, name, avatarId })];
         currentBuzzer = payload.userId;
         playBeeCue('queue');
 
@@ -812,7 +905,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         channel.send({
             type: 'broadcast',
             event: 'buzz',
-            payload: { userId: uid, name: myName, roundId: activeRoundId }
+            payload: { userId: uid, name: myName, avatarId: myAvatarId, roundId: activeRoundId }
         });
         buzzInSound();
         $('bee-buzz').disabled = true;
@@ -862,7 +955,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Broadcast the answer text to everyone
         channel.send({
             type: 'broadcast', event: 'answer_submit',
-            payload: { userId: uid, name: myName, text, roundId: activeRoundId }
+            payload: { userId: uid, name: myName, avatarId: myAvatarId, text, roundId: activeRoundId }
         });
     }
 
@@ -885,6 +978,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             payload: {
                 userId: payload.userId,
                 name: payload.name || players[payload.userId]?.name || 'Player',
+                avatarId: payload.avatarId || players[payload.userId]?.avatarId,
                 text
             }
         });
@@ -1026,9 +1120,11 @@ document.addEventListener('DOMContentLoaded', async () => {
             const isMe = b.userId === uid;
             const label = i === 0 ? '🔴 Buzzer' : ordinal(i + 1);
             return `<div class="queue-badge ${isCurrent ? 'buzzer' : 'waiting'}" style="${isMe ? 'border-color: var(--accent);' : ''}">
-                ${label}: ${esc(b.name)}${isMe ? ' (You)' : ''}
+                ${userAvatarHtml(b.avatarId, b.name, 'user-avatar-tiny')}
+                <span>${label}: ${esc(b.name)}${isMe ? ' (You)' : ''}</span>
             </div>`;
         }).join('');
+        hydrateAvatarImages(el);
     }
 
     function renderScoreboard() {
@@ -1042,10 +1138,12 @@ document.addEventListener('DOMContentLoaded', async () => {
             const isMe = id === uid;
             return `<div class="score-entry">
                 <span class="score-rank ${rankClass}">${i + 1}</span>
+                ${userAvatarHtml(p.avatarId, p.name, 'user-avatar-small')}
                 <span class="score-name" style="${isMe ? 'color: var(--accent);' : ''}">${esc(p.name)}${isMe ? ' (You)' : ''}</span>
                 <span class="score-points">${p.score}</span>
             </div>`;
         }).join('');
+        hydrateAvatarImages(el);
     }
 
     function getFinalStandings() {
@@ -1060,6 +1158,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 id,
                 rank: idx + 1,
                 name: p?.name || 'Player',
+                avatarId: normalizeAvatarId(p?.avatarId),
                 score: Number(p?.score) || 0,
                 isMe: id === uid
             }));
@@ -1083,6 +1182,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
             return `<div class="podium-slot ${cls}" style="${player.isMe ? 'box-shadow: 0 0 0 2px var(--ring), inset 0 1px 0 rgba(255,255,255,0.12);' : ''}">
                 <div class="podium-medal">${medal}</div>
+                ${userAvatarHtml(player.avatarId, player.name, 'user-avatar-podium')}
                 <div class="podium-name">${esc(player.name)}${player.isMe ? ' (You)' : ''}</div>
                 <div class="podium-points">${player.score} pts</div>
                 <div class="podium-rank-label">${label}</div>
@@ -1093,6 +1193,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             slotHtml(second, 'second', '🥈', '2nd') +
             slotHtml(first, 'first', '🥇', '1st') +
             slotHtml(third, 'third', '🥉', '3rd');
+        hydrateAvatarImages(el);
     }
 
     function renderFinalScoreboard(standings) {
@@ -1106,10 +1207,12 @@ document.addEventListener('DOMContentLoaded', async () => {
             const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}.`;
             return `<div class="score-entry" style="${p.isMe ? 'background: rgba(96,165,250,0.1); border-radius: 12px;' : ''}">
                 <span class="score-rank">${medal}</span>
+                ${userAvatarHtml(p.avatarId, p.name, 'user-avatar-small')}
                 <span class="score-name" style="${p.isMe ? 'color: var(--accent);' : ''}">${esc(p.name)}${p.isMe ? ' (You)' : ''}</span>
                 <span class="score-points">${p.score} pts</span>
             </div>`;
         }).join('');
+        hydrateAvatarImages(el);
     }
 
     function launchResultsConfetti() {

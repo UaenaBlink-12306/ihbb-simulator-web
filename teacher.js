@@ -38,6 +38,20 @@ document.addEventListener('DOMContentLoaded', async () => {
         img.alt = altText || 'Avatar';
         img.src = `/assets/avatars/${normalizeAvatarId(value)}.png`;
     };
+    const avatarAssetPath = (value) => {
+        if (typeof avatarCatalog.avatarAssetPath === 'function') return avatarCatalog.avatarAssetPath(value);
+        return `/assets/avatars/${normalizeAvatarId(value)}.png`;
+    };
+    const userAvatarHtml = (value, name) => {
+        const resolvedAvatarId = normalizeAvatarId(value);
+        return `<span style="align-self:center;width:44px;height:44px;flex:0 0 auto;display:inline-grid;place-items:center;overflow:hidden;border-radius:16px;border:1px solid rgba(125,211,252,0.48);background:radial-gradient(circle at 30% 24%, rgba(255,255,255,0.62), transparent 34%), linear-gradient(180deg, #dff4ff, #b8e2ff);box-shadow:inset 0 1px 0 rgba(255,255,255,0.6), 0 14px 24px -24px rgba(8,47,73,0.45);"><img data-avatar-id="${esc(resolvedAvatarId)}" src="${esc(avatarAssetPath(resolvedAvatarId))}" alt="${esc(name || 'User')} avatar" style="width:80%;height:80%;display:block;object-fit:contain;transform:scale(1.12);transform-origin:center;"></span>`;
+    };
+    const hydrateAvatarImages = (root) => {
+        const scope = root && typeof root.querySelectorAll === 'function' ? root : document;
+        scope.querySelectorAll('img[data-avatar-id]').forEach((img) => {
+            applyAvatarImage(img, img.dataset.avatarId, img.alt || 'Avatar');
+        });
+    };
     let selectedAvatarId = normalizeAvatarId(profile.avatar_id);
 
     // State
@@ -428,7 +442,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Modal helpers
     function showModal(title, bodyHtml) {
         document.getElementById('modal-title').textContent = title;
-        document.getElementById('modal-body').innerHTML = bodyHtml;
+        const body = document.getElementById('modal-body');
+        body.innerHTML = bodyHtml;
+        hydrateAvatarImages(body);
         document.getElementById('teacher-modal').classList.remove('hidden');
     }
     document.getElementById('modal-close').addEventListener('click', () => {
@@ -442,14 +458,19 @@ document.addEventListener('DOMContentLoaded', async () => {
         const { data } = await sb.from('class_students').select('student_id, joined_at').eq('class_id', classId);
         if (!data || !data.length) { showModal('Enrolled Students', '<p class="muted">No students enrolled yet.</p>'); return; }
         const ids = data.map(s => s.student_id);
-        const { data: profiles } = await sb.from('profiles').select('id, display_name').in('id', ids);
-        const nameMap = {};
-        (profiles || []).forEach(p => nameMap[p.id] = p.display_name || 'Unnamed');
+        const { data: profiles } = await sb.from('profiles').select('id, display_name, avatar_id').in('id', ids);
+        const profileMap = {};
+        (profiles || []).forEach((p) => {
+            profileMap[p.id] = {
+                name: p.display_name || 'Unnamed',
+                avatarId: normalizeAvatarId(p.avatar_id)
+            };
+        });
         const html = data.map(s => `
             <div class="list-item">
-                <span style="font-size: 20px;">👤</span>
+                ${userAvatarHtml(profileMap[s.student_id]?.avatarId, profileMap[s.student_id]?.name || 'Unnamed')}
                 <div class="item-copy">
-                    <span class="item-title">${esc(nameMap[s.student_id] || 'Unnamed')}</span>
+                    <span class="item-title">${esc(profileMap[s.student_id]?.name || 'Unnamed')}</span>
                     <span class="item-meta">Joined ${new Date(s.joined_at).toLocaleDateString()}</span>
                 </div>
                 <a class="btn ghost" href="profile.html?user=${encodeURIComponent(s.student_id)}">Profile</a>
@@ -531,21 +552,27 @@ document.addEventListener('DOMContentLoaded', async () => {
         (subs || []).forEach(s => subMap[s.student_id] = s);
 
         // Fetch display names for all class students
-        const { data: profiles } = await sb.from('profiles').select('id, display_name').in('id', allStudentIds);
-        const nameMap = {};
-        (profiles || []).forEach(p => nameMap[p.id] = p.display_name || 'Unnamed');
+        const { data: profiles } = await sb.from('profiles').select('id, display_name, avatar_id').in('id', allStudentIds);
+        const profileMap = {};
+        (profiles || []).forEach((p) => {
+            profileMap[p.id] = {
+                name: p.display_name || 'Unnamed',
+                avatarId: normalizeAvatarId(p.avatar_id)
+            };
+        });
 
         if (!allStudentIds.length) { showModal('Submissions', '<p class="muted">No students in this class.</p>'); return; }
 
         const html = allStudentIds.map(sid => {
             const sub = subMap[sid];
-            const name = nameMap[sid] || 'Unnamed';
+            const student = profileMap[sid] || { name: 'Unnamed', avatarId: normalizeAvatarId('') };
+            const avatar = userAvatarHtml(student.avatarId, student.name);
             if (sub) {
                 const pct = sub.total ? Math.round(sub.correct / sub.total * 100) : 0;
                 return `<div class="list-item">
-                    <span style="font-size: 20px;">👤</span>
+                    ${avatar}
                     <div class="item-copy">
-                        <span class="item-title">${esc(name)}</span>
+                        <span class="item-title">${esc(student.name)}</span>
                         <span class="item-meta">Submission recorded for this assignment.</span>
                     </div>
                     <span class="item-score ${pct >= 50 ? 'good' : 'bad'}">${sub.correct}/${sub.total} (${pct}%)</span>
@@ -554,9 +581,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                 </div>`;
             } else {
                 return `<div class="list-item">
-                    <span style="font-size: 20px;">👤</span>
+                    ${avatar}
                     <div class="item-copy">
-                        <span class="item-title">${esc(name)}</span>
+                        <span class="item-title">${esc(student.name)}</span>
                         <span class="item-meta">No submission has been recorded yet.</span>
                     </div>
                     <span class="status-pill pending">⏳ Not Completed</span>
