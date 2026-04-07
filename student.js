@@ -284,7 +284,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         if ((snapshot?.wrong_bank?.due_now || 0) > 0) return `${snapshot.wrong_bank.due_now} wrong-bank card${snapshot.wrong_bank.due_now === 1 ? '' : 's'} due now.`;
         if (topFocus?.title) return `Top coach focus: ${topFocus.title}.`;
         if ((snapshot?.session_history?.total_sessions || 0) <= 0) return 'No recent practice history yet.';
-        return 'Ask what to study next before your next drill or assignment.';
+        return dashboardChat.ui.mode === 'auto'
+            ? 'Ask for background on a topic or what to study next. Auto will detect the better answer style.'
+            : 'Ask what to study next before your next drill or assignment.';
     }
 
     function updateDashboardChatSourceLabel() {
@@ -297,27 +299,115 @@ document.addEventListener('DOMContentLoaded', async () => {
         el.textContent = `${label} • ${dashboardChat.ui.mode === 'knowledge' ? 'Knowledge' : (dashboardChat.ui.mode === 'coach' ? 'Coach' : 'Auto')}`;
     }
 
+    function normalizeDashboardChatIntentText(value = '') {
+        return String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+    }
+
+    const DASHBOARD_CHAT_COACH_TERMS = [
+        'wrong bank', 'srs', 'notebook', 'ai notebook', 'lesson', 'coach',
+        'practice', 'drill', 'session', 'review', 'setup', 'focus',
+        'due card', 'due now', 'assignment', 'next step', 'next steps',
+        'next move', 'future step', 'future steps', 'study plan', 'practice plan'
+    ];
+    const DASHBOARD_CHAT_KNOWLEDGE_TERMS = [
+        'explain', 'define', 'describe', 'summarize', 'summary', 'timeline',
+        'compare', 'contrast', 'significance', 'importance', 'overview',
+        'background', 'concept', 'cause', 'causes', 'effect', 'effects',
+        'turning point', 'detail', 'details', 'in detail', 'teach me',
+        'help me understand', 'break down', 'elaborate', 'deeper', 'more context'
+    ];
+    const DASHBOARD_CHAT_COACH_PATTERNS = [
+        /\bwhat should i\b/,
+        /\bwhat do i do next\b/,
+        /\bwhat should i do next\b/,
+        /\bwhat should i practice next\b/,
+        /\bhow should i\b/,
+        /\bshould i use\b/,
+        /\bnext step\b/,
+        /\bnext steps\b/,
+        /\bnext move\b/,
+        /\bfuture step\b/,
+        /\bfuture steps\b/,
+        /\bbuild me\b.*\b(plan|drill|session)\b/,
+        /\bmake me\b.*\b(plan|drill|session)\b/,
+        /\bturn this into\b.*\b(plan|drill|session)\b/
+    ];
+    const DASHBOARD_CHAT_KNOWLEDGE_PATTERNS = [
+        /\bwho (is|was|were|are|did|do|does)\b/,
+        /\bwhat (is|was|were|are|did|do|does|happened|caused)\b/,
+        /\bwhen (did|was|were|is|are)\b/,
+        /\bwhere (is|was|were|did)\b/,
+        /\bwhy\b/,
+        /\bhow (did|do|does|was|were|is|are)\b/,
+        /\btell me about\b/,
+        /\bgive me (?:a )?timeline of\b/,
+        /\bwhat is the significance of\b/,
+        /\bwhat was the significance of\b/,
+        /\bwhat caused\b/,
+        /\bwhat were the causes of\b/,
+        /\bwhat happened in\b/
+    ];
+
+    function countDashboardChatIntentHits(message = '', patterns = []) {
+        return patterns.reduce((total, pattern) => total + (pattern.test(message) ? 1 : 0), 0);
+    }
+
+    function countDashboardChatTermHits(message = '', terms = []) {
+        return terms.reduce((total, term) => total + (message.includes(term) ? 1 : 0), 0);
+    }
+
+    function analyzeDashboardChatIntent(message = '') {
+        const normalized = normalizeDashboardChatIntentText(message);
+        const coachPatternHits = countDashboardChatIntentHits(normalized, DASHBOARD_CHAT_COACH_PATTERNS);
+        const knowledgePatternHits = countDashboardChatIntentHits(normalized, DASHBOARD_CHAT_KNOWLEDGE_PATTERNS);
+        const coachTermHits = countDashboardChatTermHits(normalized, DASHBOARD_CHAT_COACH_TERMS);
+        const knowledgeTermHits = countDashboardChatTermHits(normalized, DASHBOARD_CHAT_KNOWLEDGE_TERMS);
+        return {
+            normalized,
+            coachScore: coachPatternHits * 3 + coachTermHits,
+            knowledgeScore: knowledgePatternHits * 4 + knowledgeTermHits,
+            strongCoach: coachPatternHits > 0,
+            strongKnowledge: knowledgePatternHits > 0
+        };
+    }
+
     function resolveDashboardChatMode(message = '', snapshot = buildDashboardChatContext()) {
         if (dashboardChat.ui.mode === 'coach' || dashboardChat.ui.mode === 'knowledge') return dashboardChat.ui.mode;
-        const prompt = String(message || '').trim().toLowerCase();
-        const coachTerms = ['wrong bank', 'wrong-bank', 'srs', 'notebook', 'ai notebook', 'lesson', 'coach', 'practice', 'train', 'drill', 'session', 'review', 'setup', 'focus', 'assignment'];
-        const knowledgeTerms = ['who ', 'what ', 'when ', 'where ', 'why ', 'how ', 'explain', 'define', 'describe', 'summarize', 'summary', 'timeline', 'compare', 'contrast', 'significance', 'overview', 'background', 'concept'];
-        if (coachTerms.some(term => prompt.includes(term))) return 'coach';
-        if (knowledgeTerms.some(term => prompt.includes(term))) return 'knowledge';
+        const intent = analyzeDashboardChatIntent(message);
+        if (!intent.normalized) return 'coach';
+        if (intent.knowledgeScore > intent.coachScore) return 'knowledge';
+        if (intent.coachScore > intent.knowledgeScore) {
+            if (intent.strongKnowledge && intent.coachScore - intent.knowledgeScore <= 2) return 'knowledge';
+            return 'coach';
+        }
+        if (intent.strongKnowledge && !intent.strongCoach) return 'knowledge';
+        if (intent.strongCoach && !intent.strongKnowledge) return 'coach';
+        if (intent.knowledgeScore > 0) return 'knowledge';
         if (!(snapshot?.session_history?.total_sessions || 0) && !(snapshot?.coach_notebook?.total || 0)) return 'knowledge';
         return 'coach';
     }
 
     function dashboardChatTopicFromMessage(message = '', snapshot = buildDashboardChatContext(), mode = resolveDashboardChatMode(message, snapshot)) {
         const raw = String(message || '').trim();
+        const intent = analyzeDashboardChatIntent(raw);
         const recentTitle = String(snapshot?.recent_incorrect?.title || '').trim();
         const topFocusTitle = String(snapshot?.coach_notebook?.top_focuses?.[0]?.title || '').trim();
         if (!raw) return mode === 'knowledge' ? (recentTitle || topFocusTitle) : recentTitle;
+        if (mode !== 'knowledge' && intent.coachScore > 0 && intent.knowledgeScore === 0) return recentTitle || topFocusTitle;
         const prompt = raw
             .replace(/^[^a-zA-Z0-9]*(who|what|when|where|why|how)\s+(is|was|were|are|did|do|does)\s+/i, '')
             .replace(/^(explain|define|describe|outline|summarize|compare|contrast|tell me about|give me (a )?timeline of|what is the significance of|what was the significance of|what caused|what were the causes of|what happened in)\s+/i, '')
+            .replace(/^(what should i (study|practice|review|learn|work on|do)( next)?( about| for)?\s*)/i, '')
+            .replace(/^(how should i (study|practice|train|review|use|approach|learn)\s+)/i, '')
+            .replace(/^(should i use\s+)/i, '')
+            .replace(/^(build me|make me|turn this into)\s+(a\s+)?(short\s+)?(study plan|practice plan|plan|drill|session)\s+(for|on)\s+/i, '')
             .replace(/[?.!]+$/g, '')
             .trim();
+        if (!prompt) return recentTitle || topFocusTitle;
+        const normalizedIntent = analyzeDashboardChatIntent(prompt);
+        if (mode !== 'knowledge' && normalizedIntent.coachScore > 0 && normalizedIntent.knowledgeScore === 0) {
+            return recentTitle || topFocusTitle;
+        }
         return prompt || recentTitle || topFocusTitle;
     }
 
@@ -542,10 +632,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         el.innerHTML = messagesHtml || loadingHtml
             ? `${messagesHtml}${loadingHtml}`
             : `<div class="coach-chat-empty">
-                <div class="coach-chat-empty-title">${dashboardChat.ui.mode === 'knowledge' ? 'Ask about any IHBB topic.' : 'Start with one quick question.'}</div>
+                <div class="coach-chat-empty-title">${dashboardChat.ui.mode === 'knowledge' ? 'Ask about any IHBB topic.' : (dashboardChat.ui.mode === 'auto' ? 'Ask for knowledge or next steps.' : 'Start with one quick question.')}</div>
                 <p class="coach-chat-empty-text">${dashboardChat.ui.mode === 'knowledge'
                     ? 'Pick a prompt or type a topic when you want an explanation, timeline, or comparison.'
-                    : 'Pick a prompt or type what you want to practice next.'}</p>
+                    : (dashboardChat.ui.mode === 'auto'
+                        ? 'Pick a prompt or type what you want to understand or what you should do next.'
+                        : 'Pick a prompt or type what you want to practice next.')}</p>
             </div>`;
         if (bodyEl) bodyEl.scrollTop = bodyEl.scrollHeight;
         el.scrollTop = el.scrollHeight;
@@ -607,7 +699,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (hintEl) {
             hintEl.textContent = dashboardChat.ui.mode === 'knowledge'
                 ? 'Knowledge mode gives long-form explanations and reference links.'
-                : 'Coach mode stays tied to your dashboard context and only answers when asked.';
+                : (dashboardChat.ui.mode === 'coach'
+                    ? 'Coach mode stays tied to your dashboard context and only answers when asked.'
+                    : 'Auto mode detects whether you want more knowledge or coaching and future steps.');
         }
         if (sendBtn) sendBtn.disabled = !!dashboardChat.busy;
         modeButtons.forEach(button => {

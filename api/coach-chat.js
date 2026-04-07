@@ -14,13 +14,46 @@ const ALLOWED_MODES = new Set(['auto', 'coach', 'knowledge']);
 const COACH_INTENT_TERMS = [
   'wrong bank', 'srs', 'notebook', 'ai notebook', 'lesson', 'coach',
   'practice', 'train', 'drill', 'session', 'review', 'setup', 'focus',
-  'due card', 'due now', 'assignment'
+  'due card', 'due now', 'assignment', 'next step', 'next steps',
+  'next move', 'future step', 'future steps', 'study plan', 'practice plan'
 ];
 const KNOWLEDGE_INTENT_TERMS = [
-  'who ', 'what ', 'when ', 'where ', 'why ', 'how ', 'explain', 'define',
-  'describe', 'summarize', 'summary', 'timeline', 'compare', 'contrast',
-  'significance', 'importance', 'overview', 'background', 'concept',
-  'cause', 'causes', 'effect', 'effects', 'turning point'
+  'explain', 'define', 'describe', 'summarize', 'summary', 'timeline',
+  'compare', 'contrast', 'significance', 'importance', 'overview',
+  'background', 'concept', 'cause', 'causes', 'effect', 'effects',
+  'turning point', 'detail', 'details', 'in detail', 'teach me',
+  'help me understand', 'break down', 'elaborate', 'deeper', 'more context'
+];
+const COACH_INTENT_PATTERNS = [
+  /\bwhat should i\b/,
+  /\bwhat do i do next\b/,
+  /\bwhat should i do next\b/,
+  /\bwhat should i practice next\b/,
+  /\bhow should i\b/,
+  /\bshould i use\b/,
+  /\bnext step\b/,
+  /\bnext steps\b/,
+  /\bnext move\b/,
+  /\bfuture step\b/,
+  /\bfuture steps\b/,
+  /\bbuild me\b.*\b(plan|drill|session)\b/,
+  /\bmake me\b.*\b(plan|drill|session)\b/,
+  /\bturn this into\b.*\b(plan|drill|session)\b/
+];
+const KNOWLEDGE_INTENT_PATTERNS = [
+  /\bwho (is|was|were|are|did|do|does)\b/,
+  /\bwhat (is|was|were|are|did|do|does|happened|caused)\b/,
+  /\bwhen (did|was|were|is|are)\b/,
+  /\bwhere (is|was|were|did)\b/,
+  /\bwhy\b/,
+  /\bhow (did|do|does|was|were|is|are)\b/,
+  /\btell me about\b/,
+  /\bgive me (?:a )?timeline of\b/,
+  /\bwhat is the significance of\b/,
+  /\bwhat was the significance of\b/,
+  /\bwhat caused\b/,
+  /\bwhat were the causes of\b/,
+  /\bwhat happened in\b/
 ];
 
 function stringValue(value) {
@@ -32,6 +65,35 @@ function stringValue(value) {
 
 function normalizeText(value) {
   return stringValue(value).toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+}
+
+function countPatternHits(message, patterns = []) {
+  return patterns.reduce((total, pattern) => total + (pattern.test(message) ? 1 : 0), 0);
+}
+
+function countTermHits(message, terms = []) {
+  return terms.reduce((total, term) => total + (message.includes(term) ? 1 : 0), 0);
+}
+
+function analyzeIntent(message) {
+  const normalized = normalizeText(message);
+  const coachPatternHits = countPatternHits(normalized, COACH_INTENT_PATTERNS);
+  const knowledgePatternHits = countPatternHits(normalized, KNOWLEDGE_INTENT_PATTERNS);
+  const coachTermHits = countTermHits(normalized, COACH_INTENT_TERMS);
+  const knowledgeTermHits = countTermHits(normalized, KNOWLEDGE_INTENT_TERMS);
+  const coachScore = coachPatternHits * 3 + coachTermHits;
+  const knowledgeScore = knowledgePatternHits * 4 + knowledgeTermHits;
+
+  return {
+    normalized,
+    coachScore,
+    knowledgeScore,
+    strongCoach: coachPatternHits > 0,
+    strongKnowledge: knowledgePatternHits > 0,
+    mixedIntent: coachScore > 0 && knowledgeScore > 0,
+    asksForFutureSteps: /\b(next step|next steps|next move|future step|future steps|what should i do next|what should i practice next)\b/.test(normalized),
+    asksForExplanation: knowledgePatternHits > 0 || knowledgeTermHits > 0
+  };
 }
 
 function parseJsonFromContent(content) {
@@ -65,11 +127,11 @@ function normalizeMode(value, fallback = 'auto') {
 }
 
 function looksLikeCoachIntent(message) {
-  return COACH_INTENT_TERMS.some(term => message.includes(term));
+  return analyzeIntent(message).coachScore > 0;
 }
 
 function looksLikeKnowledgeIntent(message) {
-  return KNOWLEDGE_INTENT_TERMS.some(term => message.includes(term));
+  return analyzeIntent(message).knowledgeScore > 0;
 }
 
 function wikiLinkForTopic(topic) {
@@ -152,10 +214,16 @@ function focusTitle(focus) {
 function resolveMode(payload, context = normalizeContext(payload)) {
   const requested = normalizeMode(payload.assistant_mode, 'auto');
   if (requested === 'coach' || requested === 'knowledge') return requested;
-  const message = normalizeText(payload.message);
-  if (!message) return 'coach';
-  if (looksLikeCoachIntent(message)) return 'coach';
-  if (looksLikeKnowledgeIntent(message)) return 'knowledge';
+  const intent = analyzeIntent(payload.message);
+  if (!intent.normalized) return 'coach';
+  if (intent.knowledgeScore > intent.coachScore) return 'knowledge';
+  if (intent.coachScore > intent.knowledgeScore) {
+    if (intent.strongKnowledge && intent.coachScore - intent.knowledgeScore <= 2) return 'knowledge';
+    return 'coach';
+  }
+  if (intent.strongKnowledge && !intent.strongCoach) return 'knowledge';
+  if (intent.strongCoach && !intent.strongKnowledge) return 'coach';
+  if (intent.knowledgeScore > 0) return 'knowledge';
   if (!context?.session_history?.total_sessions && !context?.coach_notebook?.total) return 'knowledge';
   return 'coach';
 }
@@ -165,20 +233,29 @@ function extractTopic(payload, context = normalizeContext(payload), resolvedMode
   if (direct) return direct.slice(0, 120);
 
   const message = stringValue(payload.message);
-  const normalized = normalizeText(message);
+  const intent = analyzeIntent(message);
+  const normalized = intent.normalized;
   const recentTitle = focusTitle(context.recent_incorrect || {});
   const topFocusTitle = focusTitle(context.coach_notebook.top_focuses[0] || {});
   if (!message) return resolvedMode === 'knowledge' ? (recentTitle || topFocusTitle) : (recentTitle || '');
-  if (resolvedMode !== 'knowledge' && looksLikeCoachIntent(normalized)) return recentTitle || topFocusTitle;
+  if (resolvedMode !== 'knowledge' && intent.coachScore > 0 && intent.knowledgeScore === 0) return recentTitle || topFocusTitle;
 
   let topic = message
     .replace(/^[^a-zA-Z0-9]*(who|what|when|where|why|how)\s+(is|was|were|are|did|do|does)\s+/i, '')
     .replace(/^(explain|define|describe|outline|summarize|compare|contrast|tell me about|give me (a )?timeline of|what is the significance of|what was the significance of|what caused|what were the causes of|what happened in)\s+/i, '')
+    .replace(/^(what should i (study|practice|review|learn|work on|do)( next)?( about| for)?\s*)/i, '')
+    .replace(/^(how should i (study|practice|train|review|use|approach|learn)\s+)/i, '')
+    .replace(/^(should i use\s+)/i, '')
+    .replace(/^(build me|make me|turn this into)\s+(a\s+)?(short\s+)?(study plan|practice plan|plan|drill|session)\s+(for|on)\s+/i, '')
     .replace(/[?.!]+$/g, '')
     .trim();
   if (!topic) topic = message.replace(/[?.!]+$/g, '').trim();
   if (topic.length > 120) topic = `${topic.slice(0, 117).trim()}...`;
-  if (!topic || looksLikeCoachIntent(normalizeText(topic))) return recentTitle || topFocusTitle;
+  if (!topic) return recentTitle || topFocusTitle;
+  const normalizedTopic = normalizeText(topic);
+  if (resolvedMode !== 'knowledge' && looksLikeCoachIntent(normalizedTopic) && !looksLikeKnowledgeIntent(normalizedTopic)) {
+    return recentTitle || topFocusTitle;
+  }
   return topic;
 }
 
@@ -564,6 +641,7 @@ module.exports = async function handler(req, res) {
 
     const context = normalizeContext(payload);
     const resolvedMode = resolveMode(payload, context);
+    const intent = analyzeIntent(payload.message);
     const conversation = Array.isArray(payload.conversation)
       ? payload.conversation.slice(-8).map((entry) => {
           if (!entry || typeof entry !== 'object') return null;
@@ -584,6 +662,14 @@ module.exports = async function handler(req, res) {
       '1) Coach mode: recommend the best next study move using the provided app context and built-in app actions.',
       '2) Knowledge mode: answer history and IHBB concept questions in detail, with structured sections and at least one Wikipedia link when a topic is clear.',
       'Respect the requested assistant_mode when it is "coach" or "knowledge". If it is "auto", choose the best mode.',
+      'When the request is auto or mixed, use the user payload and intent_hint to detect the dominant goal.',
+      'Knowledge intent means explanation, background, timeline, comparison, causes, significance, or helping the user understand a topic.',
+      'Coach intent means next-step advice, future steps, what to practice, how to study, or which app tool to use next.',
+      'If both intents appear, keep the answer weighted toward the dominant one.',
+      'Knowledge-first replies should spend most of the space on knowledge and keep any study-next-steps to one short final section only if the user asked for it.',
+      'Coaching-first replies should spend most of the space on practical next actions and only include brief background unless the user explicitly asked for depth.',
+      'In knowledge mode, let the sections carry the explanation. Do not let quick actions crowd out the historical content.',
+      'In coach mode, prefer sections like Best Next Move, Why This Tool Fits, and What To Do After.',
       'Available app actions and surfaces:',
       '- Wrong-bank (SRS) practices previously missed questions that are due.',
       '- AI Notebook stores DeepSeek lessons from incorrect answers.',
@@ -604,6 +690,14 @@ module.exports = async function handler(req, res) {
 
     const user = {
       assistant_mode: resolvedMode,
+      intent_hint: {
+        detected_mode: resolvedMode,
+        mixed_intent: intent.mixedIntent,
+        asks_for_future_steps: intent.asksForFutureSteps,
+        asks_for_explanation: intent.asksForExplanation,
+        coach_score: intent.coachScore,
+        knowledge_score: intent.knowledgeScore
+      },
       message: stringValue(payload.message) || 'What should I practice next?',
       conversation,
       study_context: context,
@@ -624,7 +718,7 @@ module.exports = async function handler(req, res) {
         ],
         response_format: { type: 'json_object' },
         temperature: resolvedMode === 'knowledge' ? 0.18 : 0.2,
-        max_tokens: resolvedMode === 'knowledge' ? 1200 : 900
+        max_tokens: resolvedMode === 'knowledge' ? 1400 : 900
       })
     });
 
