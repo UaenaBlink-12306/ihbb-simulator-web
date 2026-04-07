@@ -597,6 +597,11 @@ const COACH_CHAT_ALLOWED_ACTIONS = new Set([
   'open_review',
   'open_library'
 ]);
+const COACH_CHAT_NOTEBOOK_ACTIONS = new Set([
+  'open_ai_notebook',
+  'apply_top_focus',
+  'generate_focus_drill'
+]);
 const COACH_CHAT_SUPPRESS_KEY = 'ihbb_v2_coach_chat_suppressed';
 const COACH_CHAT_UI_KEY = 'ihbb_v2_coach_chat_ui';
 const COACH_CHAT_SIZE_PRESETS = {
@@ -989,6 +994,117 @@ function renderCoachChatWorkspace(snapshot) {
   CoachChat.workspaceCards = cards;
 }
 
+function coachChatInlineMarkdownHtml(text = '') {
+  return escHtml(text)
+    .replace(/`([^`\n]+)`/g, '<code>$1</code>')
+    .replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>');
+}
+
+function coachChatMarkdownHtml(text = '') {
+  const raw = String(text || '').replace(/\r\n?/g, '\n').trim();
+  if (!raw) return '';
+  const html = [];
+  const paragraphLines = [];
+  const listItems = [];
+  let listType = '';
+
+  const flushParagraph = () => {
+    if (!paragraphLines.length) return;
+    html.push(`<p>${paragraphLines.map(line => coachChatInlineMarkdownHtml(line)).join('<br>')}</p>`);
+    paragraphLines.length = 0;
+  };
+
+  const flushList = () => {
+    if (!listItems.length || !listType) return;
+    html.push(`<${listType}>${listItems.map(item => `<li>${coachChatInlineMarkdownHtml(item)}</li>`).join('')}</${listType}>`);
+    listItems.length = 0;
+    listType = '';
+  };
+
+  raw.split('\n').forEach(line => {
+    const trimmed = line.trim();
+    if (!trimmed) {
+      flushParagraph();
+      flushList();
+      return;
+    }
+    const headingMatch = trimmed.match(/^(#{1,3})\s+(.*)$/);
+    if (headingMatch) {
+      flushParagraph();
+      flushList();
+      const level = Math.min(4, headingMatch[1].length + 1);
+      html.push(`<h${level}>${coachChatInlineMarkdownHtml(headingMatch[2])}</h${level}>`);
+      return;
+    }
+    const unorderedMatch = trimmed.match(/^[-*]\s+(.*)$/);
+    const orderedMatch = trimmed.match(/^\d+\.\s+(.*)$/);
+    if (unorderedMatch || orderedMatch) {
+      flushParagraph();
+      const nextType = unorderedMatch ? 'ul' : 'ol';
+      if (listType && listType !== nextType) flushList();
+      listType = nextType;
+      listItems.push((unorderedMatch || orderedMatch)[1]);
+      return;
+    }
+    flushList();
+    paragraphLines.push(trimmed);
+  });
+
+  flushParagraph();
+  flushList();
+  return html.join('');
+}
+
+function coachChatMessageMarkdownText(message) {
+  const actions = Array.isArray(message?.actions) ? message.actions : [];
+  const highlights = Array.isArray(message?.highlights) ? message.highlights : [];
+  const sections = Array.isArray(message?.sections) ? message.sections : [];
+  const links = Array.isArray(message?.links) ? message.links : [];
+  const followUps = Array.isArray(message?.followUps) ? message.followUps : [];
+  const resultLabel = message?.source === 'deepseek' ? 'DeepSeek Result' : 'Study Result';
+  const lines = [`## ${resultLabel} Start`];
+
+  if (message?.title) lines.push('', `### ${String(message.title).trim()}`);
+  if (message?.text) lines.push('', String(message.text).trim());
+  if (highlights.length) {
+    lines.push('', '### Highlights');
+    highlights.forEach(item => lines.push(`- ${String(item || '').trim()}`));
+  }
+  sections.forEach(section => {
+    const heading = String(section?.heading || '').trim();
+    const body = String(section?.body || '').trim();
+    if (!heading || !body) return;
+    lines.push('', `### ${heading}`, body);
+  });
+  if (links.length) {
+    lines.push('', '### References');
+    links.forEach(link => {
+      const label = String(link?.label || '').trim();
+      const url = String(link?.url || '').trim();
+      if (label && url) lines.push(`- [${label}](${url})`);
+    });
+  }
+  if (followUps.length) {
+    lines.push('', '### Follow-Up Prompts');
+    followUps.forEach(followUp => {
+      const label = String(followUp?.label || '').trim();
+      const prompt = String(followUp?.prompt || '').trim();
+      if (label && prompt) lines.push(`- ${label}: ${prompt}`);
+    });
+  }
+  lines.push('', `## End of ${resultLabel}`);
+  if (actions.length) {
+    lines.push('', '## Suggested Actions Start');
+    actions.forEach((action, actionIndex) => {
+      const label = String(action?.label || 'Run action').trim();
+      const reason = String(action?.reason || 'Recommended from your current study state.').trim();
+      lines.push(`${actionIndex + 1}. ${label}: ${reason}`);
+    });
+    lines.push('', '## End of Suggested Actions');
+  }
+  return lines.join('\n').trim();
+}
+
 function coachChatMessageHtml(message, index) {
   const metaLabel = message.role === 'user'
     ? 'You'
@@ -998,9 +1114,10 @@ function coachChatMessageHtml(message, index) {
   const sections = Array.isArray(message.sections) ? message.sections : [];
   const links = Array.isArray(message.links) ? message.links : [];
   const followUps = Array.isArray(message.followUps) ? message.followUps : [];
+  const resultLabel = message.source === 'deepseek' ? 'DeepSeek Result' : 'Study Result';
   const toolsHtml = message.role === 'assistant' ? `
     <div class="coach-chat-message-tools">
-      <button class="coach-chat-tool" type="button" data-message-index="${index}" data-tool="copy">Copy answer</button>
+      <button class="coach-chat-tool" type="button" data-message-index="${index}" data-tool="copy">Copy markdown</button>
     </div>
   ` : '';
   return `
@@ -1009,31 +1126,50 @@ function coachChatMessageHtml(message, index) {
         <span>${escHtml(metaLabel)}</span>
         <span>${escHtml(message.role === 'user' ? 'Prompt' : (message.mode === 'knowledge' ? 'Knowledge brief' : 'Practice advice'))}</span>
       </div>
-      ${message.role === 'assistant' && message.title ? `<h3 class="coach-chat-message-title">${escHtml(message.title)}</h3>` : ''}
-      <p class="coach-chat-message-text">${escHtml(message.text || '')}</p>
-      ${highlights.length ? `<div class="coach-chat-highlights">${highlights.map(item => `<span class="coach-chat-highlight">${escHtml(item)}</span>`).join('')}</div>` : ''}
-      ${sections.length ? `<div class="coach-chat-sections">${sections.map(section => `
-        <div class="coach-chat-section-card">
-          <h4>${escHtml(section.heading)}</h4>
-          <p>${escHtml(section.body)}</p>
+      ${message.role === 'assistant' ? `
+        <div class="coach-chat-block coach-chat-result-block">
+          <div class="coach-chat-block-label">${escHtml(`${resultLabel} Start`)}</div>
+          ${message.title ? `<h3 class="coach-chat-message-title">${escHtml(message.title)}</h3>` : ''}
+          ${message.text ? `<div class="coach-chat-markdown coach-chat-message-text">${coachChatMarkdownHtml(message.text || '')}</div>` : ''}
+          ${highlights.length ? `
+            <div class="coach-chat-section-label">Quick Context</div>
+            <div class="coach-chat-highlights">${highlights.map(item => `<span class="coach-chat-highlight">${escHtml(item)}</span>`).join('')}</div>
+          ` : ''}
+          ${sections.length ? `<div class="coach-chat-sections">${sections.map(section => `
+            <div class="coach-chat-section-card">
+              <h4>${escHtml(section.heading)}</h4>
+              <div class="coach-chat-markdown">${coachChatMarkdownHtml(section.body || '')}</div>
+            </div>
+          `).join('')}</div>` : ''}
+          ${links.length ? `
+            <div class="coach-chat-section-label">References</div>
+            <div class="coach-chat-links">${links.map(link => `
+              <a class="coach-chat-link-card" href="${escHtml(link.url)}" target="_blank" rel="noopener noreferrer">${escHtml(link.label)}</a>
+            `).join('')}</div>
+          ` : ''}
+          ${followUps.length ? `
+            <div class="coach-chat-section-label">Follow-Up Prompts</div>
+            <div class="coach-chat-followups">${followUps.map((followUp, followUpIndex) => `
+              <button class="coach-chat-followup" type="button" data-message-index="${index}" data-followup-index="${followUpIndex}">${escHtml(followUp.label)}</button>
+            `).join('')}</div>
+          ` : ''}
+          <div class="coach-chat-block-end">${escHtml(`End of ${resultLabel}`)}</div>
         </div>
-      `).join('')}</div>` : ''}
-      ${links.length ? `<div class="coach-chat-links">${links.map(link => `
-        <a class="coach-chat-link-card" href="${escHtml(link.url)}" target="_blank" rel="noopener noreferrer">${escHtml(link.label)}</a>
-      `).join('')}</div>` : ''}
-      ${followUps.length ? `<div class="coach-chat-followups">${followUps.map((followUp, followUpIndex) => `
-        <button class="coach-chat-followup" type="button" data-message-index="${index}" data-followup-index="${followUpIndex}">${escHtml(followUp.label)}</button>
-      `).join('')}</div>` : ''}
-      ${actions.length ? `
-        <div class="coach-chat-actions">
-          ${actions.map((action, actionIndex) => `
-            <button class="coach-chat-action" type="button" data-message-index="${index}" data-action-index="${actionIndex}">
-              <span class="coach-chat-action-label">${escHtml(action.label || 'Run action')}</span>
-              <span class="coach-chat-action-reason">${escHtml(action.reason || 'Recommended from your current study state.')}</span>
-            </button>
-          `).join('')}
-        </div>
-      ` : ''}
+        ${actions.length ? `
+          <div class="coach-chat-block coach-chat-action-block">
+            <div class="coach-chat-block-label">Suggested Actions Start</div>
+            <div class="coach-chat-actions">
+              ${actions.map((action, actionIndex) => `
+                <button class="coach-chat-action" type="button" data-message-index="${index}" data-action-index="${actionIndex}">
+                  <span class="coach-chat-action-label">${escHtml(action.label || 'Run action')}</span>
+                  <span class="coach-chat-action-reason">${escHtml(action.reason || 'Recommended from your current study state.')}</span>
+                </button>
+              `).join('')}
+            </div>
+            <div class="coach-chat-block-end">End of Suggested Actions</div>
+          </div>
+        ` : ''}
+      ` : `<p class="coach-chat-message-text">${escHtml(message.text || '')}</p>`}
       ${toolsHtml}
     </div>
   `;
@@ -1275,6 +1411,79 @@ function dedupeCoachChatActions(actions) {
   return out.slice(0, 3);
 }
 
+function coachChatTopicTokens(value = '') {
+  return Array.from(new Set(
+    normalizeCoachChatIntentText(value)
+      .split(' ')
+      .map(token => token.trim())
+      .filter(token => token.length >= 3)
+  ));
+}
+
+function coachChatTopicsOverlap(left = '', right = '') {
+  const leftTokens = coachChatTopicTokens(left);
+  const rightTokens = new Set(coachChatTopicTokens(right));
+  const normalizedLeft = normalizeCoachChatIntentText(left);
+  const normalizedRight = normalizeCoachChatIntentText(right);
+  if (!leftTokens.length || !rightTokens.size) {
+    return !!normalizedLeft && !!normalizedRight && (
+      normalizedLeft.includes(normalizedRight) || normalizedRight.includes(normalizedLeft)
+    );
+  }
+  if (normalizedLeft.includes(normalizedRight) || normalizedRight.includes(normalizedLeft)) return true;
+  let hits = 0;
+  leftTokens.forEach(token => {
+    if (rightTokens.has(token)) hits += 1;
+  });
+  return hits >= Math.min(2, Math.max(1, Math.min(leftTokens.length, rightTokens.size)));
+}
+
+function coachChatMessageAskedForNotebook(message = '') {
+  return /\b(ai notebook|notebook|lesson|lessons|coach)\b/.test(normalizeCoachChatIntentText(message));
+}
+
+function coachChatMessageAskedForStudyActions(message = '') {
+  const intent = analyzeCoachChatIntent(message);
+  return intent.coachScore > 0 || /\b(next step|next steps|next move|study plan|practice plan)\b/.test(intent.normalized);
+}
+
+function coachChatFindFocusByKey(snapshot = buildCoachChatStudyContext(), focusKey = '') {
+  const key = String(focusKey || '').trim();
+  if (!key) return null;
+  const recent = snapshot?.recent_incorrect || null;
+  if (String(recent?.key || '').trim() === key) return recent;
+  return Array.isArray(snapshot?.coach_notebook?.top_focuses)
+    ? snapshot.coach_notebook.top_focuses.find(focus => String(focus?.key || '').trim() === key) || null
+    : null;
+}
+
+function filterCoachChatActionsByContext(actions, mode, topic, message, snapshot = buildCoachChatStudyContext()) {
+  const deduped = dedupeCoachChatActions(actions);
+  const askedForNotebook = coachChatMessageAskedForNotebook(message);
+  const askedForStudyActions = coachChatMessageAskedForStudyActions(message);
+  return deduped.filter(action => {
+    if (!COACH_CHAT_NOTEBOOK_ACTIONS.has(String(action?.id || '').trim())) return true;
+    if (askedForNotebook) return true;
+    if (mode === 'knowledge') return false;
+    if (askedForStudyActions) return true;
+    if (
+      coachChatTopicsOverlap(action?.query || '', topic) ||
+      coachChatTopicsOverlap(action?.label || '', topic) ||
+      coachChatTopicsOverlap(action?.reason || '', topic)
+    ) {
+      return true;
+    }
+    const focus = coachChatFindFocusByKey(snapshot, action?.focus_key || '');
+    return !!focus && [
+      focus?.title,
+      focus?.topic,
+      focus?.region,
+      focus?.era,
+      focus?.reason
+    ].some(value => coachChatTopicsOverlap(value || '', topic));
+  }).slice(0, 3);
+}
+
 function normalizeCoachChatSections(raw) {
   return Array.isArray(raw)
     ? raw.map(section => {
@@ -1341,9 +1550,9 @@ function buildLocalCoachChatReply(message, snapshot = buildCoachChatStudyContext
       title: topic ? `Study brief: ${topic}` : 'Study brief',
       topic,
       message: topic
-        ? `This looks like a knowledge question about ${topic}. When DeepSeek is available, I can answer it in detail here. Right now I can still structure the topic, suggest the best follow-up prompts, and give you a reference link.`
-        : 'This looks like a knowledge question. When DeepSeek is available, I can answer it in detail here. Right now I can still frame the topic and give you the best follow-up prompts.',
-      highlights: ['Knowledge mode', topic ? 'Wikipedia reference ready' : 'Reference lookup ready'].filter(Boolean),
+        ? `This looks like a knowledge question about ${topic}. When DeepSeek is available, I can keep the answer focused on that topic, structure it clearly, and point you to a matching reference.`
+        : 'This looks like a knowledge question. When DeepSeek is available, I can keep the answer clear and focused on the topic you asked about.',
+      highlights: ['Knowledge mode', topic ? 'Topic-focused answer' : 'Reference lookup ready', 'Follow-up prompts stay on topic'].filter(Boolean),
       sections: [
         { heading: 'What to lock in first', body: topic ? `Start with the definition, timeframe, main actors, and why ${topic} matters in the broader historical story.` : 'Start with the definition, timeframe, main actors, and why the topic matters in the broader historical story.' },
         { heading: 'What IHBB usually rewards', body: 'Be ready to explain causes, turning points, significance, comparisons, and the larger regional or chronological pattern around the concept.' },
@@ -1460,27 +1669,32 @@ function normalizeCoachChatReply(raw, payload, snapshot) {
     String(snapshot?.recent_incorrect?.key || '').trim()
   ].filter(Boolean));
   const obj = (raw && typeof raw === 'object') ? raw : {};
-  const actions = Array.isArray(obj.quick_actions)
-    ? dedupeCoachChatActions(obj.quick_actions.map(action => ({
+  const mode = String(obj?.mode || '').trim() === 'knowledge' ? 'knowledge' : fallback.mode;
+  const topic = String(obj?.topic || '').trim() || fallback.topic;
+  const rawActions = Array.isArray(obj.quick_actions)
+    ? obj.quick_actions.map(action => ({
       id: String(action?.id || '').trim(),
       label: String(action?.label || action?.title || '').trim(),
       reason: String(action?.reason || '').trim(),
       focus_key: validFocusKeys.has(String(action?.focus_key || '').trim()) ? String(action?.focus_key || '').trim() : '',
       query: String(action?.query || '').trim()
-    })))
+    }))
     : [];
+  const filteredRawActions = filterCoachChatActionsByContext(rawActions, mode, topic, payload?.message || '', snapshot);
+  const filteredFallbackActions = filterCoachChatActionsByContext(fallback.quick_actions, mode, topic, payload?.message || '', snapshot);
+  const actions = filteredRawActions.length ? filteredRawActions : filteredFallbackActions;
   const links = normalizeCoachChatLinks(obj?.links);
   return {
     source: String(obj?.source || '').trim().toLowerCase() === 'deepseek' ? 'deepseek' : 'fallback',
-    mode: String(obj?.mode || '').trim() === 'knowledge' ? 'knowledge' : fallback.mode,
+    mode,
     title: String(obj?.title || '').trim() || fallback.title,
-    topic: String(obj?.topic || '').trim() || fallback.topic,
+    topic,
     message: String(obj?.message || '').trim() || fallback.message,
     highlights: normalizeCoachChatHighlights(obj?.highlights).length ? normalizeCoachChatHighlights(obj?.highlights) : fallback.highlights,
     sections: normalizeCoachChatSections(obj?.sections).length ? normalizeCoachChatSections(obj?.sections) : fallback.sections,
     links: links.length ? links : fallback.links,
     follow_ups: normalizeCoachChatFollowUps(obj?.follow_ups).length ? normalizeCoachChatFollowUps(obj?.follow_ups) : fallback.follow_ups,
-    quick_actions: actions.length ? actions : fallback.quick_actions
+    quick_actions: actions
   };
 }
 
@@ -4388,9 +4602,10 @@ $('coach-chat-messages')?.addEventListener('click', (e) => {
   if (toolButton) {
     const messageIndex = Number(toolButton.dataset.messageIndex);
     const message = CoachChat.messages?.[messageIndex];
-    if (message?.text) {
+    const markdown = coachChatMessageMarkdownText(message);
+    if (markdown) {
       if (navigator.clipboard?.writeText) {
-        navigator.clipboard.writeText(String(message.text || '').trim()).then(() => toast('Assistant answer copied')).catch(() => toast('Copy failed'));
+        navigator.clipboard.writeText(markdown).then(() => toast('Assistant markdown copied')).catch(() => toast('Copy failed'));
       } else {
         toast('Copy unavailable');
       }

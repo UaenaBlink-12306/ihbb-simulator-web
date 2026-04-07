@@ -9,6 +9,11 @@ const ALLOWED_ACTIONS = new Set([
   'open_review',
   'open_library'
 ]);
+const NOTEBOOK_ACTIONS = new Set([
+  'open_ai_notebook',
+  'apply_top_focus',
+  'generate_focus_drill'
+]);
 
 const ALLOWED_MODES = new Set(['auto', 'coach', 'knowledge']);
 const COACH_INTENT_TERMS = [
@@ -94,6 +99,75 @@ function analyzeIntent(message) {
     asksForFutureSteps: /\b(next step|next steps|next move|future step|future steps|what should i do next|what should i practice next)\b/.test(normalized),
     asksForExplanation: knowledgePatternHits > 0 || knowledgeTermHits > 0
   };
+}
+
+function topicTokens(value) {
+  return Array.from(new Set(
+    normalizeText(value)
+      .split(' ')
+      .map(token => token.trim())
+      .filter(token => token.length >= 3)
+  ));
+}
+
+function topicsOverlap(left, right) {
+  const a = topicTokens(left);
+  const b = new Set(topicTokens(right));
+  const normalizedLeft = normalizeText(left);
+  const normalizedRight = normalizeText(right);
+  if (!a.length || !b.size) {
+    return !!normalizedLeft && !!normalizedRight && (
+      normalizedLeft.includes(normalizedRight) || normalizedRight.includes(normalizedLeft)
+    );
+  }
+  if (normalizedLeft.includes(normalizedRight) || normalizedRight.includes(normalizedLeft)) return true;
+  let hits = 0;
+  for (const token of a) {
+    if (b.has(token)) hits += 1;
+  }
+  return hits >= Math.min(2, Math.max(1, Math.min(a.length, b.size)));
+}
+
+function messageAskedForNotebook(message) {
+  return /\b(ai notebook|notebook|lesson|lessons|coach)\b/.test(normalizeText(message));
+}
+
+function messageAskedForStudyActions(message) {
+  const intent = analyzeIntent(message);
+  return intent.coachScore > 0 || intent.asksForFutureSteps;
+}
+
+function findFocusByKey(context, focusKey) {
+  const cleanKey = stringValue(focusKey);
+  if (!cleanKey) return null;
+  const recent = context?.recent_incorrect;
+  if (stringValue(recent?.key) === cleanKey) return recent;
+  return Array.isArray(context?.coach_notebook?.top_focuses)
+    ? context.coach_notebook.top_focuses.find(focus => stringValue(focus?.key) === cleanKey) || null
+    : null;
+}
+
+function notebookActionAllowed(action, mode, topic, payload, context) {
+  if (!NOTEBOOK_ACTIONS.has(stringValue(action?.id))) return true;
+  const message = stringValue(payload?.message);
+  if (messageAskedForNotebook(message)) return true;
+  if (mode === 'knowledge') return false;
+  if (messageAskedForStudyActions(message)) return true;
+  if (topicsOverlap(action?.query, topic) || topicsOverlap(action?.label, topic) || topicsOverlap(action?.reason, topic)) {
+    return true;
+  }
+  const focus = findFocusByKey(context, action?.focus_key);
+  return !!focus && [
+    focus?.title,
+    focus?.topic,
+    focus?.region,
+    focus?.era,
+    focus?.reason
+  ].some(value => topicsOverlap(value, topic));
+}
+
+function filterActionsForContext(actions, mode, topic, payload, context) {
+  return dedupeActions(actions).filter(action => notebookActionAllowed(action, mode, topic, payload, context)).slice(0, 3);
 }
 
 function parseJsonFromContent(content) {
@@ -579,10 +653,6 @@ function buildKnowledgeFallback(payload, context = normalizeContext(payload)) {
   const wiki = wikiLinkForTopic(topic);
   const actions = [];
   if (topic) actions.push(makeAction('open_library', `Search ${topic}`, 'Open the question library and search this topic.', { query: topic }));
-  if (context.coach_notebook.top_focuses[0]?.key && actions.length < 3) {
-    const topFocus = context.coach_notebook.top_focuses[0];
-    actions.push(makeAction('apply_top_focus', `Apply ${focusTitle(topFocus)}`, 'Turn your top notebook focus into a targeted practice block.', { focus_key: stringValue(topFocus.key) }));
-  }
 
   return {
     source: 'fallback',
@@ -590,12 +660,12 @@ function buildKnowledgeFallback(payload, context = normalizeContext(payload)) {
     title: topic ? `Study brief: ${topic}` : 'Study brief',
     topic,
     message: topic
-      ? `This looks like a knowledge question about ${topic}. When DeepSeek is available, I can give a full detailed explanation here. Right now I can still structure the topic, point you to the right reference, and suggest the best follow-up questions.`
-      : 'This looks like a knowledge question. When DeepSeek is available, I can answer it in full detail here. Right now I can still frame the topic and point you to the best follow-up prompts.',
+      ? `This looks like a knowledge question about ${topic}. When DeepSeek is available, I can keep the answer focused on that topic, structure it clearly, and point you to a matching reference.`
+      : 'This looks like a knowledge question. When DeepSeek is available, I can answer it clearly here and keep the follow-up prompts focused on the same topic.',
     highlights: [
       'Knowledge mode',
-      topic ? 'Wikipedia reference ready' : 'Reference lookup ready',
-      context.coach_notebook.top_focuses[0]?.title ? `Top focus: ${focusTitle(context.coach_notebook.top_focuses[0])}` : 'Use follow-up prompts for depth'
+      topic ? 'Topic-focused answer' : 'Reference lookup ready',
+      'Follow-up prompts stay on topic'
     ].filter(Boolean).slice(0, 4),
     sections: [
       {
@@ -645,7 +715,9 @@ function normalizeResponse(raw, payload) {
       stringValue(context.recent_incorrect?.key)
     ].filter(Boolean)
   );
-  const actions = Array.isArray(obj.quick_actions)
+  const mode = normalizeMode(obj.mode, fallback.mode === 'knowledge' ? 'knowledge' : 'coach');
+  const topic = stringValue(obj.topic) || fallback.topic;
+  const rawActions = Array.isArray(obj.quick_actions)
     ? obj.quick_actions.map((action) => {
         if (!action || typeof action !== 'object') return null;
         const id = stringValue(action.id);
@@ -662,8 +734,9 @@ function normalizeResponse(raw, payload) {
         );
       }).filter(Boolean)
     : [];
-  const mode = normalizeMode(obj.mode, fallback.mode === 'knowledge' ? 'knowledge' : 'coach');
-  const topic = stringValue(obj.topic) || fallback.topic;
+  const filteredRawActions = filterActionsForContext(rawActions, mode, topic, payload, context);
+  const filteredFallbackActions = filterActionsForContext(fallback.quick_actions, mode, topic, payload, context);
+  const actions = filteredRawActions.length ? filteredRawActions : filteredFallbackActions;
   const links = normalizeLinks(obj.links);
   const fallbackLinks = Array.isArray(fallback.links) ? fallback.links : [];
   const mergedLinks = links.length
@@ -680,7 +753,7 @@ function normalizeResponse(raw, payload) {
     sections: normalizeSections(obj.sections).length ? normalizeSections(obj.sections) : fallback.sections,
     links: mergedLinks.slice(0, 4),
     follow_ups: normalizeFollowUps(obj.follow_ups).length ? normalizeFollowUps(obj.follow_ups) : fallback.follow_ups,
-    quick_actions: dedupeActions(actions.length ? actions : fallback.quick_actions)
+    quick_actions: actions
   };
 }
 
@@ -749,6 +822,11 @@ module.exports = async function handler(req, res) {
       'If you are uncertain about a historical fact, say so instead of bluffing.',
       'Coach mode should stay practical and tied to the user context.',
       'Knowledge mode should be more detailed and structured.',
+      'Keep replies easy to scan: prefer a short message plus 2 or 3 sections instead of an over-complicated answer.',
+      'You may use simple Markdown style inside message and section body strings, such as short bullet lists or **bold** labels.',
+      'Do not append unrelated notebook topics, notebook links, or notebook actions at the end of an answer.',
+      'For knowledge questions, do not suggest AI Notebook, Apply Top Focus, or Generate Focus Drill unless the user explicitly asked about notebook study workflow.',
+      'If you include quick actions for a knowledge answer, prefer Open Library only.',
       `Recommend at most 3 quick actions and only use these action ids: ${Array.from(ALLOWED_ACTIONS).sort().join(', ')}.`,
       `If you use focus_key, it must exactly match one of these keys: ${validFocusKeys.length ? validFocusKeys.join(', ') : '(none available)'}.`,
       'Return strict JSON only with this shape:',
