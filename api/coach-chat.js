@@ -116,6 +116,26 @@ function parseJsonFromContent(content) {
   }
 }
 
+async function requestDeepSeekChatCompletion(headers, payload) {
+  const response = await fetch('https://api.deepseek.com/v1/chat/completions', {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(payload)
+  });
+  const text = await response.text();
+  let data = null;
+  try {
+    data = JSON.parse(text);
+  } catch {}
+  return {
+    response,
+    text,
+    data,
+    finishReason: stringValue(data?.choices?.[0]?.finish_reason).toLowerCase(),
+    raw: parseJsonFromContent(data?.choices?.[0]?.message?.content || '')
+  };
+}
+
 function safeInt(value, fallback = 0) {
   const n = Number.parseInt(String(value), 10);
   return Number.isFinite(n) ? n : fallback;
@@ -757,52 +777,59 @@ module.exports = async function handler(req, res) {
       ? (process.env.DEEPSEEK_REASONER_MODEL || 'deepseek-reasoner')
       : (process.env.DEEPSEEK_MODEL || 'deepseek-chat');
     const chatModel = process.env.DEEPSEEK_MODEL || 'deepseek-chat';
-    const completionPayload = {
-      model,
-      messages: [
-        { role: 'system', content: system },
-        { role: 'user', content: JSON.stringify(user) }
-      ],
-      response_format: { type: 'json_object' },
-      max_tokens: thinkingEnabled ? 2400 : (resolvedMode === 'knowledge' ? 1400 : 900)
+    const chatMaxTokens = resolvedMode === 'knowledge' ? 1400 : 900;
+    const chatTemperature = resolvedMode === 'knowledge' ? 0.18 : 0.2;
+    const reasonerMaxTokens = Math.max(
+      chatMaxTokens,
+      safeInt(process.env.DEEPSEEK_REASONER_MAX_TOKENS, resolvedMode === 'knowledge' ? 8000 : 6000)
+    );
+    const reasonerRetryMaxTokens = Math.max(
+      reasonerMaxTokens + 1000,
+      safeInt(process.env.DEEPSEEK_REASONER_RETRY_MAX_TOKENS, resolvedMode === 'knowledge' ? 10000 : 8000)
+    );
+    const buildCompletionPayload = (modelName, maxTokens, temperature) => {
+      const completionPayload = {
+        model: modelName,
+        messages: [
+          { role: 'system', content: system },
+          { role: 'user', content: JSON.stringify(user) }
+        ],
+        response_format: { type: 'json_object' },
+        max_tokens: maxTokens
+      };
+      if (typeof temperature === 'number') {
+        completionPayload.temperature = temperature;
+      }
+      return completionPayload;
     };
-    if (!thinkingEnabled) {
-      completionPayload.temperature = resolvedMode === 'knowledge' ? 0.18 : 0.2;
-    }
 
     const requestHeaders = {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${process.env.DEEPSEEK_API_KEY}`
     };
 
-    let response = await fetch('https://api.deepseek.com/v1/chat/completions', {
-      method: 'POST',
-      headers: requestHeaders,
-      body: JSON.stringify(completionPayload)
-    });
-
-    let text = await response.text();
-    if (!response.ok && thinkingEnabled) {
-      const fallbackCompletionPayload = {
-        ...completionPayload,
-        model: chatModel,
-        max_tokens: resolvedMode === 'knowledge' ? 1400 : 900,
-        temperature: resolvedMode === 'knowledge' ? 0.18 : 0.2
-      };
-      response = await fetch('https://api.deepseek.com/v1/chat/completions', {
-        method: 'POST',
-        headers: requestHeaders,
-        body: JSON.stringify(fallbackCompletionPayload)
-      });
-      text = await response.text();
+    let completion = await requestDeepSeekChatCompletion(
+      requestHeaders,
+      buildCompletionPayload(model, thinkingEnabled ? reasonerMaxTokens : chatMaxTokens, thinkingEnabled ? null : chatTemperature)
+    );
+    if (thinkingEnabled && completion.response.ok && (!completion.raw || completion.finishReason === 'length')) {
+      console.warn(`DeepSeek reasoner coach chat returned ${completion.finishReason || 'unparseable'} output; retrying with ${reasonerRetryMaxTokens} max_tokens.`);
+      completion = await requestDeepSeekChatCompletion(
+        requestHeaders,
+        buildCompletionPayload(model, reasonerRetryMaxTokens, null)
+      );
     }
-    if (!response.ok) {
+    if (thinkingEnabled && (!completion.response.ok || !completion.raw)) {
+      completion = await requestDeepSeekChatCompletion(
+        requestHeaders,
+        buildCompletionPayload(chatModel, chatMaxTokens, chatTemperature)
+      );
+    }
+    if (!completion.response.ok || !completion.raw) {
       return res.status(200).json(fallback);
     }
 
-    const data = JSON.parse(text);
-    const raw = parseJsonFromContent(data?.choices?.[0]?.message?.content || '');
-    return res.status(200).json(normalizeResponse(raw, payload));
+    return res.status(200).json(normalizeResponse(completion.raw, payload));
   } catch (error) {
     return res.status(200).json(buildFallback(payload));
   }

@@ -25,6 +25,7 @@ PORT = int(os.environ.get("IHBB_SERVER_PORT", "5057"))
 DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY")
 DEEPSEEK_URL = "https://api.deepseek.com/v1/chat/completions"
 MODEL = os.environ.get("DEEPSEEK_MODEL", "deepseek-chat")
+REASONER_MODEL = os.environ.get("DEEPSEEK_REASONER_MODEL", "deepseek-reasoner")
 ADMIN_COOKIE = "ihbb_admin_session"
 ADMIN_EMAIL = str(os.environ.get("IHBB_ADMIN_EMAIL", os.environ.get("ADMIN_EMAIL", ""))).strip().lower()
 ADMIN_PASSWORD_HASH = str(os.environ.get("IHBB_ADMIN_PASSWORD_HASH", os.environ.get("ADMIN_PASSWORD_HASH", ""))).strip()
@@ -38,6 +39,18 @@ ADMIN_SESSION_SECRET = str(
 SUPABASE_URL = str(os.environ.get("SUPABASE_URL", os.environ.get("NEXT_PUBLIC_SUPABASE_URL", "https://laexxsgzldivvizwfjcn.supabase.co"))).strip()
 SUPABASE_SERVICE_ROLE_KEY = str(os.environ.get("SUPABASE_SERVICE_ROLE_KEY", os.environ.get("SUPABASE_SERVICE_KEY", ""))).strip()
 SESSION_MAX_AGE_SECONDS = 60 * 60 * 12
+
+
+def env_int(name: str, default: int) -> int:
+    raw = str(os.environ.get(name, "")).strip()
+    if not raw:
+        return default
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return default
+
+
 APP_TABLES = [
     {"name": "profiles", "order_by": "created_at.desc", "limit": 200},
     {"name": "classes", "order_by": "created_at.desc", "limit": 200},
@@ -387,19 +400,21 @@ def normalize_coach(raw: Any, payload: Dict[str, Any], correct: bool, reason: st
     }
 
 
-def call_deepseek(messages: List[Dict[str, str]], max_tokens: int = 300, temperature: float = 0.0) -> Dict[str, Any]:
+def call_deepseek(messages: List[Dict[str, str]], max_tokens: int = 300, temperature: Optional[float] = 0.0,
+                  model: Optional[str] = None, timeout: int = 30) -> Any:
     headers = {
         "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
         "Content-Type": "application/json",
     }
     body = {
-        "model": MODEL,
+        "model": model or MODEL,
         "messages": messages,
-        "temperature": temperature,
         "response_format": {"type": "json_object"},
         "max_tokens": max_tokens,
     }
-    r = requests.post(DEEPSEEK_URL, headers=headers, json=body, timeout=30)
+    if temperature is not None:
+        body["temperature"] = temperature
+    r = requests.post(DEEPSEEK_URL, headers=headers, json=body, timeout=timeout)
     r.raise_for_status()
     data = r.json()
     content = data["choices"][0]["message"]["content"] if data.get("choices") else ""
@@ -1452,6 +1467,7 @@ def coach_chat_with_deepseek(payload: Dict[str, Any]) -> Dict[str, Any]:
 
     context = normalize_coach_chat_context(payload)
     resolved_mode = resolve_coach_chat_mode(payload, context)
+    thinking_enabled = bool(payload.get("thinking_enabled", False))
     conversation = []
     raw_conversation = payload.get("conversation", [])
     if isinstance(raw_conversation, list):
@@ -1500,17 +1516,72 @@ def coach_chat_with_deepseek(payload: Dict[str, Any]) -> Dict[str, Any]:
     )
     user = {
         "assistant_mode": resolved_mode,
+        "thinking_enabled": thinking_enabled,
         "message": string_value(payload.get("message")) or "What should I practice next?",
         "conversation": conversation,
         "study_context": context,
         "fallback_plan": fallback,
     }
+    messages = [
+        {"role": "system", "content": system},
+        {"role": "user", "content": json.dumps(user, ensure_ascii=False)},
+    ]
+    chat_max_tokens = 1200 if resolved_mode == "knowledge" else 900
+    chat_temperature = 0.18 if resolved_mode == "knowledge" else 0.2
+    default_timeout = max(15, env_int("DEEPSEEK_TIMEOUT_SECONDS", 30))
+    reasoner_max_tokens = max(
+        chat_max_tokens,
+        env_int(
+            "DEEPSEEK_REASONER_MAX_TOKENS",
+            8000 if resolved_mode == "knowledge" else 6000,
+        ),
+    )
+    reasoner_retry_max_tokens = max(
+        reasoner_max_tokens + 1000,
+        env_int(
+            "DEEPSEEK_REASONER_RETRY_MAX_TOKENS",
+            10000 if resolved_mode == "knowledge" else 8000,
+        ),
+    )
+    reasoner_timeout = max(default_timeout, env_int("DEEPSEEK_REASONER_TIMEOUT_SECONDS", 90))
+
+    def fallback_to_chat_model() -> Optional[Any]:
+        if not thinking_enabled:
+            return None
+        log.warning("DeepSeek reasoner coach chat failed; retrying with %s.", MODEL)
+        return call_deepseek(
+            messages,
+            max_tokens=chat_max_tokens,
+            temperature=chat_temperature,
+            model=MODEL,
+            timeout=default_timeout,
+        )
 
     try:
-        obj = call_deepseek([
-            {"role": "system", "content": system},
-            {"role": "user", "content": json.dumps(user, ensure_ascii=False)},
-        ], max_tokens=1200 if resolved_mode == "knowledge" else 900, temperature=0.18 if resolved_mode == "knowledge" else 0.2)
+        obj = call_deepseek(
+            messages,
+            max_tokens=reasoner_max_tokens if thinking_enabled else chat_max_tokens,
+            temperature=None if thinking_enabled else chat_temperature,
+            model=REASONER_MODEL if thinking_enabled else MODEL,
+            timeout=reasoner_timeout if thinking_enabled else default_timeout,
+        )
+        if thinking_enabled and not isinstance(obj, dict):
+            log.warning(
+                "DeepSeek reasoner coach chat returned non-JSON output; retrying with %s max_tokens.",
+                reasoner_retry_max_tokens,
+            )
+            obj = call_deepseek(
+                messages,
+                max_tokens=reasoner_retry_max_tokens,
+                temperature=None,
+                model=REASONER_MODEL,
+                timeout=reasoner_timeout,
+            )
+        if not isinstance(obj, dict):
+            chat_obj = fallback_to_chat_model()
+            if isinstance(chat_obj, dict):
+                return normalize_coach_chat_response(chat_obj, payload)
+            return fallback
         return normalize_coach_chat_response(obj, payload)
     except requests.exceptions.Timeout as e:
         log.error("DeepSeek coach chat timeout: %s", e)
@@ -1520,6 +1591,19 @@ def coach_chat_with_deepseek(payload: Dict[str, Any]) -> Dict[str, Any]:
         log.error("DeepSeek coach chat HTTP error: %s, response: %s", e, getattr(e.response, "text", ""))
     except Exception as e:
         log.exception("DeepSeek coach chat unexpected error: %s", e)
+    if thinking_enabled:
+        try:
+            chat_obj = fallback_to_chat_model()
+            if isinstance(chat_obj, dict):
+                return normalize_coach_chat_response(chat_obj, payload)
+        except requests.exceptions.Timeout as e:
+            log.error("DeepSeek chat fallback timeout after reasoner failure: %s", e)
+        except requests.exceptions.ConnectionError as e:
+            log.error("DeepSeek chat fallback connection error after reasoner failure: %s", e)
+        except requests.exceptions.HTTPError as e:
+            log.error("DeepSeek chat fallback HTTP error after reasoner failure: %s, response: %s", e, getattr(e.response, "text", ""))
+        except Exception as e:
+            log.exception("DeepSeek chat fallback unexpected error after reasoner failure: %s", e)
     return fallback
 
 
