@@ -1000,6 +1000,21 @@ function coachChatInlineMarkdownHtml(text = '') {
     .replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>');
 }
 
+function coachChatDividerHtml(label = '', options = {}) {
+  const text = escHtml(label);
+  const subtle = !!options.subtle;
+  const lineColor = subtle ? 'rgba(31, 111, 255, 0.16)' : 'rgba(31, 111, 255, 0.28)';
+  const textColor = subtle ? '#60748c' : '#36597f';
+  const background = subtle ? 'rgba(246, 250, 255, 0.86)' : 'rgba(240, 247, 255, 0.96)';
+  return `
+    <div style="display:flex;align-items:center;gap:10px;margin:2px 0 4px;">
+      <span aria-hidden="true" style="flex:1;height:1px;background:linear-gradient(90deg, transparent, ${lineColor});"></span>
+      <span style="padding:0 2px;font-size:${subtle ? '11px' : '12px'};font-weight:800;letter-spacing:0.08em;text-transform:uppercase;color:${textColor};background:${background};">${text}</span>
+      <span aria-hidden="true" style="flex:1;height:1px;background:linear-gradient(90deg, ${lineColor}, transparent);"></span>
+    </div>
+  `;
+}
+
 function coachChatMarkdownHtml(text = '') {
   const raw = String(text || '').replace(/\r\n?/g, '\n').trim();
   if (!raw) return '';
@@ -1010,13 +1025,13 @@ function coachChatMarkdownHtml(text = '') {
 
   const flushParagraph = () => {
     if (!paragraphLines.length) return;
-    html.push(`<p>${paragraphLines.map(line => coachChatInlineMarkdownHtml(line)).join('<br>')}</p>`);
+    html.push(`<p style="margin:0;color:#1a2c42;font-size:14px;line-height:1.72;">${paragraphLines.map(line => coachChatInlineMarkdownHtml(line)).join('<br>')}</p>`);
     paragraphLines.length = 0;
   };
 
   const flushList = () => {
     if (!listItems.length || !listType) return;
-    html.push(`<${listType}>${listItems.map(item => `<li>${coachChatInlineMarkdownHtml(item)}</li>`).join('')}</${listType}>`);
+    html.push(`<${listType} style="margin:0;padding-left:20px;color:#24364d;display:grid;gap:6px;">${listItems.map(item => `<li style="line-height:1.7;">${coachChatInlineMarkdownHtml(item)}</li>`).join('')}</${listType}>`);
     listItems.length = 0;
     listType = '';
   };
@@ -1033,7 +1048,12 @@ function coachChatMarkdownHtml(text = '') {
       flushParagraph();
       flushList();
       const level = Math.min(4, headingMatch[1].length + 1);
-      html.push(`<h${level}>${coachChatInlineMarkdownHtml(headingMatch[2])}</h${level}>`);
+      const headingStyle = level === 2
+        ? 'margin:0;color:#10243d;font-size:22px;font-weight:850;line-height:1.22;letter-spacing:-0.02em;'
+        : level === 3
+          ? 'margin:0;color:#10243d;font-size:18px;font-weight:820;line-height:1.28;'
+          : 'margin:0;color:#17304a;font-size:16px;font-weight:800;line-height:1.34;';
+      html.push(`<h${level} style="${headingStyle}">${coachChatInlineMarkdownHtml(headingMatch[2])}</h${level}>`);
       return;
     }
     const unorderedMatch = trimmed.match(/^[-*]\s+(.*)$/);
@@ -1115,6 +1135,8 @@ function coachChatMessageHtml(message, index) {
   const links = Array.isArray(message.links) ? message.links : [];
   const followUps = Array.isArray(message.followUps) ? message.followUps : [];
   const resultLabel = message.source === 'deepseek' ? 'DeepSeek Result' : 'Study Result';
+  const blockStyle = 'display:grid;gap:12px;padding:14px 15px;border-radius:20px;border:1px solid rgba(15, 23, 42, 0.08);background:linear-gradient(180deg, rgba(255,255,255,0.97), rgba(246,250,255,0.9));box-shadow:inset 0 1px 0 rgba(255,255,255,0.85), 0 18px 28px -24px rgba(15,23,42,0.14);';
+  const markdownWrapStyle = 'display:grid;gap:10px;';
   const toolsHtml = message.role === 'assistant' ? `
     <div class="coach-chat-message-tools">
       <button class="coach-chat-tool" type="button" data-message-index="${index}" data-tool="copy">Copy markdown</button>
@@ -1127,37 +1149,37 @@ function coachChatMessageHtml(message, index) {
         <span>${escHtml(message.role === 'user' ? 'Prompt' : (message.mode === 'knowledge' ? 'Knowledge brief' : 'Practice advice'))}</span>
       </div>
       ${message.role === 'assistant' ? `
-        <div class="coach-chat-block coach-chat-result-block">
-          <div class="coach-chat-block-label">${escHtml(`${resultLabel} Start`)}</div>
-          ${message.title ? `<h3 class="coach-chat-message-title">${escHtml(message.title)}</h3>` : ''}
-          ${message.text ? `<div class="coach-chat-markdown coach-chat-message-text">${coachChatMarkdownHtml(message.text || '')}</div>` : ''}
+        <div class="coach-chat-block coach-chat-result-block" style="${blockStyle}">
+          ${coachChatDividerHtml(`${resultLabel} Start`)}
+          ${message.title ? `<h3 class="coach-chat-message-title" style="margin:0;color:#0f223a;font-size:20px;font-weight:850;line-height:1.25;letter-spacing:-0.02em;">${escHtml(message.title)}</h3>` : ''}
+          ${message.text ? `<div class="coach-chat-markdown coach-chat-message-text" style="${markdownWrapStyle}">${coachChatMarkdownHtml(message.text || '')}</div>` : ''}
           ${highlights.length ? `
-            <div class="coach-chat-section-label">Quick Context</div>
+            ${coachChatDividerHtml('Quick Context', { subtle: true })}
             <div class="coach-chat-highlights">${highlights.map(item => `<span class="coach-chat-highlight">${escHtml(item)}</span>`).join('')}</div>
           ` : ''}
           ${sections.length ? `<div class="coach-chat-sections">${sections.map(section => `
             <div class="coach-chat-section-card">
-              <h4>${escHtml(section.heading)}</h4>
-              <div class="coach-chat-markdown">${coachChatMarkdownHtml(section.body || '')}</div>
+              <h4 style="margin:0;color:#10243d;font-size:17px;font-weight:820;line-height:1.28;">${escHtml(section.heading)}</h4>
+              <div class="coach-chat-markdown" style="${markdownWrapStyle}">${coachChatMarkdownHtml(section.body || '')}</div>
             </div>
           `).join('')}</div>` : ''}
           ${links.length ? `
-            <div class="coach-chat-section-label">References</div>
+            ${coachChatDividerHtml('References', { subtle: true })}
             <div class="coach-chat-links">${links.map(link => `
               <a class="coach-chat-link-card" href="${escHtml(link.url)}" target="_blank" rel="noopener noreferrer">${escHtml(link.label)}</a>
             `).join('')}</div>
           ` : ''}
           ${followUps.length ? `
-            <div class="coach-chat-section-label">Follow-Up Prompts</div>
+            ${coachChatDividerHtml('Follow-Up Prompts', { subtle: true })}
             <div class="coach-chat-followups">${followUps.map((followUp, followUpIndex) => `
               <button class="coach-chat-followup" type="button" data-message-index="${index}" data-followup-index="${followUpIndex}">${escHtml(followUp.label)}</button>
             `).join('')}</div>
           ` : ''}
-          <div class="coach-chat-block-end">${escHtml(`End of ${resultLabel}`)}</div>
+          ${coachChatDividerHtml(`End of ${resultLabel}`)}
         </div>
         ${actions.length ? `
-          <div class="coach-chat-block coach-chat-action-block">
-            <div class="coach-chat-block-label">Suggested Actions Start</div>
+          <div class="coach-chat-block coach-chat-action-block" style="${blockStyle}">
+            ${coachChatDividerHtml('Suggested Actions Start')}
             <div class="coach-chat-actions">
               ${actions.map((action, actionIndex) => `
                 <button class="coach-chat-action" type="button" data-message-index="${index}" data-action-index="${actionIndex}">
@@ -1166,7 +1188,7 @@ function coachChatMessageHtml(message, index) {
                 </button>
               `).join('')}
             </div>
-            <div class="coach-chat-block-end">End of Suggested Actions</div>
+            ${coachChatDividerHtml('End of Suggested Actions')}
           </div>
         ` : ''}
       ` : `<p class="coach-chat-message-text">${escHtml(message.text || '')}</p>`}
