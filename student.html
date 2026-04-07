@@ -14,6 +14,7 @@
     <link rel="stylesheet" href="styles.css">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="config.js"></script>
+    <script src="avatar-catalog.js" defer></script>
     <style id="auth-guard">
         body {
             opacity: 0;
@@ -440,6 +441,24 @@
                             <div class="input-group full-width">
                                 <label>User ID</label>
                                 <input id="acc-user-id" type="text" readonly>
+                            </div>
+                            <div class="input-group full-width">
+                                <label>Avatar</label>
+                                <div class="avatar-settings-panel">
+                                    <div class="avatar-current-card">
+                                        <div class="avatar-preview-shell">
+                                            <img id="acc-avatar-preview" alt="Selected avatar">
+                                        </div>
+                                        <div class="avatar-current-copy">
+                                            <div class="eyebrow">Public profile avatar</div>
+                                            <h4 id="acc-avatar-current-label" style="margin: 0;">Penguin</h4>
+                                            <p class="muted" style="margin: 0;">This curated animal avatar appears on
+                                                your profile page.</p>
+                                        </div>
+                                    </div>
+                                    <div id="acc-avatar-picker" class="avatar-picker-grid" role="radiogroup"
+                                        aria-label="Choose your avatar"></div>
+                                </div>
                             </div>
                         </div>
                         <div class="form-actions" style="margin-top: 14px;">

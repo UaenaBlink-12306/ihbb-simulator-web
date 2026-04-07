@@ -19,6 +19,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const alertBox = document.getElementById('alert-box');
     const progressRole = document.getElementById('progress-step-role');
     const progressSetup = document.getElementById('progress-step-setup');
+    const DEFAULT_AVATAR_ID = window.AvatarCatalog?.DEFAULT_AVATAR_ID || 'penguin';
 
     let selectedRole = null;
     let currentUser = null;
@@ -57,6 +58,22 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (progressSetup) progressSetup.classList.toggle('active', !isRole);
     }
 
+    async function upsertProfileRecord(payload) {
+        const primaryPayload = {
+            ...payload,
+            avatar_id: DEFAULT_AVATAR_ID
+        };
+        const primaryResult = await window.supabaseClient.from('profiles').upsert(primaryPayload);
+        if (!primaryResult?.error) return primaryResult;
+
+        const message = String(primaryResult.error?.message || '').toLowerCase();
+        if (!message.includes('avatar_id') && !message.includes('column')) {
+            return primaryResult;
+        }
+
+        return window.supabaseClient.from('profiles').upsert(payload);
+    }
+
     // Role Selection
     roleCards.forEach(card => {
         card.addEventListener('click', () => {
@@ -89,13 +106,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         try {
             // Note: Since we don't have the table created yet in the DB, 
             // this is an optimistic update/insert.
-            const { error } = await window.supabaseClient
-                .from('profiles')
-                .upsert({
-                    id: currentUser.id,
-                    role: 'student',
-                    class_code: classCode
-                });
+            await upsertProfileRecord({
+                id: currentUser.id,
+                role: 'student',
+                class_code: classCode
+            });
 
             // Even if it fails (table not created), we let them into the app for now
             // since we are just doing frontend setup.
@@ -121,12 +136,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     async function saveTeacherProfile(className, inviteCode) {
         try {
-            await window.supabaseClient
-                .from('profiles')
-                .upsert({
-                    id: currentUser.id,
-                    role: 'teacher'
-                });
+            await upsertProfileRecord({
+                id: currentUser.id,
+                role: 'teacher'
+            });
 
             if (inviteCode) {
                 await window.supabaseClient

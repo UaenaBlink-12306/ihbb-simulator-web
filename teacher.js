@@ -11,12 +11,34 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Profile check
     const { data: profile } = await sb
         .from('profiles')
-        .select('role, display_name, class_code, created_at')
+        .select('*')
         .eq('id', uid)
         .single();
     if (!profile || profile.role !== 'teacher') { window.location.replace('index.html'); return; }
     if (guard) guard.remove();
     let userEmail = String(session.user?.email || '').trim();
+    const avatarCatalog = window.AvatarCatalog || {};
+    const avatarOptions = Array.isArray(avatarCatalog.AVATAR_OPTIONS) && avatarCatalog.AVATAR_OPTIONS.length
+        ? avatarCatalog.AVATAR_OPTIONS
+        : [{ id: 'penguin', label: 'Penguin' }];
+    const normalizeAvatarId = (value) => {
+        if (typeof avatarCatalog.normalizeAvatarId === 'function') return avatarCatalog.normalizeAvatarId(value);
+        return 'penguin';
+    };
+    const avatarLabel = (value) => {
+        if (typeof avatarCatalog.avatarLabel === 'function') return avatarCatalog.avatarLabel(value);
+        return 'Penguin';
+    };
+    const applyAvatarImage = (img, value, altText) => {
+        if (!img) return;
+        if (typeof avatarCatalog.applyAvatarImage === 'function') {
+            avatarCatalog.applyAvatarImage(img, value, altText);
+            return;
+        }
+        img.alt = altText || 'Avatar';
+        img.src = `/assets/avatars/${normalizeAvatarId(value)}.png`;
+    };
+    let selectedAvatarId = normalizeAvatarId(profile.avatar_id);
 
     // State
     let allQuestions = [];
@@ -225,6 +247,45 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (!el) return;
         el.value = value ?? '';
     }
+    function renderAccountAvatarPreview() {
+        const resolvedAvatarId = normalizeAvatarId(selectedAvatarId);
+        const previewImg = document.getElementById('acc-avatar-preview');
+        const currentLabel = document.getElementById('acc-avatar-current-label');
+        applyAvatarImage(previewImg, resolvedAvatarId, `${avatarLabel(resolvedAvatarId)} avatar`);
+        if (currentLabel) currentLabel.textContent = avatarLabel(resolvedAvatarId);
+    }
+    function renderAccountAvatarPicker() {
+        const picker = document.getElementById('acc-avatar-picker');
+        if (!picker) return;
+        picker.innerHTML = avatarOptions.map((option) => {
+            const optionId = normalizeAvatarId(option.id);
+            const isSelected = optionId === normalizeAvatarId(selectedAvatarId);
+            return `
+                <button
+                    type="button"
+                    class="avatar-option${isSelected ? ' selected' : ''}"
+                    data-avatar-id="${esc(optionId)}"
+                    role="radio"
+                    aria-checked="${isSelected ? 'true' : 'false'}"
+                >
+                    <img class="avatar-option-image" data-avatar-id="${esc(optionId)}" alt="${esc(option.label)} avatar">
+                    <span>${esc(option.label)}</span>
+                    <small>${isSelected ? 'Selected' : 'Choose avatar'}</small>
+                </button>
+            `;
+        }).join('');
+        picker.querySelectorAll('.avatar-option-image').forEach((img) => {
+            const optionId = normalizeAvatarId(img.dataset.avatarId);
+            applyAvatarImage(img, optionId, `${avatarLabel(optionId)} avatar`);
+        });
+        picker.querySelectorAll('.avatar-option').forEach((button) => {
+            button.addEventListener('click', () => {
+                selectedAvatarId = normalizeAvatarId(button.dataset.avatarId);
+                renderAccountAvatarPreview();
+                renderAccountAvatarPicker();
+            });
+        });
+    }
     function renderAccountProfile() {
         setInput('acc-display-name', profile.display_name || 'Unnamed');
         setInput('acc-role', formatRole(profile.role));
@@ -232,6 +293,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         setInput('acc-class-code', profile.class_code || '—');
         setInput('acc-created-at', profile.created_at ? new Date(profile.created_at).toLocaleString() : '—');
         setInput('acc-user-id', uid);
+        selectedAvatarId = normalizeAvatarId(profile.avatar_id);
+        renderAccountAvatarPreview();
+        renderAccountAvatarPicker();
     }
     renderAccountProfile();
 
@@ -255,9 +319,12 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         const prevName = String(profile.display_name || '').trim();
         const prevEmail = normalizeEmail(userEmail);
+        const prevAvatarId = normalizeAvatarId(profile.avatar_id);
+        const nextAvatarId = normalizeAvatarId(selectedAvatarId);
         const changeName = nextName !== prevName;
         const changeEmail = nextEmail !== prevEmail;
-        if (!changeName && !changeEmail) {
+        const changeAvatar = nextAvatarId !== prevAvatarId;
+        if (!changeName && !changeEmail && !changeAvatar) {
             showAlert('No profile changes to save.', 'success');
             return;
         }
@@ -270,12 +337,24 @@ document.addEventListener('DOMContentLoaded', async () => {
             const successMsgs = [];
             const errorMsgs = [];
 
-            if (changeName) {
-                const { error } = await sb.from('profiles').update({ display_name: nextName }).eq('id', uid);
-                if (error) errorMsgs.push(`Name update failed: ${error.message}`);
-                else {
-                    profile.display_name = nextName;
-                    successMsgs.push('Display name updated');
+            if (changeName || changeAvatar) {
+                const profilePatch = {};
+                if (changeName) profilePatch.display_name = nextName;
+                if (changeAvatar) profilePatch.avatar_id = nextAvatarId;
+                const { error } = await sb.from('profiles').update(profilePatch).eq('id', uid);
+                if (error) {
+                    if (changeName && changeAvatar) errorMsgs.push(`Profile update failed: ${error.message}`);
+                    else if (changeName) errorMsgs.push(`Name update failed: ${error.message}`);
+                    else errorMsgs.push(`Avatar update failed: ${error.message}`);
+                } else {
+                    if (changeName) {
+                        profile.display_name = nextName;
+                        successMsgs.push('Display name updated');
+                    }
+                    if (changeAvatar) {
+                        profile.avatar_id = nextAvatarId;
+                        successMsgs.push('Avatar updated');
+                    }
                 }
             }
 

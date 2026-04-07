@@ -13,6 +13,24 @@ document.addEventListener('DOMContentLoaded', async () => {
         const el = document.getElementById(id);
         if (el) el.value = value ?? '';
     };
+    const avatarCatalog = window.AvatarCatalog || {};
+    const normalizeAvatarId = (value) => {
+        if (typeof avatarCatalog.normalizeAvatarId === 'function') return avatarCatalog.normalizeAvatarId(value);
+        return 'penguin';
+    };
+    const avatarLabel = (value) => {
+        if (typeof avatarCatalog.avatarLabel === 'function') return avatarCatalog.avatarLabel(value);
+        return 'Penguin';
+    };
+    const applyAvatarImage = (img, value, altText) => {
+        if (!img) return;
+        if (typeof avatarCatalog.applyAvatarImage === 'function') {
+            avatarCatalog.applyAvatarImage(img, value, altText);
+            return;
+        }
+        img.alt = altText || 'Profile avatar';
+        img.src = `/assets/avatars/${normalizeAvatarId(value)}.png`;
+    };
     const formatRole = (role) => {
         const s = String(role || '').trim().toLowerCase();
         if (!s) return 'Unknown';
@@ -34,7 +52,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     const { data: viewerProfile, error: viewerErr } = await sb
         .from('profiles')
-        .select('id, role, display_name')
+        .select('*')
         .eq('id', viewerId)
         .single();
 
@@ -64,7 +82,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     const { data: targetProfile, error: targetErr } = await sb
         .from('profiles')
-        .select('id, role, display_name, class_code, created_at')
+        .select('*')
         .eq('id', targetId)
         .single();
 
@@ -95,6 +113,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     setValue('pf-class-code', targetProfile.class_code || '—');
     setValue('pf-created-at', targetProfile.created_at ? new Date(targetProfile.created_at).toLocaleString() : '—');
     setValue('pf-user-id', targetProfile.id || '—');
+
+    const resolvedAvatarId = normalizeAvatarId(targetProfile.avatar_id);
+    const avatarImg = document.getElementById('pf-avatar-image');
+    const avatarLabelEl = document.getElementById('pf-avatar-label');
+    applyAvatarImage(avatarImg, resolvedAvatarId, `${avatarLabel(resolvedAvatarId)} avatar`);
+    if (avatarLabelEl) avatarLabelEl.textContent = avatarLabel(resolvedAvatarId);
 
     if (guard) guard.remove();
 });

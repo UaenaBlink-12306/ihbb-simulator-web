@@ -14,6 +14,7 @@
     <link rel="stylesheet" href="styles.css">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="config.js"></script>
+    <script src="avatar-catalog.js" defer></script>
     <style id="auth-guard">
         body {
             opacity: 0;
@@ -54,6 +55,18 @@
                             <div>
                                 <h2 id="profile-title" class="card-title">Loading profile...</h2>
                                 <p id="profile-subtitle" class="section-subtitle">Please wait.</p>
+                            </div>
+                        </div>
+
+                        <div class="profile-avatar-block">
+                            <div class="avatar-preview-shell profile-avatar-shell">
+                                <img id="pf-avatar-image" alt="Profile avatar">
+                            </div>
+                            <div class="profile-avatar-copy">
+                                <div class="eyebrow">Public avatar</div>
+                                <h3 id="pf-avatar-label" style="margin: 0;">Penguin</h3>
+                                <p class="muted" style="margin: 0;">A curated cartoon animal shown on this user's
+                                    profile.</p>
                             </div>
                         </div>
 

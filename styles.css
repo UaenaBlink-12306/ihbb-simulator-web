@@ -890,6 +890,18 @@ tr:hover td {
   .form-grid .full-width {
     grid-column: auto;
   }
+
+  .avatar-current-card,
+  .profile-avatar-block {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .avatar-preview-shell,
+  .profile-avatar-shell {
+    width: 96px;
+    height: 96px;
+  }
 }
 
 .account-profile-card {
@@ -897,6 +909,117 @@ tr:hover td {
   border-radius: 14px;
   padding: 14px;
   background: rgba(255, 255, 255, 0.02);
+}
+
+.avatar-settings-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.avatar-current-card,
+.profile-avatar-block {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background:
+    radial-gradient(circle at top, rgba(255, 255, 255, 0.09), transparent 55%),
+    rgba(255, 255, 255, 0.03);
+}
+
+.avatar-current-copy,
+.profile-avatar-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.avatar-preview-shell {
+  width: 108px;
+  height: 108px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  padding: 10px;
+  border-radius: 28px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background:
+    radial-gradient(circle at 30% 24%, rgba(255, 255, 255, 0.24), transparent 34%),
+    linear-gradient(180deg, rgba(18, 27, 39, 0.9), rgba(10, 15, 24, 0.92));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 18px 28px -24px rgba(15, 23, 42, 0.9);
+}
+
+.avatar-preview-shell img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: contain;
+}
+
+.profile-avatar-shell {
+  width: 132px;
+  height: 132px;
+}
+
+.avatar-picker-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(128px, 1fr));
+}
+
+.avatar-option {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  min-height: 156px;
+  padding: 14px 12px;
+  border-radius: 16px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--ink);
+  cursor: pointer;
+  transition: transform 0.18s ease, border-color 0.18s ease, background 0.18s ease, box-shadow 0.18s ease;
+}
+
+.avatar-option:hover,
+.avatar-option:focus-visible {
+  border-color: rgba(96, 165, 250, 0.72);
+  background: rgba(255, 255, 255, 0.06);
+  transform: translateY(-1px);
+}
+
+.avatar-option:focus-visible {
+  outline: 2px solid rgba(96, 165, 250, 0.35);
+  outline-offset: 2px;
+}
+
+.avatar-option.selected {
+  border-color: var(--accent);
+  background: rgba(96, 165, 250, 0.11);
+  box-shadow: 0 14px 24px -24px rgba(96, 165, 250, 0.85);
+}
+
+.avatar-option img {
+  width: 72px;
+  height: 72px;
+  display: block;
+  object-fit: contain;
+}
+
+.avatar-option span {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.avatar-option small {
+  color: var(--muted);
+  font-size: 12px;
 }
 
 .account-danger {
@@ -4463,6 +4586,10 @@ input[type=datetime-local]:focus {
 .summary-item strong {
   font-size: 15px;
   line-height: 1.45;
+}
+
+.profile-avatar-block {
+  margin-bottom: 18px;
 }
 
 .summary-note {

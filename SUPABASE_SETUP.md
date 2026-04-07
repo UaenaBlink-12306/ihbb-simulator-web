@@ -5,12 +5,15 @@ Run **all** of the following SQL in your **Supabase SQL Editor** (Dashboard → 
 ## 1. Core Tables
 
 ```sql
--- Profiles: stores user role and display name
+-- Profiles: stores user role, display name, and curated avatar selection
 CREATE TABLE IF NOT EXISTS profiles (
   id UUID REFERENCES auth.users NOT NULL PRIMARY KEY,
   role VARCHAR(50) CHECK (role IN ('student', 'teacher')),
   display_name VARCHAR(100) DEFAULT NULL,
   class_code VARCHAR(20) DEFAULT NULL,
+  avatar_id VARCHAR(32) NOT NULL DEFAULT 'penguin' CHECK (
+    avatar_id IN ('cat', 'dog', 'fox', 'panda', 'rabbit', 'bear', 'tiger', 'lion', 'frog', 'penguin', 'owl', 'koala')
+  ),
   created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc', NOW())
 );
 
@@ -59,6 +62,10 @@ CREATE POLICY "Members can read" ON class_students FOR SELECT USING (
 );
 CREATE POLICY "Students can leave" ON class_students FOR DELETE USING (auth.uid() = student_id);
 ```
+
+### 1A. Existing Databases: Avatar Catalog Migration
+
+If your `profiles` table already exists, run [`migrations/20260407_profiles_avatar_catalog.sql`](./migrations/20260407_profiles_avatar_catalog.sql) once in the Supabase SQL Editor before deploying the avatar UI.
 
 ## 2. Assignment Tables
 
