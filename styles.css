@@ -5778,6 +5778,22 @@ input[type=datetime-local]:focus {
   margin-top: 0;
 }
 
+.teacher-builder-shell .count-control {
+  width: min(100%, 220px);
+}
+
+.teacher-builder-shell .inline-form .count-control {
+  flex: 0 0 min(220px, 100%);
+}
+
+.teacher-builder-shell .compact-number-input {
+  width: clamp(132px, 14vw, 176px);
+  min-width: 132px;
+  max-width: 100%;
+  padding: 10px 14px;
+  line-height: 1.2;
+  flex: 0 0 auto;
+}
 .item-copy {
   min-width: min(420px, 100%);
   display: flex;
@@ -5923,6 +5939,15 @@ input[type=datetime-local]:focus {
     padding: 22px 16px 88px;
   }
 
+  .teacher-builder-shell .count-control,
+  .teacher-builder-shell .inline-form .count-control {
+    width: 100%;
+    flex-basis: 100%;
+  }
+
+  .teacher-builder-shell .compact-number-input {
+    width: 100%;
+  }
   .mobile-record-list {
     display: flex;
   }
