@@ -9,6 +9,58 @@ const navSet = (which) => {
   document.querySelectorAll('.nav a').forEach(a => a.classList.remove('active'));
   const el = $(which); if (el) el.classList.add('active');
 };
+let practiceViewportFitRaf = 0;
+function alignPracticeNavIntoView() {
+  const nav = document.querySelector('.nav.tab-strip');
+  const shell = document.querySelector('.shell.page-shell');
+  if (!nav) return;
+  const shellTopPad = shell ? parseFloat(getComputedStyle(shell).paddingTop || '0') || 0 : 0;
+  const topInset = Math.max(12, Math.round(shellTopPad / 2));
+  window.scrollTo({ top: Math.max(0, nav.offsetTop - topInset) });
+}
+function fitPracticeStageToViewport() {
+  const practiceView = $('view-practice');
+  const nav = document.querySelector('.nav.tab-strip');
+  const card = practiceView?.querySelector('.practice-stage-card');
+  const buzzWrap = practiceView?.querySelector('.practice-stage .buzz-wrap');
+  const shell = document.querySelector('.shell.page-shell');
+  if (!practiceView?.classList.contains('active') || !nav || !card || !buzzWrap) return;
+
+  const shellTopPad = shell ? parseFloat(getComputedStyle(shell).paddingTop || '0') || 0 : 0;
+  const topInset = Math.max(12, Math.round(shellTopPad / 2));
+  const targetCardHeight = Math.max(
+    520,
+    Math.floor(window.innerHeight - Math.max(topInset, Math.ceil(card.getBoundingClientRect().top || 0)) - 8)
+  );
+  const currentCardHeight = Math.ceil(card.getBoundingClientRect().height || card.offsetHeight || 0);
+  const currentBuzzHeight = Math.ceil(buzzWrap.getBoundingClientRect().height || buzzWrap.offsetHeight || 0);
+  const fixedHeight = Math.max(0, currentCardHeight - currentBuzzHeight);
+  const compactPracticePhase = ['typing', 'grading', 'answering'].includes(App.phase);
+  const minBuzz = compactPracticePhase
+    ? (window.innerWidth <= 640 ? 150 : window.innerWidth <= 1100 ? 170 : 180)
+    : (window.innerWidth <= 640 ? 220 : window.innerWidth <= 1100 ? 240 : 260);
+  const maxBuzz = compactPracticePhase
+    ? (window.innerHeight >= 900 ? 300 : window.innerHeight >= 820 ? 260 : 240)
+    : (window.innerHeight >= 900 ? 380 : window.innerHeight >= 820 ? 340 : 300);
+  const targetBuzzHeight = clamp(targetCardHeight - fixedHeight, minBuzz, maxBuzz);
+  card.style.setProperty('--practice-buzz-wrap-height', `${targetBuzzHeight}px`);
+}
+function schedulePracticeViewportFit({ align = false } = {}) {
+  if (practiceViewportFitRaf) cancelAnimationFrame(practiceViewportFitRaf);
+  practiceViewportFitRaf = requestAnimationFrame(() => {
+    practiceViewportFitRaf = 0;
+    if (align) alignPracticeNavIntoView();
+    fitPracticeStageToViewport();
+    requestAnimationFrame(() => {
+      if (align) alignPracticeNavIntoView();
+      fitPracticeStageToViewport();
+    });
+  });
+  setTimeout(() => {
+    if (align) alignPracticeNavIntoView();
+    fitPracticeStageToViewport();
+  }, 220);
+}
 const toast = (msg) => {
   const t = $('toast'); if (!t) return;
   t.textContent = msg; t.classList.add('show');
@@ -493,6 +545,7 @@ function clearCoachCard() {
   el.innerHTML = '';
   try { delete el.dataset.attempt; } catch { /* noop */ }
   el.style.display = 'none';
+  schedulePracticeViewportFit();
 }
 function renderCoachCard(coach) {
   const el = $('coach-card');
@@ -522,6 +575,7 @@ function renderCoachCard(coach) {
     ${coachWikiHtml(coach)}
   `;
   el.style.display = 'block';
+  schedulePracticeViewportFit();
 }
 
 const CoachNotebook = { records: [], loaded: false };
@@ -3191,8 +3245,7 @@ function startSession() {
   updateHeader();
   navSet('nav-practice'); SHOW('view-practice');
   playFeedbackCue('start');
-  // Auto-scroll to the bottom of the practice view
-  setTimeout(() => window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' }), 150);
+  schedulePracticeViewportFit({ align: true });
   nextQuestion(true);
 }
 
@@ -3267,6 +3320,7 @@ function showAnswer() {
   unlockPracticeAfterGrade();
   setPracticeButtons({ buzz: false, next: false, right: true, wrong: true, replay: true, alias: true, flag: true });
   const cp = $('btn-copy-answer'); if (cp) cp.disabled = false;
+  schedulePracticeViewportFit();
 }
 
 function markRight() {
@@ -3872,7 +3926,7 @@ function drawAccByCat() {
 $('nav-setup')?.addEventListener('click', (e) => { e.preventDefault(); playFeedbackCue('nav'); navSet('nav-setup'); SHOW('view-setup'); });
 $('nav-practice')?.addEventListener('click', (e) => {
   e.preventDefault(); playFeedbackCue('nav'); navSet('nav-practice'); SHOW('view-practice');
-  setTimeout(() => window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' }), 150);
+  schedulePracticeViewportFit({ align: true });
 });
 $('nav-review')?.addEventListener('click', async (e) => {
   e.preventDefault();
@@ -3892,6 +3946,7 @@ $('nav-coach')?.addEventListener('click', async (e) => {
 });
 $('nav-library')?.addEventListener('click', (e) => { e.preventDefault(); playFeedbackCue('nav'); navSet('nav-library'); SHOW('view-library'); renderLibraryTable(); });
 $('nav-help')?.addEventListener('click', (e) => { e.preventDefault(); playFeedbackCue('nav'); openHelp(); });
+window.addEventListener('resize', () => { schedulePracticeViewportFit(); });
 
 // Advanced toggle
 $('advToggle')?.addEventListener('click', () => {
@@ -4503,6 +4558,7 @@ function startTypingPhase(sec) {
   let t = 10; // fixed 10 seconds
   const cd = $('countdown'); if (cd) cd.textContent = `${t}`;
   setPracticeButtons({ buzz: false, next: false, right: false, wrong: false, replay: false, alias: false, flag: false });
+  schedulePracticeViewportFit();
 
   if (App._cdIv) { clearInterval(App._cdIv); App._cdIv = null; }
   const iv = setInterval(() => {
@@ -4540,6 +4596,7 @@ async function submitAnswer(auto = false) {
   const st = $('status'); if (st) st.textContent = 'Grading...';
   const ans = $('answer'); if (ans) ans.textContent = 'Grading...';
   clearCoachCard();
+  schedulePracticeViewportFit();
   const clientAttemptId = `att_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
   // Fallback matcher
