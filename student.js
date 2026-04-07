@@ -296,7 +296,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (dashboardChat.busy) label = 'Thinking';
         else if (dashboardChat.source === 'deepseek') label = 'DeepSeek';
         else if (dashboardChat.source === 'fallback') label = 'Local plan';
-        el.textContent = `${label} • Auto • ${dashboardChat.ui.thinkingEnabled ? 'Think On' : 'Think Off'}`;
+        el.textContent = `${label} • ${dashboardChat.ui.thinkingEnabled ? 'Think On' : 'Think Off'}`;
     }
 
     function normalizeDashboardChatIntentText(value = '') {
@@ -677,7 +677,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (summaryEl) summaryEl.textContent = buildDashboardChatSummary(snapshot);
         if (pillsEl) {
             const pills = [];
-            pills.push('Always auto');
             if (dashboardChat.ui.thinkingEnabled) pills.push('Thinking model on');
             if ((snapshot?.wrong_bank?.due_now || 0) > 0) pills.push(`Wrong-bank due ${snapshot.wrong_bank.due_now}`);
             if ((snapshot?.coach_notebook?.open_lessons || 0) > 0) pills.push(`Notebook open ${snapshot.coach_notebook.open_lessons}`);

@@ -759,7 +759,7 @@ function updateCoachChatSourceLabel() {
   if (CoachChat.busy) label = 'Thinking';
   else if (CoachChat.source === 'deepseek') label = 'DeepSeek';
   else if (CoachChat.source === 'fallback') label = 'Local plan';
-  sourceEl.textContent = `${label} • Auto • ${CoachChat.ui.thinkingEnabled ? 'Think On' : 'Think Off'}`;
+  sourceEl.textContent = `${label} • ${CoachChat.ui.thinkingEnabled ? 'Think On' : 'Think Off'}`;
 }
 
 function renderCoachChatStatus(snapshot) {
@@ -769,7 +769,6 @@ function renderCoachChatStatus(snapshot) {
   const pillsEl = $('coach-chat-status-pills');
   if (pillsEl) {
     const pills = [];
-    pills.push('Always auto');
     if (CoachChat.ui.thinkingEnabled) pills.push('Thinking model on');
     if ((snapshot?.wrong_bank?.due_now || 0) > 0) pills.push(`Wrong-bank due ${snapshot.wrong_bank.due_now}`);
     if ((snapshot?.coach_notebook?.open_lessons || 0) > 0) pills.push(`Notebook open ${snapshot.coach_notebook.open_lessons}`);
