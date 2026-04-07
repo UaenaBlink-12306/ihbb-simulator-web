@@ -3945,7 +3945,6 @@ $('nav-coach')?.addEventListener('click', async (e) => {
   await showCoachView(true);
 });
 $('nav-library')?.addEventListener('click', (e) => { e.preventDefault(); playFeedbackCue('nav'); navSet('nav-library'); SHOW('view-library'); renderLibraryTable(); });
-$('nav-help')?.addEventListener('click', (e) => { e.preventDefault(); playFeedbackCue('nav'); openHelp(); });
 window.addEventListener('resize', () => { schedulePracticeViewportFit(); });
 
 // Advanced toggle
