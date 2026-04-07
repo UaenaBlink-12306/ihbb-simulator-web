@@ -529,7 +529,7 @@ let CoachFocusSuggestions = [];
 let ReviewCoachFocusSuggestions = [];
 const COACH_CHAT_STARTERS = [
   { label: 'What next?', prompt: 'What should I practice next in this practice hub?' },
-  { label: 'Wrong-bank or notebook?', prompt: 'Should I use Wrong-bank or AI Notebook right now?' },
+  { label: 'Explain the weak spot', prompt: 'Explain my current weak spot in detail and tell me what I should do next.' },
   { label: 'Build a focused drill', prompt: 'Recommend a focused drill and launch the best next practice.' }
 ];
 const COACH_CHAT_ALLOWED_ACTIONS = new Set([
@@ -562,6 +562,7 @@ const CoachChat = {
   workspaceCards: [],
   ui: {
     mode: 'auto',
+    thinkingEnabled: false,
     size: 'standard',
     width: COACH_CHAT_SIZE_PRESETS.standard,
     fullscreen: false
@@ -579,12 +580,12 @@ function clampCoachChatWidth(value) {
 function loadCoachChatUiPrefs() {
   try {
     const raw = JSON.parse(localStorage.getItem(COACH_CHAT_UI_KEY) || '{}');
-    const mode = ['auto', 'coach', 'knowledge'].includes(String(raw.mode || '').trim()) ? String(raw.mode).trim() : 'auto';
     const sizeRaw = String(raw.size || '').trim();
     const size = sizeRaw === 'custom' || Object.prototype.hasOwnProperty.call(COACH_CHAT_SIZE_PRESETS, sizeRaw) ? sizeRaw : 'standard';
     const width = clampCoachChatWidth(raw.width || COACH_CHAT_SIZE_PRESETS[size] || COACH_CHAT_SIZE_PRESETS.standard);
     CoachChat.ui = {
-      mode,
+      mode: 'auto',
+      thinkingEnabled: !!raw.thinkingEnabled,
       size,
       width,
       fullscreen: !!raw.fullscreen
@@ -592,6 +593,7 @@ function loadCoachChatUiPrefs() {
   } catch {
     CoachChat.ui = {
       mode: 'auto',
+      thinkingEnabled: false,
       size: 'standard',
       width: COACH_CHAT_SIZE_PRESETS.standard,
       fullscreen: false
@@ -602,7 +604,8 @@ function loadCoachChatUiPrefs() {
 function saveCoachChatUiPrefs() {
   try {
     localStorage.setItem(COACH_CHAT_UI_KEY, JSON.stringify({
-      mode: CoachChat.ui.mode,
+      mode: 'auto',
+      thinkingEnabled: !!CoachChat.ui.thinkingEnabled,
       size: CoachChat.ui.size,
       width: CoachChat.ui.width,
       fullscreen: CoachChat.ui.fullscreen
@@ -756,7 +759,7 @@ function updateCoachChatSourceLabel() {
   if (CoachChat.busy) label = 'Thinking';
   else if (CoachChat.source === 'deepseek') label = 'DeepSeek';
   else if (CoachChat.source === 'fallback') label = 'Local plan';
-  sourceEl.textContent = `${label} • ${coachChatModeLabel(CoachChat.ui.mode)}`;
+  sourceEl.textContent = `${label} • Auto • ${CoachChat.ui.thinkingEnabled ? 'Think On' : 'Think Off'}`;
 }
 
 function renderCoachChatStatus(snapshot) {
@@ -766,24 +769,24 @@ function renderCoachChatStatus(snapshot) {
   const pillsEl = $('coach-chat-status-pills');
   if (pillsEl) {
     const pills = [];
-    if (CoachChat.ui.mode === 'knowledge') pills.push('Knowledge mode');
+    pills.push('Always auto');
+    if (CoachChat.ui.thinkingEnabled) pills.push('Thinking model on');
     if ((snapshot?.wrong_bank?.due_now || 0) > 0) pills.push(`Wrong-bank due ${snapshot.wrong_bank.due_now}`);
     if ((snapshot?.coach_notebook?.open_lessons || 0) > 0) pills.push(`Notebook open ${snapshot.coach_notebook.open_lessons}`);
-    if (CoachChat.ui.mode !== 'knowledge' && (snapshot?.session_history?.recent_accuracy || 0) > 0) pills.push(`Recent accuracy ${snapshot.session_history.recent_accuracy}%`);
+    if ((snapshot?.session_history?.recent_accuracy || 0) > 0) pills.push(`Recent accuracy ${snapshot.session_history.recent_accuracy}%`);
     if (!pills.length && snapshot?.active_set?.name) pills.push(snapshot.active_set.name);
     pillsEl.innerHTML = pills.length
-      ? pills.slice(0, 2).map(text => `<span class="coach-chat-status-pill">${escHtml(text)}</span>`).join('')
-      : `<span class="coach-chat-status-pill">${CoachChat.ui.mode === 'knowledge' ? 'Concept help ready.' : 'Study help ready.'}</span>`;
+      ? pills.slice(0, 3).map(text => `<span class="coach-chat-status-pill">${escHtml(text)}</span>`).join('')
+      : '<span class="coach-chat-status-pill">Study help ready.</span>';
   }
 
   const noteEl = $('coach-chat-launcher-note');
   const countEl = $('coach-chat-launcher-count');
   if (noteEl) {
-    if (CoachChat.ui.mode === 'knowledge') noteEl.textContent = 'Ask any concept';
-    else if (snapshot?.recent_incorrect?.title) noteEl.textContent = 'Fix the last miss';
+    if (snapshot?.recent_incorrect?.title) noteEl.textContent = 'Fix the last miss';
     else if ((snapshot?.wrong_bank?.due_now || 0) > 0) noteEl.textContent = `${snapshot.wrong_bank.due_now} due in Wrong-bank`;
     else if ((snapshot?.coach_notebook?.open_lessons || 0) > 0) noteEl.textContent = `${snapshot.coach_notebook.open_lessons} notebook lesson${snapshot.coach_notebook.open_lessons === 1 ? '' : 's'}`;
-    else noteEl.textContent = 'Ask for a drill';
+    else noteEl.textContent = 'Ask for context or next steps';
   }
   if (countEl) {
     const count = Math.max(snapshot?.wrong_bank?.due_now || 0, snapshot?.coach_notebook?.open_lessons || 0);
@@ -866,9 +869,15 @@ function renderCoachChatWorkspace(snapshot) {
   const topFocus = snapshot?.coach_notebook?.top_focuses?.[0] || null;
   const knowledgeCard = {
     kicker: 'Ask',
-    title: CoachChat.ui.mode === 'knowledge' ? 'Knowledge mode' : 'Concept help',
-    copy: 'Explain a topic, get a timeline, or compare two ideas.',
-    action: { kind: 'mode', mode: 'knowledge', label: CoachChat.ui.mode === 'knowledge' ? 'Knowledge mode active' : 'Switch to Knowledge' }
+    title: 'Explain a topic',
+    copy: 'Get background, timeline, and common confusions.',
+    action: {
+      kind: 'prompt',
+      label: 'Ask for context',
+      prompt: topFocus?.title
+        ? `Explain ${topFocus.title} in detail, connect it to my current weak spots, and tell me the best next study step.`
+        : 'Explain the most important historical background I should understand right now and tell me what to do next.'
+    }
   };
   const primaryCard = (snapshot?.wrong_bank?.due_now || 0) > 0
     ? {
@@ -990,19 +999,15 @@ function renderCoachChatMessages() {
       </div>
       <div class="coach-chat-thinking-bubble">
         <div class="coach-chat-thinking-dots" aria-hidden="true"><span></span><span></span><span></span></div>
-        <div class="coach-chat-loading">${CoachChat.ui.mode === 'knowledge' ? 'DeepSeek is building a detailed study brief with references.' : 'DeepSeek is reviewing your wrong-bank, notebook, and setup.'}</div>
+        <div class="coach-chat-loading">${CoachChat.ui.thinkingEnabled ? 'DeepSeek reasoner is synthesizing your history, notebook, wrong-bank, and next steps.' : 'DeepSeek is reviewing your wrong-bank, notebook, setup, and recent study state.'}</div>
       </div>
     </div>
   ` : '';
   messagesEl.innerHTML = html || busyHtml
     ? `${html}${busyHtml}`
     : `<div class="coach-chat-empty">
-        <div class="coach-chat-empty-title">${CoachChat.ui.mode === 'knowledge' ? 'Ask about any IHBB topic.' : (CoachChat.ui.mode === 'auto' ? 'Ask for knowledge or next steps.' : 'Start with one quick question.')}</div>
-        <p class="coach-chat-empty-text">${CoachChat.ui.mode === 'knowledge'
-      ? 'Pick a prompt or type a topic when you want an explanation, timeline, or comparison.'
-      : (CoachChat.ui.mode === 'auto'
-        ? 'Pick a prompt or type what you want to understand or what you should do next.'
-        : 'Pick a prompt or type what you want to practice next.')}</p>
+        <div class="coach-chat-empty-title">Ask for knowledge or next steps.</div>
+        <p class="coach-chat-empty-text">Pick a prompt or type what you want to understand, what you should do next, or both.</p>
       </div>`;
   if (bodyEl) bodyEl.scrollTop = bodyEl.scrollHeight;
   messagesEl.scrollTop = messagesEl.scrollHeight;
@@ -1036,27 +1041,25 @@ function renderCoachChatChrome() {
   setCoachChatOpenState(CoachChat.open);
   const sendBtn = $('coach-chat-send');
   const hintEl = $('coach-chat-hint');
-  const modeButtons = Array.from(document.querySelectorAll('#coach-chat-mode-switch .coach-chat-mode-btn'));
   const sizeButtons = Array.from(document.querySelectorAll('#coach-chat-size-presets .coach-chat-size-btn'));
   const fullBtn = $('coach-chat-fullscreen');
+  const thinkingBtn = $('coach-chat-thinking-toggle');
   if (sendBtn) sendBtn.disabled = !!CoachChat.busy;
   if (hintEl) {
-    hintEl.textContent = CoachChat.ui.mode === 'knowledge'
-      ? 'Knowledge mode gives long-form explanations and reference links.'
-      : (CoachChat.ui.mode === 'coach'
-        ? 'Coach mode stays tied to your practice state and only answers when asked.'
-        : 'Auto mode detects whether you want more knowledge or coaching and future steps.');
+    hintEl.textContent = CoachChat.ui.thinkingEnabled
+      ? 'Thinking model is on. Answers may take longer but should synthesize more of your study context.'
+      : 'Always-auto mode decides how much knowledge, coaching, and future-step guidance to give you.';
   }
-  modeButtons.forEach(button => {
-    const active = String(button.dataset.mode || '') === CoachChat.ui.mode;
-    button.classList.toggle('active', active);
-    button.setAttribute('aria-pressed', active ? 'true' : 'false');
-  });
   sizeButtons.forEach(button => {
     const active = String(button.dataset.size || '') === CoachChat.ui.size && !CoachChat.ui.fullscreen;
     button.classList.toggle('active', active);
     button.setAttribute('aria-pressed', active ? 'true' : 'false');
   });
+  if (thinkingBtn) {
+    thinkingBtn.classList.toggle('active', !!CoachChat.ui.thinkingEnabled);
+    thinkingBtn.setAttribute('aria-pressed', CoachChat.ui.thinkingEnabled ? 'true' : 'false');
+    thinkingBtn.textContent = `Thinking Model: ${CoachChat.ui.thinkingEnabled ? 'On' : 'Off'}`;
+  }
   if (fullBtn) {
     fullBtn.textContent = CoachChat.ui.fullscreen ? 'Windowed' : 'Full Screen';
     fullBtn.setAttribute('aria-pressed', CoachChat.ui.fullscreen ? 'true' : 'false');
@@ -1434,11 +1437,12 @@ async function requestCoachChatReply(message) {
     message: String(message || '').trim(),
     conversation: CoachChat.messages
       .filter(entry => entry && ['user', 'assistant'].includes(entry.role))
-      .slice(-8)
+      .slice(-12)
       .map(entry => ({ role: entry.role, content: String(entry.text || '').trim() }))
       .filter(entry => entry.content),
     study_context: snapshot,
-    assistant_mode: CoachChat.ui.mode
+    assistant_mode: 'auto',
+    thinking_enabled: !!CoachChat.ui.thinkingEnabled
   };
   const response = await fetch('/api/coach-chat', {
     method: 'POST',
@@ -1459,8 +1463,13 @@ function clearCoachChatConversation() {
 }
 
 function setCoachChatMode(mode = 'auto') {
-  const next = ['auto', 'coach', 'knowledge'].includes(String(mode || '').trim()) ? String(mode).trim() : 'auto';
-  CoachChat.ui.mode = next;
+  CoachChat.ui.mode = 'auto';
+  saveCoachChatUiPrefs();
+  renderCoachChatChrome();
+}
+
+function toggleCoachChatThinking() {
+  CoachChat.ui.thinkingEnabled = !CoachChat.ui.thinkingEnabled;
   saveCoachChatUiPrefs();
   renderCoachChatChrome();
 }
@@ -4278,11 +4287,7 @@ $('coach-chat-launcher')?.addEventListener('click', () => {
 });
 $('coach-chat-new')?.addEventListener('click', clearCoachChatConversation);
 $('coach-chat-fullscreen')?.addEventListener('click', toggleCoachChatFullscreen);
-$('coach-chat-mode-switch')?.addEventListener('click', (e) => {
-  const button = e.target.closest('.coach-chat-mode-btn');
-  if (!button) return;
-  setCoachChatMode(button.dataset.mode || 'auto');
-});
+$('coach-chat-thinking-toggle')?.addEventListener('click', toggleCoachChatThinking);
 $('coach-chat-size-presets')?.addEventListener('click', (e) => {
   const button = e.target.closest('.coach-chat-size-btn');
   if (!button) return;
@@ -4304,10 +4309,6 @@ $('coach-chat-workspace')?.addEventListener('click', (e) => {
   if (!button) return;
   const card = CoachChat.workspaceCards?.[Number(button.dataset.workspaceIndex) || 0];
   if (!card?.action) return;
-  if (card.action.kind === 'mode') {
-    setCoachChatMode(card.action.mode || 'knowledge');
-    return;
-  }
   if (card.action.kind === 'prompt') {
     void sendCoachChatMessage(card.action.prompt || '');
     return;

@@ -2841,6 +2841,24 @@ body.coach-chat-resizing {
   gap: 12px;
 }
 
+.coach-chat-auto-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 42px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(246, 250, 255, 0.78)),
+    rgba(255, 255, 255, 0.72);
+  color: #16314e;
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.84);
+}
+
 .coach-chat-mode-switch,
 .coach-chat-size-presets {
   display: inline-flex;
@@ -3526,6 +3544,11 @@ body.coach-chat-resizing {
   .coach-chat-toolbar {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .coach-chat-auto-pill {
+    justify-content: center;
+    width: 100%;
   }
 
   .coach-chat-mode-switch,

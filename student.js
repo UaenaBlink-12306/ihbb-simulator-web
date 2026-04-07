@@ -79,7 +79,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const isNotebookCoachRecord = (record) => !!record && !record.correct;
     const DASHBOARD_CHAT_STARTERS = [
         { label: 'What next?', prompt: 'What should I practice next from my student dashboard?' },
-        { label: 'Notebook or wrong-bank?', prompt: 'Should I use AI Notebook or Wrong-bank right now?' },
+        { label: 'Explain the weak spot', prompt: 'Explain my current weak spot in detail and tell me what I should do next.' },
         { label: 'Build a focused drill', prompt: 'Recommend a focused drill and send me into training.' }
     ];
     const DASHBOARD_CHAT_ALLOWED_ACTIONS = new Set([
@@ -109,6 +109,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         workspaceCards: [],
         ui: {
             mode: 'auto',
+            thinkingEnabled: false,
             size: 'standard',
             width: DASHBOARD_CHAT_SIZE_PRESETS.standard,
             fullscreen: false
@@ -126,11 +127,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     function loadDashboardChatUiPrefs() {
         try {
             const raw = JSON.parse(localStorage.getItem(DASHBOARD_CHAT_UI_KEY) || '{}');
-            const mode = ['auto', 'coach', 'knowledge'].includes(String(raw.mode || '').trim()) ? String(raw.mode).trim() : 'auto';
             const sizeRaw = String(raw.size || '').trim();
             const size = sizeRaw === 'custom' || Object.prototype.hasOwnProperty.call(DASHBOARD_CHAT_SIZE_PRESETS, sizeRaw) ? sizeRaw : 'standard';
             dashboardChat.ui = {
-                mode,
+                mode: 'auto',
+                thinkingEnabled: !!raw.thinkingEnabled,
                 size,
                 width: clampDashboardChatWidth(raw.width || DASHBOARD_CHAT_SIZE_PRESETS[size] || DASHBOARD_CHAT_SIZE_PRESETS.standard),
                 fullscreen: !!raw.fullscreen
@@ -138,6 +139,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         } catch {
             dashboardChat.ui = {
                 mode: 'auto',
+                thinkingEnabled: false,
                 size: 'standard',
                 width: DASHBOARD_CHAT_SIZE_PRESETS.standard,
                 fullscreen: false
@@ -148,7 +150,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     function saveDashboardChatUiPrefs() {
         try {
             localStorage.setItem(DASHBOARD_CHAT_UI_KEY, JSON.stringify({
-                mode: dashboardChat.ui.mode,
+                mode: 'auto',
+                thinkingEnabled: !!dashboardChat.ui.thinkingEnabled,
                 size: dashboardChat.ui.size,
                 width: dashboardChat.ui.width,
                 fullscreen: dashboardChat.ui.fullscreen
@@ -279,14 +282,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     function buildDashboardChatSummary(snapshot) {
         const recent = snapshot?.recent_incorrect;
         const topFocus = snapshot?.coach_notebook?.top_focuses?.[0];
-        if (dashboardChat.ui.mode === 'knowledge') return 'Ask for explanations, timelines, comparisons, or background on any IHBB topic.';
         if (recent?.title) return `Last miss: ${recent.title}.`;
         if ((snapshot?.wrong_bank?.due_now || 0) > 0) return `${snapshot.wrong_bank.due_now} wrong-bank card${snapshot.wrong_bank.due_now === 1 ? '' : 's'} due now.`;
         if (topFocus?.title) return `Top coach focus: ${topFocus.title}.`;
         if ((snapshot?.session_history?.total_sessions || 0) <= 0) return 'No recent practice history yet.';
-        return dashboardChat.ui.mode === 'auto'
-            ? 'Ask for background on a topic or what to study next. Auto will detect the better answer style.'
-            : 'Ask what to study next before your next drill or assignment.';
+        return 'Ask for background on a topic or what to study next. Auto will detect the better answer style.';
     }
 
     function updateDashboardChatSourceLabel() {
@@ -296,7 +296,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (dashboardChat.busy) label = 'Thinking';
         else if (dashboardChat.source === 'deepseek') label = 'DeepSeek';
         else if (dashboardChat.source === 'fallback') label = 'Local plan';
-        el.textContent = `${label} • ${dashboardChat.ui.mode === 'knowledge' ? 'Knowledge' : (dashboardChat.ui.mode === 'coach' ? 'Coach' : 'Auto')}`;
+        el.textContent = `${label} • Auto • ${dashboardChat.ui.thinkingEnabled ? 'Think On' : 'Think Off'}`;
     }
 
     function normalizeDashboardChatIntentText(value = '') {
@@ -518,9 +518,15 @@ document.addEventListener('DOMContentLoaded', async () => {
         const topFocus = snapshot?.coach_notebook?.top_focuses?.[0] || null;
         const knowledgeCard = {
             kicker: 'Ask',
-            title: dashboardChat.ui.mode === 'knowledge' ? 'Knowledge mode' : 'Concept help',
-            copy: 'Explain a topic, get a timeline, or compare two ideas.',
-            action: { kind: 'mode', mode: 'knowledge', label: dashboardChat.ui.mode === 'knowledge' ? 'Knowledge mode active' : 'Switch to Knowledge' }
+            title: 'Explain a topic',
+            copy: 'Get background, timeline, and common confusions.',
+            action: {
+                kind: 'prompt',
+                label: 'Ask for context',
+                prompt: topFocus?.title
+                    ? `Explain ${topFocus.title} in detail, connect it to my weak spots, and tell me the best next study step.`
+                    : 'Explain the most important historical background I should understand right now and tell me what to do next.'
+            }
         };
         const primaryCard = (snapshot?.wrong_bank?.due_now || 0) > 0
             ? {
@@ -625,19 +631,15 @@ document.addEventListener('DOMContentLoaded', async () => {
                 </div>
                 <div class="coach-chat-thinking-bubble">
                     <div class="coach-chat-thinking-dots" aria-hidden="true"><span></span><span></span><span></span></div>
-                    <div class="coach-chat-loading">${dashboardChat.ui.mode === 'knowledge' ? 'DeepSeek is building a detailed study brief with references.' : 'DeepSeek is reviewing your coach history, wrong-bank, and analytics.'}</div>
+                    <div class="coach-chat-loading">${dashboardChat.ui.thinkingEnabled ? 'DeepSeek reasoner is synthesizing your coach history, wrong-bank, analytics, and next steps.' : 'DeepSeek is reviewing your coach history, wrong-bank, analytics, and practice context.'}</div>
                 </div>
             </div>
         ` : '';
         el.innerHTML = messagesHtml || loadingHtml
             ? `${messagesHtml}${loadingHtml}`
             : `<div class="coach-chat-empty">
-                <div class="coach-chat-empty-title">${dashboardChat.ui.mode === 'knowledge' ? 'Ask about any IHBB topic.' : (dashboardChat.ui.mode === 'auto' ? 'Ask for knowledge or next steps.' : 'Start with one quick question.')}</div>
-                <p class="coach-chat-empty-text">${dashboardChat.ui.mode === 'knowledge'
-                    ? 'Pick a prompt or type a topic when you want an explanation, timeline, or comparison.'
-                    : (dashboardChat.ui.mode === 'auto'
-                        ? 'Pick a prompt or type what you want to understand or what you should do next.'
-                        : 'Pick a prompt or type what you want to practice next.')}</p>
+                <div class="coach-chat-empty-title">Ask for knowledge or next steps.</div>
+                <p class="coach-chat-empty-text">Pick a prompt or type what you want to understand, what you should do next, or both.</p>
             </div>`;
         if (bodyEl) bodyEl.scrollTop = bodyEl.scrollHeight;
         el.scrollTop = el.scrollHeight;
@@ -668,28 +670,28 @@ document.addEventListener('DOMContentLoaded', async () => {
         const countEl = document.getElementById('coach-chat-launcher-count');
         const hintEl = document.getElementById('coach-chat-hint');
         const sendBtn = document.getElementById('coach-chat-send');
-        const modeButtons = Array.from(document.querySelectorAll('#coach-chat-mode-switch .coach-chat-mode-btn'));
         const sizeButtons = Array.from(document.querySelectorAll('#coach-chat-size-presets .coach-chat-size-btn'));
         const fullBtn = document.getElementById('coach-chat-fullscreen');
+        const thinkingBtn = document.getElementById('coach-chat-thinking-toggle');
 
         if (summaryEl) summaryEl.textContent = buildDashboardChatSummary(snapshot);
         if (pillsEl) {
             const pills = [];
-            if (dashboardChat.ui.mode === 'knowledge') pills.push('Knowledge mode');
+            pills.push('Always auto');
+            if (dashboardChat.ui.thinkingEnabled) pills.push('Thinking model on');
             if ((snapshot?.wrong_bank?.due_now || 0) > 0) pills.push(`Wrong-bank due ${snapshot.wrong_bank.due_now}`);
             if ((snapshot?.coach_notebook?.open_lessons || 0) > 0) pills.push(`Notebook open ${snapshot.coach_notebook.open_lessons}`);
-            if (dashboardChat.ui.mode !== 'knowledge' && (snapshot?.session_history?.recent_accuracy || 0) > 0) pills.push(`Recent accuracy ${snapshot.session_history.recent_accuracy}%`);
+            if ((snapshot?.session_history?.recent_accuracy || 0) > 0) pills.push(`Recent accuracy ${snapshot.session_history.recent_accuracy}%`);
             if (!pills.length && snapshot?.coach_notebook?.top_focuses?.[0]?.title) pills.push(snapshot.coach_notebook.top_focuses[0].title);
             pillsEl.innerHTML = pills.length
-                ? pills.slice(0, 2).map(text => `<span class="coach-chat-status-pill">${esc(text)}</span>`).join('')
-                : `<span class="coach-chat-status-pill">${dashboardChat.ui.mode === 'knowledge' ? 'Concept help ready.' : 'Study help ready.'}</span>`;
+                ? pills.slice(0, 3).map(text => `<span class="coach-chat-status-pill">${esc(text)}</span>`).join('')
+                : '<span class="coach-chat-status-pill">Study help ready.</span>';
         }
         if (noteEl) {
-            if (dashboardChat.ui.mode === 'knowledge') noteEl.textContent = 'Ask any concept';
-            else if (snapshot?.recent_incorrect?.title) noteEl.textContent = 'Fix the last miss';
+            if (snapshot?.recent_incorrect?.title) noteEl.textContent = 'Fix the last miss';
             else if ((snapshot?.wrong_bank?.due_now || 0) > 0) noteEl.textContent = `${snapshot.wrong_bank.due_now} due in Wrong-bank`;
             else if ((snapshot?.coach_notebook?.open_lessons || 0) > 0) noteEl.textContent = `${snapshot.coach_notebook.open_lessons} coach lesson${snapshot.coach_notebook.open_lessons === 1 ? '' : 's'}`;
-            else noteEl.textContent = 'Open coach chat';
+            else noteEl.textContent = 'Ask for context or next steps';
         }
         if (countEl) {
             const count = Math.max(snapshot?.wrong_bank?.due_now || 0, snapshot?.coach_notebook?.open_lessons || 0);
@@ -697,23 +699,21 @@ document.addEventListener('DOMContentLoaded', async () => {
             countEl.classList.toggle('hidden', !count);
         }
         if (hintEl) {
-            hintEl.textContent = dashboardChat.ui.mode === 'knowledge'
-                ? 'Knowledge mode gives long-form explanations and reference links.'
-                : (dashboardChat.ui.mode === 'coach'
-                    ? 'Coach mode stays tied to your dashboard context and only answers when asked.'
-                    : 'Auto mode detects whether you want more knowledge or coaching and future steps.');
+            hintEl.textContent = dashboardChat.ui.thinkingEnabled
+                ? 'Thinking model is on. Answers may take longer but should synthesize more of your study context.'
+                : 'Always-auto mode decides how much knowledge, coaching, and future-step guidance to give you.';
         }
         if (sendBtn) sendBtn.disabled = !!dashboardChat.busy;
-        modeButtons.forEach(button => {
-            const active = String(button.dataset.mode || '') === dashboardChat.ui.mode;
-            button.classList.toggle('active', active);
-            button.setAttribute('aria-pressed', active ? 'true' : 'false');
-        });
         sizeButtons.forEach(button => {
             const active = String(button.dataset.size || '') === dashboardChat.ui.size && !dashboardChat.ui.fullscreen;
             button.classList.toggle('active', active);
             button.setAttribute('aria-pressed', active ? 'true' : 'false');
         });
+        if (thinkingBtn) {
+            thinkingBtn.classList.toggle('active', !!dashboardChat.ui.thinkingEnabled);
+            thinkingBtn.setAttribute('aria-pressed', dashboardChat.ui.thinkingEnabled ? 'true' : 'false');
+            thinkingBtn.textContent = `Thinking Model: ${dashboardChat.ui.thinkingEnabled ? 'On' : 'Off'}`;
+        }
         if (fullBtn) {
             fullBtn.textContent = dashboardChat.ui.fullscreen ? 'Windowed' : 'Full Screen';
             fullBtn.setAttribute('aria-pressed', dashboardChat.ui.fullscreen ? 'true' : 'false');
@@ -844,11 +844,12 @@ document.addEventListener('DOMContentLoaded', async () => {
             message: String(message || '').trim(),
             conversation: dashboardChat.messages
                 .filter(entry => entry && ['user', 'assistant'].includes(entry.role))
-                .slice(-8)
+                .slice(-12)
                 .map(entry => ({ role: entry.role, content: String(entry.text || '').trim() }))
                 .filter(entry => entry.content),
             study_context: buildDashboardChatContext(),
-            assistant_mode: dashboardChat.ui.mode
+            assistant_mode: 'auto',
+            thinking_enabled: !!dashboardChat.ui.thinkingEnabled
         };
         const response = await fetch('/api/coach-chat', {
             method: 'POST',
@@ -879,7 +880,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     function setDashboardChatMode(mode = 'auto') {
-        dashboardChat.ui.mode = ['auto', 'coach', 'knowledge'].includes(String(mode || '').trim()) ? String(mode).trim() : 'auto';
+        dashboardChat.ui.mode = 'auto';
+        saveDashboardChatUiPrefs();
+        renderDashboardChatChrome();
+    }
+
+    function toggleDashboardChatThinking() {
+        dashboardChat.ui.thinkingEnabled = !dashboardChat.ui.thinkingEnabled;
         saveDashboardChatUiPrefs();
         renderDashboardChatChrome();
     }
@@ -1030,11 +1037,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('coach-chat-launcher')?.addEventListener('click', () => openDashboardChat());
     document.getElementById('coach-chat-new')?.addEventListener('click', clearDashboardChatConversation);
     document.getElementById('coach-chat-fullscreen')?.addEventListener('click', toggleDashboardChatFullscreen);
-    document.getElementById('coach-chat-mode-switch')?.addEventListener('click', (event) => {
-        const button = event.target.closest('.coach-chat-mode-btn');
-        if (!button) return;
-        setDashboardChatMode(button.dataset.mode || 'auto');
-    });
+    document.getElementById('coach-chat-thinking-toggle')?.addEventListener('click', toggleDashboardChatThinking);
     document.getElementById('coach-chat-size-presets')?.addEventListener('click', (event) => {
         const button = event.target.closest('.coach-chat-size-btn');
         if (!button) return;
@@ -1056,10 +1059,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (!button) return;
         const card = dashboardChat.workspaceCards?.[Number(button.dataset.workspaceIndex) || 0];
         if (!card?.action) return;
-        if (card.action.kind === 'mode') {
-            setDashboardChatMode(card.action.mode || 'knowledge');
-            return;
-        }
         if (card.action.kind === 'prompt') {
             void sendDashboardChatMessage(card.action.prompt || '');
             return;

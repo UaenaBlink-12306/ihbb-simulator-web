@@ -163,9 +163,19 @@ function normalizeContext(payload) {
   const lastSession = (sessionHistory.last_session && typeof sessionHistory.last_session === 'object') ? sessionHistory.last_session : {};
   const setup = (raw.setup && typeof raw.setup === 'object') ? raw.setup : {};
   const activeSet = (raw.active_set && typeof raw.active_set === 'object') ? raw.active_set : {};
+  const analytics = (raw.analytics && typeof raw.analytics === 'object') ? raw.analytics : {};
   const recentIncorrect = normalizeFocus(raw.recent_incorrect) || {};
   const topFocuses = Array.isArray(notebook.top_focuses)
     ? notebook.top_focuses.map(normalizeFocus).filter(Boolean).slice(0, 4)
+    : [];
+  const blindSpots = Array.isArray(analytics.blind_spots)
+    ? analytics.blind_spots.map((spot) => {
+        if (!spot || typeof spot !== 'object') return null;
+        return {
+          title: stringValue(spot.title),
+          priority: ['high', 'medium', 'low'].includes(stringValue(spot.priority).toLowerCase()) ? stringValue(spot.priority).toLowerCase() : 'medium'
+        };
+      }).filter(Boolean).slice(0, 3)
     : [];
 
   return {
@@ -200,7 +210,12 @@ function normalizeContext(payload) {
       name: stringValue(activeSet.name),
       item_count: Math.max(0, safeInt(activeSet.item_count, 0))
     },
-    recent_incorrect: recentIncorrect
+    recent_incorrect: recentIncorrect,
+    analytics: {
+      total_attempts: Math.max(0, safeInt(analytics.total_attempts, 0)),
+      total_accuracy: Math.max(0, Math.min(100, safeInt(analytics.total_accuracy, 0))),
+      blind_spots: blindSpots
+    }
   };
 }
 
@@ -209,6 +224,32 @@ function focusTitle(focus) {
   return stringValue(focus.title)
     || [stringValue(focus.region), stringValue(focus.era), stringValue(focus.topic)].filter(Boolean).join(' • ')
     || 'your top focus';
+}
+
+function buildContextBrief(context) {
+  const parts = [];
+  const recentTitle = focusTitle(context.recent_incorrect || {});
+  const topFocusTitle = focusTitle(context.coach_notebook.top_focuses[0] || {});
+  const blindSpots = Array.isArray(context.analytics?.blind_spots)
+    ? context.analytics.blind_spots.map(item => stringValue(item.title)).filter(Boolean)
+    : [];
+
+  if (context.current_view) parts.push(`Current view: ${context.current_view}`);
+  if (recentTitle) parts.push(`Latest miss: ${recentTitle}`);
+  if (context.wrong_bank.due_now > 0) parts.push(`Wrong-bank due now: ${context.wrong_bank.due_now}`);
+  if (context.coach_notebook.open_lessons > 0) parts.push(`Open notebook lessons: ${context.coach_notebook.open_lessons}`);
+  if (topFocusTitle) parts.push(`Top notebook focus: ${topFocusTitle}`);
+  if (context.session_history.total_sessions > 0) {
+    parts.push(`Recent accuracy: ${context.session_history.recent_accuracy}% over ${context.session_history.total_sessions} sessions`);
+  }
+  if (context.analytics.total_attempts > 0) {
+    parts.push(`Analytics accuracy: ${context.analytics.total_accuracy}% over ${context.analytics.total_attempts} attempts`);
+  }
+  if (blindSpots.length) parts.push(`Blind spots: ${blindSpots.join(', ')}`);
+  if (context.setup.mode || context.setup.filters) parts.push(`Setup: ${[context.setup.mode, context.setup.length, context.setup.filters].filter(Boolean).join(' • ')}`);
+  if (context.active_set.name) parts.push(`Active set: ${context.active_set.name} (${context.active_set.item_count} items)`);
+
+  return parts.join('. ');
 }
 
 function resolveMode(payload, context = normalizeContext(payload)) {
@@ -640,10 +681,12 @@ module.exports = async function handler(req, res) {
     }
 
     const context = normalizeContext(payload);
+    const contextBrief = buildContextBrief(context);
     const resolvedMode = resolveMode(payload, context);
     const intent = analyzeIntent(payload.message);
+    const thinkingEnabled = !!payload.thinking_enabled;
     const conversation = Array.isArray(payload.conversation)
-      ? payload.conversation.slice(-8).map((entry) => {
+      ? payload.conversation.slice(-12).map((entry) => {
           if (!entry || typeof entry !== 'object') return null;
           const role = stringValue(entry.role).toLowerCase();
           const content = stringValue(entry.content);
@@ -670,6 +713,10 @@ module.exports = async function handler(req, res) {
       'Coaching-first replies should spend most of the space on practical next actions and only include brief background unless the user explicitly asked for depth.',
       'In knowledge mode, let the sections carry the explanation. Do not let quick actions crowd out the historical content.',
       'In coach mode, prefer sections like Best Next Move, Why This Tool Fits, and What To Do After.',
+      'Use the whole study_context, not just the user message. Synthesize recent misses, wrong-bank status, notebook patterns, session history, current setup, active set, and analytics when present.',
+      'When the user asks a broad question, take initiative: infer the most helpful framing from the context and give a satisfying answer without forcing the user to pick a mode.',
+      'If the user seems to want both understanding and action, answer the knowledge need first and then give a concise next-step plan.',
+      'If the user asks for study guidance, make the plan sequenced, concrete, and grounded in the app surfaces that actually exist.',
       'Available app actions and surfaces:',
       '- Wrong-bank (SRS) practices previously missed questions that are due.',
       '- AI Notebook stores DeepSeek lessons from incorrect answers.',
@@ -698,31 +745,57 @@ module.exports = async function handler(req, res) {
         coach_score: intent.coachScore,
         knowledge_score: intent.knowledgeScore
       },
+      thinking_enabled: thinkingEnabled,
+      context_brief: contextBrief,
       message: stringValue(payload.message) || 'What should I practice next?',
       conversation,
       study_context: context,
       fallback_plan: fallback
     };
 
-    const response = await fetch('https://api.deepseek.com/v1/chat/completions', {
+    const model = thinkingEnabled
+      ? (process.env.DEEPSEEK_REASONER_MODEL || 'deepseek-reasoner')
+      : (process.env.DEEPSEEK_MODEL || 'deepseek-chat');
+    const chatModel = process.env.DEEPSEEK_MODEL || 'deepseek-chat';
+    const completionPayload = {
+      model,
+      messages: [
+        { role: 'system', content: system },
+        { role: 'user', content: JSON.stringify(user) }
+      ],
+      response_format: { type: 'json_object' },
+      max_tokens: thinkingEnabled ? 2400 : (resolvedMode === 'knowledge' ? 1400 : 900)
+    };
+    if (!thinkingEnabled) {
+      completionPayload.temperature = resolvedMode === 'knowledge' ? 0.18 : 0.2;
+    }
+
+    const requestHeaders = {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${process.env.DEEPSEEK_API_KEY}`
+    };
+
+    let response = await fetch('https://api.deepseek.com/v1/chat/completions', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${process.env.DEEPSEEK_API_KEY}`
-      },
-      body: JSON.stringify({
-        model: process.env.DEEPSEEK_MODEL || 'deepseek-chat',
-        messages: [
-          { role: 'system', content: system },
-          { role: 'user', content: JSON.stringify(user) }
-        ],
-        response_format: { type: 'json_object' },
-        temperature: resolvedMode === 'knowledge' ? 0.18 : 0.2,
-        max_tokens: resolvedMode === 'knowledge' ? 1400 : 900
-      })
+      headers: requestHeaders,
+      body: JSON.stringify(completionPayload)
     });
 
-    const text = await response.text();
+    let text = await response.text();
+    if (!response.ok && thinkingEnabled) {
+      const fallbackCompletionPayload = {
+        ...completionPayload,
+        model: chatModel,
+        max_tokens: resolvedMode === 'knowledge' ? 1400 : 900,
+        temperature: resolvedMode === 'knowledge' ? 0.18 : 0.2
+      };
+      response = await fetch('https://api.deepseek.com/v1/chat/completions', {
+        method: 'POST',
+        headers: requestHeaders,
+        body: JSON.stringify(fallbackCompletionPayload)
+      });
+      text = await response.text();
+    }
     if (!response.ok) {
       return res.status(200).json(fallback);
     }
