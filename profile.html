@@ -96,10 +96,65 @@
                         <div class="sep"></div>
 
                         <div class="card-muted-box">
-                            <div class="eyebrow">Placeholder</div>
-                            <h3 style="margin: 10px 0 6px;">Student data</h3>
-                            <p class="muted" style="margin: 0;">Additional academic profile details can be added here
-                                later without changing the current account flow.</p>
+                            <div class="eyebrow">Read-only analytics</div>
+                            <h3 style="margin: 10px 0 6px;">Performance snapshot</h3>
+                            <p class="muted" style="margin: 0 0 16px;">Visible to the account owner and authorized
+                                viewers. Based on stored drill, assignment, wrong-bank, and coaching activity.</p>
+                            <div id="pf-analytics-grid"
+                                style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;">
+                                <div class="card-muted-box" style="margin:0;padding:12px;">
+                                    <div class="eyebrow">Overall accuracy</div>
+                                    <div id="pf-analytics-overall-accuracy"
+                                        style="font-size:clamp(1.6rem,2.6vw,2.2rem);font-weight:800;line-height:1.1;">—
+                                    </div>
+                                    <div id="pf-analytics-overall-accuracy-note" class="muted"
+                                        style="margin-top:6px;">No graded answers yet.</div>
+                                </div>
+                                <div class="card-muted-box" style="margin:0;padding:12px;">
+                                    <div class="eyebrow">Graded answers</div>
+                                    <div id="pf-analytics-total-answers"
+                                        style="font-size:clamp(1.6rem,2.6vw,2.2rem);font-weight:800;line-height:1.1;">0
+                                    </div>
+                                    <div id="pf-analytics-total-answers-note" class="muted" style="margin-top:6px;">
+                                        Sessions + assignments</div>
+                                </div>
+                                <div class="card-muted-box" style="margin:0;padding:12px;">
+                                    <div class="eyebrow">Practice sessions</div>
+                                    <div id="pf-analytics-sessions"
+                                        style="font-size:clamp(1.6rem,2.6vw,2.2rem);font-weight:800;line-height:1.1;">0
+                                    </div>
+                                    <div id="pf-analytics-sessions-note" class="muted" style="margin-top:6px;">Avg
+                                        session length: —</div>
+                                </div>
+                                <div class="card-muted-box" style="margin:0;padding:12px;">
+                                    <div class="eyebrow">Assignment average</div>
+                                    <div id="pf-analytics-assignment-accuracy"
+                                        style="font-size:clamp(1.6rem,2.6vw,2.2rem);font-weight:800;line-height:1.1;">—
+                                    </div>
+                                    <div id="pf-analytics-assignment-note" class="muted" style="margin-top:6px;">0
+                                        submissions</div>
+                                </div>
+                            </div>
+                            <div class="summary-list" style="margin-top:14px;">
+                                <div class="summary-item">
+                                    <span>Wrong-bank rows</span>
+                                    <strong id="pf-analytics-wrong-bank">0</strong>
+                                </div>
+                                <div class="summary-item">
+                                    <span>Coach attempts</span>
+                                    <strong id="pf-analytics-coach-attempts">0</strong>
+                                </div>
+                                <div class="summary-item">
+                                    <span>Class memberships</span>
+                                    <strong id="pf-analytics-class-memberships">0</strong>
+                                </div>
+                                <div class="summary-item">
+                                    <span>Latest activity</span>
+                                    <strong id="pf-analytics-latest-activity">—</strong>
+                                </div>
+                            </div>
+                            <p id="pf-analytics-note" class="muted" style="margin: 14px 0 0;">Loading analytics...
+                            </p>
                         </div>
                     </div>
                 </div>
