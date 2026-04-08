@@ -174,7 +174,11 @@ function parseJsonFromContent(content) {
   if (!content) return null;
   const trimmed = String(content).trim();
   try {
-    return JSON.parse(trimmed);
+    const parsed = JSON.parse(trimmed);
+    if (typeof parsed === 'string' && parsed.trim() && parsed.trim() !== trimmed) {
+      return parseJsonFromContent(parsed);
+    }
+    return parsed;
   } catch {}
 
   const cleaned = trimmed
@@ -184,10 +188,50 @@ function parseJsonFromContent(content) {
   const end = cleaned.lastIndexOf('}');
   if (start === -1 || end <= start) return null;
   try {
-    return JSON.parse(cleaned.slice(start, end + 1));
+    const parsed = JSON.parse(cleaned.slice(start, end + 1));
+    if (typeof parsed === 'string' && parsed.trim()) {
+      return parseJsonFromContent(parsed);
+    }
+    return parsed;
   } catch {
     return null;
   }
+}
+
+function extractDeepSeekMessageText(choice) {
+  const message = choice && typeof choice.message === 'object' && choice.message ? choice.message : {};
+  const candidates = [
+    message.content,
+    message.reasoning_content,
+    message.output_text,
+    choice?.text,
+    choice?.output_text,
+    choice?.content,
+    choice?.reasoning_content
+  ];
+
+  for (const candidate of candidates) {
+    if (Array.isArray(candidate)) {
+      const joined = candidate.map((part) => {
+        if (typeof part === 'string') return part;
+        if (part && typeof part === 'object') {
+          return stringValue(part.text || part.content || part.reasoning_content || part.reasoning || part.value);
+        }
+        return stringValue(part);
+      }).filter(Boolean).join('\n');
+      if (joined.trim()) return joined;
+      continue;
+    }
+    const text = stringValue(candidate);
+    if (text) return text;
+  }
+
+  if (message && typeof message === 'object') {
+    const wrapped = stringValue(message.text || message.value);
+    if (wrapped) return wrapped;
+  }
+
+  return '';
 }
 
 async function requestDeepSeekChatCompletion(headers, payload) {
@@ -201,12 +245,16 @@ async function requestDeepSeekChatCompletion(headers, payload) {
   try {
     data = JSON.parse(text);
   } catch {}
+  const choice = data?.choices?.[0] || {};
+  const messageText = extractDeepSeekMessageText(choice);
+  const parsedText = parseJsonFromContent(messageText);
   return {
     response,
     text,
     data,
     finishReason: stringValue(data?.choices?.[0]?.finish_reason).toLowerCase(),
-    raw: parseJsonFromContent(data?.choices?.[0]?.message?.content || '')
+    raw: parsedText,
+    messageText
   };
 }
 
@@ -660,8 +708,8 @@ function buildKnowledgeFallback(payload, context = normalizeContext(payload)) {
     title: topic ? `Study brief: ${topic}` : 'Study brief',
     topic,
     message: topic
-      ? `This looks like a knowledge question about ${topic}. When DeepSeek is available, I can keep the answer focused on that topic, structure it clearly, and point you to a matching reference.`
-      : 'This looks like a knowledge question. When DeepSeek is available, I can answer it clearly here and keep the follow-up prompts focused on the same topic.',
+      ? `This looks like a knowledge question about ${topic}. Here is a concise study brief you can use right now.`
+      : 'This looks like a knowledge question. Here is a concise study brief you can use right now.',
     highlights: [
       'Knowledge mode',
       topic ? 'Topic-focused answer' : 'Reference lookup ready',
@@ -872,9 +920,11 @@ module.exports = async function handler(req, res) {
           { role: 'system', content: system },
           { role: 'user', content: JSON.stringify(user) }
         ],
-        response_format: { type: 'json_object' },
         max_tokens: maxTokens
       };
+      if (!/reasoner/i.test(String(modelName || ''))) {
+        completionPayload.response_format = { type: 'json_object' };
+      }
       if (typeof temperature === 'number') {
         completionPayload.temperature = temperature;
       }
@@ -898,6 +948,9 @@ module.exports = async function handler(req, res) {
       );
     }
     if (thinkingEnabled && (!completion.response.ok || !completion.raw)) {
+      if (completion.response.ok && !completion.raw && completion.messageText) {
+        console.warn('DeepSeek reasoner returned a non-JSON reply shape; retrying with chat model.');
+      }
       completion = await requestDeepSeekChatCompletion(
         requestHeaders,
         buildCompletionPayload(chatModel, chatMaxTokens, chatTemperature)
