@@ -5459,6 +5459,20 @@ input[type=datetime-local]:focus {
   border-radius: 24px;
 }
 
+.dashboard-tabs,
+.nav.tab-strip {
+  gap: 10px;
+  padding: 10px;
+}
+
+.dashboard-tabs .dash-tab,
+.nav.tab-strip a {
+  min-height: 46px;
+  padding: 11px 18px;
+  border-radius: 14px;
+  font-size: 14px;
+}
+
 .card:hover,
 .metric-card:hover,
 .summary-item:hover,
