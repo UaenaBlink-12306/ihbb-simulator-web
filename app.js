@@ -84,6 +84,7 @@ const KEY_COACH_LOCAL = 'ihbb_v2_coach_attempts';
 const KEY_COACH_PENDING = 'ihbb_v2_coach_pending';
 const KEY_COACH_DRILL = 'ihbb_student_coach_drill';
 const KEY_COACH_CHAT_ACTION = 'ihbb_v2_coach_chat_action';
+const PRACTICE_HUB_AUTO_OPEN_DISABLED_KEY = 'ihbb_v2_practice_hub_auto_open_disabled';
 const WRONG_SYNC_TABLE = 'user_wrong_questions';
 const SESSION_SYNC_TABLE = 'user_drill_sessions';
 const COACH_SYNC_TABLE = 'user_coach_attempts';
@@ -628,6 +629,9 @@ const CoachChat = {
   },
   resizing: null
 };
+const COACH_CHAT_STREAM_MIN_MS = 240;
+const COACH_CHAT_STREAM_MAX_MS = 1800;
+const COACH_CHAT_STREAM_MS_PER_CHAR = 6;
 
 function clampCoachChatWidth(value) {
   const min = 720;
@@ -676,8 +680,79 @@ loadCoachChatUiPrefs();
 
 function trimCoachChatMessages() {
   if (CoachChat.messages.length > 18) {
+    CoachChat.messages.slice(0, CoachChat.messages.length - 18).forEach(stopCoachChatMessageStream);
     CoachChat.messages = CoachChat.messages.slice(-18);
   }
+}
+
+function coachChatStreamDuration(text = '') {
+  const normalizedLength = String(text || '').replace(/\s+/g, ' ').trim().length;
+  return Math.max(
+    COACH_CHAT_STREAM_MIN_MS,
+    Math.min(COACH_CHAT_STREAM_MAX_MS, 160 + normalizedLength * COACH_CHAT_STREAM_MS_PER_CHAR)
+  );
+}
+
+function isCoachChatMessageStreaming(message) {
+  return !!message && message.role === 'assistant' && !!message.streaming;
+}
+
+function coachChatVisibleText(message) {
+  if (!message || message.role !== 'assistant') return String(message?.text || '');
+  return isCoachChatMessageStreaming(message) ? String(message.displayText || '') : String(message.text || '');
+}
+
+function coachChatStreamingCursorHtml() {
+  return '<span aria-hidden="true" style="display:inline-block;min-width:0.55ch;margin-left:2px;color:#1f6fff;font-weight:700;opacity:0.9;">▍</span>';
+}
+
+function stopCoachChatMessageStream(message) {
+  if (!message || typeof message !== 'object') return;
+  if (message.streamFrame) cancelAnimationFrame(message.streamFrame);
+  message.streamFrame = 0;
+  message.streaming = false;
+  if (typeof message.displayText !== 'string') message.displayText = String(message.text || '');
+}
+
+function stopAllCoachChatStreams() {
+  CoachChat.messages.forEach(stopCoachChatMessageStream);
+}
+
+function startCoachChatMessageStream(message) {
+  if (!message || message.role !== 'assistant') return;
+  stopCoachChatMessageStream(message);
+  const fullText = String(message.text || '');
+  if (!fullText) {
+    message.displayText = '';
+    renderCoachChatMessages();
+    return;
+  }
+  message.streaming = true;
+  message.displayText = '';
+  const startedAt = performance.now();
+  const duration = coachChatStreamDuration(fullText);
+  const step = (now) => {
+    if (!CoachChat.messages.includes(message)) {
+      stopCoachChatMessageStream(message);
+      return;
+    }
+    const progress = Math.min(1, (now - startedAt) / duration);
+    const easedProgress = 1 - Math.pow(1 - progress, 1.75);
+    const nextLength = Math.max(1, Math.min(fullText.length, Math.ceil(fullText.length * easedProgress)));
+    if (nextLength !== String(message.displayText || '').length) {
+      message.displayText = fullText.slice(0, nextLength);
+      renderCoachChatMessages();
+    }
+    if (progress >= 1 || nextLength >= fullText.length) {
+      message.displayText = fullText;
+      message.streaming = false;
+      message.streamFrame = 0;
+      renderCoachChatMessages();
+      return;
+    }
+    message.streamFrame = requestAnimationFrame(step);
+  };
+  message.streamFrame = requestAnimationFrame(step);
 }
 
 function pushCoachChatMessage(message) {
@@ -817,7 +892,7 @@ function updateCoachChatSourceLabel() {
   let label = 'Ready';
   if (CoachChat.busy) label = 'Thinking';
   else if (CoachChat.source === 'deepseek') label = 'DeepSeek';
-  else if (CoachChat.source === 'fallback') label = 'Local plan';
+  else if (CoachChat.source === 'fallback') label = 'Local fallback';
   sourceEl.textContent = `${label} • ${CoachChat.ui.thinkingEnabled ? 'Think On' : 'Think Off'}`;
 }
 
@@ -1128,7 +1203,9 @@ function coachChatMessageMarkdownText(message) {
 function coachChatMessageHtml(message, index) {
   const metaLabel = message.role === 'user'
     ? 'You'
-    : (message.source === 'deepseek' ? 'DeepSeek' : 'Local plan');
+    : (message.source === 'deepseek' ? 'DeepSeek' : 'Local fallback');
+  const streaming = isCoachChatMessageStreaming(message);
+  const visibleText = coachChatVisibleText(message);
   const actions = Array.isArray(message.actions) ? message.actions : [];
   const highlights = Array.isArray(message.highlights) ? message.highlights : [];
   const sections = Array.isArray(message.sections) ? message.sections : [];
@@ -1137,7 +1214,7 @@ function coachChatMessageHtml(message, index) {
   const resultLabel = message.source === 'deepseek' ? 'DeepSeek Result' : 'Study Result';
   const blockStyle = 'display:grid;gap:12px;padding:14px 15px;border-radius:20px;border:1px solid rgba(15, 23, 42, 0.08);background:linear-gradient(180deg, rgba(255,255,255,0.97), rgba(246,250,255,0.9));box-shadow:inset 0 1px 0 rgba(255,255,255,0.85), 0 18px 28px -24px rgba(15,23,42,0.14);';
   const markdownWrapStyle = 'display:grid;gap:10px;';
-  const toolsHtml = message.role === 'assistant' ? `
+  const toolsHtml = message.role === 'assistant' && !streaming ? `
     <div class="coach-chat-message-tools">
       <button class="coach-chat-tool" type="button" data-message-index="${index}" data-tool="copy">Copy markdown</button>
     </div>
@@ -1152,24 +1229,24 @@ function coachChatMessageHtml(message, index) {
         <div class="coach-chat-block coach-chat-result-block" style="${blockStyle}">
           ${coachChatDividerHtml(`${resultLabel} Start`)}
           ${message.title ? `<h3 class="coach-chat-message-title" style="margin:0;color:#0f223a;font-size:20px;font-weight:850;line-height:1.25;letter-spacing:-0.02em;">${escHtml(message.title)}</h3>` : ''}
-          ${message.text ? `<div class="coach-chat-markdown coach-chat-message-text" style="${markdownWrapStyle}">${coachChatMarkdownHtml(message.text || '')}</div>` : ''}
-          ${highlights.length ? `
+          ${(visibleText || streaming) ? `<div class="coach-chat-markdown coach-chat-message-text" style="${markdownWrapStyle}">${coachChatMarkdownHtml(visibleText || '')}${streaming ? coachChatStreamingCursorHtml() : ''}</div>` : ''}
+          ${!streaming && highlights.length ? `
             ${coachChatDividerHtml('Quick Context', { subtle: true })}
             <div class="coach-chat-highlights">${highlights.map(item => `<span class="coach-chat-highlight">${escHtml(item)}</span>`).join('')}</div>
           ` : ''}
-          ${sections.length ? `<div class="coach-chat-sections">${sections.map(section => `
+          ${!streaming && sections.length ? `<div class="coach-chat-sections">${sections.map(section => `
             <div class="coach-chat-section-card">
               <h4 style="margin:0;color:#10243d;font-size:17px;font-weight:820;line-height:1.28;">${escHtml(section.heading)}</h4>
               <div class="coach-chat-markdown" style="${markdownWrapStyle}">${coachChatMarkdownHtml(section.body || '')}</div>
             </div>
           `).join('')}</div>` : ''}
-          ${links.length ? `
+          ${!streaming && links.length ? `
             ${coachChatDividerHtml('References', { subtle: true })}
             <div class="coach-chat-links">${links.map(link => `
               <a class="coach-chat-link-card" href="${escHtml(link.url)}" target="_blank" rel="noopener noreferrer">${escHtml(link.label)}</a>
             `).join('')}</div>
           ` : ''}
-          ${followUps.length ? `
+          ${!streaming && followUps.length ? `
             ${coachChatDividerHtml('Follow-Up Prompts', { subtle: true })}
             <div class="coach-chat-followups">${followUps.map((followUp, followUpIndex) => `
               <button class="coach-chat-followup" type="button" data-message-index="${index}" data-followup-index="${followUpIndex}">${escHtml(followUp.label)}</button>
@@ -1177,7 +1254,7 @@ function coachChatMessageHtml(message, index) {
           ` : ''}
           ${coachChatDividerHtml(`End of ${resultLabel}`)}
         </div>
-        ${actions.length ? `
+        ${!streaming && actions.length ? `
           <div class="coach-chat-block coach-chat-action-block" style="${blockStyle}">
             ${coachChatDividerHtml('Suggested Actions Start')}
             <div class="coach-chat-actions">
@@ -1543,6 +1620,20 @@ function normalizeCoachChatHighlights(raw) {
     : [];
 }
 
+function coachChatReplyHasDeepSeekContent(raw) {
+  if (!raw || typeof raw !== 'object') return false;
+  return !!(
+    String(raw.title || '').trim() ||
+    String(raw.topic || '').trim() ||
+    String(raw.message || '').trim() ||
+    normalizeCoachChatHighlights(raw.highlights).length ||
+    normalizeCoachChatSections(raw.sections).length ||
+    normalizeCoachChatLinks(raw.links).length ||
+    normalizeCoachChatFollowUps(raw.follow_ups).length ||
+    (Array.isArray(raw.quick_actions) && raw.quick_actions.length)
+  );
+}
+
 function buildLocalCoachChatReply(message, snapshot = buildCoachChatStudyContext()) {
   const prompt = String(message || '').trim().toLowerCase();
   const mode = resolveCoachChatMode(message, snapshot);
@@ -1572,8 +1663,8 @@ function buildLocalCoachChatReply(message, snapshot = buildCoachChatStudyContext
       title: topic ? `Study brief: ${topic}` : 'Study brief',
       topic,
       message: topic
-        ? `This looks like a knowledge question about ${topic}. When DeepSeek is available, I can keep the answer focused on that topic, structure it clearly, and point you to a matching reference.`
-        : 'This looks like a knowledge question. When DeepSeek is available, I can keep the answer clear and focused on the topic you asked about.',
+        ? `This looks like a knowledge question about ${topic}. DeepSeek did not return a usable knowledge response for this request, so I am showing the built-in study fallback instead.`
+        : 'This looks like a knowledge question. DeepSeek did not return a usable knowledge response for this request, so I am showing the built-in study fallback instead.',
       highlights: ['Knowledge mode', topic ? 'Topic-focused answer' : 'Reference lookup ready', 'Follow-up prompts stay on topic'].filter(Boolean),
       sections: [
         { heading: 'What to lock in first', body: topic ? `Start with the definition, timeframe, main actors, and why ${topic} matters in the broader historical story.` : 'Start with the definition, timeframe, main actors, and why the topic matters in the broader historical story.' },
@@ -1706,8 +1797,9 @@ function normalizeCoachChatReply(raw, payload, snapshot) {
   const filteredFallbackActions = filterCoachChatActionsByContext(fallback.quick_actions, mode, topic, payload?.message || '', snapshot);
   const actions = filteredRawActions.length ? filteredRawActions : filteredFallbackActions;
   const links = normalizeCoachChatLinks(obj?.links);
+  const sourceIsDeepSeek = String(obj?.source || '').trim().toLowerCase() === 'deepseek' && coachChatReplyHasDeepSeekContent(obj);
   return {
-    source: String(obj?.source || '').trim().toLowerCase() === 'deepseek' ? 'deepseek' : 'fallback',
+    source: sourceIsDeepSeek ? 'deepseek' : 'fallback',
     mode,
     title: String(obj?.title || '').trim() || fallback.title,
     topic,
@@ -1746,6 +1838,7 @@ async function requestCoachChatReply(message) {
 }
 
 function clearCoachChatConversation() {
+  stopAllCoachChatStreams();
   CoachChat.messages = [];
   CoachChat.source = 'ready';
   renderCoachChatChrome();
@@ -1770,6 +1863,19 @@ function setCoachChatSizePreset(size = 'standard') {
   CoachChat.ui.fullscreen = false;
   saveCoachChatUiPrefs();
   renderCoachChatChrome();
+}
+
+function practiceHubAutoOpenDisabledKey(userId) {
+  return `${PRACTICE_HUB_AUTO_OPEN_DISABLED_KEY}_${userId}`;
+}
+
+function isPracticeHubAutoOpenDisabled(userId = CoachSync.userId || SessionSync.userId || WrongSync.userId) {
+  try {
+    if (!userId) return false;
+    return localStorage.getItem(practiceHubAutoOpenDisabledKey(userId)) === '1';
+  } catch {
+    return false;
+  }
 }
 
 function toggleCoachChatFullscreen() {
@@ -1824,6 +1930,7 @@ function closeCoachChat({ manual = true } = {}) {
 
 function maybeAutoOpenCoachChat(reason = 'init') {
   if (CoachChat.open || CoachChat.busy || isCoachChatAutoSuppressed() || CoachChat.autoReasons.has(reason)) return false;
+  if (reason === 'init' && isPracticeHubAutoOpenDisabled()) return false;
   const snapshot = buildCoachChatStudyContext();
   if (reason === 'miss' && snapshot?.recent_incorrect?.title) {
     CoachChat.suggestedReason = 'miss';
@@ -1914,10 +2021,11 @@ async function sendCoachChatMessage(rawMessage, options = {}) {
   CoachChat.busy = true;
   CoachChat.source = 'ready';
   renderCoachChatChrome();
+  let assistantMessage = null;
   try {
     const reply = await requestCoachChatReply(message);
     CoachChat.source = reply.source === 'deepseek' ? 'deepseek' : 'fallback';
-    pushCoachChatMessage({
+    assistantMessage = {
       role: 'assistant',
       text: String(reply.message || '').trim(),
       source: CoachChat.source,
@@ -1928,12 +2036,16 @@ async function sendCoachChatMessage(rawMessage, options = {}) {
       sections: Array.isArray(reply.sections) ? reply.sections : [],
       links: Array.isArray(reply.links) ? reply.links : [],
       followUps: Array.isArray(reply.follow_ups) ? reply.follow_ups : [],
-      actions: Array.isArray(reply.quick_actions) ? reply.quick_actions : []
-    });
+      actions: Array.isArray(reply.quick_actions) ? reply.quick_actions : [],
+      displayText: '',
+      streaming: true,
+      streamFrame: 0
+    };
+    pushCoachChatMessage(assistantMessage);
   } catch (err) {
     const fallback = buildLocalCoachChatReply(message);
     CoachChat.source = 'fallback';
-    pushCoachChatMessage({
+    assistantMessage = {
       role: 'assistant',
       text: String(fallback.message || '').trim(),
       source: 'fallback',
@@ -1944,11 +2056,16 @@ async function sendCoachChatMessage(rawMessage, options = {}) {
       sections: Array.isArray(fallback.sections) ? fallback.sections : [],
       links: Array.isArray(fallback.links) ? fallback.links : [],
       followUps: Array.isArray(fallback.follow_ups) ? fallback.follow_ups : [],
-      actions: Array.isArray(fallback.quick_actions) ? fallback.quick_actions : []
-    });
+      actions: Array.isArray(fallback.quick_actions) ? fallback.quick_actions : [],
+      displayText: '',
+      streaming: true,
+      streamFrame: 0
+    };
+    pushCoachChatMessage(assistantMessage);
   } finally {
     CoachChat.busy = false;
     renderCoachChatChrome();
+    if (assistantMessage?.role === 'assistant') startCoachChatMessageStream(assistantMessage);
   }
   return true;
 }

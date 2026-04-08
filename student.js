@@ -18,6 +18,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const SESSION_SYNC_TABLE = 'user_drill_sessions';
     const COACH_SYNC_TABLE = 'user_coach_attempts';
     const COACH_DRILL_STORAGE_KEY = 'ihbb_student_coach_drill';
+    const PRACTICE_HUB_AUTO_OPEN_DISABLED_KEY = 'ihbb_v2_practice_hub_auto_open_disabled';
     const ANALYTICS_INSIGHTS_CACHE_KEY = `ihbb_student_analytics_insights_${uid}`;
     const DAY_MS = 24 * 60 * 60 * 1000;
     let userEmail = String(session.user?.email || '').trim();
@@ -99,6 +100,48 @@ document.addEventListener('DOMContentLoaded', async () => {
         return `<div><b>Read More:</b> <a class="coach-link" href="${esc(wiki)}" target="_blank" rel="noopener noreferrer">${esc(label)}</a></div>`;
     };
     const isNotebookCoachRecord = (record) => !!record && !record.correct;
+    const practiceHubAutoOpenDisabledKey = (userId = uid) => `${PRACTICE_HUB_AUTO_OPEN_DISABLED_KEY}_${userId}`;
+    const legacyPracticeHubAutoOpenDisabledKeys = (userId = uid) => [
+        `${practiceHubAutoOpenDisabledKey(userId)}_${userId}`,
+        PRACTICE_HUB_AUTO_OPEN_DISABLED_KEY
+    ];
+    const readLegacyPracticeHubAutoOpenDisabled = (userId = uid) => {
+        try {
+            for (const key of legacyPracticeHubAutoOpenDisabledKeys(userId)) {
+                const value = localStorage.getItem(key);
+                if (value === '1' || value === '0') return { key, value };
+            }
+        } catch {
+            return null;
+        }
+        return null;
+    };
+    const isPracticeHubAutoOpenDisabled = (userId = uid) => {
+        try {
+            const scopedKey = practiceHubAutoOpenDisabledKey(userId);
+            const scopedValue = localStorage.getItem(scopedKey);
+            if (scopedValue === '1' || scopedValue === '0') return scopedValue === '1';
+            const legacy = readLegacyPracticeHubAutoOpenDisabled(userId);
+            if (legacy?.value === '1' || legacy?.value === '0') {
+                localStorage.setItem(scopedKey, legacy.value);
+                if (legacy.key && legacy.key !== scopedKey) localStorage.removeItem(legacy.key);
+                return legacy.value === '1';
+            }
+            return false;
+        } catch {
+            return false;
+        }
+    };
+    const setPracticeHubAutoOpenDisabled = (disabled, userId = uid) => {
+        try {
+            localStorage.setItem(practiceHubAutoOpenDisabledKey(userId), disabled ? '1' : '0');
+            legacyPracticeHubAutoOpenDisabledKeys(userId).forEach((key) => {
+                if (key !== practiceHubAutoOpenDisabledKey(userId)) localStorage.removeItem(key);
+            });
+        } catch {
+            // Ignore storage failures.
+        }
+    };
     const DASHBOARD_CHAT_STARTERS = [
         { label: 'What next?', prompt: 'What should I practice next from my student dashboard?' },
         { label: 'Explain the weak spot', prompt: 'Explain my current weak spot in detail and tell me what I should do next.' },
@@ -138,6 +181,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         },
         resizing: null
     };
+    const DASHBOARD_CHAT_STREAM_MIN_MS = 240;
+    const DASHBOARD_CHAT_STREAM_MAX_MS = 1800;
+    const DASHBOARD_CHAT_STREAM_MS_PER_CHAR = 6;
 
     function clampDashboardChatWidth(value) {
         const min = 720;
@@ -179,6 +225,89 @@ document.addEventListener('DOMContentLoaded', async () => {
                 fullscreen: dashboardChat.ui.fullscreen
             }));
         } catch { /* noop */ }
+    }
+
+    function dashboardChatStreamDuration(text = '') {
+        const normalizedLength = String(text || '').replace(/\s+/g, ' ').trim().length;
+        return Math.max(
+            DASHBOARD_CHAT_STREAM_MIN_MS,
+            Math.min(DASHBOARD_CHAT_STREAM_MAX_MS, 160 + normalizedLength * DASHBOARD_CHAT_STREAM_MS_PER_CHAR)
+        );
+    }
+
+    function isDashboardChatMessageStreaming(message) {
+        return !!message && message.role === 'assistant' && !!message.streaming;
+    }
+
+    function dashboardChatVisibleText(message) {
+        if (!message || message.role !== 'assistant') return String(message?.text || '');
+        return isDashboardChatMessageStreaming(message) ? String(message.displayText || '') : String(message.text || '');
+    }
+
+    function dashboardChatStreamingCursorHtml() {
+        return '<span aria-hidden="true" style="display:inline-block;min-width:0.55ch;margin-left:2px;color:#1f6fff;font-weight:700;opacity:0.9;">▍</span>';
+    }
+
+    function stopDashboardChatMessageStream(message) {
+        if (!message || typeof message !== 'object') return;
+        if (message.streamFrame) cancelAnimationFrame(message.streamFrame);
+        message.streamFrame = 0;
+        message.streaming = false;
+        if (typeof message.displayText !== 'string') message.displayText = String(message.text || '');
+    }
+
+    function stopAllDashboardChatStreams() {
+        dashboardChat.messages.forEach(stopDashboardChatMessageStream);
+    }
+
+    function trimDashboardChatMessages() {
+        if (dashboardChat.messages.length > 18) {
+            dashboardChat.messages.slice(0, dashboardChat.messages.length - 18).forEach(stopDashboardChatMessageStream);
+            dashboardChat.messages = dashboardChat.messages.slice(-18);
+        }
+    }
+
+    function pushDashboardChatMessage(message) {
+        if (!message || typeof message !== 'object') return;
+        dashboardChat.messages.push(message);
+        trimDashboardChatMessages();
+    }
+
+    function startDashboardChatMessageStream(message) {
+        if (!message || message.role !== 'assistant') return;
+        stopDashboardChatMessageStream(message);
+        const fullText = String(message.text || '');
+        if (!fullText) {
+            message.displayText = '';
+            renderDashboardChatMessages();
+            return;
+        }
+        message.streaming = true;
+        message.displayText = '';
+        const startedAt = performance.now();
+        const duration = dashboardChatStreamDuration(fullText);
+        const step = (now) => {
+            if (!dashboardChat.messages.includes(message)) {
+                stopDashboardChatMessageStream(message);
+                return;
+            }
+            const progress = Math.min(1, (now - startedAt) / duration);
+            const easedProgress = 1 - Math.pow(1 - progress, 1.75);
+            const nextLength = Math.max(1, Math.min(fullText.length, Math.ceil(fullText.length * easedProgress)));
+            if (nextLength !== String(message.displayText || '').length) {
+                message.displayText = fullText.slice(0, nextLength);
+                renderDashboardChatMessages();
+            }
+            if (progress >= 1 || nextLength >= fullText.length) {
+                message.displayText = fullText;
+                message.streaming = false;
+                message.streamFrame = 0;
+                renderDashboardChatMessages();
+                return;
+            }
+            message.streamFrame = requestAnimationFrame(step);
+        };
+        message.streamFrame = requestAnimationFrame(step);
     }
 
     loadDashboardChatUiPrefs();
@@ -317,7 +446,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         let label = 'Ready';
         if (dashboardChat.busy) label = 'Thinking';
         else if (dashboardChat.source === 'deepseek') label = 'DeepSeek';
-        else if (dashboardChat.source === 'fallback') label = 'Local plan';
+        else if (dashboardChat.source === 'fallback') label = 'Local fallback';
         el.textContent = `${label} • ${dashboardChat.ui.thinkingEnabled ? 'Think On' : 'Think Off'}`;
     }
 
@@ -614,25 +743,31 @@ document.addEventListener('DOMContentLoaded', async () => {
         const messagesHtml = dashboardChat.messages.map((message, messageIndex) => `
             <div class="coach-chat-message ${message.role === 'user' ? 'user' : 'assistant'}">
                 <div class="coach-chat-message-meta">
-                    <span>${esc(message.role === 'user' ? 'You' : (message.source === 'deepseek' ? 'DeepSeek' : 'Local plan'))}</span>
+                    <span>${esc(message.role === 'user' ? 'You' : (message.source === 'deepseek' ? 'DeepSeek' : 'Local fallback'))}</span>
                     <span>${esc(message.role === 'user' ? 'Prompt' : (message.mode === 'knowledge' ? 'Knowledge brief' : 'Coach advice'))}</span>
                 </div>
                 ${message.role === 'assistant' && message.title ? `<h3 class="coach-chat-message-title">${esc(message.title)}</h3>` : ''}
-                <p class="coach-chat-message-text">${esc(message.text || '')}</p>
-                ${Array.isArray(message.highlights) && message.highlights.length ? `<div class="coach-chat-highlights">${message.highlights.map(item => `<span class="coach-chat-highlight">${esc(item)}</span>`).join('')}</div>` : ''}
-                ${Array.isArray(message.sections) && message.sections.length ? `<div class="coach-chat-sections">${message.sections.map(section => `
+                ${(() => {
+                    const streaming = isDashboardChatMessageStreaming(message);
+                    const visibleText = dashboardChatVisibleText(message);
+                    return (visibleText || streaming)
+                        ? `<p class="coach-chat-message-text">${esc(visibleText || '')}${streaming ? dashboardChatStreamingCursorHtml() : ''}</p>`
+                        : '';
+                })()}
+                ${!isDashboardChatMessageStreaming(message) && Array.isArray(message.highlights) && message.highlights.length ? `<div class="coach-chat-highlights">${message.highlights.map(item => `<span class="coach-chat-highlight">${esc(item)}</span>`).join('')}</div>` : ''}
+                ${!isDashboardChatMessageStreaming(message) && Array.isArray(message.sections) && message.sections.length ? `<div class="coach-chat-sections">${message.sections.map(section => `
                     <div class="coach-chat-section-card">
                         <h4>${esc(section.heading)}</h4>
                         <p>${esc(section.body)}</p>
                     </div>
                 `).join('')}</div>` : ''}
-                ${Array.isArray(message.links) && message.links.length ? `<div class="coach-chat-links">${message.links.map(link => `
+                ${!isDashboardChatMessageStreaming(message) && Array.isArray(message.links) && message.links.length ? `<div class="coach-chat-links">${message.links.map(link => `
                     <a class="coach-chat-link-card" href="${esc(link.url)}" target="_blank" rel="noopener noreferrer">${esc(link.label)}</a>
                 `).join('')}</div>` : ''}
-                ${Array.isArray(message.followUps) && message.followUps.length ? `<div class="coach-chat-followups">${message.followUps.map((followUp, followUpIndex) => `
+                ${!isDashboardChatMessageStreaming(message) && Array.isArray(message.followUps) && message.followUps.length ? `<div class="coach-chat-followups">${message.followUps.map((followUp, followUpIndex) => `
                     <button class="coach-chat-followup" type="button" data-message-index="${messageIndex}" data-followup-index="${followUpIndex}">${esc(followUp.label)}</button>
                 `).join('')}</div>` : ''}
-                ${Array.isArray(message.actions) && message.actions.length ? `
+                ${!isDashboardChatMessageStreaming(message) && Array.isArray(message.actions) && message.actions.length ? `
                     <div class="coach-chat-actions">
                         ${message.actions.map((action, actionIndex) => `
                             <button class="coach-chat-action" type="button" data-message-index="${messageIndex}" data-action-index="${actionIndex}">
@@ -642,7 +777,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                         `).join('')}
                     </div>
                 ` : ''}
-                ${message.role === 'assistant' ? `<div class="coach-chat-message-tools"><button class="coach-chat-tool" type="button" data-message-index="${messageIndex}" data-tool="copy">Copy answer</button></div>` : ''}
+                ${message.role === 'assistant' && !isDashboardChatMessageStreaming(message) ? `<div class="coach-chat-message-tools"><button class="coach-chat-tool" type="button" data-message-index="${messageIndex}" data-tool="copy">Copy answer</button></div>` : ''}
             </div>
         `).join('');
         const loadingHtml = dashboardChat.busy ? `
@@ -792,8 +927,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                 title: topic ? `Study brief: ${topic}` : 'Study brief',
                 topic,
                 message: topic
-                    ? `This looks like a knowledge question about ${topic}. When DeepSeek is available, I can answer it in full detail here. Right now I can still structure the topic, suggest the best follow-up prompts, and give you a reference link.`
-                    : 'This looks like a knowledge question. When DeepSeek is available, I can answer it in full detail here. Right now I can still frame the topic and suggest the best follow-up prompts.',
+                    ? `This looks like a knowledge question about ${topic}. DeepSeek did not return a usable knowledge response for this request, so I am showing the built-in study fallback instead.`
+                    : 'This looks like a knowledge question. DeepSeek did not return a usable knowledge response for this request, so I am showing the built-in study fallback instead.',
                 highlights: ['Knowledge mode', topic ? 'Wikipedia reference ready' : 'Reference lookup ready'].filter(Boolean),
                 sections: [
                     { heading: 'What to lock in first', body: topic ? `Start with the definition, timeframe, main actors, and why ${topic} matters in the broader historical story.` : 'Start with the definition, timeframe, main actors, and why the topic matters in the broader historical story.' },
@@ -860,6 +995,20 @@ document.addEventListener('DOMContentLoaded', async () => {
         };
     }
 
+    function dashboardChatReplyHasDeepSeekContent(raw) {
+        if (!raw || typeof raw !== 'object') return false;
+        return !!(
+            String(raw.title || '').trim() ||
+            String(raw.topic || '').trim() ||
+            String(raw.message || '').trim() ||
+            normalizeDashboardChatHighlights(raw.highlights).length ||
+            normalizeDashboardChatSections(raw.sections).length ||
+            normalizeDashboardChatLinks(raw.links).length ||
+            normalizeDashboardChatFollowUps(raw.follow_ups).length ||
+            (Array.isArray(raw.quick_actions) && raw.quick_actions.length)
+        );
+    }
+
     async function requestDashboardChatReply(message) {
         const payload = {
             message: String(message || '').trim(),
@@ -880,8 +1029,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         const raw = await response.json().catch(() => ({}));
         if (!response.ok && !raw?.message) throw new Error(`Coach chat failed (${response.status})`);
         const fallback = buildDashboardChatFallback(payload.message);
+        const sourceIsDeepSeek = String(raw?.source || '').trim().toLowerCase() === 'deepseek' && dashboardChatReplyHasDeepSeekContent(raw);
         return {
-            source: String(raw?.source || '').trim().toLowerCase() === 'deepseek' ? 'deepseek' : fallback.source,
+            source: sourceIsDeepSeek ? 'deepseek' : fallback.source,
             mode: String(raw?.mode || '').trim() === 'knowledge' ? 'knowledge' : fallback.mode,
             title: String(raw?.title || '').trim() || fallback.title,
             topic: String(raw?.topic || '').trim() || fallback.topic,
@@ -895,6 +1045,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     function clearDashboardChatConversation() {
+        stopAllDashboardChatStreams();
         dashboardChat.messages = [];
         dashboardChat.source = 'ready';
         renderDashboardChatChrome();
@@ -937,14 +1088,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     async function sendDashboardChatMessage(rawMessage) {
         const message = String(rawMessage || '').trim();
         if (!message || dashboardChat.busy) return;
-        dashboardChat.messages.push({ role: 'user', text: message, source: 'user', actions: [], highlights: [], sections: [], links: [], followUps: [] });
+        pushDashboardChatMessage({ role: 'user', text: message, source: 'user', actions: [], highlights: [], sections: [], links: [], followUps: [] });
         dashboardChat.busy = true;
         dashboardChat.source = 'ready';
         renderDashboardChatChrome();
+        let assistantMessage = null;
         try {
             const reply = await requestDashboardChatReply(message);
             dashboardChat.source = reply.source === 'deepseek' ? 'deepseek' : 'fallback';
-            dashboardChat.messages.push({
+            assistantMessage = {
                 role: 'assistant',
                 text: String(reply.message || '').trim(),
                 source: dashboardChat.source,
@@ -955,12 +1107,16 @@ document.addEventListener('DOMContentLoaded', async () => {
                 sections: Array.isArray(reply.sections) ? reply.sections : [],
                 links: Array.isArray(reply.links) ? reply.links : [],
                 followUps: Array.isArray(reply.follow_ups) ? reply.follow_ups : [],
-                actions: normalizeDashboardChatActions(reply.quick_actions)
-            });
+                actions: normalizeDashboardChatActions(reply.quick_actions),
+                displayText: '',
+                streaming: true,
+                streamFrame: 0
+            };
+            pushDashboardChatMessage(assistantMessage);
         } catch (err) {
             const fallback = buildDashboardChatFallback(message);
             dashboardChat.source = 'fallback';
-            dashboardChat.messages.push({
+            assistantMessage = {
                 role: 'assistant',
                 text: String(fallback.message || '').trim(),
                 source: 'fallback',
@@ -971,12 +1127,16 @@ document.addEventListener('DOMContentLoaded', async () => {
                 sections: Array.isArray(fallback.sections) ? fallback.sections : [],
                 links: Array.isArray(fallback.links) ? fallback.links : [],
                 followUps: Array.isArray(fallback.follow_ups) ? fallback.follow_ups : [],
-                actions: normalizeDashboardChatActions(fallback.quick_actions)
-            });
+                actions: normalizeDashboardChatActions(fallback.quick_actions),
+                displayText: '',
+                streaming: true,
+                streamFrame: 0
+            };
+            pushDashboardChatMessage(assistantMessage);
         } finally {
             dashboardChat.busy = false;
-            if (dashboardChat.messages.length > 18) dashboardChat.messages.splice(0, dashboardChat.messages.length - 18);
             renderDashboardChatChrome();
+            if (assistantMessage?.role === 'assistant') startDashboardChatMessageStream(assistantMessage);
         }
     }
 
@@ -1191,6 +1351,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     function renderAccountProfile() {
+        const practiceHubToggleWrap = document.getElementById('acc-practice-hub-popup-setting');
+        if (practiceHubToggleWrap) {
+            const isOwnAccount = String(profile.id || uid) === String(uid);
+            practiceHubToggleWrap.hidden = !isOwnAccount;
+        }
         setInput('acc-display-name', profile.display_name || 'Unnamed');
         setInput('acc-role', formatRole(profile.role));
         setInput('acc-email', userEmail || '');
@@ -1200,9 +1365,15 @@ document.addEventListener('DOMContentLoaded', async () => {
         selectedAvatarId = normalizeAvatarId(profile.avatar_id);
         renderAccountAvatarPreview();
         renderAccountAvatarPicker();
+        const toggle = document.getElementById('acc-disable-practice-hub-popup');
+        if (toggle) toggle.checked = isPracticeHubAutoOpenDisabled();
     }
 
     renderAccountProfile();
+
+    document.getElementById('acc-disable-practice-hub-popup')?.addEventListener('change', (event) => {
+        setPracticeHubAutoOpenDisabled(!!event.target.checked);
+    });
 
     saveAccountBtn?.addEventListener('click', async () => {
         const nameInput = document.getElementById('acc-display-name');

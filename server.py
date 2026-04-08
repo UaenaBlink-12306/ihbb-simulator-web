@@ -141,6 +141,30 @@ def string_value(value: Any) -> str:
     return ""
 
 
+def deepseek_api_key_ready() -> bool:
+    key = string_value(DEEPSEEK_API_KEY)
+    if not key:
+        return False
+    lowered = key.lower()
+    if key == "sk-...":
+        return False
+    return "replace sk-" not in lowered and "your actual deepseek api key" not in lowered
+
+
+def attach_provider_status(payload: Dict[str, Any], status: str = "", message: str = "") -> Dict[str, Any]:
+    out = dict(payload or {})
+    if status:
+        out["provider_status"] = status
+    if message:
+        out["provider_message"] = message
+        existing_message = string_value(out.get("message"))
+        if existing_message and not existing_message.startswith(message):
+            out["message"] = f"{message} {existing_message}"
+        elif not existing_message:
+            out["message"] = message
+    return out
+
+
 def to_alias_array(value: Any) -> List[str]:
     if isinstance(value, list):
         return list(dict.fromkeys(string_value(v) for v in value if string_value(v)))
@@ -401,24 +425,67 @@ def normalize_coach(raw: Any, payload: Dict[str, Any], correct: bool, reason: st
 
 
 def call_deepseek(messages: List[Dict[str, str]], max_tokens: int = 300, temperature: Optional[float] = 0.0,
-                  model: Optional[str] = None, timeout: int = 30) -> Any:
+                  model: Optional[str] = None, timeout: int = 30, json_output: bool = True) -> Any:
     headers = {
         "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
         "Content-Type": "application/json",
     }
-    body = {
-        "model": model or MODEL,
-        "messages": messages,
-        "response_format": {"type": "json_object"},
-        "max_tokens": max_tokens,
-    }
-    if temperature is not None:
-        body["temperature"] = temperature
-    r = requests.post(DEEPSEEK_URL, headers=headers, json=body, timeout=timeout)
-    r.raise_for_status()
-    data = r.json()
-    content = data["choices"][0]["message"]["content"] if data.get("choices") else ""
-    return parse_json_from_content(content)
+    resolved_model = model or MODEL
+
+    def perform_request(use_json_output: bool) -> Tuple[Any, str, str, str]:
+        body = {
+            "model": resolved_model,
+            "messages": messages,
+            "max_tokens": max_tokens,
+        }
+        if use_json_output:
+            body["response_format"] = {"type": "json_object"}
+        if temperature is not None:
+            body["temperature"] = temperature
+        r = requests.post(DEEPSEEK_URL, headers=headers, json=body, timeout=timeout)
+        r.raise_for_status()
+        data = r.json()
+        choice = data["choices"][0] if data.get("choices") else {}
+        message = choice.get("message", {}) if isinstance(choice, dict) else {}
+        content = string_value(message.get("content"))
+        reasoning_content = string_value(message.get("reasoning_content"))
+        parsed = parse_json_from_content(content)
+        if parsed:
+            return parsed, content, reasoning_content, string_value(choice.get("finish_reason")) or "unknown"
+        if reasoning_content:
+            reasoning_parsed = parse_json_from_content(reasoning_content)
+            if reasoning_parsed:
+                log.warning(
+                    "DeepSeek %s returned usable JSON in reasoning_content; accepting it as a fallback parse.",
+                    resolved_model,
+                )
+                return reasoning_parsed, content, reasoning_content, string_value(choice.get("finish_reason")) or "unknown"
+        return None, content, reasoning_content, string_value(choice.get("finish_reason")) or "unknown"
+
+    parsed, content, reasoning_content, finish_reason = perform_request(json_output)
+    if parsed or not json_output:
+        if not parsed:
+            log.warning(
+                "DeepSeek %s returned empty or unparsable content without response_format (finish_reason=%s).",
+                resolved_model,
+                finish_reason,
+            )
+        return parsed
+    log.warning(
+        "DeepSeek %s returned empty or unparsable JSON output (finish_reason=%s, content_len=%s, reasoning_len=%s); retrying without response_format.",
+        resolved_model,
+        finish_reason,
+        len(content),
+        len(reasoning_content),
+    )
+    parsed, _, _, finish_reason = perform_request(False)
+    if not parsed:
+        log.warning(
+            "DeepSeek %s retry without response_format still did not produce parseable JSON (finish_reason=%s).",
+            resolved_model,
+            finish_reason,
+        )
+    return parsed
 
 
 def grade_with_deepseek(payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -860,6 +927,15 @@ def analytics_insights_with_deepseek(payload: Dict[str, Any]) -> Dict[str, Any]:
             {"role": "system", "content": system},
             {"role": "user", "content": json.dumps(user, ensure_ascii=False)},
         ], max_tokens=720)
+        has_deepseek_insights = isinstance(obj, dict) and any([
+            string_value(obj.get("headline")),
+            string_value(obj.get("overview")),
+            isinstance(obj.get("weak_areas"), list) and len(obj.get("weak_areas")) > 0,
+            isinstance(obj.get("wins"), list) and len(obj.get("wins")) > 0,
+            isinstance(obj.get("next_steps"), list) and len(obj.get("next_steps")) > 0,
+        ])
+        if not has_deepseek_insights:
+            return {"source": "fallback", "insights": fallback}
         return {"source": "deepseek", "insights": normalize_analytics_insights(obj, payload)}
     except requests.exceptions.Timeout as e:
         log.error("DeepSeek analytics timeout: %s", e)
@@ -891,6 +967,18 @@ COACH_CHAT_INTENT_TERMS = (
     "practice", "train", "drill", "session", "review", "setup", "focus",
     "due card", "due now", "assignment",
 )
+COACH_CHAT_COACH_PLANNING_TERMS = (
+    "what should i study", "what should i practice", "what should i review",
+    "what should i work on", "what should i focus on", "what should i do next",
+    "what do i do next", "what next", "next step", "next steps", "next move",
+    "what do you recommend", "what would you recommend", "recommend me",
+    "recommend i", "recommend something", "where should i start",
+    "help me decide", "what should i learn", "what should i train",
+)
+COACH_CHAT_STUDY_VERBS = (
+    "study", "studying", "practice", "review", "work on", "focus on",
+    "train", "drill", "learn", "improve", "prepare",
+)
 COACH_CHAT_KNOWLEDGE_TERMS = (
     "who ", "what ", "when ", "where ", "why ", "how ", "explain", "define",
     "describe", "summarize", "summary", "timeline", "compare", "contrast",
@@ -911,11 +999,23 @@ def normalize_coach_chat_mode(value: Any, default: str = "auto") -> str:
     return mode if mode in COACH_CHAT_ALLOWED_MODES else default
 
 
+def coach_chat_looks_like_coach_planning_intent(message: str) -> bool:
+    if not message:
+        return False
+    if any(term in message for term in COACH_CHAT_COACH_PLANNING_TERMS):
+        return True
+    if "recommend" in message and any(term in message for term in COACH_CHAT_STUDY_VERBS):
+        return True
+    return False
+
+
 def coach_chat_looks_like_coach_intent(message: str) -> bool:
-    return any(term in message for term in COACH_CHAT_INTENT_TERMS)
+    return coach_chat_looks_like_coach_planning_intent(message) or any(term in message for term in COACH_CHAT_INTENT_TERMS)
 
 
 def coach_chat_looks_like_knowledge_intent(message: str) -> bool:
+    if coach_chat_looks_like_coach_planning_intent(message):
+        return False
     return any(term in message for term in COACH_CHAT_KNOWLEDGE_TERMS)
 
 
@@ -1029,6 +1129,8 @@ def extract_coach_chat_topic(payload: Dict[str, Any], context: Optional[Dict[str
     top_title = coach_chat_focus_title((context.get("coach_notebook", {}).get("top_focuses") or [{}])[0])
     if not message:
         return (recent_title or top_title) if resolved_mode == "knowledge" else recent_title
+    if coach_chat_looks_like_coach_planning_intent(normalized):
+        return recent_title or top_title
     if resolved_mode != "knowledge" and coach_chat_looks_like_coach_intent(normalized):
         return recent_title or top_title
 
@@ -1184,11 +1286,11 @@ def fallback_coach_chat(payload: Dict[str, Any]) -> Dict[str, Any]:
             "title": f"Study brief: {topic}" if topic else "Study brief",
             "topic": topic,
             "message": (
-                f"This looks like a knowledge question about {topic}. When DeepSeek is available, I can give a full detailed explanation here. "
-                "Right now I can still structure the topic, point you to the right reference, and suggest the best follow-up questions."
+                f"This looks like a knowledge question about {topic}. DeepSeek did not return a usable knowledge response for this request, so I am showing the built-in study fallback instead. "
+                "I can still structure the topic, point you to the right reference, and suggest the best follow-up questions."
                 if topic else
-                "This looks like a knowledge question. When DeepSeek is available, I can answer it in full detail here. "
-                "Right now I can still frame the topic and point you to the best follow-up prompts."
+                "This looks like a knowledge question. DeepSeek did not return a usable knowledge response for this request, so I am showing the built-in study fallback instead. "
+                "I can still frame the topic and point you to the best follow-up prompts."
             ),
             "highlights": [x for x in [
                 "Knowledge mode",
@@ -1439,6 +1541,11 @@ def normalize_coach_chat_response(raw: Any, payload: Dict[str, Any]) -> Dict[str
             ))
     mode = normalize_coach_chat_mode(obj.get("mode"), "knowledge" if fallback.get("mode") == "knowledge" else "coach")
     topic = string_value(obj.get("topic")) or string_value(fallback.get("topic"))
+    title = string_value(obj.get("title")) or string_value(fallback.get("title"))
+    message = string_value(obj.get("message"))
+    highlights = normalize_coach_chat_highlights(obj.get("highlights")) or fallback.get("highlights", [])
+    sections = normalize_coach_chat_sections(obj.get("sections")) or fallback.get("sections", [])
+    follow_ups = normalize_coach_chat_followups(obj.get("follow_ups")) or fallback.get("follow_ups", [])
     links = normalize_coach_chat_links(obj.get("links"))
     if not links and topic:
         wiki = coach_chat_topic_link(topic)
@@ -1446,24 +1553,38 @@ def normalize_coach_chat_response(raw: Any, payload: Dict[str, Any]) -> Dict[str
             links = [{"label": f"Wikipedia: {topic}", "url": wiki, "kind": "wikipedia"}]
     if not links:
         links = fallback.get("links", [])
+    quick_actions = dedupe_coach_chat_actions(actions or fallback["quick_actions"])
+    has_substantive_content = bool(message or highlights or sections or links or follow_ups or quick_actions)
+    if not has_substantive_content:
+        return fallback
+    if not message:
+        message = (
+            "I put together a structured DeepSeek study brief below."
+            if mode == "knowledge"
+            else "I mapped your DeepSeek study recommendation below."
+        )
     return {
         "source": "deepseek",
         "mode": mode,
-        "title": string_value(obj.get("title")) or string_value(fallback.get("title")),
+        "title": title,
         "topic": topic,
-        "message": string_value(obj.get("message")) or fallback["message"],
-        "highlights": normalize_coach_chat_highlights(obj.get("highlights")) or fallback.get("highlights", []),
-        "sections": normalize_coach_chat_sections(obj.get("sections")) or fallback.get("sections", []),
+        "message": message,
+        "highlights": highlights,
+        "sections": sections,
         "links": links[:4],
-        "follow_ups": normalize_coach_chat_followups(obj.get("follow_ups")) or fallback.get("follow_ups", []),
-        "quick_actions": dedupe_coach_chat_actions(actions or fallback["quick_actions"]),
+        "follow_ups": follow_ups,
+        "quick_actions": quick_actions,
     }
 
 
 def coach_chat_with_deepseek(payload: Dict[str, Any]) -> Dict[str, Any]:
     fallback = fallback_coach_chat(payload)
-    if not DEEPSEEK_API_KEY:
-        return fallback
+    if not deepseek_api_key_ready():
+        return attach_provider_status(
+            fallback,
+            "not_configured",
+            "DeepSeek is not configured. Replace the placeholder DEEPSEEK_API_KEY with a valid key.",
+        )
 
     context = normalize_coach_chat_context(payload)
     resolved_mode = resolve_coach_chat_mode(payload, context)
@@ -1585,10 +1706,26 @@ def coach_chat_with_deepseek(payload: Dict[str, Any]) -> Dict[str, Any]:
         return normalize_coach_chat_response(obj, payload)
     except requests.exceptions.Timeout as e:
         log.error("DeepSeek coach chat timeout: %s", e)
+        return attach_provider_status(
+            fallback,
+            "timeout",
+            "DeepSeek timed out, so the built-in coach fallback was used.",
+        )
     except requests.exceptions.ConnectionError as e:
         log.error("DeepSeek coach chat connection error: %s", e)
+        return attach_provider_status(
+            fallback,
+            "connection_error",
+            "DeepSeek could not be reached, so the built-in coach fallback was used.",
+        )
     except requests.exceptions.HTTPError as e:
         log.error("DeepSeek coach chat HTTP error: %s, response: %s", e, getattr(e.response, "text", ""))
+        if getattr(e.response, "status_code", None) in (401, 403):
+            return attach_provider_status(
+                fallback,
+                "auth_error",
+                "DeepSeek authentication failed. Update DEEPSEEK_API_KEY with a valid key.",
+            )
     except Exception as e:
         log.exception("DeepSeek coach chat unexpected error: %s", e)
     if thinking_enabled:
@@ -1602,9 +1739,19 @@ def coach_chat_with_deepseek(payload: Dict[str, Any]) -> Dict[str, Any]:
             log.error("DeepSeek chat fallback connection error after reasoner failure: %s", e)
         except requests.exceptions.HTTPError as e:
             log.error("DeepSeek chat fallback HTTP error after reasoner failure: %s, response: %s", e, getattr(e.response, "text", ""))
+            if getattr(e.response, "status_code", None) in (401, 403):
+                return attach_provider_status(
+                    fallback,
+                    "auth_error",
+                    "DeepSeek authentication failed. Update DEEPSEEK_API_KEY with a valid key.",
+                )
         except Exception as e:
             log.exception("DeepSeek chat fallback unexpected error after reasoner failure: %s", e)
-    return fallback
+    return attach_provider_status(
+        fallback,
+        "fallback_used",
+        "DeepSeek did not return a usable coach response, so the built-in fallback was used.",
+    )
 
 
 def generate_questions_with_deepseek(payload: Dict[str, Any]) -> Dict[str, Any]:
