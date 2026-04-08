@@ -65,7 +65,7 @@
             <button class="dash-tab" data-tab="assignments">Assignments</button>
             <button class="dash-tab" data-tab="create">Create Assignment</button>
             <button class="dash-tab" data-tab="livebee">Live Bee</button>
-            <button class="dash-tab" data-tab="leaderboard">Leaderboard</button>
+            <button class="dash-tab" data-tab="analytics">Analytics</button>
             <button class="dash-tab" data-tab="account">Account</button>
         </nav>
 
@@ -269,13 +269,64 @@
             </div>
         </section>
 
-        <section id="tab-leaderboard" class="view">
+        <section id="tab-analytics" class="view">
             <div class="card section-card">
-                <div class="coming-soon">
-                    <div class="cs-icon">Rank</div>
-                    <h2>Class Leaderboards</h2>
-                    <p class="cs-desc">Ranking view not active yet.</p>
-                    <div class="cs-badge">Coming soon</div>
+                <div class="section-head">
+                    <div>
+                        <h2 class="card-title">Class Analytics</h2>
+                        <p class="section-subtitle">Whole-class averages from rosters, submissions, drill sessions, wrong-bank rows, and coach attempts.</p>
+                    </div>
+                    <div class="input-group" style="margin: 0; min-width: 260px;">
+                        <label for="analytics-class-select">Focus class</label>
+                        <select id="analytics-class-select"></select>
+                    </div>
+                </div>
+
+                <div class="hero-metrics">
+                    <div class="metric-card">
+                        <div class="metric-label">Students</div>
+                        <div id="teacher-analytics-students" class="metric-value">0</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-label">Avg score</div>
+                        <div id="teacher-analytics-score" class="metric-value">0%</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-label">Completion</div>
+                        <div id="teacher-analytics-completion" class="metric-value">0%</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-label">Practice sessions</div>
+                        <div id="teacher-analytics-sessions" class="metric-value">0</div>
+                    </div>
+                </div>
+
+                <div class="dashboard-split">
+                    <div class="panel-stack">
+                        <div class="card-muted-box">
+                            <div class="eyebrow">Selected class</div>
+                            <h3 id="analytics-class-title" style="margin: 8px 0 6px;">Loading...</h3>
+                            <p id="analytics-class-summary" class="muted" style="margin: 0;">Choose a class to inspect the averages.</p>
+                            <div id="analytics-class-summary-list" class="summary-list" style="margin-top: 14px;"></div>
+                        </div>
+                        <div class="card-muted-box">
+                            <div class="eyebrow">Top students</div>
+                            <div id="analytics-top-students" class="list-container" style="margin-top: 14px;"></div>
+                        </div>
+                        <div class="card-muted-box">
+                            <div class="eyebrow">Needs attention</div>
+                            <div id="analytics-watch-students" class="list-container" style="margin-top: 14px;"></div>
+                        </div>
+                    </div>
+
+                    <div class="panel-stack">
+                        <div class="card-muted-box">
+                            <div class="eyebrow">All classes</div>
+                            <div id="analytics-class-list" class="list-container" style="margin-top: 14px;">
+                                <p class="muted">Loading class analytics...</p>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </section>

@@ -184,6 +184,491 @@ document.addEventListener('DOMContentLoaded', async () => {
             <p class="empty-copy">${esc(copy)}</p>
         </div>
     `;
+    const teacherAnalyticsState = {
+        loading: false,
+        error: '',
+        selectedClassId: '',
+        classes: [],
+        byClassId: new Map(),
+        totals: null
+    };
+    let teacherAnalyticsLoadVersion = 0;
+    const toNum = (value, fallback = 0) => {
+        const n = Number(value);
+        return Number.isFinite(n) ? n : fallback;
+    };
+    const toTs = (value) => {
+        if (value === null || value === undefined || value === '') return 0;
+        const n = Number(value);
+        if (Number.isFinite(n) && n > 0) return n;
+        const parsed = Date.parse(String(value));
+        return Number.isFinite(parsed) ? parsed : 0;
+    };
+    const formatPct = (value, digits = 0) => {
+        if (value === null || value === undefined || value === '') return '—';
+        const n = Number(value);
+        return Number.isFinite(n) ? `${n.toFixed(digits)}%` : '—';
+    };
+    const formatCount = (value, label) => `${value} ${label}${value === 1 ? '' : 's'}`;
+    const sumBy = (list, getter) => (list || []).reduce((total, item) => total + toNum(getter(item), 0), 0);
+    const uniqueValues = (list) => [...new Set((list || []).filter(Boolean))];
+    const groupBy = (list, getter) => {
+        const map = new Map();
+        (list || []).forEach((item) => {
+            const key = getter(item);
+            if (!map.has(key)) map.set(key, []);
+            map.get(key).push(item);
+        });
+        return map;
+    };
+    const renderStudentList = (containerId, rows, emptyCopy) => {
+        const el = document.getElementById(containerId);
+        if (!el) return;
+        if (!rows || !rows.length) {
+            el.innerHTML = `<p class="muted">${esc(emptyCopy)}</p>`;
+            return;
+        }
+        el.innerHTML = rows.map((row) => {
+            const score = Number.isFinite(row.avgAssignmentScore) ? `${row.avgAssignmentScore}%` : '—';
+            const scoreClass = Number.isFinite(row.avgAssignmentScore)
+                ? (row.avgAssignmentScore >= 80 ? 'good' : (row.avgAssignmentScore < 65 ? 'bad' : ''))
+                : '';
+            const detailBits = [
+                row.submissionCount ? `${formatCount(row.submissionCount, 'submission')}` : 'No submissions yet',
+                Number.isFinite(row.completionRate) ? `${row.completionRate}% completion` : 'No assignment completion yet',
+                row.sessionCount ? `${formatCount(row.sessionCount, 'session')}` : 'No sessions yet',
+                row.wrongCount ? `${formatCount(row.wrongCount, 'wrong-bank row')}` : 'No wrong-bank rows',
+                row.coachCount ? `${formatCount(row.coachCount, 'coach attempt')}` : 'No coach attempts'
+            ];
+            return `
+                <div class="list-item">
+                    ${userAvatarHtml(row.avatarId || '', row.name || 'Unnamed')}
+                    <div class="item-copy">
+                        <span class="item-title">${esc(row.name || 'Unnamed')}</span>
+                        <span class="item-meta">${esc(detailBits.join(' • '))}</span>
+                    </div>
+                    <span class="item-score ${scoreClass}">${esc(score)}</span>
+                </div>
+            `;
+        }).join('');
+        hydrateAvatarImages(el);
+    };
+    const buildClassSummaryList = (stats) => {
+        if (!stats) {
+            return `
+                <div class="summary-item">
+                    <span>Roster</span>
+                    <strong>Select a class to view the numbers.</strong>
+                </div>
+            `;
+        }
+        const score = Number.isFinite(stats.avgAssignmentScore) ? `${stats.avgAssignmentScore}% avg score` : 'No scored submissions yet';
+        const completion = Number.isFinite(stats.completionRate) ? `${stats.completionRate}% completion` : 'No assignment submissions yet';
+        const activity = `${stats.activeStudentCount}/${stats.studentCount} active students`;
+        const practice = `${formatCount(stats.sessionCount, 'practice session')}${stats.avgSessionAccuracy !== null ? ` • ${stats.avgSessionAccuracy}% session accuracy` : ''}`;
+        return `
+            <div class="summary-item">
+                <span>Roster</span>
+                <strong>${esc(formatCount(stats.studentCount, 'student'))} across ${formatCount(stats.assignmentCount, 'assignment')}</strong>
+            </div>
+            <div class="summary-item">
+                <span>Submissions</span>
+                <strong>${esc(score)} • ${esc(completion)}</strong>
+            </div>
+            <div class="summary-item">
+                <span>Practice</span>
+                <strong>${esc(practice)}</strong>
+            </div>
+            <div class="summary-item">
+                <span>Engagement</span>
+                <strong>${esc(activity)} • ${formatCount(stats.wrongCount, 'wrong-bank row')} • ${formatCount(stats.coachCount, 'coach attempt')}</strong>
+            </div>
+        `;
+    };
+    const buildClassMetaLine = (stats) => {
+        if (!stats) return 'Invite code ready to share with the next roster.';
+        const parts = [
+            formatCount(stats.studentCount, 'student'),
+            formatCount(stats.assignmentCount, 'assignment')
+        ];
+        if (Number.isFinite(stats.avgAssignmentScore)) parts.push(`${stats.avgAssignmentScore}% avg score`);
+        if (Number.isFinite(stats.completionRate)) parts.push(`${stats.completionRate}% completion`);
+        return parts.join(' • ');
+    };
+    const selectAnalyticsClass = (classId) => {
+        const nextId = String(classId || '').trim();
+        if (nextId) teacherAnalyticsState.selectedClassId = nextId;
+        renderTeacherAnalytics();
+    };
+    window.selectAnalyticsClass = selectAnalyticsClass;
+    window.openClassAnalytics = (classId) => {
+        selectAnalyticsClass(classId);
+        document.querySelector('[data-tab="analytics"]')?.click();
+    };
+    function normalizeTeacherAnalyticsClassRows(classRows, rosterRows, assignmentRows, submissionRows, sessionRows, wrongRows, coachRows, profileRows) {
+        const rosterByClass = groupBy(rosterRows, row => String(row.class_id || ''));
+        const assignmentsByClass = groupBy(assignmentRows, row => String(row.class_id || ''));
+        const submissionsByAssignment = groupBy(submissionRows, row => String(row.assignment_id || ''));
+        const sessionsByStudent = groupBy(sessionRows, row => String(row.user_id || ''));
+        const wrongByStudent = groupBy(wrongRows, row => String(row.user_id || ''));
+        const coachByStudent = groupBy(coachRows, row => String(row.user_id || ''));
+        const profileById = new Map((profileRows || []).map((row) => [String(row.id || ''), row]));
+
+        const classStats = (classRows || []).map((classRow) => {
+            const classId = String(classRow.id || '');
+            const roster = rosterByClass.get(classId) || [];
+            const assignmentList = assignmentsByClass.get(classId) || [];
+            const submissions = assignmentList.length
+                ? assignmentList.flatMap((assignment) => submissionsByAssignment.get(String(assignment.id || '')) || [])
+                : [];
+            const submissionsByStudent = groupBy(submissions, row => String(row.student_id || ''));
+            const studentIds = uniqueValues(roster.map((row) => String(row.student_id || '')).filter(Boolean));
+            const assignmentCount = assignmentList.length;
+            const studentRows = studentIds.map((studentId) => {
+                const profile = profileById.get(studentId) || {};
+                const studentSubmissions = submissionsByStudent.get(studentId) || [];
+                const studentSessions = sessionsByStudent.get(studentId) || [];
+                const studentWrong = wrongByStudent.get(studentId) || [];
+                const studentCoach = coachByStudent.get(studentId) || [];
+                const submissionCorrect = sumBy(studentSubmissions, row => row.correct);
+                const submissionTotal = sumBy(studentSubmissions, row => row.total);
+                const sessionCorrect = sumBy(studentSessions, row => row.correct);
+                const sessionTotal = sumBy(studentSessions, row => row.total);
+                const completionRate = assignmentCount
+                    ? Math.round((studentSubmissions.length / assignmentCount) * 100)
+                    : null;
+                const lastActivity = Math.max(
+                    ...studentSubmissions.map(row => toTs(row.submitted_at || row.created_at)),
+                    ...studentSessions.map(row => toTs(row.ts || row.created_at)),
+                    ...studentWrong.map(row => toTs(row.created_at)),
+                    ...studentCoach.map(row => toTs(row.created_at)),
+                    0
+                );
+                return {
+                    id: studentId,
+                    name: String(profile.display_name || 'Unnamed'),
+                    avatarId: normalizeAvatarId(profile.avatar_id),
+                    submissionCount: studentSubmissions.length,
+                    completionRate,
+                    avgAssignmentScore: submissionTotal > 0 ? Math.round((submissionCorrect / submissionTotal) * 100) : null,
+                    sessionCount: studentSessions.length,
+                    avgSessionAccuracy: sessionTotal > 0 ? Math.round((sessionCorrect / sessionTotal) * 100) : null,
+                    wrongCount: studentWrong.length,
+                    coachCount: studentCoach.length,
+                    lastActivity,
+                    engagementScore: studentSubmissions.length * 3 + studentSessions.length * 2 + studentWrong.length + studentCoach.length
+                };
+            }).sort((a, b) => {
+                const aScore = Number.isFinite(a.avgAssignmentScore) ? a.avgAssignmentScore : -1;
+                const bScore = Number.isFinite(b.avgAssignmentScore) ? b.avgAssignmentScore : -1;
+                if (bScore !== aScore) return bScore - aScore;
+                const aCompletion = Number.isFinite(a.completionRate) ? a.completionRate : -1;
+                const bCompletion = Number.isFinite(b.completionRate) ? b.completionRate : -1;
+                if (bCompletion !== aCompletion) return bCompletion - aCompletion;
+                if (b.engagementScore !== a.engagementScore) return b.engagementScore - a.engagementScore;
+                return a.name.localeCompare(b.name);
+            });
+
+            const submissionCount = submissions.length;
+            const totalCorrect = sumBy(submissions, row => row.correct);
+            const totalPossible = sumBy(submissions, row => row.total);
+            const studentCount = studentIds.length;
+            const completionRate = studentCount && assignmentCount
+                ? Math.round((submissionCount / (studentCount * assignmentCount)) * 100)
+                : null;
+            const avgAssignmentScore = totalPossible > 0 ? Math.round((totalCorrect / totalPossible) * 100) : null;
+            const sessionCount = sumBy(studentRows, row => row.sessionCount);
+            const sessionRowsForClass = studentIds.flatMap(studentId => sessionsByStudent.get(studentId) || []);
+            const sessionAttempts = sumBy(sessionRowsForClass, row => row.total);
+            const sessionCorrectTotal = sumBy(sessionRowsForClass, row => row.correct);
+            const avgSessionAccuracy = sessionAttempts > 0 ? Math.round((sessionCorrectTotal / sessionAttempts) * 100) : null;
+            const wrongCount = studentIds.reduce((total, studentId) => total + (wrongByStudent.get(studentId) || []).length, 0);
+            const coachCount = studentIds.reduce((total, studentId) => total + (coachByStudent.get(studentId) || []).length, 0);
+            const activeStudentCount = studentRows.filter((row) => row.engagementScore > 0).length;
+            const lastActivity = Math.max(
+                toTs(classRow.created_at),
+                ...roster.map(row => toTs(row.joined_at)),
+                ...submissions.map(row => toTs(row.submitted_at || row.created_at)),
+                ...sessionRowsForClass.map(row => toTs(row.ts || row.created_at)),
+                0
+            );
+            const topStudents = studentRows.slice().sort((a, b) => {
+                const aScore = Number.isFinite(a.avgAssignmentScore) ? a.avgAssignmentScore : -1;
+                const bScore = Number.isFinite(b.avgAssignmentScore) ? b.avgAssignmentScore : -1;
+                if (aScore === -1 && bScore === -1) {
+                    if (b.engagementScore !== a.engagementScore) return b.engagementScore - a.engagementScore;
+                } else if (bScore !== aScore) {
+                    return bScore - aScore;
+                }
+                const aCompletion = Number.isFinite(a.completionRate) ? a.completionRate : -1;
+                const bCompletion = Number.isFinite(b.completionRate) ? b.completionRate : -1;
+                if (bCompletion !== aCompletion) return bCompletion - aCompletion;
+                if (b.engagementScore !== a.engagementScore) return b.engagementScore - a.engagementScore;
+                return a.name.localeCompare(b.name);
+            }).slice(0, 3);
+            const watchStudents = studentRows.slice().sort((a, b) => {
+                const aScore = Number.isFinite(a.avgAssignmentScore) ? a.avgAssignmentScore : 101;
+                const bScore = Number.isFinite(b.avgAssignmentScore) ? b.avgAssignmentScore : 101;
+                if (aScore !== bScore) return aScore - bScore;
+                const aCompletion = Number.isFinite(a.completionRate) ? a.completionRate : 101;
+                const bCompletion = Number.isFinite(b.completionRate) ? b.completionRate : 101;
+                if (aCompletion !== bCompletion) return aCompletion - bCompletion;
+                if (a.engagementScore !== b.engagementScore) return a.engagementScore - b.engagementScore;
+                return a.name.localeCompare(b.name);
+            }).filter((row) => row.avgAssignmentScore === null || row.avgAssignmentScore < 70 || row.engagementScore === 0 || row.completionRate === 0)
+                .filter((row) => !topStudents.some((top) => top.id === row.id))
+                .slice(0, 3);
+
+            return {
+                id: classId,
+                name: String(classRow.name || 'Unnamed Class'),
+                code: String(classRow.code || ''),
+                createdAt: classRow.created_at || '',
+                studentCount,
+                assignmentCount,
+                submissionCount,
+                completionRate,
+                avgAssignmentScore,
+                sessionCount,
+                avgSessionAccuracy,
+                wrongCount,
+                coachCount,
+                activeStudentCount,
+                lastActivity,
+                students: studentRows,
+                topStudents,
+                watchStudents
+            };
+        }).sort((a, b) => {
+            const aScore = Number.isFinite(a.avgAssignmentScore) ? a.avgAssignmentScore : -1;
+            const bScore = Number.isFinite(b.avgAssignmentScore) ? b.avgAssignmentScore : -1;
+            if (bScore !== aScore) return bScore - aScore;
+            if (b.studentCount !== a.studentCount) return b.studentCount - a.studentCount;
+            return a.name.localeCompare(b.name);
+        });
+
+        const uniqueStudents = uniqueValues((rosterRows || []).map(row => String(row.student_id || '')));
+        const totalSubmissions = sumBy(submissionRows, row => 1);
+        const totalCorrect = sumBy(submissionRows, row => row.correct);
+        const totalPossible = sumBy(submissionRows, row => row.total);
+        const totalSessions = sumBy(sessionRows, row => 1);
+        const totalSessionCorrect = sumBy(sessionRows, row => row.correct);
+        const totalSessionAttempts = sumBy(sessionRows, row => row.total);
+        const totalWrong = sumBy(wrongRows, row => 1);
+        const totalCoach = sumBy(coachRows, row => 1);
+        const totalClasses = classStats.length;
+        const totalExpectedSubmissions = sumBy(classStats, row => row.studentCount * row.assignmentCount);
+        const overallCompletion = totalExpectedSubmissions
+            ? Math.round((totalSubmissions / totalExpectedSubmissions) * 100)
+            : null;
+
+        return {
+            classes: classStats,
+            selectedClassId: classStats[0]?.id || '',
+            byClassId: new Map(classStats.map((row) => [row.id, row])),
+            totals: {
+                classCount: totalClasses,
+                studentCount: uniqueStudents.length,
+                avgAssignmentScore: totalPossible > 0 ? Math.round((totalCorrect / totalPossible) * 100) : null,
+                completionRate: overallCompletion,
+                sessionCount: totalSessions,
+                avgSessionAccuracy: totalSessionAttempts > 0 ? Math.round((totalSessionCorrect / totalSessionAttempts) * 100) : null,
+                wrongCount: totalWrong,
+                coachCount: totalCoach
+            }
+        };
+    }
+    function renderTeacherAnalytics() {
+        const classSelect = document.getElementById('analytics-class-select');
+        const classList = document.getElementById('analytics-class-list');
+        const titleEl = document.getElementById('analytics-class-title');
+        const summaryEl = document.getElementById('analytics-class-summary');
+        const summaryListEl = document.getElementById('analytics-class-summary-list');
+        const topEl = document.getElementById('analytics-top-students');
+        const watchEl = document.getElementById('analytics-watch-students');
+        const selectedId = teacherAnalyticsState.selectedClassId || teacherAnalyticsState.classes[0]?.id || '';
+        const selected = selectedId ? teacherAnalyticsState.byClassId.get(selectedId) : null;
+        const classes = teacherAnalyticsState.classes || [];
+
+        if (classSelect) {
+            classSelect.innerHTML = classes.length
+                ? classes.map((item) => `<option value="${esc(item.id)}">${esc(item.name)} (${esc(item.code || 'no code')})</option>`).join('')
+                : '<option value="">Create a class first</option>';
+            classSelect.disabled = teacherAnalyticsState.loading || !classes.length;
+            if (selected?.id) classSelect.value = selected.id;
+        }
+
+        if (!classes.length) {
+            setMetric('teacher-analytics-students', 0);
+            setMetric('teacher-analytics-score', '—');
+            setMetric('teacher-analytics-completion', '—');
+            setMetric('teacher-analytics-sessions', 0);
+            if (titleEl) titleEl.textContent = teacherAnalyticsState.loading ? 'Loading class analytics...' : 'No classes yet';
+            if (summaryEl) summaryEl.textContent = teacherAnalyticsState.loading
+                ? 'Building a class-level snapshot from your rosters and submissions.'
+                : 'Create a class to see average scores, completion, and engagement for the roster.';
+            if (summaryListEl) summaryListEl.innerHTML = '';
+            if (topEl) topEl.innerHTML = `<p class="muted">${esc(teacherAnalyticsState.loading ? 'Loading class analytics...' : 'No class analytics yet.')}</p>`;
+            if (watchEl) watchEl.innerHTML = `<p class="muted">${esc(teacherAnalyticsState.loading ? 'Loading class analytics...' : 'No class analytics yet.')}</p>`;
+            if (classList) classList.innerHTML = `<p class="muted">${esc(teacherAnalyticsState.loading ? 'Loading class analytics...' : 'Create a class to see the whole-class breakdown.')}</p>`;
+            return;
+        }
+
+        if (!selected) {
+            teacherAnalyticsState.selectedClassId = classes[0].id;
+            return renderTeacherAnalytics();
+        }
+
+        const totals = teacherAnalyticsState.totals || {};
+        setMetric('teacher-analytics-students', totals.studentCount || 0);
+        setMetric('teacher-analytics-score', formatPct(totals.avgAssignmentScore));
+        setMetric('teacher-analytics-completion', formatPct(totals.completionRate));
+        setMetric('teacher-analytics-sessions', totals.sessionCount || 0);
+
+        if (titleEl) titleEl.textContent = `${selected.name}${selected.code ? ` (${selected.code})` : ''}`;
+        if (summaryEl) {
+            const errorNote = teacherAnalyticsState.error ? ` Analytics refresh note: ${teacherAnalyticsState.error}` : '';
+            const latest = selected.lastActivity ? ` Last activity ${new Date(selected.lastActivity).toLocaleString()}.` : '';
+            const avgScore = Number.isFinite(selected.avgAssignmentScore) ? ` The class is averaging ${selected.avgAssignmentScore}% on submitted work.` : ' There are no scored submissions yet.';
+            const completion = Number.isFinite(selected.completionRate) ? ` Submission completion is ${selected.completionRate}%.` : ' Submission completion is not available yet.';
+            summaryEl.textContent = `${formatCount(selected.studentCount, 'student')} across ${formatCount(selected.assignmentCount, 'assignment')}.${avgScore}${completion}${latest}${errorNote}`;
+        }
+        if (summaryListEl) summaryListEl.innerHTML = buildClassSummaryList(selected);
+        renderStudentList('analytics-top-students', selected.topStudents, 'No top students yet.');
+        renderStudentList('analytics-watch-students', selected.watchStudents, 'No students need attention yet.');
+        if (classList) {
+            classList.innerHTML = classes.map((item) => {
+                const active = item.id === selected.id;
+                const score = Number.isFinite(item.avgAssignmentScore) ? `${item.avgAssignmentScore}%` : '—';
+                const completion = Number.isFinite(item.completionRate) ? `${item.completionRate}% completion` : 'No completion yet';
+                const meta = buildClassMetaLine(item);
+                return `
+                    <div class="list-item" style="${active ? 'border-color: rgba(96,165,250,0.55); background: rgba(96,165,250,0.08);' : ''}">
+                        <div class="item-copy">
+                            <span class="item-title">${esc(item.name)}</span>
+                            <span class="item-meta">${esc(meta)} • ${esc(completion)}</span>
+                        </div>
+                        <span class="item-badge">${esc(item.code || 'No code')}</span>
+                        <span class="item-score ${Number.isFinite(item.avgAssignmentScore) ? (item.avgAssignmentScore >= 80 ? 'good' : (item.avgAssignmentScore < 65 ? 'bad' : '')) : ''}">${esc(score)}</span>
+                        <div class="item-actions">
+                            <button class="btn ghost" type="button" data-analytics-class-id="${esc(item.id)}">View class</button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+    }
+    async function loadTeacherAnalytics() {
+        const version = ++teacherAnalyticsLoadVersion;
+        teacherAnalyticsState.loading = true;
+        teacherAnalyticsState.error = '';
+        renderTeacherAnalytics();
+        if (!myClasses.length) {
+            teacherAnalyticsState.loading = false;
+            teacherAnalyticsState.classes = [];
+            teacherAnalyticsState.byClassId = new Map();
+            teacherAnalyticsState.totals = null;
+            renderTeacherAnalytics();
+            return;
+        }
+
+        try {
+            const classIds = myClasses.map((row) => String(row.id || '')).filter(Boolean);
+            const [rosterRes, assignmentRes] = await Promise.all([
+                classIds.length
+                    ? sb.from('class_students').select('class_id, student_id, joined_at').in('class_id', classIds)
+                    : Promise.resolve({ data: [] }),
+                classIds.length
+                    ? sb.from('assignments').select('id, class_id, title, created_at').in('class_id', classIds)
+                    : Promise.resolve({ data: [] })
+            ]);
+            if (version !== teacherAnalyticsLoadVersion) return;
+            const rosterRows = rosterRes.data || [];
+            const assignmentRows = assignmentRes.data || [];
+            const studentIds = uniqueValues(rosterRows.map((row) => String(row.student_id || '')));
+            const assignmentIds = uniqueValues(assignmentRows.map((row) => String(row.id || '')));
+            const [profileRes, submissionRes, sessionRes, wrongRes, coachRes] = await Promise.all([
+                studentIds.length
+                    ? sb.from('profiles').select('id, display_name, avatar_id').in('id', studentIds)
+                    : Promise.resolve({ data: [] }),
+                assignmentIds.length
+                    ? sb.from('assignment_submissions').select('assignment_id, student_id, correct, total, submitted_at, created_at').in('assignment_id', assignmentIds)
+                    : Promise.resolve({ data: [] }),
+                studentIds.length
+                    ? sb.from('user_drill_sessions').select('user_id, total, correct, dur, ts, created_at').in('user_id', studentIds)
+                    : Promise.resolve({ data: [] }),
+                studentIds.length
+                    ? sb.from('user_wrong_questions').select('user_id, created_at').in('user_id', studentIds)
+                    : Promise.resolve({ data: [] }),
+                studentIds.length
+                    ? sb.from('user_coach_attempts').select('user_id, created_at').in('user_id', studentIds)
+                    : Promise.resolve({ data: [] })
+            ]);
+            if (version !== teacherAnalyticsLoadVersion) return;
+            const analytics = normalizeTeacherAnalyticsClassRows(
+                myClasses,
+                rosterRows,
+                assignmentRows,
+                submissionRes.data || [],
+                sessionRes.data || [],
+                wrongRes.data || [],
+                coachRes.data || [],
+                profileRes.data || []
+            );
+            if (version !== teacherAnalyticsLoadVersion) return;
+            teacherAnalyticsState.loading = false;
+            teacherAnalyticsState.error = '';
+            teacherAnalyticsState.classes = analytics.classes;
+            teacherAnalyticsState.byClassId = analytics.byClassId;
+            teacherAnalyticsState.totals = analytics.totals;
+            teacherAnalyticsState.selectedClassId = teacherAnalyticsState.selectedClassId && analytics.byClassId.has(teacherAnalyticsState.selectedClassId)
+                ? teacherAnalyticsState.selectedClassId
+                : analytics.selectedClassId;
+            renderTeacherAnalytics();
+            renderClasses();
+        } catch (err) {
+            if (version !== teacherAnalyticsLoadVersion) return;
+            console.warn('[Teacher Analytics] unavailable', err);
+            teacherAnalyticsState.loading = false;
+            teacherAnalyticsState.error = err?.message || 'Class analytics could not be loaded.';
+            teacherAnalyticsState.classes = myClasses.map((row) => ({
+                id: String(row.id || ''),
+                name: String(row.name || 'Unnamed Class'),
+                code: String(row.code || ''),
+                createdAt: row.created_at || '',
+                studentCount: 0,
+                assignmentCount: 0,
+                submissionCount: 0,
+                completionRate: null,
+                avgAssignmentScore: null,
+                sessionCount: 0,
+                avgSessionAccuracy: null,
+                wrongCount: 0,
+                coachCount: 0,
+                activeStudentCount: 0,
+                lastActivity: 0,
+                students: [],
+                topStudents: [],
+                watchStudents: []
+            }));
+            teacherAnalyticsState.byClassId = new Map(teacherAnalyticsState.classes.map((row) => [row.id, row]));
+            teacherAnalyticsState.totals = {
+                classCount: myClasses.length,
+                studentCount: 0,
+                avgAssignmentScore: null,
+                completionRate: null,
+                sessionCount: 0,
+                avgSessionAccuracy: null,
+                wrongCount: 0,
+                coachCount: 0
+            };
+            teacherAnalyticsState.selectedClassId = teacherAnalyticsState.selectedClassId && teacherAnalyticsState.byClassId.has(teacherAnalyticsState.selectedClassId)
+                ? teacherAnalyticsState.selectedClassId
+                : teacherAnalyticsState.classes[0]?.id || '';
+            renderTeacherAnalytics();
+            renderClasses();
+        }
+    }
 
     // Load questions from questions.json
     try {
@@ -412,6 +897,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         myClasses = data || [];
         renderClasses();
         populateClassDropdown();
+        void loadTeacherAnalytics();
     }
 
     function renderClasses() {
@@ -425,12 +911,13 @@ document.addEventListener('DOMContentLoaded', async () => {
             <div class="list-item">
                 <div class="item-copy">
                     <span class="item-title">${esc(c.name)}</span>
-                    <span class="item-meta">Invite code ready to share with the next roster.</span>
+                    <span class="item-meta">${esc(buildClassMetaLine(teacherAnalyticsState.byClassId.get(String(c.id || ''))))}</span>
                 </div>
                 <span class="item-badge">${c.code}</span>
                 <div class="item-actions">
                     <button class="btn ghost" onclick="copyCode('${c.code}')">Copy Code</button>
                     <button class="btn ghost" onclick="viewStudents('${c.id}')">Students</button>
+                    <button class="btn ghost" onclick="openClassAnalytics('${c.id}')">Analytics</button>
                     <button class="btn bad" onclick="deleteClass('${c.id}')">Delete</button>
                 </div>
             </div>
@@ -485,6 +972,15 @@ document.addEventListener('DOMContentLoaded', async () => {
         loadClasses(); loadAssignments();
     };
 
+    document.getElementById('analytics-class-select')?.addEventListener('change', (event) => {
+        selectAnalyticsClass(event.target.value);
+    });
+    document.getElementById('analytics-class-list')?.addEventListener('click', (event) => {
+        const button = event.target.closest('[data-analytics-class-id]');
+        if (!button) return;
+        selectAnalyticsClass(button.dataset.analyticsClassId);
+    });
+
     document.getElementById('btn-new-class').addEventListener('click', () => {
         document.getElementById('new-class-form').classList.remove('hidden');
     });
@@ -514,6 +1010,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     async function loadAssignments() {
         const { data } = await sb.from('assignments').select('*, classes(name, code)').eq('teacher_id', uid).order('created_at', { ascending: false });
         renderAssignments(data || []);
+        void loadTeacherAnalytics();
     }
 
     function renderAssignments(list) {
