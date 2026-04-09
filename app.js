@@ -936,6 +936,20 @@ function hasCoachChatUserQuestion() {
   return CoachChat.messages.some(message => String(message?.role || '').trim() === 'user');
 }
 
+function coachChatInputHasDraft() {
+  return !!String($('coach-chat-input')?.value || '').trim();
+}
+
+function shouldShowCoachChatStarters() {
+  return !hasCoachChatUserQuestion() && !coachChatInputHasDraft();
+}
+
+function syncCoachChatStarterVisibility() {
+  const block = $('coach-chat-starters')?.closest('.coach-chat-starter-block');
+  if (!block) return;
+  block.hidden = !shouldShowCoachChatStarters();
+}
+
 function limitCoachChatStarters(list = []) {
   return list.slice(0, isCoachChatPristine() ? 2 : 3);
 }
@@ -982,11 +996,6 @@ function buildCoachChatStarters(snapshot = buildCoachChatStudyContext()) {
 function renderCoachChatStarters(snapshot) {
   const startersEl = $('coach-chat-starters');
   if (!startersEl) return;
-  if (hasCoachChatUserQuestion()) {
-    CoachChat.currentStarters = [];
-    startersEl.innerHTML = '';
-    return;
-  }
   CoachChat.currentStarters = buildCoachChatStarters(snapshot);
   startersEl.innerHTML = CoachChat.currentStarters.map((starter, index) => `
     <button class="coach-chat-starter" type="button" data-starter-index="${index}">
@@ -994,6 +1003,7 @@ function renderCoachChatStarters(snapshot) {
       <span class="coach-chat-starter-text">${escHtml(starter.prompt || '')}</span>
     </button>
   `).join('');
+  syncCoachChatStarterVisibility();
 }
 
 function renderCoachChatWorkspace(snapshot) {
@@ -4710,6 +4720,7 @@ $('coach-chat-form')?.addEventListener('submit', (e) => {
   if (input) input.value = '';
   void sendCoachChatMessage(message);
 });
+$('coach-chat-input')?.addEventListener('input', syncCoachChatStarterVisibility);
 $('coach-chat-workspace')?.addEventListener('click', (e) => {
   const button = e.target.closest('.coach-chat-workspace-card');
   if (!button) return;

@@ -561,7 +561,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
         return prompt || recentTitle || topFocusTitle;
     }
-
     function dashboardChatWikiLink(topic = '') {
         const clean = String(topic || '').trim().replace(/[?.!]+$/g, '');
         return clean ? `https://en.wikipedia.org/wiki/${encodeURIComponent(clean.replace(/\s+/g, '_'))}` : '';
@@ -603,9 +602,22 @@ document.addEventListener('DOMContentLoaded', async () => {
             ? raw.map(item => String(item || '').trim()).filter(Boolean).slice(0, 4)
             : [];
     }
-
     function isDashboardChatPristine() {
         return !dashboardChat.busy && !dashboardChat.messages.length;
+    }
+
+    function dashboardChatInputHasDraft() {
+        return !!String(document.getElementById('coach-chat-input')?.value || '').trim();
+    }
+
+    function shouldShowDashboardChatStarters() {
+        return isDashboardChatPristine() && !dashboardChatInputHasDraft();
+    }
+
+    function syncDashboardChatStarterVisibility() {
+        const block = document.getElementById('coach-chat-starters')?.closest('.coach-chat-starter-block');
+        if (!block) return;
+        block.hidden = !shouldShowDashboardChatStarters();
     }
 
     function limitDashboardChatStarters(list = []) {
@@ -654,8 +666,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     function renderDashboardChatStarters(snapshot) {
         const el = document.getElementById('coach-chat-starters');
         if (!el) return;
-        const starterBlock = el.closest('.coach-chat-starter-block');
-        if (starterBlock) starterBlock.hidden = !isDashboardChatPristine();
         dashboardChat.currentStarters = buildDashboardChatStarters(snapshot);
         el.innerHTML = dashboardChat.currentStarters.map((starter, index) => `
             <button class="coach-chat-starter" type="button" data-starter-index="${index}">
@@ -663,6 +673,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 <span class="coach-chat-starter-text">${esc(starter.prompt || '')}</span>
             </button>
         `).join('');
+        syncDashboardChatStarterVisibility();
     }
 
     function renderDashboardChatWorkspace(snapshot) {
@@ -1237,6 +1248,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (input) input.value = '';
         void sendDashboardChatMessage(message);
     });
+    document.getElementById('coach-chat-input')?.addEventListener('input', syncDashboardChatStarterVisibility);
     document.getElementById('coach-chat-workspace')?.addEventListener('click', (event) => {
         const button = event.target.closest('.coach-chat-workspace-card');
         if (!button) return;
