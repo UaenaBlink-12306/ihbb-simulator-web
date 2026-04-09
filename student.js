@@ -614,10 +614,22 @@ document.addEventListener('DOMContentLoaded', async () => {
         return isDashboardChatPristine() && !dashboardChatInputHasDraft();
     }
 
+    function dashboardChatStarterBox() {
+        return document.getElementById('coach-chat-starter-box') || document.getElementById('coach-chat-starters')?.closest('.coach-chat-starter-block');
+    }
+
     function syncDashboardChatStarterVisibility() {
-        const block = document.getElementById('coach-chat-starters')?.closest('.coach-chat-starter-block');
+        const block = dashboardChatStarterBox();
         if (!block) return;
-        block.hidden = !shouldShowDashboardChatStarters();
+        block.hidden = false;
+        block.style.display = shouldShowDashboardChatStarters() ? '' : 'none';
+    }
+
+    function hideDashboardChatStarters() {
+        const block = dashboardChatStarterBox();
+        if (!block) return;
+        block.hidden = false;
+        block.style.display = 'none';
     }
 
     function limitDashboardChatStarters(list = []) {
@@ -1265,6 +1277,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (!button) return;
         const starter = dashboardChat.currentStarters?.[Number(button.dataset.starterIndex) || 0];
         if (!starter?.prompt) return;
+        hideDashboardChatStarters();
         void sendDashboardChatMessage(starter.prompt);
     });
     document.getElementById('coach-chat-messages')?.addEventListener('click', (event) => {

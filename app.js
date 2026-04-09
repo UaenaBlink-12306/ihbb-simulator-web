@@ -944,10 +944,22 @@ function shouldShowCoachChatStarters() {
   return !hasCoachChatUserQuestion() && !coachChatInputHasDraft();
 }
 
+function coachChatStarterBox() {
+  return $('coach-chat-starter-box') || $('coach-chat-starters')?.closest('.coach-chat-starter-block');
+}
+
 function syncCoachChatStarterVisibility() {
-  const block = $('coach-chat-starters')?.closest('.coach-chat-starter-block');
+  const block = coachChatStarterBox();
   if (!block) return;
-  block.hidden = !shouldShowCoachChatStarters();
+  block.hidden = false;
+  block.style.display = shouldShowCoachChatStarters() ? '' : 'none';
+}
+
+function hideCoachChatStarters() {
+  const block = coachChatStarterBox();
+  if (!block) return;
+  block.hidden = false;
+  block.style.display = 'none';
 }
 
 function limitCoachChatStarters(list = []) {
@@ -4737,6 +4749,7 @@ $('coach-chat-starters')?.addEventListener('click', (e) => {
   if (!button) return;
   const starter = CoachChat.currentStarters?.[Number(button.dataset.starterIndex) || 0];
   if (!starter?.prompt) return;
+  hideCoachChatStarters();
   void sendCoachChatMessage(starter.prompt);
 });
 $('coach-chat-messages')?.addEventListener('click', (e) => {
