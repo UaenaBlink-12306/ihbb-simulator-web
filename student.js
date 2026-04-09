@@ -413,6 +413,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     function renderDashboardChatStarters(snapshot) {
         const el = document.getElementById('coach-chat-starters');
         if (!el) return;
+        const starterBlock = el.closest('.coach-chat-starter-block');
+        if (starterBlock) starterBlock.hidden = !isDashboardChatPristine();
         dashboardChat.currentStarters = buildDashboardChatStarters(snapshot);
         el.innerHTML = dashboardChat.currentStarters.map((starter, index) => `
             <button class="coach-chat-starter" type="button" data-starter-index="${index}">
