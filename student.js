@@ -23,11 +23,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     const ANALYTICS_INSIGHTS_CACHE_KEY = `ihbb_student_analytics_insights_${uid}`;
     const DAY_MS = 24 * 60 * 60 * 1000;
     let userEmail = String(session.user?.email || '').trim();
-    const isMissingRpcError = (error) => {
-        const code = String(error?.code || '').trim();
-        const message = String(error?.message || '').toLowerCase();
-        return code === '42883' || code === 'PGRST202' || (message.includes('function') && message.includes('not found'));
-    };
     const avatarCatalog = window.AvatarCatalog || {};
     const avatarOptions = Array.isArray(avatarCatalog.AVATAR_OPTIONS) && avatarCatalog.AVATAR_OPTIONS.length
         ? avatarCatalog.AVATAR_OPTIONS
@@ -1560,22 +1555,16 @@ document.addEventListener('DOMContentLoaded', async () => {
             loadAssignments();
             return;
         }
-        if (!isMissingRpcError(rpcJoin.error)) {
-            showAlert(rpcJoin.error.message, 'error');
+        const codeValue = String(rpcJoin.error?.code || '').trim();
+        const message = String(rpcJoin.error?.message || '').toLowerCase();
+        const missingRpc = codeValue === '42883'
+            || codeValue === 'PGRST202'
+            || (message.includes('function') && message.includes('not found'));
+        if (missingRpc) {
+            showAlert('Class join is unavailable until the latest Supabase migration is applied.', 'error');
             return;
         }
-        const { data: cls } = await sb.from('classes').select('id').eq('code', code).single();
-        if (!cls) { showAlert('Class not found. Check the code.', 'error'); return; }
-        const { error } = await sb.from('class_students').insert({ class_id: cls.id, student_id: uid });
-        if (error) {
-            if (error.code === '23505') showAlert('You already joined this class!', 'error');
-            else showAlert(error.message, 'error');
-            return;
-        }
-        document.getElementById('join-code').value = '';
-        showAlert('Joined class!', 'success');
-        loadClasses();
-        loadAssignments();
+        showAlert(rpcJoin.error.message, 'error');
     });
 
     window.leaveClass = async (classId) => {

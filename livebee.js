@@ -10,11 +10,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     const uid = session.user.id;
 
     const KEY_SETTINGS = `ihbb_v2_settings_${uid}`;
-    const isMissingRpcError = (error) => {
-        const code = String(error?.code || '').trim();
-        const message = String(error?.message || '').toLowerCase();
-        return code === '42883' || code === 'PGRST202' || (message.includes('function') && message.includes('not found'));
-    };
     const avatarCatalog = window.AvatarCatalog || {};
     const normalizeAvatarId = (value) => {
         if (typeof avatarCatalog.normalizeAvatarId === 'function') return avatarCatalog.normalizeAvatarId(value);
@@ -325,27 +320,17 @@ document.addEventListener('DOMContentLoaded', async () => {
             enterWaitingRoom();
             return;
         }
-        if (!isMissingRpcError(rpcJoin.error)) {
-            showAlert(rpcJoin.error.message || 'Failed to join room.');
+        const codeValue = String(rpcJoin.error?.code || '').trim();
+        const message = String(rpcJoin.error?.message || '').toLowerCase();
+        const missingRpc = codeValue === '42883'
+            || codeValue === 'PGRST202'
+            || (message.includes('function') && message.includes('not found'));
+        if (missingRpc) {
+            showAlert('Room join is unavailable until the latest Supabase migration is applied.');
             return;
         }
 
-        const { data: r } = await sb.from('bee_rooms').select('*').eq('code', code).single();
-        if (!r) { showAlert('Room not found. Check the code.'); return; }
-        if (r.status === 'finished') { showAlert('This room has already ended.'); return; }
-
-        // Check capacity
-        const { data: parts } = await sb.from('bee_participants').select('user_id').eq('room_id', r.id);
-        if (parts && parts.length >= 8) { showAlert('Room is full (max 8 players).'); return; }
-
-        // Join
-        const { error } = await sb.from('bee_participants').insert({ room_id: r.id, user_id: uid, display_name: myName, score: 0 });
-        if (error && error.code === '23505') { /* already in */ }
-        else if (error) { showAlert('Failed to join: ' + error.message); return; }
-
-        room = r;
-        playBeeCue('join');
-        enterWaitingRoom();
+        showAlert(rpcJoin.error.message || 'Failed to join room.');
     });
 
     // ==================== WAITING ROOM ====================
