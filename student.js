@@ -7,7 +7,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (!session) { window.location.replace('login.html'); return; }
     const uid = session.user.id;
 
-    const { data: profile } = await sb.from('profiles').select('role, display_name, class_code, created_at').eq('id', uid).single();
+    const { data: profile } = await sb.from('profiles').select('*').eq('id', uid).single();
     if (!profile || profile.role !== 'student') { window.location.replace('index.html'); return; }
     if (guard) guard.remove();
 
@@ -18,9 +18,32 @@ document.addEventListener('DOMContentLoaded', async () => {
     const SESSION_SYNC_TABLE = 'user_drill_sessions';
     const COACH_SYNC_TABLE = 'user_coach_attempts';
     const COACH_DRILL_STORAGE_KEY = 'ihbb_student_coach_drill';
+    const PRACTICE_HUB_AUTO_OPEN_DISABLED_KEY = 'ihbb_v2_practice_hub_auto_open_disabled';
     const ANALYTICS_INSIGHTS_CACHE_KEY = `ihbb_student_analytics_insights_${uid}`;
     const DAY_MS = 24 * 60 * 60 * 1000;
     let userEmail = String(session.user?.email || '').trim();
+    const avatarCatalog = window.AvatarCatalog || {};
+    const avatarOptions = Array.isArray(avatarCatalog.AVATAR_OPTIONS) && avatarCatalog.AVATAR_OPTIONS.length
+        ? avatarCatalog.AVATAR_OPTIONS
+        : [{ id: 'penguin', label: 'Penguin' }];
+    const normalizeAvatarId = (value) => {
+        if (typeof avatarCatalog.normalizeAvatarId === 'function') return avatarCatalog.normalizeAvatarId(value);
+        return 'penguin';
+    };
+    const avatarLabel = (value) => {
+        if (typeof avatarCatalog.avatarLabel === 'function') return avatarCatalog.avatarLabel(value);
+        return 'Penguin';
+    };
+    const applyAvatarImage = (img, value, altText) => {
+        if (!img) return;
+        if (typeof avatarCatalog.applyAvatarImage === 'function') {
+            avatarCatalog.applyAvatarImage(img, value, altText);
+            return;
+        }
+        img.alt = altText || 'Avatar';
+        img.src = `/assets/avatars/${normalizeAvatarId(value)}.png`;
+    };
+    let selectedAvatarId = normalizeAvatarId(profile.avatar_id);
     const ERA_LABELS = {
         "01": "8000 BCE – 600 BCE",
         "02": "600 BCE – 600 CE",
@@ -77,9 +100,51 @@ document.addEventListener('DOMContentLoaded', async () => {
         return `<div><b>Read More:</b> <a class="coach-link" href="${esc(wiki)}" target="_blank" rel="noopener noreferrer">${esc(label)}</a></div>`;
     };
     const isNotebookCoachRecord = (record) => !!record && !record.correct;
+    const practiceHubAutoOpenDisabledKey = (userId = uid) => `${PRACTICE_HUB_AUTO_OPEN_DISABLED_KEY}_${userId}`;
+    const legacyPracticeHubAutoOpenDisabledKeys = (userId = uid) => [
+        `${practiceHubAutoOpenDisabledKey(userId)}_${userId}`,
+        PRACTICE_HUB_AUTO_OPEN_DISABLED_KEY
+    ];
+    const readLegacyPracticeHubAutoOpenDisabled = (userId = uid) => {
+        try {
+            for (const key of legacyPracticeHubAutoOpenDisabledKeys(userId)) {
+                const value = localStorage.getItem(key);
+                if (value === '1' || value === '0') return { key, value };
+            }
+        } catch {
+            return null;
+        }
+        return null;
+    };
+    const isPracticeHubAutoOpenDisabled = (userId = uid) => {
+        try {
+            const scopedKey = practiceHubAutoOpenDisabledKey(userId);
+            const scopedValue = localStorage.getItem(scopedKey);
+            if (scopedValue === '1' || scopedValue === '0') return scopedValue === '1';
+            const legacy = readLegacyPracticeHubAutoOpenDisabled(userId);
+            if (legacy?.value === '1' || legacy?.value === '0') {
+                localStorage.setItem(scopedKey, legacy.value);
+                if (legacy.key && legacy.key !== scopedKey) localStorage.removeItem(legacy.key);
+                return legacy.value === '1';
+            }
+            return false;
+        } catch {
+            return false;
+        }
+    };
+    const setPracticeHubAutoOpenDisabled = (disabled, userId = uid) => {
+        try {
+            localStorage.setItem(practiceHubAutoOpenDisabledKey(userId), disabled ? '1' : '0');
+            legacyPracticeHubAutoOpenDisabledKeys(userId).forEach((key) => {
+                if (key !== practiceHubAutoOpenDisabledKey(userId)) localStorage.removeItem(key);
+            });
+        } catch {
+            // Ignore storage failures.
+        }
+    };
     const DASHBOARD_CHAT_STARTERS = [
         { label: 'What next?', prompt: 'What should I practice next from my student dashboard?' },
-        { label: 'Notebook or wrong-bank?', prompt: 'Should I use AI Notebook or Wrong-bank right now?' },
+        { label: 'Explain the weak spot', prompt: 'Explain my current weak spot in detail and tell me what I should do next.' },
         { label: 'Build a focused drill', prompt: 'Recommend a focused drill and send me into training.' }
     ];
     const DASHBOARD_CHAT_ALLOWED_ACTIONS = new Set([
@@ -109,12 +174,16 @@ document.addEventListener('DOMContentLoaded', async () => {
         workspaceCards: [],
         ui: {
             mode: 'auto',
+            thinkingEnabled: false,
             size: 'standard',
             width: DASHBOARD_CHAT_SIZE_PRESETS.standard,
             fullscreen: false
         },
         resizing: null
     };
+    const DASHBOARD_CHAT_STREAM_MIN_MS = 240;
+    const DASHBOARD_CHAT_STREAM_MAX_MS = 1800;
+    const DASHBOARD_CHAT_STREAM_MS_PER_CHAR = 6;
 
     function clampDashboardChatWidth(value) {
         const min = 720;
@@ -126,11 +195,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     function loadDashboardChatUiPrefs() {
         try {
             const raw = JSON.parse(localStorage.getItem(DASHBOARD_CHAT_UI_KEY) || '{}');
-            const mode = ['auto', 'coach', 'knowledge'].includes(String(raw.mode || '').trim()) ? String(raw.mode).trim() : 'auto';
             const sizeRaw = String(raw.size || '').trim();
             const size = sizeRaw === 'custom' || Object.prototype.hasOwnProperty.call(DASHBOARD_CHAT_SIZE_PRESETS, sizeRaw) ? sizeRaw : 'standard';
             dashboardChat.ui = {
-                mode,
+                mode: 'auto',
+                thinkingEnabled: !!raw.thinkingEnabled,
                 size,
                 width: clampDashboardChatWidth(raw.width || DASHBOARD_CHAT_SIZE_PRESETS[size] || DASHBOARD_CHAT_SIZE_PRESETS.standard),
                 fullscreen: !!raw.fullscreen
@@ -138,6 +207,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         } catch {
             dashboardChat.ui = {
                 mode: 'auto',
+                thinkingEnabled: false,
                 size: 'standard',
                 width: DASHBOARD_CHAT_SIZE_PRESETS.standard,
                 fullscreen: false
@@ -148,12 +218,96 @@ document.addEventListener('DOMContentLoaded', async () => {
     function saveDashboardChatUiPrefs() {
         try {
             localStorage.setItem(DASHBOARD_CHAT_UI_KEY, JSON.stringify({
-                mode: dashboardChat.ui.mode,
+                mode: 'auto',
+                thinkingEnabled: !!dashboardChat.ui.thinkingEnabled,
                 size: dashboardChat.ui.size,
                 width: dashboardChat.ui.width,
                 fullscreen: dashboardChat.ui.fullscreen
             }));
         } catch { /* noop */ }
+    }
+
+    function dashboardChatStreamDuration(text = '') {
+        const normalizedLength = String(text || '').replace(/\s+/g, ' ').trim().length;
+        return Math.max(
+            DASHBOARD_CHAT_STREAM_MIN_MS,
+            Math.min(DASHBOARD_CHAT_STREAM_MAX_MS, 160 + normalizedLength * DASHBOARD_CHAT_STREAM_MS_PER_CHAR)
+        );
+    }
+
+    function isDashboardChatMessageStreaming(message) {
+        return !!message && message.role === 'assistant' && !!message.streaming;
+    }
+
+    function dashboardChatVisibleText(message) {
+        if (!message || message.role !== 'assistant') return String(message?.text || '');
+        return isDashboardChatMessageStreaming(message) ? String(message.displayText || '') : String(message.text || '');
+    }
+
+    function dashboardChatStreamingCursorHtml() {
+        return '<span aria-hidden="true" style="display:inline-block;min-width:0.55ch;margin-left:2px;color:#1f6fff;font-weight:700;opacity:0.9;">▍</span>';
+    }
+
+    function stopDashboardChatMessageStream(message) {
+        if (!message || typeof message !== 'object') return;
+        if (message.streamFrame) cancelAnimationFrame(message.streamFrame);
+        message.streamFrame = 0;
+        message.streaming = false;
+        if (typeof message.displayText !== 'string') message.displayText = String(message.text || '');
+    }
+
+    function stopAllDashboardChatStreams() {
+        dashboardChat.messages.forEach(stopDashboardChatMessageStream);
+    }
+
+    function trimDashboardChatMessages() {
+        if (dashboardChat.messages.length > 18) {
+            dashboardChat.messages.slice(0, dashboardChat.messages.length - 18).forEach(stopDashboardChatMessageStream);
+            dashboardChat.messages = dashboardChat.messages.slice(-18);
+        }
+    }
+
+    function pushDashboardChatMessage(message) {
+        if (!message || typeof message !== 'object') return;
+        dashboardChat.messages.push(message);
+        trimDashboardChatMessages();
+    }
+
+    function startDashboardChatMessageStream(message) {
+        if (!message || message.role !== 'assistant') return;
+        stopDashboardChatMessageStream(message);
+        const fullText = String(message.text || '');
+        if (!fullText) {
+            message.displayText = '';
+            renderDashboardChatMessages();
+            return;
+        }
+        message.streaming = true;
+        message.displayText = '';
+        const startedAt = performance.now();
+        const duration = dashboardChatStreamDuration(fullText);
+        const step = (now) => {
+            if (!dashboardChat.messages.includes(message)) {
+                stopDashboardChatMessageStream(message);
+                return;
+            }
+            const progress = Math.min(1, (now - startedAt) / duration);
+            const easedProgress = 1 - Math.pow(1 - progress, 1.75);
+            const nextLength = Math.max(1, Math.min(fullText.length, Math.ceil(fullText.length * easedProgress)));
+            if (nextLength !== String(message.displayText || '').length) {
+                message.displayText = fullText.slice(0, nextLength);
+                renderDashboardChatMessages();
+            }
+            if (progress >= 1 || nextLength >= fullText.length) {
+                message.displayText = fullText;
+                message.streaming = false;
+                message.streamFrame = 0;
+                renderDashboardChatMessages();
+                return;
+            }
+            message.streamFrame = requestAnimationFrame(step);
+        };
+        message.streamFrame = requestAnimationFrame(step);
     }
 
     loadDashboardChatUiPrefs();
@@ -279,12 +433,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     function buildDashboardChatSummary(snapshot) {
         const recent = snapshot?.recent_incorrect;
         const topFocus = snapshot?.coach_notebook?.top_focuses?.[0];
-        if (dashboardChat.ui.mode === 'knowledge') return 'Ask for explanations, timelines, comparisons, or background on any IHBB topic.';
         if (recent?.title) return `Last miss: ${recent.title}.`;
         if ((snapshot?.wrong_bank?.due_now || 0) > 0) return `${snapshot.wrong_bank.due_now} wrong-bank card${snapshot.wrong_bank.due_now === 1 ? '' : 's'} due now.`;
         if (topFocus?.title) return `Top coach focus: ${topFocus.title}.`;
         if ((snapshot?.session_history?.total_sessions || 0) <= 0) return 'No recent practice history yet.';
-        return 'Ask what to study next before your next drill or assignment.';
+        return 'Ask for background on a topic or what to study next. Auto will detect the better answer style.';
     }
 
     function updateDashboardChatSourceLabel() {
@@ -293,31 +446,119 @@ document.addEventListener('DOMContentLoaded', async () => {
         let label = 'Ready';
         if (dashboardChat.busy) label = 'Thinking';
         else if (dashboardChat.source === 'deepseek') label = 'DeepSeek';
-        else if (dashboardChat.source === 'fallback') label = 'Local plan';
-        el.textContent = `${label} • ${dashboardChat.ui.mode === 'knowledge' ? 'Knowledge' : (dashboardChat.ui.mode === 'coach' ? 'Coach' : 'Auto')}`;
+        else if (dashboardChat.source === 'fallback') label = 'Local fallback';
+        el.textContent = `${label} • ${dashboardChat.ui.thinkingEnabled ? 'Think On' : 'Think Off'}`;
+    }
+
+    function normalizeDashboardChatIntentText(value = '') {
+        return String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+    }
+
+    const DASHBOARD_CHAT_COACH_TERMS = [
+        'wrong bank', 'srs', 'notebook', 'ai notebook', 'lesson', 'coach',
+        'practice', 'drill', 'session', 'review', 'setup', 'focus',
+        'due card', 'due now', 'assignment', 'next step', 'next steps',
+        'next move', 'future step', 'future steps', 'study plan', 'practice plan'
+    ];
+    const DASHBOARD_CHAT_KNOWLEDGE_TERMS = [
+        'explain', 'define', 'describe', 'summarize', 'summary', 'timeline',
+        'compare', 'contrast', 'significance', 'importance', 'overview',
+        'background', 'concept', 'cause', 'causes', 'effect', 'effects',
+        'turning point', 'detail', 'details', 'in detail', 'teach me',
+        'help me understand', 'break down', 'elaborate', 'deeper', 'more context'
+    ];
+    const DASHBOARD_CHAT_COACH_PATTERNS = [
+        /\bwhat should i\b/,
+        /\bwhat do i do next\b/,
+        /\bwhat should i do next\b/,
+        /\bwhat should i practice next\b/,
+        /\bhow should i\b/,
+        /\bshould i use\b/,
+        /\bnext step\b/,
+        /\bnext steps\b/,
+        /\bnext move\b/,
+        /\bfuture step\b/,
+        /\bfuture steps\b/,
+        /\bbuild me\b.*\b(plan|drill|session)\b/,
+        /\bmake me\b.*\b(plan|drill|session)\b/,
+        /\bturn this into\b.*\b(plan|drill|session)\b/
+    ];
+    const DASHBOARD_CHAT_KNOWLEDGE_PATTERNS = [
+        /\bwho (is|was|were|are|did|do|does)\b/,
+        /\bwhat (is|was|were|are|did|do|does|happened|caused)\b/,
+        /\bwhen (did|was|were|is|are)\b/,
+        /\bwhere (is|was|were|did)\b/,
+        /\bwhy\b/,
+        /\bhow (did|do|does|was|were|is|are)\b/,
+        /\btell me about\b/,
+        /\bgive me (?:a )?timeline of\b/,
+        /\bwhat is the significance of\b/,
+        /\bwhat was the significance of\b/,
+        /\bwhat caused\b/,
+        /\bwhat were the causes of\b/,
+        /\bwhat happened in\b/
+    ];
+
+    function countDashboardChatIntentHits(message = '', patterns = []) {
+        return patterns.reduce((total, pattern) => total + (pattern.test(message) ? 1 : 0), 0);
+    }
+
+    function countDashboardChatTermHits(message = '', terms = []) {
+        return terms.reduce((total, term) => total + (message.includes(term) ? 1 : 0), 0);
+    }
+
+    function analyzeDashboardChatIntent(message = '') {
+        const normalized = normalizeDashboardChatIntentText(message);
+        const coachPatternHits = countDashboardChatIntentHits(normalized, DASHBOARD_CHAT_COACH_PATTERNS);
+        const knowledgePatternHits = countDashboardChatIntentHits(normalized, DASHBOARD_CHAT_KNOWLEDGE_PATTERNS);
+        const coachTermHits = countDashboardChatTermHits(normalized, DASHBOARD_CHAT_COACH_TERMS);
+        const knowledgeTermHits = countDashboardChatTermHits(normalized, DASHBOARD_CHAT_KNOWLEDGE_TERMS);
+        return {
+            normalized,
+            coachScore: coachPatternHits * 3 + coachTermHits,
+            knowledgeScore: knowledgePatternHits * 4 + knowledgeTermHits,
+            strongCoach: coachPatternHits > 0,
+            strongKnowledge: knowledgePatternHits > 0
+        };
     }
 
     function resolveDashboardChatMode(message = '', snapshot = buildDashboardChatContext()) {
         if (dashboardChat.ui.mode === 'coach' || dashboardChat.ui.mode === 'knowledge') return dashboardChat.ui.mode;
-        const prompt = String(message || '').trim().toLowerCase();
-        const coachTerms = ['wrong bank', 'wrong-bank', 'srs', 'notebook', 'ai notebook', 'lesson', 'coach', 'practice', 'train', 'drill', 'session', 'review', 'setup', 'focus', 'assignment'];
-        const knowledgeTerms = ['who ', 'what ', 'when ', 'where ', 'why ', 'how ', 'explain', 'define', 'describe', 'summarize', 'summary', 'timeline', 'compare', 'contrast', 'significance', 'overview', 'background', 'concept'];
-        if (coachTerms.some(term => prompt.includes(term))) return 'coach';
-        if (knowledgeTerms.some(term => prompt.includes(term))) return 'knowledge';
+        const intent = analyzeDashboardChatIntent(message);
+        if (!intent.normalized) return 'coach';
+        if (intent.knowledgeScore > intent.coachScore) return 'knowledge';
+        if (intent.coachScore > intent.knowledgeScore) {
+            if (intent.strongKnowledge && intent.coachScore - intent.knowledgeScore <= 2) return 'knowledge';
+            return 'coach';
+        }
+        if (intent.strongKnowledge && !intent.strongCoach) return 'knowledge';
+        if (intent.strongCoach && !intent.strongKnowledge) return 'coach';
+        if (intent.knowledgeScore > 0) return 'knowledge';
         if (!(snapshot?.session_history?.total_sessions || 0) && !(snapshot?.coach_notebook?.total || 0)) return 'knowledge';
         return 'coach';
     }
 
     function dashboardChatTopicFromMessage(message = '', snapshot = buildDashboardChatContext(), mode = resolveDashboardChatMode(message, snapshot)) {
         const raw = String(message || '').trim();
+        const intent = analyzeDashboardChatIntent(raw);
         const recentTitle = String(snapshot?.recent_incorrect?.title || '').trim();
         const topFocusTitle = String(snapshot?.coach_notebook?.top_focuses?.[0]?.title || '').trim();
         if (!raw) return mode === 'knowledge' ? (recentTitle || topFocusTitle) : recentTitle;
+        if (mode !== 'knowledge' && intent.coachScore > 0 && intent.knowledgeScore === 0) return recentTitle || topFocusTitle;
         const prompt = raw
             .replace(/^[^a-zA-Z0-9]*(who|what|when|where|why|how)\s+(is|was|were|are|did|do|does)\s+/i, '')
             .replace(/^(explain|define|describe|outline|summarize|compare|contrast|tell me about|give me (a )?timeline of|what is the significance of|what was the significance of|what caused|what were the causes of|what happened in)\s+/i, '')
+            .replace(/^(what should i (study|practice|review|learn|work on|do)( next)?( about| for)?\s*)/i, '')
+            .replace(/^(how should i (study|practice|train|review|use|approach|learn)\s+)/i, '')
+            .replace(/^(should i use\s+)/i, '')
+            .replace(/^(build me|make me|turn this into)\s+(a\s+)?(short\s+)?(study plan|practice plan|plan|drill|session)\s+(for|on)\s+/i, '')
             .replace(/[?.!]+$/g, '')
             .trim();
+        if (!prompt) return recentTitle || topFocusTitle;
+        const normalizedIntent = analyzeDashboardChatIntent(prompt);
+        if (mode !== 'knowledge' && normalizedIntent.coachScore > 0 && normalizedIntent.knowledgeScore === 0) {
+            return recentTitle || topFocusTitle;
+        }
         return prompt || recentTitle || topFocusTitle;
     }
 
@@ -430,9 +671,15 @@ document.addEventListener('DOMContentLoaded', async () => {
         const topFocus = snapshot?.coach_notebook?.top_focuses?.[0] || null;
         const knowledgeCard = {
             kicker: 'Ask',
-            title: dashboardChat.ui.mode === 'knowledge' ? 'Knowledge mode' : 'Concept help',
-            copy: 'Explain a topic, get a timeline, or compare two ideas.',
-            action: { kind: 'mode', mode: 'knowledge', label: dashboardChat.ui.mode === 'knowledge' ? 'Knowledge mode active' : 'Switch to Knowledge' }
+            title: 'Explain a topic',
+            copy: 'Get background, timeline, and common confusions.',
+            action: {
+                kind: 'prompt',
+                label: 'Ask for context',
+                prompt: topFocus?.title
+                    ? `Explain ${topFocus.title} in detail, connect it to my weak spots, and tell me the best next study step.`
+                    : 'Explain the most important historical background I should understand right now and tell me what to do next.'
+            }
         };
         const primaryCard = (snapshot?.wrong_bank?.due_now || 0) > 0
             ? {
@@ -492,30 +739,37 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     function renderDashboardChatMessages() {
+        const bodyEl = document.getElementById('coach-chat-body');
         const el = document.getElementById('coach-chat-messages');
         if (!el) return;
         const messagesHtml = dashboardChat.messages.map((message, messageIndex) => `
             <div class="coach-chat-message ${message.role === 'user' ? 'user' : 'assistant'}">
                 <div class="coach-chat-message-meta">
-                    <span>${esc(message.role === 'user' ? 'You' : (message.source === 'deepseek' ? 'DeepSeek' : 'Local plan'))}</span>
+                    <span>${esc(message.role === 'user' ? 'You' : (message.source === 'deepseek' ? 'DeepSeek' : 'Local fallback'))}</span>
                     <span>${esc(message.role === 'user' ? 'Prompt' : (message.mode === 'knowledge' ? 'Knowledge brief' : 'Coach advice'))}</span>
                 </div>
                 ${message.role === 'assistant' && message.title ? `<h3 class="coach-chat-message-title">${esc(message.title)}</h3>` : ''}
-                <p class="coach-chat-message-text">${esc(message.text || '')}</p>
-                ${Array.isArray(message.highlights) && message.highlights.length ? `<div class="coach-chat-highlights">${message.highlights.map(item => `<span class="coach-chat-highlight">${esc(item)}</span>`).join('')}</div>` : ''}
-                ${Array.isArray(message.sections) && message.sections.length ? `<div class="coach-chat-sections">${message.sections.map(section => `
+                ${(() => {
+                    const streaming = isDashboardChatMessageStreaming(message);
+                    const visibleText = dashboardChatVisibleText(message);
+                    return (visibleText || streaming)
+                        ? `<p class="coach-chat-message-text">${esc(visibleText || '')}${streaming ? dashboardChatStreamingCursorHtml() : ''}</p>`
+                        : '';
+                })()}
+                ${!isDashboardChatMessageStreaming(message) && Array.isArray(message.highlights) && message.highlights.length ? `<div class="coach-chat-highlights">${message.highlights.map(item => `<span class="coach-chat-highlight">${esc(item)}</span>`).join('')}</div>` : ''}
+                ${!isDashboardChatMessageStreaming(message) && Array.isArray(message.sections) && message.sections.length ? `<div class="coach-chat-sections">${message.sections.map(section => `
                     <div class="coach-chat-section-card">
                         <h4>${esc(section.heading)}</h4>
                         <p>${esc(section.body)}</p>
                     </div>
                 `).join('')}</div>` : ''}
-                ${Array.isArray(message.links) && message.links.length ? `<div class="coach-chat-links">${message.links.map(link => `
+                ${!isDashboardChatMessageStreaming(message) && Array.isArray(message.links) && message.links.length ? `<div class="coach-chat-links">${message.links.map(link => `
                     <a class="coach-chat-link-card" href="${esc(link.url)}" target="_blank" rel="noopener noreferrer">${esc(link.label)}</a>
                 `).join('')}</div>` : ''}
-                ${Array.isArray(message.followUps) && message.followUps.length ? `<div class="coach-chat-followups">${message.followUps.map((followUp, followUpIndex) => `
+                ${!isDashboardChatMessageStreaming(message) && Array.isArray(message.followUps) && message.followUps.length ? `<div class="coach-chat-followups">${message.followUps.map((followUp, followUpIndex) => `
                     <button class="coach-chat-followup" type="button" data-message-index="${messageIndex}" data-followup-index="${followUpIndex}">${esc(followUp.label)}</button>
                 `).join('')}</div>` : ''}
-                ${Array.isArray(message.actions) && message.actions.length ? `
+                ${!isDashboardChatMessageStreaming(message) && Array.isArray(message.actions) && message.actions.length ? `
                     <div class="coach-chat-actions">
                         ${message.actions.map((action, actionIndex) => `
                             <button class="coach-chat-action" type="button" data-message-index="${messageIndex}" data-action-index="${actionIndex}">
@@ -525,26 +779,28 @@ document.addEventListener('DOMContentLoaded', async () => {
                         `).join('')}
                     </div>
                 ` : ''}
-                ${message.role === 'assistant' ? `<div class="coach-chat-message-tools"><button class="coach-chat-tool" type="button" data-message-index="${messageIndex}" data-tool="copy">Copy answer</button></div>` : ''}
+                ${message.role === 'assistant' && !isDashboardChatMessageStreaming(message) ? `<div class="coach-chat-message-tools"><button class="coach-chat-tool" type="button" data-message-index="${messageIndex}" data-tool="copy">Copy answer</button></div>` : ''}
             </div>
         `).join('');
         const loadingHtml = dashboardChat.busy ? `
-            <div class="coach-chat-message assistant">
+            <div class="coach-chat-message assistant coach-chat-thinking">
                 <div class="coach-chat-message-meta">
                     <span>DeepSeek</span>
-                    <span>Preparing</span>
+                    <span>Thinking</span>
                 </div>
-                <div class="coach-chat-loading">${dashboardChat.ui.mode === 'knowledge' ? 'Building a detailed study brief with references.' : 'Reviewing your coach history, wrong-bank, and analytics.'}</div>
+                <div class="coach-chat-thinking-bubble">
+                    <div class="coach-chat-thinking-dots" aria-hidden="true"><span></span><span></span><span></span></div>
+                    <div class="coach-chat-loading">${dashboardChat.ui.thinkingEnabled ? 'DeepSeek reasoner is synthesizing your coach history, wrong-bank, analytics, and next steps.' : 'DeepSeek is reviewing your coach history, wrong-bank, analytics, and practice context.'}</div>
+                </div>
             </div>
         ` : '';
         el.innerHTML = messagesHtml || loadingHtml
             ? `${messagesHtml}${loadingHtml}`
             : `<div class="coach-chat-empty">
-                <div class="coach-chat-empty-title">${dashboardChat.ui.mode === 'knowledge' ? 'Ask about any IHBB topic.' : 'Start with one quick question.'}</div>
-                <p class="coach-chat-empty-text">${dashboardChat.ui.mode === 'knowledge'
-                    ? 'Pick a prompt or type a topic when you want an explanation, timeline, or comparison.'
-                    : 'Pick a prompt or type what you want to practice next.'}</p>
+                <div class="coach-chat-empty-title">Ask for knowledge or next steps.</div>
+                <p class="coach-chat-empty-text">Pick a prompt or type what you want to understand, what you should do next, or both.</p>
             </div>`;
+        if (bodyEl) bodyEl.scrollTop = bodyEl.scrollHeight;
         el.scrollTop = el.scrollHeight;
     }
 
@@ -573,28 +829,27 @@ document.addEventListener('DOMContentLoaded', async () => {
         const countEl = document.getElementById('coach-chat-launcher-count');
         const hintEl = document.getElementById('coach-chat-hint');
         const sendBtn = document.getElementById('coach-chat-send');
-        const modeButtons = Array.from(document.querySelectorAll('#coach-chat-mode-switch .coach-chat-mode-btn'));
         const sizeButtons = Array.from(document.querySelectorAll('#coach-chat-size-presets .coach-chat-size-btn'));
         const fullBtn = document.getElementById('coach-chat-fullscreen');
+        const thinkingBtn = document.getElementById('coach-chat-thinking-toggle');
 
         if (summaryEl) summaryEl.textContent = buildDashboardChatSummary(snapshot);
         if (pillsEl) {
             const pills = [];
-            if (dashboardChat.ui.mode === 'knowledge') pills.push('Knowledge mode');
+            if (dashboardChat.ui.thinkingEnabled) pills.push('Thinking model on');
             if ((snapshot?.wrong_bank?.due_now || 0) > 0) pills.push(`Wrong-bank due ${snapshot.wrong_bank.due_now}`);
             if ((snapshot?.coach_notebook?.open_lessons || 0) > 0) pills.push(`Notebook open ${snapshot.coach_notebook.open_lessons}`);
-            if (dashboardChat.ui.mode !== 'knowledge' && (snapshot?.session_history?.recent_accuracy || 0) > 0) pills.push(`Recent accuracy ${snapshot.session_history.recent_accuracy}%`);
+            if ((snapshot?.session_history?.recent_accuracy || 0) > 0) pills.push(`Recent accuracy ${snapshot.session_history.recent_accuracy}%`);
             if (!pills.length && snapshot?.coach_notebook?.top_focuses?.[0]?.title) pills.push(snapshot.coach_notebook.top_focuses[0].title);
             pillsEl.innerHTML = pills.length
-                ? pills.slice(0, 2).map(text => `<span class="coach-chat-status-pill">${esc(text)}</span>`).join('')
-                : `<span class="coach-chat-status-pill">${dashboardChat.ui.mode === 'knowledge' ? 'Concept help ready.' : 'Study help ready.'}</span>`;
+                ? pills.slice(0, 3).map(text => `<span class="coach-chat-status-pill">${esc(text)}</span>`).join('')
+                : '<span class="coach-chat-status-pill">Study help ready.</span>';
         }
         if (noteEl) {
-            if (dashboardChat.ui.mode === 'knowledge') noteEl.textContent = 'Ask any concept';
-            else if (snapshot?.recent_incorrect?.title) noteEl.textContent = 'Fix the last miss';
+            if (snapshot?.recent_incorrect?.title) noteEl.textContent = 'Fix the last miss';
             else if ((snapshot?.wrong_bank?.due_now || 0) > 0) noteEl.textContent = `${snapshot.wrong_bank.due_now} due in Wrong-bank`;
             else if ((snapshot?.coach_notebook?.open_lessons || 0) > 0) noteEl.textContent = `${snapshot.coach_notebook.open_lessons} coach lesson${snapshot.coach_notebook.open_lessons === 1 ? '' : 's'}`;
-            else noteEl.textContent = 'Open coach chat';
+            else noteEl.textContent = 'Ask for context or next steps';
         }
         if (countEl) {
             const count = Math.max(snapshot?.wrong_bank?.due_now || 0, snapshot?.coach_notebook?.open_lessons || 0);
@@ -602,21 +857,21 @@ document.addEventListener('DOMContentLoaded', async () => {
             countEl.classList.toggle('hidden', !count);
         }
         if (hintEl) {
-            hintEl.textContent = dashboardChat.ui.mode === 'knowledge'
-                ? 'Knowledge mode gives long-form explanations and reference links.'
-                : 'Coach mode stays tied to your dashboard context and only answers when asked.';
+            hintEl.textContent = dashboardChat.ui.thinkingEnabled
+                ? 'Thinking model is on. Answers may take longer but should synthesize more of your study context.'
+                : 'Always-auto mode decides how much knowledge, coaching, and future-step guidance to give you.';
         }
         if (sendBtn) sendBtn.disabled = !!dashboardChat.busy;
-        modeButtons.forEach(button => {
-            const active = String(button.dataset.mode || '') === dashboardChat.ui.mode;
-            button.classList.toggle('active', active);
-            button.setAttribute('aria-pressed', active ? 'true' : 'false');
-        });
         sizeButtons.forEach(button => {
             const active = String(button.dataset.size || '') === dashboardChat.ui.size && !dashboardChat.ui.fullscreen;
             button.classList.toggle('active', active);
             button.setAttribute('aria-pressed', active ? 'true' : 'false');
         });
+        if (thinkingBtn) {
+            thinkingBtn.classList.toggle('active', !!dashboardChat.ui.thinkingEnabled);
+            thinkingBtn.setAttribute('aria-pressed', dashboardChat.ui.thinkingEnabled ? 'true' : 'false');
+            thinkingBtn.textContent = `Thinking Model: ${dashboardChat.ui.thinkingEnabled ? 'On' : 'Off'}`;
+        }
         if (fullBtn) {
             fullBtn.textContent = dashboardChat.ui.fullscreen ? 'Windowed' : 'Full Screen';
             fullBtn.setAttribute('aria-pressed', dashboardChat.ui.fullscreen ? 'true' : 'false');
@@ -674,8 +929,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                 title: topic ? `Study brief: ${topic}` : 'Study brief',
                 topic,
                 message: topic
-                    ? `This looks like a knowledge question about ${topic}. When DeepSeek is available, I can answer it in full detail here. Right now I can still structure the topic, suggest the best follow-up prompts, and give you a reference link.`
-                    : 'This looks like a knowledge question. When DeepSeek is available, I can answer it in full detail here. Right now I can still frame the topic and suggest the best follow-up prompts.',
+                    ? `This looks like a knowledge question about ${topic}. DeepSeek did not return a usable knowledge response for this request, so I am showing the built-in study fallback instead.`
+                    : 'This looks like a knowledge question. DeepSeek did not return a usable knowledge response for this request, so I am showing the built-in study fallback instead.',
                 highlights: ['Knowledge mode', topic ? 'Wikipedia reference ready' : 'Reference lookup ready'].filter(Boolean),
                 sections: [
                     { heading: 'What to lock in first', body: topic ? `Start with the definition, timeframe, main actors, and why ${topic} matters in the broader historical story.` : 'Start with the definition, timeframe, main actors, and why the topic matters in the broader historical story.' },
@@ -742,16 +997,31 @@ document.addEventListener('DOMContentLoaded', async () => {
         };
     }
 
+    function dashboardChatReplyHasDeepSeekContent(raw) {
+        if (!raw || typeof raw !== 'object') return false;
+        return !!(
+            String(raw.title || '').trim() ||
+            String(raw.topic || '').trim() ||
+            String(raw.message || '').trim() ||
+            normalizeDashboardChatHighlights(raw.highlights).length ||
+            normalizeDashboardChatSections(raw.sections).length ||
+            normalizeDashboardChatLinks(raw.links).length ||
+            normalizeDashboardChatFollowUps(raw.follow_ups).length ||
+            (Array.isArray(raw.quick_actions) && raw.quick_actions.length)
+        );
+    }
+
     async function requestDashboardChatReply(message) {
         const payload = {
             message: String(message || '').trim(),
             conversation: dashboardChat.messages
                 .filter(entry => entry && ['user', 'assistant'].includes(entry.role))
-                .slice(-8)
+                .slice(-12)
                 .map(entry => ({ role: entry.role, content: String(entry.text || '').trim() }))
                 .filter(entry => entry.content),
             study_context: buildDashboardChatContext(),
-            assistant_mode: dashboardChat.ui.mode
+            assistant_mode: 'auto',
+            thinking_enabled: !!dashboardChat.ui.thinkingEnabled
         };
         const response = await fetch('/api/coach-chat', {
             method: 'POST',
@@ -761,8 +1031,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         const raw = await response.json().catch(() => ({}));
         if (!response.ok && !raw?.message) throw new Error(`Coach chat failed (${response.status})`);
         const fallback = buildDashboardChatFallback(payload.message);
+        const sourceIsDeepSeek = String(raw?.source || '').trim().toLowerCase() === 'deepseek' && dashboardChatReplyHasDeepSeekContent(raw);
         return {
-            source: String(raw?.source || '').trim().toLowerCase() === 'deepseek' ? 'deepseek' : fallback.source,
+            source: sourceIsDeepSeek ? 'deepseek' : fallback.source,
             mode: String(raw?.mode || '').trim() === 'knowledge' ? 'knowledge' : fallback.mode,
             title: String(raw?.title || '').trim() || fallback.title,
             topic: String(raw?.topic || '').trim() || fallback.topic,
@@ -776,13 +1047,20 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     function clearDashboardChatConversation() {
+        stopAllDashboardChatStreams();
         dashboardChat.messages = [];
         dashboardChat.source = 'ready';
         renderDashboardChatChrome();
     }
 
     function setDashboardChatMode(mode = 'auto') {
-        dashboardChat.ui.mode = ['auto', 'coach', 'knowledge'].includes(String(mode || '').trim()) ? String(mode).trim() : 'auto';
+        dashboardChat.ui.mode = 'auto';
+        saveDashboardChatUiPrefs();
+        renderDashboardChatChrome();
+    }
+
+    function toggleDashboardChatThinking() {
+        dashboardChat.ui.thinkingEnabled = !dashboardChat.ui.thinkingEnabled;
         saveDashboardChatUiPrefs();
         renderDashboardChatChrome();
     }
@@ -812,14 +1090,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     async function sendDashboardChatMessage(rawMessage) {
         const message = String(rawMessage || '').trim();
         if (!message || dashboardChat.busy) return;
-        dashboardChat.messages.push({ role: 'user', text: message, source: 'user', actions: [], highlights: [], sections: [], links: [], followUps: [] });
+        pushDashboardChatMessage({ role: 'user', text: message, source: 'user', actions: [], highlights: [], sections: [], links: [], followUps: [] });
         dashboardChat.busy = true;
         dashboardChat.source = 'ready';
         renderDashboardChatChrome();
+        let assistantMessage = null;
         try {
             const reply = await requestDashboardChatReply(message);
             dashboardChat.source = reply.source === 'deepseek' ? 'deepseek' : 'fallback';
-            dashboardChat.messages.push({
+            assistantMessage = {
                 role: 'assistant',
                 text: String(reply.message || '').trim(),
                 source: dashboardChat.source,
@@ -830,12 +1109,16 @@ document.addEventListener('DOMContentLoaded', async () => {
                 sections: Array.isArray(reply.sections) ? reply.sections : [],
                 links: Array.isArray(reply.links) ? reply.links : [],
                 followUps: Array.isArray(reply.follow_ups) ? reply.follow_ups : [],
-                actions: normalizeDashboardChatActions(reply.quick_actions)
-            });
+                actions: normalizeDashboardChatActions(reply.quick_actions),
+                displayText: '',
+                streaming: true,
+                streamFrame: 0
+            };
+            pushDashboardChatMessage(assistantMessage);
         } catch (err) {
             const fallback = buildDashboardChatFallback(message);
             dashboardChat.source = 'fallback';
-            dashboardChat.messages.push({
+            assistantMessage = {
                 role: 'assistant',
                 text: String(fallback.message || '').trim(),
                 source: 'fallback',
@@ -846,12 +1129,16 @@ document.addEventListener('DOMContentLoaded', async () => {
                 sections: Array.isArray(fallback.sections) ? fallback.sections : [],
                 links: Array.isArray(fallback.links) ? fallback.links : [],
                 followUps: Array.isArray(fallback.follow_ups) ? fallback.follow_ups : [],
-                actions: normalizeDashboardChatActions(fallback.quick_actions)
-            });
+                actions: normalizeDashboardChatActions(fallback.quick_actions),
+                displayText: '',
+                streaming: true,
+                streamFrame: 0
+            };
+            pushDashboardChatMessage(assistantMessage);
         } finally {
             dashboardChat.busy = false;
-            if (dashboardChat.messages.length > 18) dashboardChat.messages.splice(0, dashboardChat.messages.length - 18);
             renderDashboardChatChrome();
+            if (assistantMessage?.role === 'assistant') startDashboardChatMessageStream(assistantMessage);
         }
     }
 
@@ -933,11 +1220,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('coach-chat-launcher')?.addEventListener('click', () => openDashboardChat());
     document.getElementById('coach-chat-new')?.addEventListener('click', clearDashboardChatConversation);
     document.getElementById('coach-chat-fullscreen')?.addEventListener('click', toggleDashboardChatFullscreen);
-    document.getElementById('coach-chat-mode-switch')?.addEventListener('click', (event) => {
-        const button = event.target.closest('.coach-chat-mode-btn');
-        if (!button) return;
-        setDashboardChatMode(button.dataset.mode || 'auto');
-    });
+    document.getElementById('coach-chat-thinking-toggle')?.addEventListener('click', toggleDashboardChatThinking);
     document.getElementById('coach-chat-size-presets')?.addEventListener('click', (event) => {
         const button = event.target.closest('.coach-chat-size-btn');
         if (!button) return;
@@ -959,10 +1242,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (!button) return;
         const card = dashboardChat.workspaceCards?.[Number(button.dataset.workspaceIndex) || 0];
         if (!card?.action) return;
-        if (card.action.kind === 'mode') {
-            setDashboardChatMode(card.action.mode || 'knowledge');
-            return;
-        }
         if (card.action.kind === 'prompt') {
             void sendDashboardChatMessage(card.action.prompt || '');
             return;
@@ -1006,27 +1285,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (!action) return;
         void runDashboardChatAction(action);
     });
-    document.addEventListener('keydown', (event) => {
-        if (event.key === 'Escape' && dashboardChat.open) {
-            event.preventDefault();
-            closeDashboardChat();
-            return;
-        }
-        if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
-            event.preventDefault();
-            dashboardChat.open ? closeDashboardChat() : openDashboardChat();
-            return;
-        }
-        if (dashboardChat.open && event.key.toLowerCase() === 'f') {
-            event.preventDefault();
-            toggleDashboardChatFullscreen();
-            return;
-        }
-        if (event.key === 'Enter' && !event.shiftKey && document.activeElement?.id === 'coach-chat-input') {
-            event.preventDefault();
-            document.getElementById('coach-chat-form')?.requestSubmit();
-        }
-    });
     document.addEventListener('pointermove', (event) => {
         if (!dashboardChat.resizing) return;
         dashboardChat.ui.width = clampDashboardChatWidth(window.innerWidth - event.clientX - 16);
@@ -1053,16 +1311,71 @@ document.addEventListener('DOMContentLoaded', async () => {
         el.value = value ?? '';
     }
 
+    function renderAccountAvatarPreview() {
+        const resolvedAvatarId = normalizeAvatarId(selectedAvatarId);
+        const previewImg = document.getElementById('acc-avatar-preview');
+        const currentLabel = document.getElementById('acc-avatar-current-label');
+        applyAvatarImage(previewImg, resolvedAvatarId, `${avatarLabel(resolvedAvatarId)} avatar`);
+        if (currentLabel) currentLabel.textContent = avatarLabel(resolvedAvatarId);
+    }
+
+    function renderAccountAvatarPicker() {
+        const picker = document.getElementById('acc-avatar-picker');
+        if (!picker) return;
+        picker.innerHTML = avatarOptions.map((option) => {
+            const optionId = normalizeAvatarId(option.id);
+            const isSelected = optionId === normalizeAvatarId(selectedAvatarId);
+            return `
+                <button
+                    type="button"
+                    class="avatar-option${isSelected ? ' selected' : ''}"
+                    data-avatar-id="${esc(optionId)}"
+                    role="radio"
+                    aria-checked="${isSelected ? 'true' : 'false'}"
+                >
+                    <img class="avatar-option-image" data-avatar-id="${esc(optionId)}" alt="${esc(option.label)} avatar">
+                    <span>${esc(option.label)}</span>
+                    <small>${isSelected ? 'Selected' : 'Choose avatar'}</small>
+                </button>
+            `;
+        }).join('');
+        picker.querySelectorAll('.avatar-option-image').forEach((img) => {
+            const optionId = normalizeAvatarId(img.dataset.avatarId);
+            applyAvatarImage(img, optionId, `${avatarLabel(optionId)} avatar`);
+        });
+        picker.querySelectorAll('.avatar-option').forEach((button) => {
+            button.addEventListener('click', () => {
+                selectedAvatarId = normalizeAvatarId(button.dataset.avatarId);
+                renderAccountAvatarPreview();
+                renderAccountAvatarPicker();
+            });
+        });
+    }
+
     function renderAccountProfile() {
+        const practiceHubToggleWrap = document.getElementById('acc-practice-hub-popup-setting');
+        if (practiceHubToggleWrap) {
+            const isOwnAccount = String(profile.id || uid) === String(uid);
+            practiceHubToggleWrap.hidden = !isOwnAccount;
+        }
         setInput('acc-display-name', profile.display_name || 'Unnamed');
         setInput('acc-role', formatRole(profile.role));
         setInput('acc-email', userEmail || '');
         setInput('acc-class-code', profile.class_code || '—');
         setInput('acc-created-at', profile.created_at ? new Date(profile.created_at).toLocaleString() : '—');
         setInput('acc-user-id', uid);
+        selectedAvatarId = normalizeAvatarId(profile.avatar_id);
+        renderAccountAvatarPreview();
+        renderAccountAvatarPicker();
+        const toggle = document.getElementById('acc-disable-practice-hub-popup');
+        if (toggle) toggle.checked = isPracticeHubAutoOpenDisabled();
     }
 
     renderAccountProfile();
+
+    document.getElementById('acc-disable-practice-hub-popup')?.addEventListener('change', (event) => {
+        setPracticeHubAutoOpenDisabled(!!event.target.checked);
+    });
 
     saveAccountBtn?.addEventListener('click', async () => {
         const nameInput = document.getElementById('acc-display-name');
@@ -1084,9 +1397,12 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         const prevName = String(profile.display_name || '').trim();
         const prevEmail = normalizeEmail(userEmail);
+        const prevAvatarId = normalizeAvatarId(profile.avatar_id);
+        const nextAvatarId = normalizeAvatarId(selectedAvatarId);
         const changeName = nextName !== prevName;
         const changeEmail = nextEmail !== prevEmail;
-        if (!changeName && !changeEmail) {
+        const changeAvatar = nextAvatarId !== prevAvatarId;
+        if (!changeName && !changeEmail && !changeAvatar) {
             showAlert('No profile changes to save.', 'success');
             return;
         }
@@ -1099,12 +1415,24 @@ document.addEventListener('DOMContentLoaded', async () => {
             const successMsgs = [];
             const errorMsgs = [];
 
-            if (changeName) {
-                const { error } = await sb.from('profiles').update({ display_name: nextName }).eq('id', uid);
-                if (error) errorMsgs.push(`Name update failed: ${error.message}`);
-                else {
-                    profile.display_name = nextName;
-                    successMsgs.push('Display name updated');
+            if (changeName || changeAvatar) {
+                const profilePatch = {};
+                if (changeName) profilePatch.display_name = nextName;
+                if (changeAvatar) profilePatch.avatar_id = nextAvatarId;
+                const { error } = await sb.from('profiles').update(profilePatch).eq('id', uid);
+                if (error) {
+                    if (changeName && changeAvatar) errorMsgs.push(`Profile update failed: ${error.message}`);
+                    else if (changeName) errorMsgs.push(`Name update failed: ${error.message}`);
+                    else errorMsgs.push(`Avatar update failed: ${error.message}`);
+                } else {
+                    if (changeName) {
+                        profile.display_name = nextName;
+                        successMsgs.push('Display name updated');
+                    }
+                    if (changeAvatar) {
+                        profile.avatar_id = nextAvatarId;
+                        successMsgs.push('Avatar updated');
+                    }
                 }
             }
 
@@ -1591,11 +1919,11 @@ document.addEventListener('DOMContentLoaded', async () => {
                 <div class="coach-focus-head">
                     <div>
                         <div class="coach-focus-title">${esc(focus.icon || '📘')} ${esc(focus.title)}</div>
-                        <div class="coach-focus-meta">${esc(focus.meta || 'Targeted DeepSeek focus')}</div>
+                        <div class="coach-focus-meta">${esc(focus.meta || 'Coach focus')}</div>
                     </div>
                     <span class="analytics-ai-priority ${esc(focus.priority || 'medium')}">${esc(focus.priority || 'medium')}</span>
                 </div>
-                <p class="coach-focus-reason">${esc(focus.reason || 'This is one of the clearest places to tighten your recall and clue recognition.')}</p>
+                <p class="coach-focus-reason">${esc(focus.reason || 'Best next target from recent work.')}</p>
                 <div class="coach-focus-tags">
                     ${focus.region ? `<span class="coach-focus-pill">Region: ${esc(focus.region)}</span>` : ''}
                     ${focus.era ? `<span class="coach-focus-pill">Era: ${esc(focus.era)}</span>` : ''}
@@ -1618,14 +1946,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         const focuses = coachFocusSuggestionsCurrent.slice(0, 2);
         drillBtn.disabled = !focuses.length;
         if (!focuses.length) {
-            summaryEl.textContent = 'DeepSeek prep suggestions will appear here once you build up some coach notes or analytics history.';
-            focusEl.innerHTML = '<div class="coach-empty">Practice a few more questions to unlock targeted assignment prep.</div>';
+            summaryEl.textContent = 'No coach focus yet.';
+            focusEl.innerHTML = '<div class="coach-empty">Complete a few drills to load a focus.</div>';
             renderDashboardChatChrome();
             return;
         }
         const primary = focuses[0];
-        summaryEl.textContent = `Before your next assignment, put extra attention on ${primary.title}. The coach is seeing repeat friction there across your recent practice.`;
-        renderCoachFocusCards('assignments-coach-focuses', focuses, 'No assignment prep suggestions yet.');
+        summaryEl.textContent = `Current priority: ${primary.title}.`;
+        renderCoachFocusCards('assignments-coach-focuses', focuses, 'No assignment focus yet.');
         renderDashboardChatChrome();
     }
 
@@ -1642,17 +1970,17 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (summaryEl) {
             if (coachFocusSuggestionsCurrent.length) {
                 const lead = coachFocusSuggestionsCurrent[0];
-                summaryEl.textContent = `Your strongest next move is ${lead.title}. DeepSeek has enough history to steer you toward a focused drill instead of another broad mixed session.`;
+                summaryEl.textContent = `Top focus: ${lead.title}.`;
             } else {
-                summaryEl.textContent = 'Once DeepSeek has a few saved lessons or analytics signals, this workspace will start grouping them into actionable drills.';
+                summaryEl.textContent = 'No coach focus yet.';
             }
         }
 
-        renderCoachFocusCards('coach-focus-list', coachFocusSuggestionsCurrent, 'No coach focuses yet. Missed-question lessons from practice will accumulate here.');
+        renderCoachFocusCards('coach-focus-list', coachFocusSuggestionsCurrent, 'No coach focus yet.');
 
         if (noteEl) {
             if (!coachRecordsCurrent.length) {
-                noteEl.innerHTML = '<div class="coach-empty">No DeepSeek coach lessons saved yet.</div>';
+                noteEl.innerHTML = '<div class="coach-empty">No saved lessons yet.</div>';
             } else {
                 noteEl.innerHTML = coachRecordsCurrent.map(record => {
                     const focus = coachFocusFromRecord(record);
@@ -2241,8 +2569,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
         if (statusEl) {
             statusEl.textContent = source === 'deepseek'
-                ? 'DeepSeek analyzed your current 30-day snapshot and highlighted the biggest weak areas to target next.'
-                : 'DeepSeek was unavailable, so this plan was generated from your analytics snapshot locally.';
+                ? 'AI summary ready from current 30-day data.'
+                : 'Local summary ready from current 30-day data.';
         }
         if (contentEl) {
             const weakAreasHtml = (Array.isArray(insights.weak_areas) ? insights.weak_areas : []).map(area => `
@@ -2266,15 +2594,15 @@ document.addEventListener('DOMContentLoaded', async () => {
                 </div>
                 <div class="analytics-ai-grid">
                     <div class="analytics-ai-block">
-                        <h4>Priority Weak Areas</h4>
+                        <h4>Priority Areas</h4>
                         <div class="analytics-ai-list">${weakAreasHtml || '<p class="muted">No major weak area has emerged yet.</p>'}</div>
                     </div>
                     <div class="analytics-ai-block">
-                        <h4>What Is Holding Up</h4>
+                        <h4>Stable Areas</h4>
                         <ul class="analytics-ai-compact-list">${winsHtml || '<li>Keep building attempts so the model can separate true strengths from noise.</li>'}</ul>
                     </div>
                     <div class="analytics-ai-block">
-                        <h4>Next Study Moves</h4>
+                        <h4>Next Moves</h4>
                         <ul class="analytics-ai-compact-list">${stepsHtml || '<li>Run one targeted drill and one mixed drill this week.</li>'}</ul>
                     </div>
                 </div>
@@ -2289,10 +2617,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (!hasData || !snapshot) {
             setAnalyticsInsightsButton('Generate Insights', true);
             renderAnalyticsInsightsPlaceholder(
-                'AI insights are waiting for data',
-                'Complete a few drill questions first so weak-area recommendations have real evidence behind them.',
+                'No insights yet',
+                'More drill data needed.',
                 'No data',
-                'Answer a few questions and refresh analytics to unlock AI insights.'
+                'Run a few questions first.'
             );
             return;
         }
@@ -2306,10 +2634,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         setAnalyticsInsightsButton('Generate Insights', false);
         renderAnalyticsInsightsPlaceholder(
-            'Generate a focused study plan',
-            'Use DeepSeek to summarize your weakest eras and regions from the current 30-day snapshot.',
+            'Generate summary',
+            'Summarize current 30-day data.',
             'Ready',
-            'Generate a DeepSeek summary to translate this analytics snapshot into targeted study moves.'
+            'AI summary ready to generate.'
         );
         renderAssignmentsCoachBrief();
     }
@@ -2364,6 +2692,92 @@ document.addEventListener('DOMContentLoaded', async () => {
         return `<text x="50%" y="50%" text-anchor="middle" dominant-baseline="middle" fill="currentColor" opacity=".55">${esc(text)}</text>`;
     }
 
+    function configureAnalyticsSvg(svg, width, height) {
+        svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+        svg.setAttribute('preserveAspectRatio', 'none');
+        svg.classList.add('interactive');
+    }
+
+    function chartAxisLabel(value, options = {}) {
+        if (typeof options.axisLabelFn === 'function') return options.axisLabelFn(value);
+        if (typeof options.yLabelFn === 'function') return options.yLabelFn(value);
+        return String(Math.round(value));
+    }
+
+    function chartTooltipLabel(value, options = {}) {
+        if (typeof options.tooltipLabelFn === 'function') return options.tooltipLabelFn(value);
+        return chartAxisLabel(value, options);
+    }
+
+    function pointerWithinChartPlot(point, width, height, pad) {
+        return point.x >= pad.l && point.x <= width - pad.r && point.y >= pad.t && point.y <= height - pad.b;
+    }
+
+    function chartPointerPoint(event, svg, width, height) {
+        const rect = svg.getBoundingClientRect();
+        return {
+            x: (event.clientX - rect.left) * (width / rect.width),
+            y: (event.clientY - rect.top) * (height / rect.height),
+            clientX: event.clientX,
+            clientY: event.clientY
+        };
+    }
+
+    function ensureAnalyticsChartTooltip(svg) {
+        const shell = svg.closest('.analytics-chart-shell');
+        if (!shell) return null;
+        let tooltip = shell.querySelector('.analytics-chart-tooltip');
+        if (!tooltip) {
+            tooltip = document.createElement('div');
+            tooltip.className = 'analytics-chart-tooltip';
+            tooltip.setAttribute('aria-hidden', 'true');
+            shell.appendChild(tooltip);
+        }
+        return tooltip;
+    }
+
+    function showAnalyticsChartTooltip(svg, clientX, clientY, label, value, detail = '') {
+        const shell = svg.closest('.analytics-chart-shell');
+        const tooltip = ensureAnalyticsChartTooltip(svg);
+        if (!shell || !tooltip) return;
+        tooltip.innerHTML = `
+            <span class="analytics-chart-tooltip-label">${esc(label)}</span>
+            <span class="analytics-chart-tooltip-value">${esc(value)}</span>
+            ${detail ? `<span class="analytics-chart-tooltip-detail">${esc(detail)}</span>` : ''}
+        `;
+        tooltip.classList.add('is-visible');
+
+        const shellRect = shell.getBoundingClientRect();
+        const pad = 12;
+        const anchorX = clientX - shellRect.left;
+        const anchorY = clientY - shellRect.top;
+
+        let left = anchorX + 16;
+        let top = anchorY - tooltip.offsetHeight - 16;
+
+        const minLeft = pad;
+        const maxLeft = shell.clientWidth - tooltip.offsetWidth - pad;
+        if (left > maxLeft) left = maxLeft;
+        if (left < minLeft) left = minLeft;
+
+        const minTop = pad;
+        const maxTop = shell.clientHeight - tooltip.offsetHeight - pad;
+        if (top < minTop) {
+            top = anchorY + 16;
+        }
+        if (top > maxTop) top = maxTop;
+        if (top < minTop) top = minTop;
+
+        tooltip.style.left = `${left}px`;
+        tooltip.style.top = `${top}px`;
+    }
+
+    function hideAnalyticsChartTooltip(svg) {
+        const tooltip = ensureAnalyticsChartTooltip(svg);
+        if (!tooltip) return;
+        tooltip.classList.remove('is-visible');
+    }
+
     function renderLineChart(svgId, points, labels, options = {}) {
         const svg = document.getElementById(svgId);
         if (!svg) return;
@@ -2375,14 +2789,17 @@ document.addEventListener('DOMContentLoaded', async () => {
             return;
         }
 
-        const w = 720, h = 220;
-        const pad = { l: 42, r: 16, t: 16, b: 32 };
+        const w = 820, h = 320;
+        const pad = { l: 56, r: 24, t: 28, b: 44 };
         const plotW = w - pad.l - pad.r;
         const plotH = h - pad.t - pad.b;
         const min = Number.isFinite(options.min) ? Number(options.min) : Math.min(...valid);
         const max = Number.isFinite(options.max) ? Number(options.max) : Math.max(...valid);
         const yMin = options.minZero ? Math.min(0, min) : min;
         const yMax = max === yMin ? yMin + 1 : max;
+        const color = options.color || 'var(--accent)';
+        const gradientId = `${svgId}-gradient`.replace(/[^a-zA-Z0-9_-]/g, '-');
+        configureAnalyticsSvg(svg, w, h);
 
         const xFor = i => pad.l + (numeric.length <= 1 ? 0 : (i * plotW / (numeric.length - 1)));
         const yFor = v => pad.t + ((yMax - v) * plotH / (yMax - yMin));
@@ -2394,16 +2811,21 @@ document.addEventListener('DOMContentLoaded', async () => {
             const ratio = t / gridTicks;
             const y = pad.t + ratio * plotH;
             const value = yMax - ((yMax - yMin) * ratio);
-            const text = options.yLabelFn ? options.yLabelFn(value) : String(Math.round(value));
-            grids.push(`<line x1="${pad.l}" y1="${y.toFixed(2)}" x2="${w - pad.r}" y2="${y.toFixed(2)}" stroke="rgba(148,163,184,0.18)" stroke-width="1" />`);
-            yLabels.push(`<text x="${pad.l - 8}" y="${(y + 4).toFixed(2)}" text-anchor="end" fill="currentColor" opacity=".6" font-size="11">${esc(text)}</text>`);
+            const text = chartAxisLabel(value, options);
+            grids.push(`<line x1="${pad.l}" y1="${y.toFixed(2)}" x2="${w - pad.r}" y2="${y.toFixed(2)}" stroke="rgba(148,163,184,0.18)" stroke-width="1.2" />`);
+            yLabels.push(`<text x="${pad.l - 10}" y="${(y + 4).toFixed(2)}" text-anchor="end" fill="currentColor" opacity=".72" font-size="12">${esc(text)}</text>`);
         }
 
         let path = '';
         let open = false;
         const circles = [];
+        const segments = [];
+        let activeSegment = [];
+        const validPoints = [];
         numeric.forEach((v, i) => {
             if (v === null) {
+                if (activeSegment.length) segments.push(activeSegment);
+                activeSegment = [];
                 open = false;
                 return;
             }
@@ -2411,7 +2833,17 @@ document.addEventListener('DOMContentLoaded', async () => {
             const y = yFor(v);
             path += open ? ` L ${x.toFixed(2)} ${y.toFixed(2)}` : ` M ${x.toFixed(2)} ${y.toFixed(2)}`;
             open = true;
-            circles.push(`<circle cx="${x.toFixed(2)}" cy="${y.toFixed(2)}" r="3.2" fill="${options.color || 'var(--accent)'}" />`);
+            activeSegment.push({ index: i, x, y, value: v, label: labels[i] || '' });
+            validPoints.push({ index: i, x, y, value: v, label: labels[i] || '' });
+            circles.push(`<circle class="analytics-line-point" data-index="${i}" cx="${x.toFixed(2)}" cy="${y.toFixed(2)}" r="6.2" fill="${color}" stroke="rgba(255,255,255,0.92)" stroke-width="2.2" />`);
+        });
+        if (activeSegment.length) segments.push(activeSegment);
+
+        const areaPaths = segments.map(segment => {
+            const first = segment[0];
+            const last = segment[segment.length - 1];
+            const line = segment.map((point, idx) => `${idx === 0 ? 'L' : 'L'} ${point.x.toFixed(2)} ${point.y.toFixed(2)}`).join(' ');
+            return `<path d="M ${first.x.toFixed(2)} ${(h - pad.b).toFixed(2)} ${line} L ${last.x.toFixed(2)} ${(h - pad.b).toFixed(2)} Z" fill="url(#${gradientId})" opacity="0.88"></path>`;
         });
 
         const mid = Math.floor((labels.length - 1) / 2);
@@ -2419,16 +2851,77 @@ document.addEventListener('DOMContentLoaded', async () => {
             { i: 0, txt: labels[0] || '' },
             { i: mid, txt: labels[mid] || '' },
             { i: labels.length - 1, txt: labels[labels.length - 1] || '' }
-        ].map(xl => `<text x="${xFor(xl.i).toFixed(2)}" y="${h - 8}" text-anchor="middle" fill="currentColor" opacity=".7" font-size="11">${esc(xl.txt)}</text>`);
+        ].map(xl => `<text x="${xFor(xl.i).toFixed(2)}" y="${h - 10}" text-anchor="middle" fill="currentColor" opacity=".76" font-size="12">${esc(xl.txt)}</text>`);
 
         svg.innerHTML = `
+            <defs>
+                <linearGradient id="${gradientId}" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stop-color="${color}" stop-opacity="0.26"></stop>
+                    <stop offset="100%" stop-color="${color}" stop-opacity="0"></stop>
+                </linearGradient>
+            </defs>
             <rect x="0" y="0" width="${w}" height="${h}" fill="transparent"></rect>
             ${grids.join('')}
             ${yLabels.join('')}
-            <path d="${path}" fill="none" stroke="${options.color || 'var(--accent)'}" stroke-width="2.6" stroke-linejoin="round" stroke-linecap="round"></path>
+            ${areaPaths.join('')}
+            <path d="${path}" fill="none" stroke="${color}" stroke-width="10" stroke-linejoin="round" stroke-linecap="round" opacity="0.16"></path>
+            <path d="${path}" fill="none" stroke="${color}" stroke-width="4.6" stroke-linejoin="round" stroke-linecap="round"></path>
             ${circles.join('')}
             ${xLabels.join('')}
+            <g class="analytics-hover-layer" opacity="0" pointer-events="none">
+                <line class="analytics-chart-focus-line" x1="${pad.l}" y1="${pad.t}" x2="${pad.l}" y2="${h - pad.b}" stroke="${color}" stroke-width="1.8" opacity="0.34" stroke-dasharray="5 6"></line>
+                <circle class="analytics-chart-focus-halo" cx="${pad.l}" cy="${pad.t}" r="13" fill="${color}" opacity="0.18"></circle>
+                <circle class="analytics-chart-focus-dot" cx="${pad.l}" cy="${pad.t}" r="7.4" fill="${color}" stroke="rgba(255,255,255,0.95)" stroke-width="2.4"></circle>
+            </g>
         `;
+
+        const hoverLayer = svg.querySelector('.analytics-hover-layer');
+        const hoverLine = svg.querySelector('.analytics-chart-focus-line');
+        const hoverHalo = svg.querySelector('.analytics-chart-focus-halo');
+        const hoverDot = svg.querySelector('.analytics-chart-focus-dot');
+        const pointEls = Array.from(svg.querySelectorAll('.analytics-line-point'));
+
+        const clearHover = () => {
+            hoverLayer?.setAttribute('opacity', '0');
+            pointEls.forEach(el => el.classList.remove('is-active', 'is-dim'));
+            hideAnalyticsChartTooltip(svg);
+        };
+
+        svg.onpointerleave = clearHover;
+        svg.onpointermove = event => {
+            const point = chartPointerPoint(event, svg, w, h);
+            if (!pointerWithinChartPlot(point, w, h, pad)) {
+                clearHover();
+                return;
+            }
+            const nearest = validPoints.reduce((best, current) =>
+                !best || Math.abs(current.x - point.x) < Math.abs(best.x - point.x) ? current : best, null);
+            if (!nearest) {
+                clearHover();
+                return;
+            }
+            hoverLayer?.setAttribute('opacity', '1');
+            hoverLine?.setAttribute('x1', nearest.x.toFixed(2));
+            hoverLine?.setAttribute('x2', nearest.x.toFixed(2));
+            hoverHalo?.setAttribute('cx', nearest.x.toFixed(2));
+            hoverHalo?.setAttribute('cy', nearest.y.toFixed(2));
+            hoverDot?.setAttribute('cx', nearest.x.toFixed(2));
+            hoverDot?.setAttribute('cy', nearest.y.toFixed(2));
+            pointEls.forEach(el => {
+                const active = Number(el.getAttribute('data-index')) === nearest.index;
+                el.classList.toggle('is-active', active);
+                el.classList.toggle('is-dim', !active);
+            });
+            const rect = svg.getBoundingClientRect();
+            showAnalyticsChartTooltip(
+                svg,
+                rect.left + ((nearest.x / w) * rect.width),
+                rect.top + ((nearest.y / h) * rect.height),
+                nearest.label || `Point ${nearest.index + 1}`,
+                chartTooltipLabel(nearest.value, options),
+                options.seriesName || ''
+            );
+        };
     }
 
     function renderBarChart(svgId, values, labels, options = {}) {
@@ -2441,19 +2934,43 @@ document.addEventListener('DOMContentLoaded', async () => {
             return;
         }
 
-        const w = 720, h = 220;
-        const pad = { l: 20, r: 12, t: 16, b: 32 };
+        const w = 820, h = 320;
+        const pad = { l: 38, r: 24, t: 28, b: 44 };
         const plotW = w - pad.l - pad.r;
         const plotH = h - pad.t - pad.b;
-        const bw = Math.max(3, plotW / vals.length * 0.72);
-        const gap = Math.max(1, plotW / vals.length * 0.28);
+        const bw = Math.max(10, plotW / vals.length * 0.8);
+        const gap = Math.max(4, plotW / vals.length * 0.16);
+        const color = options.color || 'var(--accent2)';
+        const gradientId = `${svgId}-gradient`.replace(/[^a-zA-Z0-9_-]/g, '-');
+        configureAnalyticsSvg(svg, w, h);
 
-        const bars = vals.map((v, i) => {
+        const gridTicks = 4;
+        const grids = [];
+        const yLabels = [];
+        for (let t = 0; t <= gridTicks; t++) {
+            const ratio = t / gridTicks;
+            const y = pad.t + ratio * plotH;
+            const value = max - (max * ratio);
+            grids.push(`<line x1="${pad.l}" y1="${y.toFixed(2)}" x2="${w - pad.r}" y2="${y.toFixed(2)}" stroke="rgba(148,163,184,0.16)" stroke-width="1.2" />`);
+            yLabels.push(`<text x="${pad.l - 10}" y="${(y + 4).toFixed(2)}" text-anchor="end" fill="currentColor" opacity=".72" font-size="12">${esc(chartAxisLabel(value, options))}</text>`);
+        }
+
+        const barsData = vals.map((v, i) => {
             const x = pad.l + i * (bw + gap);
             const hh = Math.max(2, (v / max) * plotH);
             const y = h - pad.b - hh;
-            return `<rect x="${x.toFixed(2)}" y="${y.toFixed(2)}" width="${bw.toFixed(2)}" height="${hh.toFixed(2)}" rx="5" fill="${options.color || 'var(--accent2)'}" opacity="0.82" />`;
+            return {
+                index: i,
+                label: labels[i] || '',
+                value: v,
+                x,
+                y,
+                width: bw,
+                height: hh,
+                centerX: x + (bw / 2)
+            };
         });
+        const bars = barsData.map(bar => `<rect class="analytics-bar" data-index="${bar.index}" x="${bar.x.toFixed(2)}" y="${bar.y.toFixed(2)}" width="${bar.width.toFixed(2)}" height="${bar.height.toFixed(2)}" rx="9" fill="url(#${gradientId})" stroke="rgba(255,255,255,0.42)" stroke-width="1.4" opacity="0.94" />`);
 
         const mid = Math.floor((labels.length - 1) / 2);
         const xLabelPos = i => pad.l + i * (bw + gap) + (bw / 2);
@@ -2461,13 +2978,68 @@ document.addEventListener('DOMContentLoaded', async () => {
             { i: 0, txt: labels[0] || '' },
             { i: mid, txt: labels[mid] || '' },
             { i: labels.length - 1, txt: labels[labels.length - 1] || '' }
-        ].map(xl => `<text x="${xLabelPos(xl.i).toFixed(2)}" y="${h - 8}" text-anchor="middle" fill="currentColor" opacity=".7" font-size="11">${esc(xl.txt)}</text>`);
+        ].map(xl => `<text x="${xLabelPos(xl.i).toFixed(2)}" y="${h - 10}" text-anchor="middle" fill="currentColor" opacity=".76" font-size="12">${esc(xl.txt)}</text>`);
 
         svg.innerHTML = `
+            <defs>
+                <linearGradient id="${gradientId}" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stop-color="${color}" stop-opacity="0.98"></stop>
+                    <stop offset="100%" stop-color="${color}" stop-opacity="0.54"></stop>
+                </linearGradient>
+            </defs>
             <rect x="0" y="0" width="${w}" height="${h}" fill="transparent"></rect>
+            ${grids.join('')}
+            ${yLabels.join('')}
             ${bars.join('')}
             ${xLabels.join('')}
+            <g class="analytics-hover-layer" opacity="0" pointer-events="none">
+                <rect class="analytics-bar-focus" x="${pad.l}" y="${pad.t}" width="${bw.toFixed(2)}" height="12" rx="10" fill="${color}" opacity="0.2"></rect>
+            </g>
         `;
+
+        const hoverLayer = svg.querySelector('.analytics-hover-layer');
+        const hoverBar = svg.querySelector('.analytics-bar-focus');
+        const barEls = Array.from(svg.querySelectorAll('.analytics-bar'));
+
+        const clearHover = () => {
+            hoverLayer?.setAttribute('opacity', '0');
+            barEls.forEach(el => el.classList.remove('is-active', 'is-dim'));
+            hideAnalyticsChartTooltip(svg);
+        };
+
+        svg.onpointerleave = clearHover;
+        svg.onpointermove = event => {
+            const point = chartPointerPoint(event, svg, w, h);
+            if (!pointerWithinChartPlot(point, w, h, pad)) {
+                clearHover();
+                return;
+            }
+            const nearest = barsData.reduce((best, current) =>
+                !best || Math.abs(current.centerX - point.x) < Math.abs(best.centerX - point.x) ? current : best, null);
+            if (!nearest) {
+                clearHover();
+                return;
+            }
+            hoverLayer?.setAttribute('opacity', '1');
+            hoverBar?.setAttribute('x', nearest.x.toFixed(2));
+            hoverBar?.setAttribute('y', nearest.y.toFixed(2));
+            hoverBar?.setAttribute('width', nearest.width.toFixed(2));
+            hoverBar?.setAttribute('height', nearest.height.toFixed(2));
+            barEls.forEach(el => {
+                const active = Number(el.getAttribute('data-index')) === nearest.index;
+                el.classList.toggle('is-active', active);
+                el.classList.toggle('is-dim', !active);
+            });
+            const rect = svg.getBoundingClientRect();
+            showAnalyticsChartTooltip(
+                svg,
+                rect.left + ((nearest.centerX / w) * rect.width),
+                rect.top + ((nearest.y / h) * rect.height),
+                nearest.label || `Bar ${nearest.index + 1}`,
+                chartTooltipLabel(nearest.value, options),
+                options.seriesName || ''
+            );
+        };
     }
 
     function perfGradient(accuracy) {
@@ -2565,6 +3137,31 @@ document.addEventListener('DOMContentLoaded', async () => {
         el.classList.add(improved ? 'analytics-delta-up' : 'analytics-delta-down');
     }
 
+    function renderAnalyticsHero(snapshot) {
+        const titleEl = document.getElementById('analytics-hero-title');
+        const summaryEl = document.getElementById('analytics-hero-summary');
+        const activeEl = document.getElementById('analytics-hero-active-days');
+        const fastestEl = document.getElementById('analytics-hero-fastest');
+        if (titleEl) {
+            if (snapshot.totalAttempts <= 0) {
+                titleEl.textContent = 'Last 30 days';
+            } else if (snapshot.totalAccuracy >= 80) {
+                titleEl.textContent = 'Strong recent accuracy';
+            } else if (snapshot.totalAccuracy >= 65) {
+                titleEl.textContent = 'Mixed but workable';
+            } else {
+                titleEl.textContent = 'Clear weak areas';
+            }
+        }
+        if (summaryEl) {
+            summaryEl.textContent = snapshot.totalAttempts > 0
+                ? `${snapshot.totalAttempts.toLocaleString()} questions • ${snapshot.sessionsCount} sessions`
+                : 'Volume, accuracy, buzz speed.';
+        }
+        if (activeEl) activeEl.textContent = `${snapshot.activeDays || 0} / 30`;
+        if (fastestEl) fastestEl.textContent = snapshot.fastestBuzz ? `${snapshot.fastestBuzz.toFixed(2)}s` : '—';
+    }
+
     async function loadAnalytics() {
         let sessionsRaw = [];
         if (analyticsCloudReady) {
@@ -2591,6 +3188,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const hasData = snapshot.totalAttempts > 0;
         if (emptyEl) emptyEl.classList.toggle('hidden', hasData);
         if (contentEl) contentEl.classList.toggle('hidden', !hasData);
+        renderAnalyticsHero(snapshot);
         prepareAnalyticsInsights(snapshot, hasData);
         if (!hasData) {
             renderDashboardChatChrome();
@@ -2609,19 +3207,40 @@ document.addEventListener('DOMContentLoaded', async () => {
             'analytics-chart-accuracy',
             snapshot.days.map(d => d.accuracy),
             labels,
-            { min: 0, max: 100, color: '#60a5fa', yLabelFn: v => `${Math.round(v)}%`, emptyText: 'No accuracy data' }
+            {
+                min: 0,
+                max: 100,
+                color: '#60a5fa',
+                yLabelFn: v => `${Math.round(v)}%`,
+                tooltipLabelFn: v => `${Math.round(v)}% accuracy`,
+                seriesName: 'Accuracy trend',
+                emptyText: 'No accuracy data'
+            }
         );
         renderLineChart(
             'analytics-chart-buzz',
             snapshot.days.map(d => d.avgBuzz),
             labels,
-            { minZero: true, color: '#22c55e', yLabelFn: v => `${v.toFixed(1)}s`, emptyText: 'No buzz speed data' }
+            {
+                minZero: true,
+                color: '#22c55e',
+                yLabelFn: v => `${v.toFixed(1)}s`,
+                tooltipLabelFn: v => `${v.toFixed(2)}s average buzz`,
+                seriesName: 'Buzz speed trend',
+                emptyText: 'No buzz speed data'
+            }
         );
         renderBarChart(
             'analytics-chart-volume',
             snapshot.days.map(d => d.attempts),
             labels,
-            { color: '#f59e0b', emptyText: 'No attempts yet' }
+            {
+                color: '#f59e0b',
+                axisLabelFn: v => `${Math.round(v)}`,
+                tooltipLabelFn: v => `${Math.round(v)} questions answered`,
+                seriesName: 'Daily volume',
+                emptyText: 'No attempts yet'
+            }
         );
 
         renderPerformanceList('analytics-era-list', snapshot.eraStats, 'No era-tagged questions yet.');

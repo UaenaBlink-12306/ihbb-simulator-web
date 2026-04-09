@@ -3,11 +3,64 @@ const $ = (id) => document.getElementById(id);
 const SHOW = (id) => {
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
   const el = $(id); if (el) el.classList.add('active');
+  if (typeof updateSetupMobileDock === 'function') updateSetupMobileDock();
 };
 const navSet = (which) => {
   document.querySelectorAll('.nav a').forEach(a => a.classList.remove('active'));
   const el = $(which); if (el) el.classList.add('active');
 };
+let practiceViewportFitRaf = 0;
+function alignPracticeNavIntoView() {
+  const nav = document.querySelector('.nav.tab-strip');
+  const shell = document.querySelector('.shell.page-shell');
+  if (!nav) return;
+  const shellTopPad = shell ? parseFloat(getComputedStyle(shell).paddingTop || '0') || 0 : 0;
+  const topInset = Math.max(12, Math.round(shellTopPad / 2));
+  window.scrollTo({ top: Math.max(0, nav.offsetTop - topInset) });
+}
+function fitPracticeStageToViewport() {
+  const practiceView = $('view-practice');
+  const nav = document.querySelector('.nav.tab-strip');
+  const card = practiceView?.querySelector('.practice-stage-card');
+  const buzzWrap = practiceView?.querySelector('.practice-stage .buzz-wrap');
+  const shell = document.querySelector('.shell.page-shell');
+  if (!practiceView?.classList.contains('active') || !nav || !card || !buzzWrap) return;
+
+  const shellTopPad = shell ? parseFloat(getComputedStyle(shell).paddingTop || '0') || 0 : 0;
+  const topInset = Math.max(12, Math.round(shellTopPad / 2));
+  const targetCardHeight = Math.max(
+    520,
+    Math.floor(window.innerHeight - Math.max(topInset, Math.ceil(card.getBoundingClientRect().top || 0)) - 8)
+  );
+  const currentCardHeight = Math.ceil(card.getBoundingClientRect().height || card.offsetHeight || 0);
+  const currentBuzzHeight = Math.ceil(buzzWrap.getBoundingClientRect().height || buzzWrap.offsetHeight || 0);
+  const fixedHeight = Math.max(0, currentCardHeight - currentBuzzHeight);
+  const compactPracticePhase = ['typing', 'grading', 'answering'].includes(App.phase);
+  const minBuzz = compactPracticePhase
+    ? (window.innerWidth <= 640 ? 150 : window.innerWidth <= 1100 ? 170 : 180)
+    : (window.innerWidth <= 640 ? 220 : window.innerWidth <= 1100 ? 240 : 260);
+  const maxBuzz = compactPracticePhase
+    ? (window.innerHeight >= 900 ? 300 : window.innerHeight >= 820 ? 260 : 240)
+    : (window.innerHeight >= 900 ? 380 : window.innerHeight >= 820 ? 340 : 300);
+  const targetBuzzHeight = clamp(targetCardHeight - fixedHeight, minBuzz, maxBuzz);
+  card.style.setProperty('--practice-buzz-wrap-height', `${targetBuzzHeight}px`);
+}
+function schedulePracticeViewportFit({ align = false } = {}) {
+  if (practiceViewportFitRaf) cancelAnimationFrame(practiceViewportFitRaf);
+  practiceViewportFitRaf = requestAnimationFrame(() => {
+    practiceViewportFitRaf = 0;
+    if (align) alignPracticeNavIntoView();
+    fitPracticeStageToViewport();
+    requestAnimationFrame(() => {
+      if (align) alignPracticeNavIntoView();
+      fitPracticeStageToViewport();
+    });
+  });
+  setTimeout(() => {
+    if (align) alignPracticeNavIntoView();
+    fitPracticeStageToViewport();
+  }, 220);
+}
 const toast = (msg) => {
   const t = $('toast'); if (!t) return;
   t.textContent = msg; t.classList.add('show');
@@ -31,6 +84,7 @@ const KEY_COACH_LOCAL = 'ihbb_v2_coach_attempts';
 const KEY_COACH_PENDING = 'ihbb_v2_coach_pending';
 const KEY_COACH_DRILL = 'ihbb_student_coach_drill';
 const KEY_COACH_CHAT_ACTION = 'ihbb_v2_coach_chat_action';
+const PRACTICE_HUB_AUTO_OPEN_DISABLED_KEY = 'ihbb_v2_practice_hub_auto_open_disabled';
 const WRONG_SYNC_TABLE = 'user_wrong_questions';
 const SESSION_SYNC_TABLE = 'user_drill_sessions';
 const COACH_SYNC_TABLE = 'user_coach_attempts';
@@ -492,6 +546,7 @@ function clearCoachCard() {
   el.innerHTML = '';
   try { delete el.dataset.attempt; } catch { /* noop */ }
   el.style.display = 'none';
+  schedulePracticeViewportFit();
 }
 function renderCoachCard(coach) {
   const el = $('coach-card');
@@ -521,6 +576,7 @@ function renderCoachCard(coach) {
     ${coachWikiHtml(coach)}
   `;
   el.style.display = 'block';
+  schedulePracticeViewportFit();
 }
 
 const CoachNotebook = { records: [], loaded: false };
@@ -528,7 +584,7 @@ let CoachFocusSuggestions = [];
 let ReviewCoachFocusSuggestions = [];
 const COACH_CHAT_STARTERS = [
   { label: 'What next?', prompt: 'What should I practice next in this practice hub?' },
-  { label: 'Wrong-bank or notebook?', prompt: 'Should I use Wrong-bank or AI Notebook right now?' },
+  { label: 'Explain the weak spot', prompt: 'Explain my current weak spot in detail and tell me what I should do next.' },
   { label: 'Build a focused drill', prompt: 'Recommend a focused drill and launch the best next practice.' }
 ];
 const COACH_CHAT_ALLOWED_ACTIONS = new Set([
@@ -541,6 +597,11 @@ const COACH_CHAT_ALLOWED_ACTIONS = new Set([
   'open_setup',
   'open_review',
   'open_library'
+]);
+const COACH_CHAT_NOTEBOOK_ACTIONS = new Set([
+  'open_ai_notebook',
+  'apply_top_focus',
+  'generate_focus_drill'
 ]);
 const COACH_CHAT_SUPPRESS_KEY = 'ihbb_v2_coach_chat_suppressed';
 const COACH_CHAT_UI_KEY = 'ihbb_v2_coach_chat_ui';
@@ -561,12 +622,16 @@ const CoachChat = {
   workspaceCards: [],
   ui: {
     mode: 'auto',
+    thinkingEnabled: false,
     size: 'standard',
     width: COACH_CHAT_SIZE_PRESETS.standard,
     fullscreen: false
   },
   resizing: null
 };
+const COACH_CHAT_STREAM_MIN_MS = 240;
+const COACH_CHAT_STREAM_MAX_MS = 1800;
+const COACH_CHAT_STREAM_MS_PER_CHAR = 6;
 
 function clampCoachChatWidth(value) {
   const min = 720;
@@ -578,12 +643,12 @@ function clampCoachChatWidth(value) {
 function loadCoachChatUiPrefs() {
   try {
     const raw = JSON.parse(localStorage.getItem(COACH_CHAT_UI_KEY) || '{}');
-    const mode = ['auto', 'coach', 'knowledge'].includes(String(raw.mode || '').trim()) ? String(raw.mode).trim() : 'auto';
     const sizeRaw = String(raw.size || '').trim();
     const size = sizeRaw === 'custom' || Object.prototype.hasOwnProperty.call(COACH_CHAT_SIZE_PRESETS, sizeRaw) ? sizeRaw : 'standard';
     const width = clampCoachChatWidth(raw.width || COACH_CHAT_SIZE_PRESETS[size] || COACH_CHAT_SIZE_PRESETS.standard);
     CoachChat.ui = {
-      mode,
+      mode: 'auto',
+      thinkingEnabled: !!raw.thinkingEnabled,
       size,
       width,
       fullscreen: !!raw.fullscreen
@@ -591,6 +656,7 @@ function loadCoachChatUiPrefs() {
   } catch {
     CoachChat.ui = {
       mode: 'auto',
+      thinkingEnabled: false,
       size: 'standard',
       width: COACH_CHAT_SIZE_PRESETS.standard,
       fullscreen: false
@@ -601,7 +667,8 @@ function loadCoachChatUiPrefs() {
 function saveCoachChatUiPrefs() {
   try {
     localStorage.setItem(COACH_CHAT_UI_KEY, JSON.stringify({
-      mode: CoachChat.ui.mode,
+      mode: 'auto',
+      thinkingEnabled: !!CoachChat.ui.thinkingEnabled,
       size: CoachChat.ui.size,
       width: CoachChat.ui.width,
       fullscreen: CoachChat.ui.fullscreen
@@ -613,8 +680,79 @@ loadCoachChatUiPrefs();
 
 function trimCoachChatMessages() {
   if (CoachChat.messages.length > 18) {
+    CoachChat.messages.slice(0, CoachChat.messages.length - 18).forEach(stopCoachChatMessageStream);
     CoachChat.messages = CoachChat.messages.slice(-18);
   }
+}
+
+function coachChatStreamDuration(text = '') {
+  const normalizedLength = String(text || '').replace(/\s+/g, ' ').trim().length;
+  return Math.max(
+    COACH_CHAT_STREAM_MIN_MS,
+    Math.min(COACH_CHAT_STREAM_MAX_MS, 160 + normalizedLength * COACH_CHAT_STREAM_MS_PER_CHAR)
+  );
+}
+
+function isCoachChatMessageStreaming(message) {
+  return !!message && message.role === 'assistant' && !!message.streaming;
+}
+
+function coachChatVisibleText(message) {
+  if (!message || message.role !== 'assistant') return String(message?.text || '');
+  return isCoachChatMessageStreaming(message) ? String(message.displayText || '') : String(message.text || '');
+}
+
+function coachChatStreamingCursorHtml() {
+  return '<span aria-hidden="true" style="display:inline-block;min-width:0.55ch;margin-left:2px;color:#1f6fff;font-weight:700;opacity:0.9;">▍</span>';
+}
+
+function stopCoachChatMessageStream(message) {
+  if (!message || typeof message !== 'object') return;
+  if (message.streamFrame) cancelAnimationFrame(message.streamFrame);
+  message.streamFrame = 0;
+  message.streaming = false;
+  if (typeof message.displayText !== 'string') message.displayText = String(message.text || '');
+}
+
+function stopAllCoachChatStreams() {
+  CoachChat.messages.forEach(stopCoachChatMessageStream);
+}
+
+function startCoachChatMessageStream(message) {
+  if (!message || message.role !== 'assistant') return;
+  stopCoachChatMessageStream(message);
+  const fullText = String(message.text || '');
+  if (!fullText) {
+    message.displayText = '';
+    renderCoachChatMessages();
+    return;
+  }
+  message.streaming = true;
+  message.displayText = '';
+  const startedAt = performance.now();
+  const duration = coachChatStreamDuration(fullText);
+  const step = (now) => {
+    if (!CoachChat.messages.includes(message)) {
+      stopCoachChatMessageStream(message);
+      return;
+    }
+    const progress = Math.min(1, (now - startedAt) / duration);
+    const easedProgress = 1 - Math.pow(1 - progress, 1.75);
+    const nextLength = Math.max(1, Math.min(fullText.length, Math.ceil(fullText.length * easedProgress)));
+    if (nextLength !== String(message.displayText || '').length) {
+      message.displayText = fullText.slice(0, nextLength);
+      renderCoachChatMessages();
+    }
+    if (progress >= 1 || nextLength >= fullText.length) {
+      message.displayText = fullText;
+      message.streaming = false;
+      message.streamFrame = 0;
+      renderCoachChatMessages();
+      return;
+    }
+    message.streamFrame = requestAnimationFrame(step);
+  };
+  message.streamFrame = requestAnimationFrame(step);
 }
 
 function pushCoachChatMessage(message) {
@@ -743,7 +881,9 @@ function buildCoachChatSummary(snapshot) {
   if ((snapshot?.session_history?.total_sessions || 0) <= 0) {
     return 'No recent practice history yet.';
   }
-  return `Current setup: ${snapshot?.setup?.mode || 'Practice'} • ${snapshot?.setup?.filters || 'All filters'}`;
+  return CoachChat.ui.mode === 'auto'
+    ? 'Ask for background on a topic or what to practice next. Auto will detect the better answer style.'
+    : `Current setup: ${snapshot?.setup?.mode || 'Practice'} • ${snapshot?.setup?.filters || 'All filters'}`;
 }
 
 function updateCoachChatSourceLabel() {
@@ -752,8 +892,8 @@ function updateCoachChatSourceLabel() {
   let label = 'Ready';
   if (CoachChat.busy) label = 'Thinking';
   else if (CoachChat.source === 'deepseek') label = 'DeepSeek';
-  else if (CoachChat.source === 'fallback') label = 'Local plan';
-  sourceEl.textContent = `${label} • ${coachChatModeLabel(CoachChat.ui.mode)}`;
+  else if (CoachChat.source === 'fallback') label = 'Local fallback';
+  sourceEl.textContent = `${label} • ${CoachChat.ui.thinkingEnabled ? 'Think On' : 'Think Off'}`;
 }
 
 function renderCoachChatStatus(snapshot) {
@@ -763,24 +903,23 @@ function renderCoachChatStatus(snapshot) {
   const pillsEl = $('coach-chat-status-pills');
   if (pillsEl) {
     const pills = [];
-    if (CoachChat.ui.mode === 'knowledge') pills.push('Knowledge mode');
+    if (CoachChat.ui.thinkingEnabled) pills.push('Thinking model on');
     if ((snapshot?.wrong_bank?.due_now || 0) > 0) pills.push(`Wrong-bank due ${snapshot.wrong_bank.due_now}`);
     if ((snapshot?.coach_notebook?.open_lessons || 0) > 0) pills.push(`Notebook open ${snapshot.coach_notebook.open_lessons}`);
-    if (CoachChat.ui.mode !== 'knowledge' && (snapshot?.session_history?.recent_accuracy || 0) > 0) pills.push(`Recent accuracy ${snapshot.session_history.recent_accuracy}%`);
+    if ((snapshot?.session_history?.recent_accuracy || 0) > 0) pills.push(`Recent accuracy ${snapshot.session_history.recent_accuracy}%`);
     if (!pills.length && snapshot?.active_set?.name) pills.push(snapshot.active_set.name);
     pillsEl.innerHTML = pills.length
-      ? pills.slice(0, 2).map(text => `<span class="coach-chat-status-pill">${escHtml(text)}</span>`).join('')
-      : `<span class="coach-chat-status-pill">${CoachChat.ui.mode === 'knowledge' ? 'Concept help ready.' : 'Study help ready.'}</span>`;
+      ? pills.slice(0, 3).map(text => `<span class="coach-chat-status-pill">${escHtml(text)}</span>`).join('')
+      : '<span class="coach-chat-status-pill">Study help ready.</span>';
   }
 
   const noteEl = $('coach-chat-launcher-note');
   const countEl = $('coach-chat-launcher-count');
   if (noteEl) {
-    if (CoachChat.ui.mode === 'knowledge') noteEl.textContent = 'Ask any concept';
-    else if (snapshot?.recent_incorrect?.title) noteEl.textContent = 'Fix the last miss';
+    if (snapshot?.recent_incorrect?.title) noteEl.textContent = 'Fix the last miss';
     else if ((snapshot?.wrong_bank?.due_now || 0) > 0) noteEl.textContent = `${snapshot.wrong_bank.due_now} due in Wrong-bank`;
     else if ((snapshot?.coach_notebook?.open_lessons || 0) > 0) noteEl.textContent = `${snapshot.coach_notebook.open_lessons} notebook lesson${snapshot.coach_notebook.open_lessons === 1 ? '' : 's'}`;
-    else noteEl.textContent = 'Ask for a drill';
+    else noteEl.textContent = 'Ask for context or next steps';
   }
   if (countEl) {
     const count = Math.max(snapshot?.wrong_bank?.due_now || 0, snapshot?.coach_notebook?.open_lessons || 0);
@@ -791,6 +930,10 @@ function renderCoachChatStatus(snapshot) {
 
 function isCoachChatPristine() {
   return !CoachChat.busy && !CoachChat.messages.length;
+}
+
+function hasCoachChatUserQuestion() {
+  return CoachChat.messages.some(message => String(message?.role || '').trim() === 'user');
 }
 
 function limitCoachChatStarters(list = []) {
@@ -839,6 +982,11 @@ function buildCoachChatStarters(snapshot = buildCoachChatStudyContext()) {
 function renderCoachChatStarters(snapshot) {
   const startersEl = $('coach-chat-starters');
   if (!startersEl) return;
+  if (hasCoachChatUserQuestion()) {
+    CoachChat.currentStarters = [];
+    startersEl.innerHTML = '';
+    return;
+  }
   CoachChat.currentStarters = buildCoachChatStarters(snapshot);
   startersEl.innerHTML = CoachChat.currentStarters.map((starter, index) => `
     <button class="coach-chat-starter" type="button" data-starter-index="${index}">
@@ -854,9 +1002,15 @@ function renderCoachChatWorkspace(snapshot) {
   const topFocus = snapshot?.coach_notebook?.top_focuses?.[0] || null;
   const knowledgeCard = {
     kicker: 'Ask',
-    title: CoachChat.ui.mode === 'knowledge' ? 'Knowledge mode' : 'Concept help',
-    copy: 'Explain a topic, get a timeline, or compare two ideas.',
-    action: { kind: 'mode', mode: 'knowledge', label: CoachChat.ui.mode === 'knowledge' ? 'Knowledge mode active' : 'Switch to Knowledge' }
+    title: 'Explain a topic',
+    copy: 'Get background, timeline, and common confusions.',
+    action: {
+      kind: 'prompt',
+      label: 'Ask for context',
+      prompt: topFocus?.title
+        ? `Explain ${topFocus.title} in detail, connect it to my current weak spots, and tell me the best next study step.`
+        : 'Explain the most important historical background I should understand right now and tell me what to do next.'
+    }
   };
   const primaryCard = (snapshot?.wrong_bank?.due_now || 0) > 0
     ? {
@@ -915,18 +1069,154 @@ function renderCoachChatWorkspace(snapshot) {
   CoachChat.workspaceCards = cards;
 }
 
+function coachChatInlineMarkdownHtml(text = '') {
+  return escHtml(text)
+    .replace(/`([^`\n]+)`/g, '<code>$1</code>')
+    .replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>');
+}
+
+function coachChatDividerHtml(label = '', options = {}) {
+  const text = escHtml(label);
+  const subtle = !!options.subtle;
+  const lineColor = subtle ? 'rgba(31, 111, 255, 0.16)' : 'rgba(31, 111, 255, 0.28)';
+  const textColor = subtle ? '#60748c' : '#36597f';
+  const background = subtle ? 'rgba(246, 250, 255, 0.86)' : 'rgba(240, 247, 255, 0.96)';
+  return `
+    <div style="display:flex;align-items:center;gap:10px;margin:2px 0 4px;">
+      <span aria-hidden="true" style="flex:1;height:1px;background:linear-gradient(90deg, transparent, ${lineColor});"></span>
+      <span style="padding:0 2px;font-size:${subtle ? '11px' : '12px'};font-weight:800;letter-spacing:0.08em;text-transform:uppercase;color:${textColor};background:${background};">${text}</span>
+      <span aria-hidden="true" style="flex:1;height:1px;background:linear-gradient(90deg, ${lineColor}, transparent);"></span>
+    </div>
+  `;
+}
+
+function coachChatMarkdownHtml(text = '') {
+  const raw = String(text || '').replace(/\r\n?/g, '\n').trim();
+  if (!raw) return '';
+  const html = [];
+  const paragraphLines = [];
+  const listItems = [];
+  let listType = '';
+
+  const flushParagraph = () => {
+    if (!paragraphLines.length) return;
+    html.push(`<p style="margin:0;color:#1a2c42;font-size:14px;line-height:1.72;">${paragraphLines.map(line => coachChatInlineMarkdownHtml(line)).join('<br>')}</p>`);
+    paragraphLines.length = 0;
+  };
+
+  const flushList = () => {
+    if (!listItems.length || !listType) return;
+    html.push(`<${listType} style="margin:0;padding-left:20px;color:#24364d;display:grid;gap:6px;">${listItems.map(item => `<li style="line-height:1.7;">${coachChatInlineMarkdownHtml(item)}</li>`).join('')}</${listType}>`);
+    listItems.length = 0;
+    listType = '';
+  };
+
+  raw.split('\n').forEach(line => {
+    const trimmed = line.trim();
+    if (!trimmed) {
+      flushParagraph();
+      flushList();
+      return;
+    }
+    const headingMatch = trimmed.match(/^(#{1,3})\s+(.*)$/);
+    if (headingMatch) {
+      flushParagraph();
+      flushList();
+      const level = Math.min(4, headingMatch[1].length + 1);
+      const headingStyle = level === 2
+        ? 'margin:0;color:#10243d;font-size:22px;font-weight:850;line-height:1.22;letter-spacing:-0.02em;'
+        : level === 3
+          ? 'margin:0;color:#10243d;font-size:18px;font-weight:820;line-height:1.28;'
+          : 'margin:0;color:#17304a;font-size:16px;font-weight:800;line-height:1.34;';
+      html.push(`<h${level} style="${headingStyle}">${coachChatInlineMarkdownHtml(headingMatch[2])}</h${level}>`);
+      return;
+    }
+    const unorderedMatch = trimmed.match(/^[-*]\s+(.*)$/);
+    const orderedMatch = trimmed.match(/^\d+\.\s+(.*)$/);
+    if (unorderedMatch || orderedMatch) {
+      flushParagraph();
+      const nextType = unorderedMatch ? 'ul' : 'ol';
+      if (listType && listType !== nextType) flushList();
+      listType = nextType;
+      listItems.push((unorderedMatch || orderedMatch)[1]);
+      return;
+    }
+    flushList();
+    paragraphLines.push(trimmed);
+  });
+
+  flushParagraph();
+  flushList();
+  return html.join('');
+}
+
+function coachChatMessageMarkdownText(message) {
+  const actions = Array.isArray(message?.actions) ? message.actions : [];
+  const highlights = Array.isArray(message?.highlights) ? message.highlights : [];
+  const sections = Array.isArray(message?.sections) ? message.sections : [];
+  const links = Array.isArray(message?.links) ? message.links : [];
+  const followUps = Array.isArray(message?.followUps) ? message.followUps : [];
+  const resultLabel = message?.source === 'deepseek' ? 'DeepSeek Result' : 'Study Result';
+  const lines = [`## ${resultLabel} Start`];
+
+  if (message?.title) lines.push('', `### ${String(message.title).trim()}`);
+  if (message?.text) lines.push('', String(message.text).trim());
+  if (highlights.length) {
+    lines.push('', '### Highlights');
+    highlights.forEach(item => lines.push(`- ${String(item || '').trim()}`));
+  }
+  sections.forEach(section => {
+    const heading = String(section?.heading || '').trim();
+    const body = String(section?.body || '').trim();
+    if (!heading || !body) return;
+    lines.push('', `### ${heading}`, body);
+  });
+  if (links.length) {
+    lines.push('', '### References');
+    links.forEach(link => {
+      const label = String(link?.label || '').trim();
+      const url = String(link?.url || '').trim();
+      if (label && url) lines.push(`- [${label}](${url})`);
+    });
+  }
+  if (followUps.length) {
+    lines.push('', '### Follow-Up Prompts');
+    followUps.forEach(followUp => {
+      const label = String(followUp?.label || '').trim();
+      const prompt = String(followUp?.prompt || '').trim();
+      if (label && prompt) lines.push(`- ${label}: ${prompt}`);
+    });
+  }
+  lines.push('', `## End of ${resultLabel}`);
+  if (actions.length) {
+    lines.push('', '## Suggested Actions Start');
+    actions.forEach((action, actionIndex) => {
+      const label = String(action?.label || 'Run action').trim();
+      const reason = String(action?.reason || 'Recommended from your current study state.').trim();
+      lines.push(`${actionIndex + 1}. ${label}: ${reason}`);
+    });
+    lines.push('', '## End of Suggested Actions');
+  }
+  return lines.join('\n').trim();
+}
+
 function coachChatMessageHtml(message, index) {
   const metaLabel = message.role === 'user'
     ? 'You'
-    : (message.source === 'deepseek' ? 'DeepSeek' : 'Local plan');
+    : (message.source === 'deepseek' ? 'DeepSeek' : 'Local fallback');
+  const streaming = isCoachChatMessageStreaming(message);
+  const visibleText = coachChatVisibleText(message);
   const actions = Array.isArray(message.actions) ? message.actions : [];
   const highlights = Array.isArray(message.highlights) ? message.highlights : [];
   const sections = Array.isArray(message.sections) ? message.sections : [];
   const links = Array.isArray(message.links) ? message.links : [];
   const followUps = Array.isArray(message.followUps) ? message.followUps : [];
-  const toolsHtml = message.role === 'assistant' ? `
+  const resultLabel = message.source === 'deepseek' ? 'DeepSeek Result' : 'Study Result';
+  const blockStyle = 'display:grid;gap:12px;padding:14px 15px;border-radius:20px;border:1px solid rgba(15, 23, 42, 0.08);background:linear-gradient(180deg, rgba(255,255,255,0.97), rgba(246,250,255,0.9));box-shadow:inset 0 1px 0 rgba(255,255,255,0.85), 0 18px 28px -24px rgba(15,23,42,0.14);';
+  const markdownWrapStyle = 'display:grid;gap:10px;';
+  const toolsHtml = message.role === 'assistant' && !streaming ? `
     <div class="coach-chat-message-tools">
-      <button class="coach-chat-tool" type="button" data-message-index="${index}" data-tool="copy">Copy answer</button>
+      <button class="coach-chat-tool" type="button" data-message-index="${index}" data-tool="copy">Copy markdown</button>
     </div>
   ` : '';
   return `
@@ -935,57 +1225,79 @@ function coachChatMessageHtml(message, index) {
         <span>${escHtml(metaLabel)}</span>
         <span>${escHtml(message.role === 'user' ? 'Prompt' : (message.mode === 'knowledge' ? 'Knowledge brief' : 'Practice advice'))}</span>
       </div>
-      ${message.role === 'assistant' && message.title ? `<h3 class="coach-chat-message-title">${escHtml(message.title)}</h3>` : ''}
-      <p class="coach-chat-message-text">${escHtml(message.text || '')}</p>
-      ${highlights.length ? `<div class="coach-chat-highlights">${highlights.map(item => `<span class="coach-chat-highlight">${escHtml(item)}</span>`).join('')}</div>` : ''}
-      ${sections.length ? `<div class="coach-chat-sections">${sections.map(section => `
-        <div class="coach-chat-section-card">
-          <h4>${escHtml(section.heading)}</h4>
-          <p>${escHtml(section.body)}</p>
+      ${message.role === 'assistant' ? `
+        <div class="coach-chat-block coach-chat-result-block" style="${blockStyle}">
+          ${coachChatDividerHtml(`${resultLabel} Start`)}
+          ${message.title ? `<h3 class="coach-chat-message-title" style="margin:0;color:#0f223a;font-size:20px;font-weight:850;line-height:1.25;letter-spacing:-0.02em;">${escHtml(message.title)}</h3>` : ''}
+          ${(visibleText || streaming) ? `<div class="coach-chat-markdown coach-chat-message-text" style="${markdownWrapStyle}">${coachChatMarkdownHtml(visibleText || '')}${streaming ? coachChatStreamingCursorHtml() : ''}</div>` : ''}
+          ${!streaming && highlights.length ? `
+            ${coachChatDividerHtml('Quick Context', { subtle: true })}
+            <div class="coach-chat-highlights">${highlights.map(item => `<span class="coach-chat-highlight">${escHtml(item)}</span>`).join('')}</div>
+          ` : ''}
+          ${!streaming && sections.length ? `<div class="coach-chat-sections">${sections.map(section => `
+            <div class="coach-chat-section-card">
+              <h4 style="margin:0;color:#10243d;font-size:17px;font-weight:820;line-height:1.28;">${escHtml(section.heading)}</h4>
+              <div class="coach-chat-markdown" style="${markdownWrapStyle}">${coachChatMarkdownHtml(section.body || '')}</div>
+            </div>
+          `).join('')}</div>` : ''}
+          ${!streaming && links.length ? `
+            ${coachChatDividerHtml('References', { subtle: true })}
+            <div class="coach-chat-links">${links.map(link => `
+              <a class="coach-chat-link-card" href="${escHtml(link.url)}" target="_blank" rel="noopener noreferrer">${escHtml(link.label)}</a>
+            `).join('')}</div>
+          ` : ''}
+          ${!streaming && followUps.length ? `
+            ${coachChatDividerHtml('Follow-Up Prompts', { subtle: true })}
+            <div class="coach-chat-followups">${followUps.map((followUp, followUpIndex) => `
+              <button class="coach-chat-followup" type="button" data-message-index="${index}" data-followup-index="${followUpIndex}">${escHtml(followUp.label)}</button>
+            `).join('')}</div>
+          ` : ''}
+          ${coachChatDividerHtml(`End of ${resultLabel}`)}
         </div>
-      `).join('')}</div>` : ''}
-      ${links.length ? `<div class="coach-chat-links">${links.map(link => `
-        <a class="coach-chat-link-card" href="${escHtml(link.url)}" target="_blank" rel="noopener noreferrer">${escHtml(link.label)}</a>
-      `).join('')}</div>` : ''}
-      ${followUps.length ? `<div class="coach-chat-followups">${followUps.map((followUp, followUpIndex) => `
-        <button class="coach-chat-followup" type="button" data-message-index="${index}" data-followup-index="${followUpIndex}">${escHtml(followUp.label)}</button>
-      `).join('')}</div>` : ''}
-      ${actions.length ? `
-        <div class="coach-chat-actions">
-          ${actions.map((action, actionIndex) => `
-            <button class="coach-chat-action" type="button" data-message-index="${index}" data-action-index="${actionIndex}">
-              <span class="coach-chat-action-label">${escHtml(action.label || 'Run action')}</span>
-              <span class="coach-chat-action-reason">${escHtml(action.reason || 'Recommended from your current study state.')}</span>
-            </button>
-          `).join('')}
-        </div>
-      ` : ''}
+        ${!streaming && actions.length ? `
+          <div class="coach-chat-block coach-chat-action-block" style="${blockStyle}">
+            ${coachChatDividerHtml('Suggested Actions Start')}
+            <div class="coach-chat-actions">
+              ${actions.map((action, actionIndex) => `
+                <button class="coach-chat-action" type="button" data-message-index="${index}" data-action-index="${actionIndex}">
+                  <span class="coach-chat-action-label">${escHtml(action.label || 'Run action')}</span>
+                  <span class="coach-chat-action-reason">${escHtml(action.reason || 'Recommended from your current study state.')}</span>
+                </button>
+              `).join('')}
+            </div>
+            ${coachChatDividerHtml('End of Suggested Actions')}
+          </div>
+        ` : ''}
+      ` : `<p class="coach-chat-message-text">${escHtml(message.text || '')}</p>`}
       ${toolsHtml}
     </div>
   `;
 }
 
 function renderCoachChatMessages() {
+  const bodyEl = $('coach-chat-body');
   const messagesEl = $('coach-chat-messages');
   if (!messagesEl) return;
   const html = CoachChat.messages.map((message, index) => coachChatMessageHtml(message, index)).join('');
   const busyHtml = CoachChat.busy ? `
-    <div class="coach-chat-message assistant">
+    <div class="coach-chat-message assistant coach-chat-thinking">
       <div class="coach-chat-message-meta">
         <span>DeepSeek</span>
-        <span>Preparing</span>
+        <span>Thinking</span>
       </div>
-      <div class="coach-chat-loading">${CoachChat.ui.mode === 'knowledge' ? 'Building a detailed study brief with references.' : 'Reviewing your wrong-bank, notebook, and setup.'}</div>
+      <div class="coach-chat-thinking-bubble">
+        <div class="coach-chat-thinking-dots" aria-hidden="true"><span></span><span></span><span></span></div>
+        <div class="coach-chat-loading">${CoachChat.ui.thinkingEnabled ? 'DeepSeek reasoner is synthesizing your history, notebook, wrong-bank, and next steps.' : 'DeepSeek is reviewing your wrong-bank, notebook, setup, and recent study state.'}</div>
+      </div>
     </div>
   ` : '';
   messagesEl.innerHTML = html || busyHtml
     ? `${html}${busyHtml}`
     : `<div class="coach-chat-empty">
-        <div class="coach-chat-empty-title">${CoachChat.ui.mode === 'knowledge' ? 'Ask about any IHBB topic.' : 'Start with one quick question.'}</div>
-        <p class="coach-chat-empty-text">${CoachChat.ui.mode === 'knowledge'
-      ? 'Pick a prompt or type a topic when you want an explanation, timeline, or comparison.'
-      : 'Pick a prompt or type what you want to practice next.'}</p>
+        <div class="coach-chat-empty-title">Ask for knowledge or next steps.</div>
+        <p class="coach-chat-empty-text">Pick a prompt or type what you want to understand, what you should do next, or both.</p>
       </div>`;
+  if (bodyEl) bodyEl.scrollTop = bodyEl.scrollHeight;
   messagesEl.scrollTop = messagesEl.scrollHeight;
 }
 
@@ -1000,6 +1312,7 @@ function setCoachChatOpenState(open) {
     sidebar.classList.toggle('fullscreen', !!CoachChat.ui.fullscreen);
     sidebar.setAttribute('aria-hidden', CoachChat.open ? 'false' : 'true');
     sidebar.dataset.chatPristine = isCoachChatPristine() ? 'true' : 'false';
+    sidebar.dataset.chatAsked = hasCoachChatUserQuestion() ? 'true' : 'false';
     sidebar.style.setProperty('--coach-chat-width', `${clampCoachChatWidth(CoachChat.ui.width)}px`);
   }
   if (backdrop) backdrop.hidden = !CoachChat.open;
@@ -1016,25 +1329,25 @@ function renderCoachChatChrome() {
   setCoachChatOpenState(CoachChat.open);
   const sendBtn = $('coach-chat-send');
   const hintEl = $('coach-chat-hint');
-  const modeButtons = Array.from(document.querySelectorAll('#coach-chat-mode-switch .coach-chat-mode-btn'));
   const sizeButtons = Array.from(document.querySelectorAll('#coach-chat-size-presets .coach-chat-size-btn'));
   const fullBtn = $('coach-chat-fullscreen');
+  const thinkingBtn = $('coach-chat-thinking-toggle');
   if (sendBtn) sendBtn.disabled = !!CoachChat.busy;
   if (hintEl) {
-    hintEl.textContent = CoachChat.ui.mode === 'knowledge'
-      ? 'Knowledge mode gives long-form explanations and reference links.'
-      : 'Coach mode stays tied to your practice state and only answers when asked.';
+    hintEl.textContent = CoachChat.ui.thinkingEnabled
+      ? 'Thinking model is on. Answers may take longer but should synthesize more of your study context.'
+      : 'Always-auto mode decides how much knowledge, coaching, and future-step guidance to give you.';
   }
-  modeButtons.forEach(button => {
-    const active = String(button.dataset.mode || '') === CoachChat.ui.mode;
-    button.classList.toggle('active', active);
-    button.setAttribute('aria-pressed', active ? 'true' : 'false');
-  });
   sizeButtons.forEach(button => {
     const active = String(button.dataset.size || '') === CoachChat.ui.size && !CoachChat.ui.fullscreen;
     button.classList.toggle('active', active);
     button.setAttribute('aria-pressed', active ? 'true' : 'false');
   });
+  if (thinkingBtn) {
+    thinkingBtn.classList.toggle('active', !!CoachChat.ui.thinkingEnabled);
+    thinkingBtn.setAttribute('aria-pressed', CoachChat.ui.thinkingEnabled ? 'true' : 'false');
+    thinkingBtn.textContent = `Thinking Model: ${CoachChat.ui.thinkingEnabled ? 'On' : 'Off'}`;
+  }
   if (fullBtn) {
     fullBtn.textContent = CoachChat.ui.fullscreen ? 'Windowed' : 'Full Screen';
     fullBtn.setAttribute('aria-pressed', CoachChat.ui.fullscreen ? 'true' : 'false');
@@ -1047,27 +1360,116 @@ function coachChatModeLabel(mode = 'auto') {
   return 'Auto';
 }
 
+function normalizeCoachChatIntentText(value = '') {
+  return String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+}
+
+const COACH_CHAT_COACH_TERMS = [
+  'wrong bank', 'srs', 'notebook', 'ai notebook', 'lesson', 'coach',
+  'practice', 'drill', 'session', 'review', 'setup', 'focus',
+  'due card', 'due now', 'assignment', 'next step', 'next steps',
+  'next move', 'future step', 'future steps', 'study plan', 'practice plan'
+];
+const COACH_CHAT_KNOWLEDGE_TERMS = [
+  'explain', 'define', 'describe', 'summarize', 'summary', 'timeline',
+  'compare', 'contrast', 'significance', 'importance', 'overview',
+  'background', 'concept', 'cause', 'causes', 'effect', 'effects',
+  'turning point', 'detail', 'details', 'in detail', 'teach me',
+  'help me understand', 'break down', 'elaborate', 'deeper', 'more context'
+];
+const COACH_CHAT_COACH_PATTERNS = [
+  /\bwhat should i\b/,
+  /\bwhat do i do next\b/,
+  /\bwhat should i do next\b/,
+  /\bwhat should i practice next\b/,
+  /\bhow should i\b/,
+  /\bshould i use\b/,
+  /\bnext step\b/,
+  /\bnext steps\b/,
+  /\bnext move\b/,
+  /\bfuture step\b/,
+  /\bfuture steps\b/,
+  /\bbuild me\b.*\b(plan|drill|session)\b/,
+  /\bmake me\b.*\b(plan|drill|session)\b/,
+  /\bturn this into\b.*\b(plan|drill|session)\b/
+];
+const COACH_CHAT_KNOWLEDGE_PATTERNS = [
+  /\bwho (is|was|were|are|did|do|does)\b/,
+  /\bwhat (is|was|were|are|did|do|does|happened|caused)\b/,
+  /\bwhen (did|was|were|is|are)\b/,
+  /\bwhere (is|was|were|did)\b/,
+  /\bwhy\b/,
+  /\bhow (did|do|does|was|were|is|are)\b/,
+  /\btell me about\b/,
+  /\bgive me (?:a )?timeline of\b/,
+  /\bwhat is the significance of\b/,
+  /\bwhat was the significance of\b/,
+  /\bwhat caused\b/,
+  /\bwhat were the causes of\b/,
+  /\bwhat happened in\b/
+];
+
+function countCoachChatIntentHits(message = '', patterns = []) {
+  return patterns.reduce((total, pattern) => total + (pattern.test(message) ? 1 : 0), 0);
+}
+
+function countCoachChatTermHits(message = '', terms = []) {
+  return terms.reduce((total, term) => total + (message.includes(term) ? 1 : 0), 0);
+}
+
+function analyzeCoachChatIntent(message = '') {
+  const normalized = normalizeCoachChatIntentText(message);
+  const coachPatternHits = countCoachChatIntentHits(normalized, COACH_CHAT_COACH_PATTERNS);
+  const knowledgePatternHits = countCoachChatIntentHits(normalized, COACH_CHAT_KNOWLEDGE_PATTERNS);
+  const coachTermHits = countCoachChatTermHits(normalized, COACH_CHAT_COACH_TERMS);
+  const knowledgeTermHits = countCoachChatTermHits(normalized, COACH_CHAT_KNOWLEDGE_TERMS);
+
+  return {
+    normalized,
+    coachScore: coachPatternHits * 3 + coachTermHits,
+    knowledgeScore: knowledgePatternHits * 4 + knowledgeTermHits,
+    strongCoach: coachPatternHits > 0,
+    strongKnowledge: knowledgePatternHits > 0
+  };
+}
+
 function resolveCoachChatMode(message = '', snapshot = buildCoachChatStudyContext()) {
   if (CoachChat.ui.mode === 'coach' || CoachChat.ui.mode === 'knowledge') return CoachChat.ui.mode;
-  const prompt = String(message || '').trim().toLowerCase();
-  const coachTerms = ['wrong bank', 'wrong-bank', 'srs', 'notebook', 'ai notebook', 'lesson', 'coach', 'practice', 'train', 'drill', 'session', 'review', 'setup', 'focus', 'assignment'];
-  const knowledgeTerms = ['who ', 'what ', 'when ', 'where ', 'why ', 'how ', 'explain', 'define', 'describe', 'summarize', 'summary', 'timeline', 'compare', 'contrast', 'significance', 'overview', 'background', 'concept'];
-  if (coachTerms.some(term => prompt.includes(term))) return 'coach';
-  if (knowledgeTerms.some(term => prompt.includes(term))) return 'knowledge';
+  const intent = analyzeCoachChatIntent(message);
+  if (!intent.normalized) return 'coach';
+  if (intent.knowledgeScore > intent.coachScore) return 'knowledge';
+  if (intent.coachScore > intent.knowledgeScore) {
+    if (intent.strongKnowledge && intent.coachScore - intent.knowledgeScore <= 2) return 'knowledge';
+    return 'coach';
+  }
+  if (intent.strongKnowledge && !intent.strongCoach) return 'knowledge';
+  if (intent.strongCoach && !intent.strongKnowledge) return 'coach';
+  if (intent.knowledgeScore > 0) return 'knowledge';
   if (!(snapshot?.session_history?.total_sessions || 0) && !(snapshot?.coach_notebook?.total || 0)) return 'knowledge';
   return 'coach';
 }
 
 function coachChatTopicFromMessage(message = '', snapshot = buildCoachChatStudyContext(), resolvedMode = resolveCoachChatMode(message, snapshot)) {
   const raw = String(message || '').trim();
+  const intent = analyzeCoachChatIntent(raw);
   const recentTitle = String(snapshot?.recent_incorrect?.title || '').trim();
   const topFocusTitle = String(snapshot?.coach_notebook?.top_focuses?.[0]?.title || '').trim();
   if (!raw) return resolvedMode === 'knowledge' ? (recentTitle || topFocusTitle) : recentTitle;
+  if (resolvedMode !== 'knowledge' && intent.coachScore > 0 && intent.knowledgeScore === 0) return recentTitle || topFocusTitle;
   const prompt = raw
     .replace(/^[^a-zA-Z0-9]*(who|what|when|where|why|how)\s+(is|was|were|are|did|do|does)\s+/i, '')
     .replace(/^(explain|define|describe|outline|summarize|compare|contrast|tell me about|give me (a )?timeline of|what is the significance of|what was the significance of|what caused|what were the causes of|what happened in)\s+/i, '')
+    .replace(/^(what should i (study|practice|review|learn|work on|do)( next)?( about| for)?\s*)/i, '')
+    .replace(/^(how should i (study|practice|train|review|use|approach|learn)\s+)/i, '')
+    .replace(/^(should i use\s+)/i, '')
+    .replace(/^(build me|make me|turn this into)\s+(a\s+)?(short\s+)?(study plan|practice plan|plan|drill|session)\s+(for|on)\s+/i, '')
     .replace(/[?.!]+$/g, '')
     .trim();
+  if (!prompt) return recentTitle || topFocusTitle;
+  const normalizedIntent = analyzeCoachChatIntent(prompt);
+  if (resolvedMode !== 'knowledge' && normalizedIntent.coachScore > 0 && normalizedIntent.knowledgeScore === 0) {
+    return recentTitle || topFocusTitle;
+  }
   return prompt || recentTitle || topFocusTitle;
 }
 
@@ -1108,6 +1510,79 @@ function dedupeCoachChatActions(actions) {
   return out.slice(0, 3);
 }
 
+function coachChatTopicTokens(value = '') {
+  return Array.from(new Set(
+    normalizeCoachChatIntentText(value)
+      .split(' ')
+      .map(token => token.trim())
+      .filter(token => token.length >= 3)
+  ));
+}
+
+function coachChatTopicsOverlap(left = '', right = '') {
+  const leftTokens = coachChatTopicTokens(left);
+  const rightTokens = new Set(coachChatTopicTokens(right));
+  const normalizedLeft = normalizeCoachChatIntentText(left);
+  const normalizedRight = normalizeCoachChatIntentText(right);
+  if (!leftTokens.length || !rightTokens.size) {
+    return !!normalizedLeft && !!normalizedRight && (
+      normalizedLeft.includes(normalizedRight) || normalizedRight.includes(normalizedLeft)
+    );
+  }
+  if (normalizedLeft.includes(normalizedRight) || normalizedRight.includes(normalizedLeft)) return true;
+  let hits = 0;
+  leftTokens.forEach(token => {
+    if (rightTokens.has(token)) hits += 1;
+  });
+  return hits >= Math.min(2, Math.max(1, Math.min(leftTokens.length, rightTokens.size)));
+}
+
+function coachChatMessageAskedForNotebook(message = '') {
+  return /\b(ai notebook|notebook|lesson|lessons|coach)\b/.test(normalizeCoachChatIntentText(message));
+}
+
+function coachChatMessageAskedForStudyActions(message = '') {
+  const intent = analyzeCoachChatIntent(message);
+  return intent.coachScore > 0 || /\b(next step|next steps|next move|study plan|practice plan)\b/.test(intent.normalized);
+}
+
+function coachChatFindFocusByKey(snapshot = buildCoachChatStudyContext(), focusKey = '') {
+  const key = String(focusKey || '').trim();
+  if (!key) return null;
+  const recent = snapshot?.recent_incorrect || null;
+  if (String(recent?.key || '').trim() === key) return recent;
+  return Array.isArray(snapshot?.coach_notebook?.top_focuses)
+    ? snapshot.coach_notebook.top_focuses.find(focus => String(focus?.key || '').trim() === key) || null
+    : null;
+}
+
+function filterCoachChatActionsByContext(actions, mode, topic, message, snapshot = buildCoachChatStudyContext()) {
+  const deduped = dedupeCoachChatActions(actions);
+  const askedForNotebook = coachChatMessageAskedForNotebook(message);
+  const askedForStudyActions = coachChatMessageAskedForStudyActions(message);
+  return deduped.filter(action => {
+    if (!COACH_CHAT_NOTEBOOK_ACTIONS.has(String(action?.id || '').trim())) return true;
+    if (askedForNotebook) return true;
+    if (mode === 'knowledge') return false;
+    if (askedForStudyActions) return true;
+    if (
+      coachChatTopicsOverlap(action?.query || '', topic) ||
+      coachChatTopicsOverlap(action?.label || '', topic) ||
+      coachChatTopicsOverlap(action?.reason || '', topic)
+    ) {
+      return true;
+    }
+    const focus = coachChatFindFocusByKey(snapshot, action?.focus_key || '');
+    return !!focus && [
+      focus?.title,
+      focus?.topic,
+      focus?.region,
+      focus?.era,
+      focus?.reason
+    ].some(value => coachChatTopicsOverlap(value || '', topic));
+  }).slice(0, 3);
+}
+
 function normalizeCoachChatSections(raw) {
   return Array.isArray(raw)
     ? raw.map(section => {
@@ -1145,6 +1620,20 @@ function normalizeCoachChatHighlights(raw) {
     : [];
 }
 
+function coachChatReplyHasDeepSeekContent(raw) {
+  if (!raw || typeof raw !== 'object') return false;
+  return !!(
+    String(raw.title || '').trim() ||
+    String(raw.topic || '').trim() ||
+    String(raw.message || '').trim() ||
+    normalizeCoachChatHighlights(raw.highlights).length ||
+    normalizeCoachChatSections(raw.sections).length ||
+    normalizeCoachChatLinks(raw.links).length ||
+    normalizeCoachChatFollowUps(raw.follow_ups).length ||
+    (Array.isArray(raw.quick_actions) && raw.quick_actions.length)
+  );
+}
+
 function buildLocalCoachChatReply(message, snapshot = buildCoachChatStudyContext()) {
   const prompt = String(message || '').trim().toLowerCase();
   const mode = resolveCoachChatMode(message, snapshot);
@@ -1174,9 +1663,9 @@ function buildLocalCoachChatReply(message, snapshot = buildCoachChatStudyContext
       title: topic ? `Study brief: ${topic}` : 'Study brief',
       topic,
       message: topic
-        ? `This looks like a knowledge question about ${topic}. When DeepSeek is available, I can answer it in detail here. Right now I can still structure the topic, suggest the best follow-up prompts, and give you a reference link.`
-        : 'This looks like a knowledge question. When DeepSeek is available, I can answer it in detail here. Right now I can still frame the topic and give you the best follow-up prompts.',
-      highlights: ['Knowledge mode', topic ? 'Wikipedia reference ready' : 'Reference lookup ready'].filter(Boolean),
+        ? `This looks like a knowledge question about ${topic}. DeepSeek did not return a usable knowledge response for this request, so I am showing the built-in study fallback instead.`
+        : 'This looks like a knowledge question. DeepSeek did not return a usable knowledge response for this request, so I am showing the built-in study fallback instead.',
+      highlights: ['Knowledge mode', topic ? 'Topic-focused answer' : 'Reference lookup ready', 'Follow-up prompts stay on topic'].filter(Boolean),
       sections: [
         { heading: 'What to lock in first', body: topic ? `Start with the definition, timeframe, main actors, and why ${topic} matters in the broader historical story.` : 'Start with the definition, timeframe, main actors, and why the topic matters in the broader historical story.' },
         { heading: 'What IHBB usually rewards', body: 'Be ready to explain causes, turning points, significance, comparisons, and the larger regional or chronological pattern around the concept.' },
@@ -1293,27 +1782,33 @@ function normalizeCoachChatReply(raw, payload, snapshot) {
     String(snapshot?.recent_incorrect?.key || '').trim()
   ].filter(Boolean));
   const obj = (raw && typeof raw === 'object') ? raw : {};
-  const actions = Array.isArray(obj.quick_actions)
-    ? dedupeCoachChatActions(obj.quick_actions.map(action => ({
+  const mode = String(obj?.mode || '').trim() === 'knowledge' ? 'knowledge' : fallback.mode;
+  const topic = String(obj?.topic || '').trim() || fallback.topic;
+  const rawActions = Array.isArray(obj.quick_actions)
+    ? obj.quick_actions.map(action => ({
       id: String(action?.id || '').trim(),
       label: String(action?.label || action?.title || '').trim(),
       reason: String(action?.reason || '').trim(),
       focus_key: validFocusKeys.has(String(action?.focus_key || '').trim()) ? String(action?.focus_key || '').trim() : '',
       query: String(action?.query || '').trim()
-    })))
+    }))
     : [];
+  const filteredRawActions = filterCoachChatActionsByContext(rawActions, mode, topic, payload?.message || '', snapshot);
+  const filteredFallbackActions = filterCoachChatActionsByContext(fallback.quick_actions, mode, topic, payload?.message || '', snapshot);
+  const actions = filteredRawActions.length ? filteredRawActions : filteredFallbackActions;
   const links = normalizeCoachChatLinks(obj?.links);
+  const sourceIsDeepSeek = String(obj?.source || '').trim().toLowerCase() === 'deepseek' && coachChatReplyHasDeepSeekContent(obj);
   return {
-    source: String(obj?.source || '').trim().toLowerCase() === 'deepseek' ? 'deepseek' : 'fallback',
-    mode: String(obj?.mode || '').trim() === 'knowledge' ? 'knowledge' : fallback.mode,
+    source: sourceIsDeepSeek ? 'deepseek' : 'fallback',
+    mode,
     title: String(obj?.title || '').trim() || fallback.title,
-    topic: String(obj?.topic || '').trim() || fallback.topic,
+    topic,
     message: String(obj?.message || '').trim() || fallback.message,
     highlights: normalizeCoachChatHighlights(obj?.highlights).length ? normalizeCoachChatHighlights(obj?.highlights) : fallback.highlights,
     sections: normalizeCoachChatSections(obj?.sections).length ? normalizeCoachChatSections(obj?.sections) : fallback.sections,
     links: links.length ? links : fallback.links,
     follow_ups: normalizeCoachChatFollowUps(obj?.follow_ups).length ? normalizeCoachChatFollowUps(obj?.follow_ups) : fallback.follow_ups,
-    quick_actions: actions.length ? actions : fallback.quick_actions
+    quick_actions: actions
   };
 }
 
@@ -1323,11 +1818,12 @@ async function requestCoachChatReply(message) {
     message: String(message || '').trim(),
     conversation: CoachChat.messages
       .filter(entry => entry && ['user', 'assistant'].includes(entry.role))
-      .slice(-8)
+      .slice(-12)
       .map(entry => ({ role: entry.role, content: String(entry.text || '').trim() }))
       .filter(entry => entry.content),
     study_context: snapshot,
-    assistant_mode: CoachChat.ui.mode
+    assistant_mode: 'auto',
+    thinking_enabled: !!CoachChat.ui.thinkingEnabled
   };
   const response = await fetch('/api/coach-chat', {
     method: 'POST',
@@ -1342,14 +1838,20 @@ async function requestCoachChatReply(message) {
 }
 
 function clearCoachChatConversation() {
+  stopAllCoachChatStreams();
   CoachChat.messages = [];
   CoachChat.source = 'ready';
   renderCoachChatChrome();
 }
 
 function setCoachChatMode(mode = 'auto') {
-  const next = ['auto', 'coach', 'knowledge'].includes(String(mode || '').trim()) ? String(mode).trim() : 'auto';
-  CoachChat.ui.mode = next;
+  CoachChat.ui.mode = 'auto';
+  saveCoachChatUiPrefs();
+  renderCoachChatChrome();
+}
+
+function toggleCoachChatThinking() {
+  CoachChat.ui.thinkingEnabled = !CoachChat.ui.thinkingEnabled;
   saveCoachChatUiPrefs();
   renderCoachChatChrome();
 }
@@ -1361,6 +1863,19 @@ function setCoachChatSizePreset(size = 'standard') {
   CoachChat.ui.fullscreen = false;
   saveCoachChatUiPrefs();
   renderCoachChatChrome();
+}
+
+function practiceHubAutoOpenDisabledKey(userId) {
+  return `${PRACTICE_HUB_AUTO_OPEN_DISABLED_KEY}_${userId}`;
+}
+
+function isPracticeHubAutoOpenDisabled(userId = CoachSync.userId || SessionSync.userId || WrongSync.userId) {
+  try {
+    if (!userId) return false;
+    return localStorage.getItem(practiceHubAutoOpenDisabledKey(userId)) === '1';
+  } catch {
+    return false;
+  }
 }
 
 function toggleCoachChatFullscreen() {
@@ -1415,8 +1930,12 @@ function closeCoachChat({ manual = true } = {}) {
 
 function maybeAutoOpenCoachChat(reason = 'init') {
   if (CoachChat.open || CoachChat.busy || isCoachChatAutoSuppressed() || CoachChat.autoReasons.has(reason)) return false;
+  if (reason === 'init' && isPracticeHubAutoOpenDisabled()) return false;
   const snapshot = buildCoachChatStudyContext();
   if (reason === 'miss' && snapshot?.recent_incorrect?.title) {
+    CoachChat.suggestedReason = 'miss';
+    renderCoachChatChrome();
+    return false;
   } else if ((snapshot?.wrong_bank?.due_now || 0) >= 3) {
   } else if ((snapshot?.coach_notebook?.open_lessons || 0) >= 2 && snapshot?.coach_notebook?.top_focuses?.[0]?.title) {
   } else {
@@ -1502,10 +2021,11 @@ async function sendCoachChatMessage(rawMessage, options = {}) {
   CoachChat.busy = true;
   CoachChat.source = 'ready';
   renderCoachChatChrome();
+  let assistantMessage = null;
   try {
     const reply = await requestCoachChatReply(message);
     CoachChat.source = reply.source === 'deepseek' ? 'deepseek' : 'fallback';
-    pushCoachChatMessage({
+    assistantMessage = {
       role: 'assistant',
       text: String(reply.message || '').trim(),
       source: CoachChat.source,
@@ -1516,12 +2036,16 @@ async function sendCoachChatMessage(rawMessage, options = {}) {
       sections: Array.isArray(reply.sections) ? reply.sections : [],
       links: Array.isArray(reply.links) ? reply.links : [],
       followUps: Array.isArray(reply.follow_ups) ? reply.follow_ups : [],
-      actions: Array.isArray(reply.quick_actions) ? reply.quick_actions : []
-    });
+      actions: Array.isArray(reply.quick_actions) ? reply.quick_actions : [],
+      displayText: '',
+      streaming: true,
+      streamFrame: 0
+    };
+    pushCoachChatMessage(assistantMessage);
   } catch (err) {
     const fallback = buildLocalCoachChatReply(message);
     CoachChat.source = 'fallback';
-    pushCoachChatMessage({
+    assistantMessage = {
       role: 'assistant',
       text: String(fallback.message || '').trim(),
       source: 'fallback',
@@ -1532,11 +2056,16 @@ async function sendCoachChatMessage(rawMessage, options = {}) {
       sections: Array.isArray(fallback.sections) ? fallback.sections : [],
       links: Array.isArray(fallback.links) ? fallback.links : [],
       followUps: Array.isArray(fallback.follow_ups) ? fallback.follow_ups : [],
-      actions: Array.isArray(fallback.quick_actions) ? fallback.quick_actions : []
-    });
+      actions: Array.isArray(fallback.quick_actions) ? fallback.quick_actions : [],
+      displayText: '',
+      streaming: true,
+      streamFrame: 0
+    };
+    pushCoachChatMessage(assistantMessage);
   } finally {
     CoachChat.busy = false;
     renderCoachChatChrome();
+    if (assistantMessage?.role === 'assistant') startCoachChatMessageStream(assistantMessage);
   }
   return true;
 }
@@ -1619,11 +2148,11 @@ function coachFocusCardHtml(focus, index, actionClass) {
       <div class="coach-focus-head">
         <div>
           <div class="coach-focus-title">${escHtml(focus.icon || '📘')} ${escHtml(focus.title || 'Coach focus')}</div>
-          <div class="coach-focus-meta">${escHtml(focus.meta || 'DeepSeek focus')}</div>
+          <div class="coach-focus-meta">${escHtml(focus.meta || 'Coach focus')}</div>
         </div>
         <span class="analytics-ai-priority ${escHtml(focus.priority || 'medium')}">${escHtml(focus.priority || 'medium')}</span>
       </div>
-      <p class="coach-focus-reason">${escHtml(focus.reason || 'This area is worth reviewing before your next mixed drill.')}</p>
+      <p class="coach-focus-reason">${escHtml(focus.reason || 'Best next target from recent work.')}</p>
       <div class="coach-focus-tags">
         ${focus.region ? `<span class="coach-focus-pill">Region: ${escHtml(focus.region)}</span>` : ''}
         ${focus.era ? `<span class="coach-focus-pill">Era: ${escHtml(focus.era)}</span>` : ''}
@@ -1925,15 +2454,15 @@ function renderSessionCoachDebrief() {
   ReviewCoachFocusSuggestions = source.slice(0, 2);
   applyBtn.disabled = !source.length;
   if (!source.length) {
-    focusWrap.innerHTML = `<div class="coach-empty">Finish a session and the review page will surface the coach lesson patterns worth drilling next.</div>`;
-    noteEl.textContent = 'Finish a session and the review page will surface the coach lesson patterns worth drilling next.';
+    focusWrap.innerHTML = `<div class="coach-empty">Finish a session to load coach notes.</div>`;
+    noteEl.textContent = 'Finish a session to load coach notes.';
     ReviewCoachFocusSuggestions = [];
     return;
   }
   const lead = source[0];
   noteEl.textContent = sessionFocuses.length
-    ? `This session kept returning to ${lead.title}. Drill that lane now before going back to mixed practice.`
-    : `No session-specific coach lesson is ready yet, so the review page is using your broader top coach focus: ${lead.title}.`;
+    ? `Top session focus: ${lead.title}.`
+    : `Top coach focus: ${lead.title}.`;
   focusWrap.innerHTML = ReviewCoachFocusSuggestions.map((focus, index) => coachFocusCardHtml(focus, index, 'coach-review-focus')).join('');
 }
 
@@ -2843,11 +3372,13 @@ function updateSetupOverview() {
     Settings.autoAdvance ? `Auto-advance ${Settings.autoAdvanceDelay || 1}s` : 'Manual pacing',
     Settings.haptics ? 'Haptics on' : 'Haptics off'
   ].join(' • ');
+  const lengthText = sessionLengthLabel(App.size, set);
+  const filterSummary = `${filterCats} • ${filterEras} • ${filterSrc}`;
 
   const setEl = $('setup-summary-set'); if (setEl) setEl.textContent = setText;
   const modeEl = $('setup-summary-mode'); if (modeEl) modeEl.textContent = modeLabel(App.mode);
-  const lengthEl = $('setup-summary-length'); if (lengthEl) lengthEl.textContent = sessionLengthLabel(App.size, set);
-  const filtersEl = $('setup-summary-filters'); if (filtersEl) filtersEl.textContent = `${filterCats} • ${filterEras} • ${filterSrc}`;
+  const lengthEl = $('setup-summary-length'); if (lengthEl) lengthEl.textContent = lengthText;
+  const filtersEl = $('setup-summary-filters'); if (filtersEl) filtersEl.textContent = filterSummary;
   const advEl = $('setup-summary-advanced'); if (advEl) advEl.textContent = advancedSummary;
 
   const pills = $('setup-summary-advanced-pills');
@@ -2862,19 +3393,45 @@ function updateSetupOverview() {
   }
 
   const nextEl = $('setup-summary-next');
+  let nextText = 'Pick a set to start.';
   if (nextEl) {
-    let nextText = 'Choose a set and tighten filters only if you want a more focused drill.';
     if (!set) {
-      nextText = 'Upload or reload questions.json to unlock the full drill builder.';
+      nextText = 'Load a question set.';
     } else if (App.mode === 'srs' && !wrongRecords().length) {
-      nextText = 'Wrong-bank mode becomes useful after you miss questions in a regular session.';
+      nextText = 'No wrong-bank items yet.';
     } else if (cats.length || App.filters.cat || eras.length || App.filters.era || App.filters.src) {
-      nextText = 'This session is ready. Start now or save the combination as a preset for later.';
+      nextText = 'Session ready.';
     }
     nextEl.textContent = nextText;
   }
+
+  const mobileSummaryEl = $('setup-mobile-summary');
+  if (mobileSummaryEl) {
+    mobileSummaryEl.textContent = set
+      ? `${lengthText} • ${filterCats} • ${filterSrc}`
+      : 'Load a question set.';
+  }
+  const mobileModeEl = $('setup-mobile-mode'); if (mobileModeEl) mobileModeEl.textContent = modeLabel(App.mode);
+  const mobileNextEl = $('setup-mobile-next'); if (mobileNextEl) mobileNextEl.textContent = nextText;
+  const mobileDockModeEl = $('setup-mobile-dock-mode'); if (mobileDockModeEl) mobileDockModeEl.textContent = modeLabel(App.mode);
+  const mobileDockSummaryEl = $('setup-mobile-dock-summary');
+  if (mobileDockSummaryEl) {
+    mobileDockSummaryEl.textContent = set
+      ? `${lengthText} • ${filterCats} • ${filterSrc}`
+      : 'Load a question set.';
+  }
+  updateSetupMobileDock();
   renderCoachChatChrome();
 }
+
+function updateSetupMobileDock() {
+  const dock = $('setup-mobile-dock');
+  if (!dock) return;
+  const activeViewId = document.querySelector('.view.active')?.id || '';
+  const showDock = shouldRenderMobileRecordLists() && activeViewId === 'view-setup';
+  dock.hidden = !showDock;
+}
+
 function setPracticeButtons({ buzz, next, right, wrong, replay, alias, flag }) {
   const bz = $('btn-buzz'); if (bz) bz.disabled = !buzz;
   const nx = $('btn-next'); if (nx) nx.disabled = !next;
@@ -3041,8 +3598,7 @@ function startSession() {
   updateHeader();
   navSet('nav-practice'); SHOW('view-practice');
   playFeedbackCue('start');
-  // Auto-scroll to the bottom of the practice view
-  setTimeout(() => window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' }), 150);
+  schedulePracticeViewportFit({ align: true });
   nextQuestion(true);
 }
 
@@ -3117,6 +3673,7 @@ function showAnswer() {
   unlockPracticeAfterGrade();
   setPracticeButtons({ buzz: false, next: false, right: true, wrong: true, replay: true, alias: true, flag: true });
   const cp = $('btn-copy-answer'); if (cp) cp.disabled = false;
+  schedulePracticeViewportFit();
 }
 
 function markRight() {
@@ -3393,7 +3950,7 @@ function renderCoachNotebook() {
   const masteredCountEl = $('coach-mastered-count');
   const clearBtn = $('btn-coach-clear');
   const q = (($('coach-search') && $('coach-search').value) || '').trim().toLowerCase();
-  const filter = (($('coach-filter') && $('coach-filter').value) || 'all').toLowerCase();
+  const filter = (($('coach-filter') && $('coach-filter').value) || 'todo').toLowerCase();
   const allRows = Array.isArray(CoachNotebook.records) ? CoachNotebook.records : [];
   if (countEl) countEl.textContent = String(allRows.length);
   if (openCountEl) openCountEl.textContent = String(allRows.filter(r => !r.mastered).length);
@@ -3485,6 +4042,58 @@ function toggleCoachMastered(attemptId, mastered) {
 }
 
 /********************* Review & Wrong bank *********************/
+function shouldRenderMobileRecordLists() {
+  return !!(window.matchMedia && window.matchMedia('(max-width: 760px)').matches);
+}
+
+function mobileRecordPills(entries = []) {
+  return entries
+    .filter(([_, value]) => value === 0 || String(value || '').trim())
+    .map(([label, value]) => `
+      <span class="mobile-record-pill">
+        <span class="mobile-record-pill-label">${escHtml(label)}</span>
+        <span>${escHtml(String(value))}</span>
+      </span>
+    `)
+    .join('');
+}
+
+function mobileRecordCard({ eyebrow = '', title = '', pills = [], details = [], actionHtml = '' } = {}) {
+  const pillsHtml = mobileRecordPills(pills);
+  const detailsHtml = details
+    .filter(detail => String(detail || '').trim())
+    .map(detail => `<p class="mobile-record-detail">${detail}</p>`)
+    .join('');
+  return `
+    <article class="mobile-record-card">
+      ${eyebrow ? `<div class="mobile-record-eyebrow">${escHtml(eyebrow)}</div>` : ''}
+      <h3 class="mobile-record-title">${escHtml(String(title || '').trim() || 'Untitled')}</h3>
+      ${pillsHtml ? `<div class="mobile-record-pills">${pillsHtml}</div>` : ''}
+      ${detailsHtml ? `<div class="mobile-record-details">${detailsHtml}</div>` : ''}
+      ${actionHtml ? `<div class="mobile-record-actions">${actionHtml}</div>` : ''}
+    </article>
+  `;
+}
+
+function renderMobileRecordList(containerId, cards, emptyTitle, emptyCopy) {
+  const container = $(containerId);
+  if (!container) return;
+  if (!shouldRenderMobileRecordLists()) {
+    container.innerHTML = '';
+    return;
+  }
+  if (!cards.length) {
+    container.innerHTML = `
+      <div class="list-empty mobile-record-empty">
+        <div class="empty-kicker">${escHtml(emptyTitle)}</div>
+        <p class="empty-copy">${escHtml(emptyCopy)}</p>
+      </div>
+    `;
+    return;
+  }
+  container.innerHTML = cards.join('');
+}
+
 function renderHistory() {
   const arr = JSON.parse(localStorage.getItem(KEY_SESS) || '[]');
   const tb = document.querySelector('#tbl-history tbody'); if (!tb) return;
@@ -3500,12 +4109,30 @@ function renderHistory() {
     $('r-last-acc').textContent = '—';
     $('r-last-dur').textContent = '—';
   }
+  const mobileCards = [];
   for (const s of arr) {
     const tr = document.createElement('tr');
     tr.innerHTML = `<td>${fmtDate(s.ts)}</td><td>${s.total}</td><td>${s.correct}</td><td>${s.acc}%</td><td>${prettyDur(s.dur)}</td><td><button class='btn ghost' data-replay='${s.ts}'>Repeat</button></td>`;
     tb.appendChild(tr);
+    mobileCards.push(mobileRecordCard({
+      eyebrow: fmtDate(s.ts),
+      title: `${s.correct}/${s.total} correct`,
+      pills: [
+        ['Accuracy', `${s.acc}%`],
+        ['Duration', prettyDur(s.dur)]
+      ],
+      details: [
+        `Finished on ${escHtml(fmtDate(s.ts))}.`
+      ],
+      actionHtml: `<button class="btn ghost" data-replay="${escHtml(String(s.ts))}">Repeat</button>`
+    }));
   }
-  tb.querySelectorAll('button[data-replay]').forEach(b => b.onclick = () => repeatSession(b.dataset.replay));
+  const bindRepeatButtons = (root) => {
+    root?.querySelectorAll('button[data-replay]').forEach(b => b.onclick = () => repeatSession(b.dataset.replay));
+  };
+  bindRepeatButtons(tb);
+  renderMobileRecordList('history-mobile-list', mobileCards, 'No history yet', 'Complete a drill to store a replayable session here.');
+  bindRepeatButtons($('history-mobile-list'));
 }
 
 function repeatSession(ts) {
@@ -3532,6 +4159,7 @@ function renderWrongBank() {
   const due = srsDueList().length; const dt = $('due-today'); if (dt) dt.textContent = String(due);
   const q = (($('wrong-search') && $('wrong-search').value) || '').toLowerCase();
   const tb = document.querySelector('#tbl-wrong tbody'); if (!tb) return; tb.innerHTML = '';
+  const mobileCards = [];
   for (const { id, rec, item } of recs) {
     const ans = (item?.answer) || rec.answer || '';
     if (q && !ans.toLowerCase().includes(q)) continue;
@@ -3540,16 +4168,33 @@ function renderWrongBank() {
     const tr = document.createElement('tr');
     tr.innerHTML = `<td>${ans}</td><td class='stat'>${rec.box || 1}</td><td>${dueTxt}</td><td>${(aliases || []).slice(0, 3).join(', ')}</td><td><button class='btn ghost' data-del='${id}'>Delete</button></td>`;
     tb.appendChild(tr);
+    mobileCards.push(mobileRecordCard({
+      eyebrow: 'Wrong-bank item',
+      title: ans,
+      pills: [
+        ['Box', rec.box || 1],
+        ['Due', dueTxt]
+      ],
+      details: [
+        (aliases || []).length ? `Aliases: ${escHtml((aliases || []).slice(0, 3).join(', '))}` : 'Aliases: —'
+      ],
+      actionHtml: `<button class="btn ghost" data-del="${escHtml(String(id))}">Delete</button>`
+    }));
   }
-  tb.querySelectorAll('button[data-del]').forEach(b => b.onclick = () => {
-    const id = normalizeQuestionId(b.dataset.del);
-    if (!id) return;
-    const s = getSRS();
-    delete s[id];
-    setSRS(s);
-    syncWrongIdsDelete([id]);
-    renderWrongBank();
-  });
+  const bindDeleteButtons = (root) => {
+    root?.querySelectorAll('button[data-del]').forEach(b => b.onclick = () => {
+      const id = normalizeQuestionId(b.dataset.del);
+      if (!id) return;
+      const s = getSRS();
+      delete s[id];
+      setSRS(s);
+      syncWrongIdsDelete([id]);
+      renderWrongBank();
+    });
+  };
+  bindDeleteButtons(tb);
+  renderMobileRecordList('wrong-mobile-list', mobileCards, 'Wrong-bank is empty', 'Miss a question in practice and it will show up here for spaced repetition.');
+  bindDeleteButtons($('wrong-mobile-list'));
   renderCoachChatChrome();
 }
 
@@ -3634,7 +4279,7 @@ function drawAccByCat() {
 $('nav-setup')?.addEventListener('click', (e) => { e.preventDefault(); playFeedbackCue('nav'); navSet('nav-setup'); SHOW('view-setup'); });
 $('nav-practice')?.addEventListener('click', (e) => {
   e.preventDefault(); playFeedbackCue('nav'); navSet('nav-practice'); SHOW('view-practice');
-  setTimeout(() => window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' }), 150);
+  schedulePracticeViewportFit({ align: true });
 });
 $('nav-review')?.addEventListener('click', async (e) => {
   e.preventDefault();
@@ -3653,7 +4298,7 @@ $('nav-coach')?.addEventListener('click', async (e) => {
   await showCoachView(true);
 });
 $('nav-library')?.addEventListener('click', (e) => { e.preventDefault(); playFeedbackCue('nav'); navSet('nav-library'); SHOW('view-library'); renderLibraryTable(); });
-$('nav-help')?.addEventListener('click', (e) => { e.preventDefault(); playFeedbackCue('nav'); openHelp(); });
+window.addEventListener('resize', () => { schedulePracticeViewportFit(); });
 
 // Advanced toggle
 $('advToggle')?.addEventListener('click', () => {
@@ -3765,8 +4410,18 @@ $('autoAdvanceDelay')?.addEventListener('input', () => {
   const el = $('autoAdvanceDelay'); Settings.autoAdvanceDelay = parseInt((el && el.value) || '1', 10) || 1; saveSettings(); updateSetupOverview();
 });
 
+function startLastPresetSession() {
+  const first = Object.values(Presets)[0];
+  if (first) applyPreset(first);
+  startSession();
+}
+
 $('startSession')?.addEventListener('click', startSession);
-$('startLast')?.addEventListener('click', () => { const first = Object.values(Presets)[0]; if (first) { applyPreset(first); } startSession(); });
+$('startSessionMobile')?.addEventListener('click', startSession);
+$('startSessionDock')?.addEventListener('click', startSession);
+$('startLast')?.addEventListener('click', startLastPresetSession);
+$('startLastMobile')?.addEventListener('click', startLastPresetSession);
+$('startLastDock')?.addEventListener('click', startLastPresetSession);
 
 // Practice buttons
 $('btn-buzz')?.addEventListener('click', buzz);
@@ -3994,10 +4649,15 @@ function mergeDuplicatesInActiveSet() {
 $('lib-merge-dupes')?.addEventListener('click', mergeDuplicatesInActiveSet);
 function renderLibraryTable() {
   const set = getActiveSet(); const tb = document.querySelector('#tbl-lib tbody'); if (!tb) return;
-  tb.innerHTML = ''; if (!set) return;
+  tb.innerHTML = '';
+  if (!set) {
+    renderMobileRecordList('lib-mobile-list', [], 'No set loaded', 'Load or import a question set to browse the library.');
+    return;
+  }
   const q = (($('lib-search') && $('lib-search').value) || '').toLowerCase();
   const fc = ($('lib-filter-cat') && $('lib-filter-cat').value) || '';
   const fe = ($('lib-filter-era') && $('lib-filter-era').value) || '';
+  const mobileCards = [];
   set.items.forEach((it, idx) => {
     if (q && !it.answer.toLowerCase().includes(q) && !it.question.toLowerCase().includes(q)) return;
     if (fc && (it.meta?.category || '') !== fc) return;
@@ -4005,7 +4665,20 @@ function renderLibraryTable() {
     const tr = document.createElement('tr');
     tr.innerHTML = `<td class='stat'>${idx + 1}</td><td>${it.answer}</td><td>${(it.aliases || []).slice(0, 3).join(', ')}</td><td>${it.meta?.category || ''}</td><td>${getEraName(it.meta?.era || '')}</td><td>${it.meta?.source || ''}</td>`;
     tb.appendChild(tr);
+    mobileCards.push(mobileRecordCard({
+      eyebrow: `Question ${idx + 1}`,
+      title: it.answer,
+      pills: [
+        ['Region', it.meta?.category || '—'],
+        ['Era', getEraName(it.meta?.era || '') || '—']
+      ],
+      details: [
+        (it.aliases || []).length ? `Aliases: ${escHtml((it.aliases || []).slice(0, 3).join(', '))}` : 'Aliases: —',
+        it.meta?.source ? `Source: ${escHtml(it.meta.source)}` : ''
+      ]
+    }));
   });
+  renderMobileRecordList('lib-mobile-list', mobileCards, 'No questions match', 'Try broadening the search term or clearing one of the active filters.');
 }
 
 // Help overlay
@@ -4020,11 +4693,7 @@ $('coach-chat-launcher')?.addEventListener('click', () => {
 });
 $('coach-chat-new')?.addEventListener('click', clearCoachChatConversation);
 $('coach-chat-fullscreen')?.addEventListener('click', toggleCoachChatFullscreen);
-$('coach-chat-mode-switch')?.addEventListener('click', (e) => {
-  const button = e.target.closest('.coach-chat-mode-btn');
-  if (!button) return;
-  setCoachChatMode(button.dataset.mode || 'auto');
-});
+$('coach-chat-thinking-toggle')?.addEventListener('click', toggleCoachChatThinking);
 $('coach-chat-size-presets')?.addEventListener('click', (e) => {
   const button = e.target.closest('.coach-chat-size-btn');
   if (!button) return;
@@ -4046,10 +4715,6 @@ $('coach-chat-workspace')?.addEventListener('click', (e) => {
   if (!button) return;
   const card = CoachChat.workspaceCards?.[Number(button.dataset.workspaceIndex) || 0];
   if (!card?.action) return;
-  if (card.action.kind === 'mode') {
-    setCoachChatMode(card.action.mode || 'knowledge');
-    return;
-  }
   if (card.action.kind === 'prompt') {
     void sendCoachChatMessage(card.action.prompt || '');
     return;
@@ -4076,9 +4741,10 @@ $('coach-chat-messages')?.addEventListener('click', (e) => {
   if (toolButton) {
     const messageIndex = Number(toolButton.dataset.messageIndex);
     const message = CoachChat.messages?.[messageIndex];
-    if (message?.text) {
+    const markdown = coachChatMessageMarkdownText(message);
+    if (markdown) {
       if (navigator.clipboard?.writeText) {
-        navigator.clipboard.writeText(String(message.text || '').trim()).then(() => toast('Assistant answer copied')).catch(() => toast('Copy failed'));
+        navigator.clipboard.writeText(markdown).then(() => toast('Assistant markdown copied')).catch(() => toast('Copy failed'));
       } else {
         toast('Copy unavailable');
       }
@@ -4109,28 +4775,6 @@ document.addEventListener('click', (e) => {
   playFeedbackCue('tap', { sound: false, haptic: true });
 }, true);
 
-// Keyboard shortcuts
-document.addEventListener('keydown', (e) => {
-  if (e.key === '?') { e.preventDefault(); const ov = $('overlay'); if (ov?.classList.contains('show')) ov.classList.remove('show'); else openHelp(); return; }
-  if (e.key === 'Escape' && CoachChat.open) { e.preventDefault(); closeCoachChat({ manual: true }); return; }
-  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); CoachChat.open ? closeCoachChat({ manual: true }) : openCoachChat({ auto: false, seed: false, reason: 'manual' }); return; }
-  if (CoachChat.open && e.key.toLowerCase() === 'f') { e.preventDefault(); toggleCoachChatFullscreen(); return; }
-  if (['INPUT', 'TEXTAREA', 'SELECT'].includes((document.activeElement && document.activeElement.tagName) || '')) return;
-  const vp = $('view-practice'); if (vp && vp.classList.contains('active')) {
-    if (e.code === 'Space') { e.preventDefault(); buzz(); }
-    if (e.key === 'r' || e.key === 'R') { e.preventDefault(); markRight(); }
-    if (e.key === 'w' || e.key === 'W') { e.preventDefault(); markWrong(); }
-    if (e.key === 'n' || e.key === 'N') { e.preventDefault(); const nx = $('btn-next'); if (nx && !nx.disabled) nextQuestion(false); }
-    if (e.key === 'l' || e.key === 'L') { e.preventDefault(); const rp = $('btn-replay'); if (rp && !rp.disabled) replayLast(); }
-    if (e.key === 'c' || e.key === 'C') { e.preventDefault(); const b = $('btn-copy-answer'); if (b && !b.disabled) b.click(); }
-  }
-});
-$('coach-chat-input')?.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter' && !e.shiftKey) {
-    e.preventDefault();
-    $('coach-chat-form')?.requestSubmit();
-  }
-});
 document.addEventListener('pointermove', (e) => {
   if (!CoachChat.resizing) return;
   CoachChat.ui.width = clampCoachChatWidth(window.innerWidth - e.clientX - 16);
@@ -4142,6 +4786,17 @@ document.addEventListener('pointerup', () => {
   if (!CoachChat.resizing) return;
   CoachChat.resizing = null;
   document.body.classList.remove('coach-chat-resizing');
+});
+
+let responsiveRenderTimer = null;
+window.addEventListener('resize', () => {
+  clearTimeout(responsiveRenderTimer);
+  responsiveRenderTimer = setTimeout(() => {
+    renderHistory();
+    renderWrongBank();
+    renderLibraryTable();
+    updateSetupMobileDock();
+  }, 120);
 });
 
 /********************* Default fetch — loads categorized JSON only *********************/
@@ -4256,6 +4911,7 @@ function startTypingPhase(sec) {
   let t = 10; // fixed 10 seconds
   const cd = $('countdown'); if (cd) cd.textContent = `${t}`;
   setPracticeButtons({ buzz: false, next: false, right: false, wrong: false, replay: false, alias: false, flag: false });
+  schedulePracticeViewportFit();
 
   if (App._cdIv) { clearInterval(App._cdIv); App._cdIv = null; }
   const iv = setInterval(() => {
@@ -4293,6 +4949,7 @@ async function submitAnswer(auto = false) {
   const st = $('status'); if (st) st.textContent = 'Grading...';
   const ans = $('answer'); if (ans) ans.textContent = 'Grading...';
   clearCoachCard();
+  schedulePracticeViewportFit();
   const clientAttemptId = `att_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
   // Fallback matcher
@@ -4511,7 +5168,6 @@ async function submitAnswer(auto = false) {
 
 // Hook up UI for manual submit (optional early submit)
 $('btn-submit-answer')?.addEventListener('click', () => submitAnswer(false));
-$('user-answer')?.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); submitAnswer(false); } });
 
 // Disable manual R/W when autoGrade is enabled
 try {

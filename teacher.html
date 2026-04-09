@@ -14,6 +14,7 @@
     <link rel="stylesheet" href="styles.css">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="config.js"></script>
+    <script src="avatar-catalog.js" defer></script>
     <style id="auth-guard">
         body {
             opacity: 0;
@@ -64,7 +65,7 @@
             <button class="dash-tab" data-tab="assignments">Assignments</button>
             <button class="dash-tab" data-tab="create">Create Assignment</button>
             <button class="dash-tab" data-tab="livebee">Live Bee</button>
-            <button class="dash-tab" data-tab="leaderboard">Leaderboard</button>
+            <button class="dash-tab" data-tab="analytics">Analytics</button>
             <button class="dash-tab" data-tab="account">Account</button>
         </nav>
 
@@ -76,7 +77,7 @@
                     </div>
                     <button id="btn-new-class" class="btn pri">New Class</button>
                 </div>
-                <div class="dashboard-split">
+                <div class="dashboard-split dashboard-split-solo">
                     <div class="panel-stack">
                         <div id="new-class-form" class="card-muted-box hidden">
                             <div class="inline-form">
@@ -89,13 +90,6 @@
                             <p class="muted">Loading classes...</p>
                         </div>
                     </div>
-                    <aside class="panel-stack">
-                        <div class="card-muted-box teacher-side-note">
-                            <div class="empty-kicker">Invite workflow</div>
-                            <p class="empty-copy">Create the class once, copy the code from the roster card, then use
-                                the list as the control surface for students and assignments.</p>
-                        </div>
-                    </aside>
                 </div>
             </div>
         </section>
@@ -107,17 +101,10 @@
                         <h2 class="card-title">Assignments</h2>
                     </div>
                 </div>
-                <div class="dashboard-split">
+                <div class="dashboard-split dashboard-split-solo">
                     <div id="assignments-list" class="list-container">
                         <p class="muted">Loading assignments...</p>
                     </div>
-                    <aside class="panel-stack">
-                        <div class="card-muted-box teacher-side-note">
-                            <div class="empty-kicker">Assignment view</div>
-                            <p class="empty-copy">Published work stays in a single management column, while class and
-                                score details open only when you ask for them.</p>
-                        </div>
-                    </aside>
                 </div>
             </div>
         </section>
@@ -127,7 +114,7 @@
                 <div class="card section-card">
                     <div class="section-head">
                         <div>
-                            <h2 class="card-title">Create Assignment</h2>
+                            <h2 class="card-title">Build Assignment</h2>
                         </div>
                     </div>
 
@@ -155,14 +142,14 @@
 
                     <div class="section-head">
                         <div>
-                            <h3 style="margin: 0;">Select Questions</h3>
+                            <h3 style="margin: 0;">Questions</h3>
                         </div>
                     </div>
 
                     <div class="card-muted-box generator-card" style="margin-bottom: 18px;">
                         <div class="section-head" style="margin-bottom: 12px;">
                             <div>
-                                <h3 style="margin: 0;">DeepSeek Draft Builder</h3>
+                                <h3 style="margin: 0;">Draft Builder</h3>
                             </div>
                             <div class="inline-actions">
                                 <button id="btn-teacher-generate" class="btn pri" type="button">Generate Draft</button>
@@ -174,9 +161,9 @@
                                 <label for="teacher-gen-topic">Focus Topic</label>
                                 <input type="text" id="teacher-gen-topic" placeholder="e.g. Meiji Japan, Cold War diplomacy">
                             </div>
-                            <div class="input-group" style="margin: 0;">
+                            <div class="input-group count-control" style="margin: 0;">
                                 <label for="teacher-gen-count">Count</label>
-                                <input type="number" id="teacher-gen-count" value="5" min="1" max="12">
+                                <input type="number" id="teacher-gen-count" class="compact-number-input" value="5" min="1" max="12">
                             </div>
                             <div class="input-group" style="margin: 0;">
                                 <label for="teacher-gen-region">Region</label>
@@ -199,9 +186,9 @@
                     <div id="mode-random" class="mode-panel view active" style="margin-top: 18px;">
                         <div class="card-muted-box">
                             <div class="inline-form">
-                                <div class="input-group" style="margin: 0;">
+                                <div class="input-group count-control" style="margin: 0;">
                                     <label>Number of questions</label>
-                                    <input type="number" id="random-count" value="10" min="1" max="200">
+                                    <input type="number" id="random-count" class="compact-number-input" value="10" min="1" max="200">
                                 </div>
                                 <button id="btn-random-preview" class="btn ghost">Preview Selection</button>
                             </div>
@@ -223,9 +210,9 @@
                                 </div>
                             </div>
                             <div class="inline-form">
-                                <div class="input-group" style="margin: 0;">
+                                <div class="input-group count-control" style="margin: 0;">
                                     <label>Count</label>
-                                    <input type="number" id="filter-count" value="10" min="1" max="200">
+                                    <input type="number" id="filter-count" class="compact-number-input" value="10" min="1" max="200">
                                 </div>
                                 <button id="btn-filter-preview" class="btn ghost">Preview</button>
                                 <button id="btn-filter-reset" class="btn ghost">Clear Filters</button>
@@ -246,8 +233,8 @@
                     <div class="card section-card sticky-card">
                         <div class="section-head">
                             <div>
-                                <div class="eyebrow">Publish rail</div>
-                                <h2 class="card-title">Selection preview</h2>
+                                <div class="eyebrow">Publish</div>
+                                <h2 class="card-title">Selected Questions</h2>
                             </div>
                         </div>
                         <div id="preview-area" class="preview-area hidden">
@@ -262,9 +249,8 @@
                             <div id="preview-list" class="preview-list"></div>
                         </div>
                         <div class="card-muted-box summary-note">
-                            <div class="empty-kicker">Publishing checklist</div>
-                            <p class="empty-copy">Name the assignment, attach it to a class, preview the question set,
-                                then publish once the side rail looks clean.</p>
+                            <div class="empty-kicker">Status</div>
+                            <p class="empty-copy">Add a title, class, and question set.</p>
                         </div>
                         <button id="btn-create-assignment" class="btn pri auth-option">Create Assignment</button>
                     </div>
@@ -277,30 +263,69 @@
                 <div class="coming-soon">
                     <div class="cs-icon">Live</div>
                     <h2>Live Bee Rooms</h2>
-                    <p class="cs-desc">Host buzzer rounds for a class, judge answers live, and keep the scoreboard on
-                        screen while students compete.</p>
-                    <div class="cs-features">
-                        <div class="cs-feature">Host / reader mode</div>
-                        <div class="cs-feature">Real-time buzzing</div>
-                        <div class="cs-feature">Live scoreboard</div>
-                    </div>
+                    <p class="cs-desc">Room controls live here.</p>
                     <a href="livebee.html" class="btn pri">Host a Live Bee</a>
                 </div>
             </div>
         </section>
 
-        <section id="tab-leaderboard" class="view">
+        <section id="tab-analytics" class="view">
             <div class="card section-card">
-                <div class="coming-soon">
-                    <div class="cs-icon">Rank</div>
-                    <h2>Class Leaderboards</h2>
-                    <p class="cs-desc">Track weekly performance, reward consistency, and make progress visible once the
-                        ranking system is enabled.</p>
-                    <div class="cs-badge">Coming soon</div>
-                    <div class="cs-features">
-                        <div class="cs-feature">Weekly rankings</div>
-                        <div class="cs-feature">Performance trends</div>
-                        <div class="cs-feature">Student badges</div>
+                <div class="section-head">
+                    <div>
+                        <h2 class="card-title">Class Analytics</h2>
+                        <p class="section-subtitle">Whole-class averages from rosters, submissions, drill sessions, wrong-bank rows, and coach attempts.</p>
+                    </div>
+                    <div class="input-group" style="margin: 0; min-width: 260px;">
+                        <label for="analytics-class-select">Focus class</label>
+                        <select id="analytics-class-select"></select>
+                    </div>
+                </div>
+
+                <div class="hero-metrics">
+                    <div class="metric-card">
+                        <div class="metric-label">Students</div>
+                        <div id="teacher-analytics-students" class="metric-value">0</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-label">Avg score</div>
+                        <div id="teacher-analytics-score" class="metric-value">0%</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-label">Completion</div>
+                        <div id="teacher-analytics-completion" class="metric-value">0%</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-label">Practice sessions</div>
+                        <div id="teacher-analytics-sessions" class="metric-value">0</div>
+                    </div>
+                </div>
+
+                <div class="dashboard-split">
+                    <div class="panel-stack">
+                        <div class="card-muted-box">
+                            <div class="eyebrow">Selected class</div>
+                            <h3 id="analytics-class-title" style="margin: 8px 0 6px;">Loading...</h3>
+                            <p id="analytics-class-summary" class="muted" style="margin: 0;">Choose a class to inspect the averages.</p>
+                            <div id="analytics-class-summary-list" class="summary-list" style="margin-top: 14px;"></div>
+                        </div>
+                        <div class="card-muted-box">
+                            <div class="eyebrow">Top students</div>
+                            <div id="analytics-top-students" class="list-container" style="margin-top: 14px;"></div>
+                        </div>
+                        <div class="card-muted-box">
+                            <div class="eyebrow">Needs attention</div>
+                            <div id="analytics-watch-students" class="list-container" style="margin-top: 14px;"></div>
+                        </div>
+                    </div>
+
+                    <div class="panel-stack">
+                        <div class="card-muted-box">
+                            <div class="eyebrow">All classes</div>
+                            <div id="analytics-class-list" class="list-container" style="margin-top: 14px;">
+                                <p class="muted">Loading class analytics...</p>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -342,6 +367,24 @@
                                 <label>User ID</label>
                                 <input id="acc-user-id" type="text" readonly>
                             </div>
+                            <div class="input-group full-width">
+                                <label>Avatar</label>
+                                <div class="avatar-settings-panel">
+                                    <div class="avatar-current-card">
+                                        <div class="avatar-preview-shell">
+                                            <img id="acc-avatar-preview" alt="Selected avatar">
+                                        </div>
+                                        <div class="avatar-current-copy">
+                                            <div class="eyebrow">Public profile avatar</div>
+                                            <h4 id="acc-avatar-current-label" style="margin: 0;">Penguin</h4>
+                                            <p class="muted" style="margin: 0;">This curated animal avatar appears on
+                                                your profile page.</p>
+                                        </div>
+                                    </div>
+                                    <div id="acc-avatar-picker" class="avatar-picker-grid" role="radiogroup"
+                                        aria-label="Choose your avatar"></div>
+                                </div>
+                            </div>
                         </div>
                         <div class="form-actions" style="margin-top: 14px;">
                             <button id="btn-save-account" class="btn pri">Save Profile Changes</button>
@@ -350,11 +393,6 @@
                     </div>
 
                     <aside class="panel-stack">
-                        <div class="card-muted-box teacher-side-note">
-                            <div class="empty-kicker">Account note</div>
-                            <p class="empty-copy">Routine profile edits stay separated from destructive actions so the
-                                account page reads like settings first, not risk management first.</p>
-                        </div>
                         <button id="btn-delete-account" class="btn warn">Delete My Account Permanently</button>
                     </aside>
                 </div>

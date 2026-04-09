@@ -118,7 +118,6 @@
       <a href="#" id="nav-review">Review</a>
       <a href="#" id="nav-coach">AI Notebook</a>
       <a href="#" id="nav-library">Library</a>
-      <a href="#" id="nav-help">Shortcuts</a>
     </nav>
 
     <section id="view-setup" class="view active">
@@ -177,6 +176,21 @@
                 </div>
               </div>
 
+              <div class="card-muted-box setup-mobile-quick" aria-live="polite">
+                <div class="setup-mobile-quick-head">
+                  <div>
+                    <div class="empty-kicker">Quick start</div>
+                    <p id="setup-mobile-summary" class="setup-mobile-summary">Random • 10 questions • All regions</p>
+                  </div>
+                  <div class="setup-mobile-mode-pill" id="setup-mobile-mode">Random</div>
+                </div>
+                <div class="form-actions setup-mobile-run-actions">
+                  <button id="startSessionMobile" class="btn pri">Start Session</button>
+                  <button id="startLastMobile" class="btn ghost">Start last settings</button>
+                </div>
+                <p id="setup-mobile-next" class="muted setup-mobile-next">Optional filters stay below if you want a more focused drill.</p>
+              </div>
+
               <div id="filter-row" class="setup-grid">
                 <div class="setup-group">
                   <label class="muted">Eras (multi-select)</label>
@@ -190,9 +204,11 @@
                 </div>
               </div>
 
-              <div class="form-actions">
+              <div class="form-actions setup-run-actions">
                 <button id="startSession" class="btn pri">Start Session</button>
                 <button id="startLast" class="btn ghost">Start last settings</button>
+              </div>
+              <div class="form-actions setup-preset-actions">
                 <button id="savePreset" class="btn ghost">Save preset</button>
                 <select id="presetSel">
                   <option value="">Load preset…</option>
@@ -204,11 +220,11 @@
         </div>
 
         <aside class="setup-side stack">
-          <div class="card section-card sticky-card">
+          <div class="card section-card setup-overview-card">
             <div class="section-head">
               <div>
                 <div class="eyebrow">Session overview</div>
-                <h2 class="card-title">Ready to drill</h2>
+                <h2 class="card-title">Session summary</h2>
               </div>
             </div>
 
@@ -236,17 +252,16 @@
             </div>
 
             <div class="card-muted-box summary-note">
-              <div class="empty-kicker">Next step</div>
-              <p id="setup-summary-next" class="empty-copy">Choose a set and tighten filters only if you want a more
-                focused drill.</p>
+              <div class="empty-kicker">Status</div>
+              <p id="setup-summary-next" class="empty-copy">Pick a set to start.</p>
             </div>
           </div>
 
-          <div class="card section-card">
+          <div class="card section-card setup-advanced-card">
             <div class="section-head">
               <div>
                 <div class="eyebrow">Session controls</div>
-                <h2 class="card-title">Advanced settings</h2>
+                <h2 class="card-title">Session options</h2>
               </div>
               <button id="advToggle" class="btn ghost"><span id="advCaret" class="caret rotate">▾</span> Toggle</button>
             </div>
@@ -282,7 +297,7 @@
                     <label class="pill">Delay <input id="autoAdvanceDelay" type="number" min="0" max="5" value="1" style="width:70px">s</label>
                   </div>
 
-                  <div class="pill">Shortcuts: Space = Buzz • R = Right • W = Wrong • N = Next • L = Replay • ? = Help</div>
+                  <div class="pill">Use the on-screen controls to buzz, score, replay audio, and move to the next question.</div>
                 </div>
               </div>
             </div>
@@ -291,6 +306,17 @@
         </aside>
       </div>
     </section>
+
+    <div id="setup-mobile-dock" class="setup-mobile-dock" hidden aria-live="polite">
+      <div class="setup-mobile-dock-head">
+        <div class="setup-mobile-mode-pill" id="setup-mobile-dock-mode">Random</div>
+        <p id="setup-mobile-dock-summary" class="setup-mobile-dock-summary">10 questions • All regions • All sources</p>
+      </div>
+      <div class="form-actions setup-mobile-dock-actions">
+        <button id="startSessionDock" class="btn pri">Start Session</button>
+        <button id="startLastDock" class="btn ghost">Start last settings</button>
+      </div>
+    </div>
 
   <!-- PRACTICE -->
   <section id="view-practice" class="view">
@@ -315,7 +341,7 @@
         <div class="practice-stage">
           <div class="counter" id="countdown"></div>
           <div class="buzz-wrap">
-            <button id="btn-buzz" class="buzz pulse">B U Z Z (Space)</button>
+            <button id="btn-buzz" class="buzz pulse">B U Z Z</button>
           </div>
           <div class="row practice-answer-entry" id="typing-row" style="display:none;">
             <input id="user-answer" type="text" placeholder="Type your answer…" style="flex:1 1 420px" />
@@ -327,18 +353,17 @@
 
         <div class="practice-control-dock">
           <div class="row practice-bottom">
-            <button id="btn-replay" class="btn ghost" disabled>Replay last line (L)</button>
-            <button id="btn-next" class="btn ghost" disabled>Next (N)</button>
-            <button id="btn-right" class="btn good" disabled style="display:none">✔ Right (R)</button>
-            <button id="btn-wrong" class="btn bad" disabled style="display:none">✖ Wrong (W)</button>
+            <button id="btn-replay" class="btn ghost" disabled>Replay last line</button>
+            <button id="btn-next" class="btn ghost" disabled>Next</button>
+            <button id="btn-right" class="btn good" disabled style="display:none">✔ Right</button>
+            <button id="btn-wrong" class="btn bad" disabled style="display:none">✖ Wrong</button>
             <div class="grow"></div>
-            <button id="btn-copy-answer" class="btn ghost" disabled>Copy answer (C)</button>
+            <button id="btn-copy-answer" class="btn ghost" disabled>Copy answer</button>
             <button id="btn-alias" class="btn ghost" disabled>Add alias</button>
             <button id="btn-flag" class="btn ghost" disabled>Flag</button>
           </div>
 
-          <div class="muted practice-shortcuts">Space = Buzz • R = Right • W = Wrong • N = Next • L = Replay • ? =
-            Help</div>
+          <div class="muted practice-shortcuts">Use the buttons below to control practice.</div>
         </div>
     </div>
   </section>
@@ -352,7 +377,7 @@
             <div>
               <div class="eyebrow">Performance recap</div>
               <h2 class="card-title">Last session</h2>
-              <p class="section-subtitle">Use the charts to read speed and accuracy first, then decide what to repeat.</p>
+              <p class="section-subtitle">Latest run metrics.</p>
             </div>
           </div>
           <div class="review-kpi-band">
@@ -389,14 +414,12 @@
             <div>
               <div class="eyebrow">DeepSeek recap</div>
               <h2 class="card-title">Session debrief</h2>
-              <p class="section-subtitle">Keep the AI takeaways separate from your raw stats so the next drill feels
-                more intentional.</p>
+              <p class="section-subtitle">Coach notes from the latest run.</p>
             </div>
           </div>
           <div id="review-coach-summary" class="card-muted-box summary-note">
-            <div class="empty-kicker">Session coach</div>
-            <p id="review-coach-note" class="empty-copy">Finish a session and the review page will surface the coach
-              lesson patterns worth drilling next.</p>
+            <div class="empty-kicker">Status</div>
+            <p id="review-coach-note" class="empty-copy">Finish a session to load coach notes.</p>
           </div>
           <div id="review-coach-focuses" class="coach-focus-grid" style="margin-top: 16px;"></div>
           <div class="inline-actions" style="margin-top: 16px;">
@@ -407,13 +430,12 @@
       </div>
 
       <aside class="review-side-column stack">
-        <div class="card section-card sticky-card">
+        <div class="card section-card">
           <div class="section-head">
             <div>
               <div class="eyebrow">Spaced repetition</div>
               <h2 class="card-title">Wrong bank</h2>
-              <p class="section-subtitle">Keep today’s due material in a smaller side rail instead of letting it compete
-                with the full review summary.</p>
+              <p class="section-subtitle">Due items and tracked misses.</p>
             </div>
           </div>
           <div class="inline-actions">
@@ -439,6 +461,7 @@
               <tbody></tbody>
             </table>
           </div>
+          <div id="wrong-mobile-list" class="mobile-record-list" aria-live="polite"></div>
         </div>
 
         <div class="card section-card">
@@ -446,8 +469,7 @@
             <div>
               <div class="eyebrow">Past runs</div>
               <h2 class="card-title">History</h2>
-              <p class="section-subtitle">Older sessions stay available, but they no longer share the same canvas as the
-                live recap.</p>
+              <p class="section-subtitle">Recent sessions and exports.</p>
             </div>
           </div>
           <div class="table-frame">
@@ -465,6 +487,7 @@
               <tbody></tbody>
             </table>
           </div>
+          <div id="history-mobile-list" class="mobile-record-list" aria-live="polite"></div>
           <div class="inline-actions" style="margin-top: 16px;">
             <button id="btn-clear-history" class="btn ghost">Clear history</button>
           </div>
@@ -480,7 +503,7 @@
             <div>
               <div class="eyebrow">Saved AI coaching</div>
               <h2 class="card-title">AI Notebook</h2>
-              <p class="section-subtitle">Every DeepSeek lesson generated during practice lives here, so you can search it, mark it mastered, and turn it back into a targeted drill without digging through Review.</p>
+              <p class="section-subtitle">Saved coach notes and mastery status.</p>
             </div>
           </div>
 
@@ -494,17 +517,13 @@
             <button id="btn-coach-back-review" class="btn ghost" type="button">Back to Review</button>
           </div>
 
-          <div class="card-muted-box summary-note" style="margin-top: 12px;">
-            <div class="empty-kicker">Stored here</div>
-            <p class="empty-copy">Saved coach lessons, mastery tracking, and notebook search now live in this dedicated tab instead of the bottom of Review.</p>
-          </div>
         </div>
 
         <div class="card">
           <div class="row" style="margin-bottom:8px">
             <select id="coach-filter" style="min-width:140px">
               <option value="all">All</option>
-              <option value="todo">To Learn</option>
+              <option value="todo" selected>To Learn</option>
               <option value="mastered">Mastered</option>
             </select>
             <input id="coach-search" type="text" placeholder="Search AI notebook…" style="flex:1 1 260px" />
@@ -523,8 +542,7 @@
           <div>
             <div class="eyebrow">Question bank</div>
             <h2 class="card-title">Library controls</h2>
-            <p class="section-subtitle">Keep set management, filtering, and bulk actions in a compact control layer so
-              the table stays readable.</p>
+            <p class="section-subtitle">Set, filters, and bulk actions.</p>
           </div>
           <div class="inline-actions">
             <button id="lib-new-set" class="btn ghost">New set from file</button>
@@ -563,8 +581,7 @@
           <div>
             <div class="eyebrow">Set contents</div>
             <h2 class="card-title">Filtered question list</h2>
-            <p class="section-subtitle">The table is isolated below the control band so the current set and its filters
-              remain obvious while you scan rows.</p>
+            <p class="section-subtitle">Current filtered results.</p>
           </div>
         </div>
         <div class="table-frame library-table-frame">
@@ -582,6 +599,7 @@
             <tbody></tbody>
           </table>
         </div>
+        <div id="lib-mobile-list" class="mobile-record-list" aria-live="polite"></div>
       </div>
     </div>
   </section>
@@ -597,40 +615,36 @@
           <p id="coach-chat-context-summary" class="coach-chat-context-summary">Scanning your practice state.</p>
         </div>
         <div class="coach-chat-head-actions">
-          <span id="coach-chat-source" class="pill">Ready</span>
           <button id="coach-chat-new" class="btn ghost coach-chat-utility-btn" type="button">New Chat</button>
           <button id="coach-chat-fullscreen" class="btn ghost coach-chat-utility-btn" type="button" aria-pressed="false">Full Screen</button>
           <button id="coach-chat-close" class="btn ghost coach-chat-close" type="button" aria-label="Close sidebar">×</button>
         </div>
       </div>
 
-      <div class="coach-chat-toolbar">
-        <div id="coach-chat-mode-switch" class="coach-chat-mode-switch" role="tablist" aria-label="Assistant mode">
-          <button class="coach-chat-mode-btn" type="button" data-mode="auto" aria-pressed="true">Auto</button>
-          <button class="coach-chat-mode-btn" type="button" data-mode="coach" aria-pressed="false">Coach</button>
-          <button class="coach-chat-mode-btn" type="button" data-mode="knowledge" aria-pressed="false">Knowledge</button>
+      <div id="coach-chat-body" class="coach-chat-body">
+        <div id="coach-chat-status-pills" class="coach-chat-status-pills"></div>
+        <div class="coach-chat-section-block">
+          <div class="coach-chat-section-label">Quick access</div>
+          <div id="coach-chat-workspace" class="coach-chat-workspace"></div>
         </div>
-      </div>
-
-      <div id="coach-chat-status-pills" class="coach-chat-status-pills"></div>
-      <div class="coach-chat-section-block">
-        <div class="coach-chat-section-label">Quick access</div>
-        <div id="coach-chat-workspace" class="coach-chat-workspace"></div>
-      </div>
-      <div id="coach-chat-messages" class="coach-chat-messages" aria-live="polite"></div>
-      <div class="coach-chat-starter-block">
-        <div class="coach-chat-section-label">Suggested prompts</div>
-        <div id="coach-chat-starters" class="coach-chat-starters"></div>
+        <div id="coach-chat-messages" class="coach-chat-messages" aria-live="polite"></div>
+        <div class="coach-chat-starter-block">
+          <div class="coach-chat-section-label">Suggested prompts</div>
+          <div id="coach-chat-starters" class="coach-chat-starters"></div>
+        </div>
       </div>
 
       <form id="coach-chat-form" class="coach-chat-form">
         <div class="coach-chat-section-label">Ask your own question</div>
         <label class="coach-chat-input-wrap" for="coach-chat-input">
           <textarea id="coach-chat-input" rows="2"
-            placeholder="Ask for the next drill, a concept explanation, a timeline, a comparison, or how to use the built-in tools."></textarea>
+            placeholder="Ask for background on a topic, a timeline, a comparison, or what you should practice next. Auto will detect knowledge vs coaching."></textarea>
         </label>
+        <div class="coach-chat-form-utility">
+          <button id="coach-chat-thinking-toggle" class="coach-chat-thinking-toggle" type="button" aria-pressed="false">Thinking Model: Off</button>
+        </div>
         <div class="coach-chat-form-actions">
-          <div id="coach-chat-hint" class="muted">DeepSeek can recommend a drill and launch it from here.</div>
+          <div id="coach-chat-hint" class="muted">Auto mode can switch between knowledge-heavy answers and coaching with future steps.</div>
           <button id="coach-chat-send" class="btn pri" type="submit">Send</button>
         </div>
       </form>
@@ -645,7 +659,7 @@
   <div id="overlay" class="overlay" role="dialog" aria-modal="true">
     <div class="sheet">
       <div class="row" style="align-items:center">
-        <div class="card-title" style="margin:0">Keyboard shortcuts</div>
+        <div class="card-title" style="margin:0">Practice controls</div>
         <div class="grow"></div>
         <button id="closeHelp" class="btn ghost">Close</button>
       </div>
@@ -653,34 +667,34 @@
       <table>
         <thead>
           <tr>
-            <th>Key</th>
+            <th>Control</th>
             <th>Action</th>
           </tr>
         </thead>
         <tbody>
           <tr>
-            <td>Space</td>
-            <td>Buzz</td>
+            <td>Buzz button</td>
+            <td>Stop the reading and lock in your attempt</td>
           </tr>
           <tr>
-            <td>R</td>
-            <td>Mark Right</td>
+            <td>Right button</td>
+            <td>Mark the attempt correct</td>
           </tr>
           <tr>
-            <td>W</td>
-            <td>Mark Wrong</td>
+            <td>Wrong button</td>
+            <td>Mark the attempt incorrect</td>
           </tr>
           <tr>
-            <td>N</td>
-            <td>Next</td>
+            <td>Next button</td>
+            <td>Advance to the next question</td>
           </tr>
           <tr>
-            <td>L</td>
-            <td>Replay last line</td>
+            <td>Replay button</td>
+            <td>Replay the latest clue line</td>
           </tr>
           <tr>
-            <td>?</td>
-            <td>Open/close cheatsheet</td>
+            <td>Copy answer button</td>
+            <td>Copy the revealed answer to your clipboard</td>
           </tr>
         </tbody>
       </table>

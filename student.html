@@ -14,6 +14,7 @@
     <link rel="stylesheet" href="styles.css">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="config.js"></script>
+    <script src="avatar-catalog.js" defer></script>
     <style id="auth-guard">
         body {
             opacity: 0;
@@ -93,7 +94,7 @@
                         <h2 class="card-title">My Classes</h2>
                     </div>
                 </div>
-                <div class="dashboard-split">
+                <div class="dashboard-split dashboard-split-solo">
                     <div class="panel-stack">
                         <div class="card-muted-box">
                             <div class="inline-form">
@@ -105,13 +106,6 @@
                             <p class="muted">Loading...</p>
                         </div>
                     </div>
-                    <aside class="panel-stack">
-                        <div class="card-muted-box student-side-note">
-                            <div class="empty-kicker">Classroom flow</div>
-                            <p class="empty-copy">Join with an invite code first, then use the class list as your stable
-                                launch point for assignments and live rounds.</p>
-                        </div>
-                    </aside>
                 </div>
             </div>
         </section>
@@ -146,16 +140,15 @@
                         <div id="assignments-coach-brief" class="coach-brief-card sticky-card">
                             <div class="coach-brief-head">
                                 <div>
-                                    <div class="eyebrow">Coach prep</div>
-                                    <h3>DeepSeek assignment support</h3>
+                                    <div class="eyebrow">Current focus</div>
+                                    <h3>Assignment Coach</h3>
                                 </div>
                                 <div class="inline-actions">
-                                    <button id="btn-assignments-coach-drill" class="btn pri" type="button">Open Guided Drill</button>
-                                    <button id="btn-assignments-coach-tab" class="btn ghost" type="button">Open Coach Workspace</button>
+                                    <button id="btn-assignments-coach-drill" class="btn pri" type="button">Guided Drill</button>
+                                    <button id="btn-assignments-coach-tab" class="btn ghost" type="button">Workspace</button>
                                 </div>
                             </div>
-                            <div id="assignments-coach-summary" class="coach-brief-copy muted">DeepSeek prep suggestions will
-                                appear here once you build up some coach notes or analytics history.</div>
+                            <div id="assignments-coach-summary" class="coach-brief-copy muted">Coach focus will appear here.</div>
                             <div id="assignments-coach-focuses" class="coach-focus-grid"></div>
                         </div>
                     </aside>
@@ -196,14 +189,14 @@
                             <button id="btn-coach-refresh" class="btn ghost" type="button">Refresh Coach</button>
                         </div>
                     </div>
-                    <div id="coach-workspace-summary" class="coach-brief-copy muted">Loading coach guidance...</div>
+                    <div id="coach-workspace-summary" class="coach-brief-copy muted">Loading focus...</div>
                     <div id="coach-focus-list" class="coach-focus-grid" style="margin-top: 16px;"></div>
                 </div>
 
                 <div class="card section-card">
                     <div class="section-head">
                         <div>
-                            <h2 class="card-title">Saved DeepSeek Lessons</h2>
+                            <h2 class="card-title">Saved Lessons</h2>
                         </div>
                     </div>
                     <div id="coach-note-list" class="coach-list"></div>
@@ -215,14 +208,8 @@
             <div class="card section-card">
                 <div class="coming-soon">
                     <div class="cs-icon">Live</div>
-                    <h2>Live Bee Rooms</h2>
-                    <p class="cs-desc">Compete head-to-head in real-time buzzer rounds, then return here to launch your
-                        next match instantly.</p>
-                    <div class="cs-features">
-                        <div class="cs-feature">Real-time buzzing</div>
-                        <div class="cs-feature">4-8 player rooms</div>
-                        <div class="cs-feature">Live scoreboard</div>
-                    </div>
+                    <h2>Live Bee</h2>
+                    <p class="cs-desc">Start or join a room.</p>
                     <a href="livebee.html" class="btn pri">Enter Live Bee</a>
                 </div>
             </div>
@@ -234,6 +221,7 @@
                     <div class="section-head">
                         <div>
                             <h2 class="card-title">Blind Spot Analytics</h2>
+                            <p class="section-subtitle">30-day drill data.</p>
                         </div>
                         <div class="inline-actions">
                             <span class="pill">30-day window</span>
@@ -243,12 +231,29 @@
 
                     <div id="analytics-empty" class="analytics-empty hidden">
                         <h3>No activity yet</h3>
-                        <p class="muted">Start a few drills in the Practice Hub and this page will light up with your
-                            blind spots.</p>
+                        <p class="muted">Run a few drills to populate analytics.</p>
                         <a href="index.html?drill=1" class="btn pri">Start Practice Drill</a>
                     </div>
 
                     <div id="analytics-content">
+                        <div class="analytics-hero" style="margin-top: 18px;">
+                            <div class="analytics-hero-copy">
+                                <div class="eyebrow">30-day view</div>
+                                <h3 id="analytics-hero-title">Last 30 days</h3>
+                                <p id="analytics-hero-summary" class="analytics-hero-summary">Volume, accuracy, buzz speed.</p>
+                            </div>
+                            <div class="analytics-hero-meta">
+                                <div class="analytics-hero-chip">
+                                    <span>Active days</span>
+                                    <strong id="analytics-hero-active-days">0 / 30</strong>
+                                </div>
+                                <div class="analytics-hero-chip">
+                                    <span>Fastest buzz</span>
+                                    <strong id="analytics-hero-fastest">—</strong>
+                                </div>
+                            </div>
+                        </div>
+
                         <div class="analytics-kpis" style="margin-top: 18px;">
                             <div class="analytics-kpi">
                                 <div class="analytics-kpi-label">Questions Answered</div>
@@ -276,67 +281,113 @@
                             </div>
                         </div>
 
-                        <div class="analytics-panel analytics-ai-card" style="margin-top: 16px;">
-                            <div class="analytics-ai-head">
-                                <div>
-                                    <h3>DeepSeek Weak-Area Coach</h3>
-                                    <p class="section-subtitle">Generate a focused readout of the eras and regions that
-                                        need the most work, plus a short study plan.</p>
-                                </div>
-                                <div class="inline-actions">
-                                    <span id="analytics-ai-badge" class="pill">Ready</span>
-                                    <button id="btn-analytics-ai" class="btn pri" type="button">Generate Insights</button>
-                                </div>
-                            </div>
-                            <div id="analytics-ai-status" class="analytics-ai-status muted">Use your current 30-day drill
-                                history to produce targeted weak-area recommendations.</div>
-                            <div id="analytics-ai-content" class="analytics-ai-content">
-                                <div class="analytics-ai-placeholder">
-                                    <h4>AI insights are on standby</h4>
-                                    <p class="muted">Once you have enough drill history, generate a DeepSeek summary to
-                                        turn your blind spots into a short study plan.</p>
-                                </div>
-                            </div>
-                        </div>
-
                         <div class="analytics-chart-grid" style="margin-top: 16px;">
-                            <div class="analytics-panel">
-                                <h3>Accuracy Trend</h3>
-                                <svg id="analytics-chart-accuracy" class="analytics-chart" viewBox="0 0 720 220"
-                                    aria-label="Accuracy trend over last 30 days"></svg>
+                            <div class="analytics-panel analytics-panel-featured">
+                                <div class="analytics-panel-head">
+                                    <div>
+                                        <div class="analytics-panel-kicker">Signal</div>
+                                        <h3>Accuracy Trend</h3>
+                                        <p class="analytics-panel-note">Watch whether recent drills are stabilizing or drifting before you change your study plan.</p>
+                                    </div>
+                                </div>
+                                <div class="analytics-chart-shell">
+                                    <svg id="analytics-chart-accuracy" class="analytics-chart" viewBox="0 0 720 220"
+                                        aria-label="Accuracy trend over last 30 days"></svg>
+                                </div>
                             </div>
                             <div class="analytics-panel">
-                                <h3>Buzz Speed Trend</h3>
-                                <svg id="analytics-chart-buzz" class="analytics-chart" viewBox="0 0 720 220"
-                                    aria-label="Average buzz speed trend over last 30 days"></svg>
+                                <div class="analytics-panel-head">
+                                    <div>
+                                        <div class="analytics-panel-kicker">Timing</div>
+                                        <h3>Buzz Speed Trend</h3>
+                                        <p class="analytics-panel-note">Use this curve to decide whether your speed gains are helping accuracy or undercutting it.</p>
+                                    </div>
+                                </div>
+                                <div class="analytics-chart-shell">
+                                    <svg id="analytics-chart-buzz" class="analytics-chart" viewBox="0 0 720 220"
+                                        aria-label="Average buzz speed trend over last 30 days"></svg>
+                                </div>
                             </div>
                             <div class="analytics-panel">
-                                <h3>Daily Volume</h3>
-                                <svg id="analytics-chart-volume" class="analytics-chart" viewBox="0 0 720 220"
-                                    aria-label="Daily question volume over last 30 days"></svg>
+                                <div class="analytics-panel-head">
+                                    <div>
+                                        <div class="analytics-panel-kicker">Load</div>
+                                        <h3>Daily Volume</h3>
+                                        <p class="analytics-panel-note">See whether your best stretches come from steady repetition or from isolated cram sessions.</p>
+                                    </div>
+                                </div>
+                                <div class="analytics-chart-shell">
+                                    <svg id="analytics-chart-volume" class="analytics-chart" viewBox="0 0 720 220"
+                                        aria-label="Daily question volume over last 30 days"></svg>
+                                </div>
                             </div>
                         </div>
 
                         <div class="analytics-split-grid" style="margin-top: 16px;">
                             <div class="analytics-panel">
-                                <h3>Era Performance</h3>
+                                <div class="analytics-panel-head">
+                                    <div>
+                                        <div class="analytics-panel-kicker">Breakdown</div>
+                                        <h3>Era Performance</h3>
+                                        <p class="analytics-panel-note">Use this ladder to spot which eras are lowering your floor in mixed practice.</p>
+                                    </div>
+                                </div>
                                 <div id="analytics-era-list" class="analytics-perf-list"></div>
                             </div>
                             <div class="analytics-panel">
-                                <h3>Region Performance</h3>
+                                <div class="analytics-panel-head">
+                                    <div>
+                                        <div class="analytics-panel-kicker">Breakdown</div>
+                                        <h3>Region Performance</h3>
+                                        <p class="analytics-panel-note">Compare regions side by side so weak clusters stand out before you generate coach advice.</p>
+                                    </div>
+                                </div>
                                 <div id="analytics-region-list" class="analytics-perf-list"></div>
                             </div>
                         </div>
 
                         <div class="analytics-split-grid" style="margin-top: 16px;">
                             <div class="analytics-panel">
-                                <h3>Blind Spot Radar</h3>
+                                <div class="analytics-panel-head">
+                                    <div>
+                                        <div class="analytics-panel-kicker">Diagnosis</div>
+                                        <h3>Blind Spot Radar</h3>
+                                        <p class="analytics-panel-note">These are the places where volume and accuracy are combining into the clearest study targets.</p>
+                                    </div>
+                                </div>
                                 <div id="analytics-blind-spots" class="analytics-blind-list"></div>
                             </div>
                             <div class="analytics-panel">
-                                <h3>Consistency Heatmap</h3>
+                                <div class="analytics-panel-head">
+                                    <div>
+                                        <div class="analytics-panel-kicker">Cadence</div>
+                                        <h3>Consistency Heatmap</h3>
+                                        <p class="analytics-panel-note">Read this as a practice rhythm map instead of a scorecard: consistency matters as much as single big days.</p>
+                                    </div>
+                                </div>
                                 <div id="analytics-heatmap" class="analytics-heatmap"></div>
                                 <div id="analytics-heatmap-caption" class="muted" style="margin-top: 10px;"></div>
+                            </div>
+                        </div>
+
+                        <div class="analytics-panel analytics-ai-card analytics-ai-secondary" style="margin-top: 16px;">
+                            <div class="analytics-ai-head">
+                                <div>
+                                    <div class="analytics-panel-kicker">Interpretation</div>
+                                    <h3>DeepSeek Weak-Area Coach</h3>
+                                    <p class="section-subtitle">Weak-area summary.</p>
+                                </div>
+                                <div class="inline-actions">
+                                    <span id="analytics-ai-badge" class="pill">Ready</span>
+                                    <button id="btn-analytics-ai" class="btn pri" type="button">Generate Insights</button>
+                                </div>
+                            </div>
+                            <div id="analytics-ai-status" class="analytics-ai-status muted">30-day drill data ready.</div>
+                            <div id="analytics-ai-content" class="analytics-ai-content">
+                                <div class="analytics-ai-placeholder">
+                                    <h4>Insights ready</h4>
+                                    <p class="muted">Generate a summary when ready.</p>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -349,14 +400,8 @@
                 <div class="coming-soon">
                     <div class="cs-icon">Rank</div>
                     <h2>Class and Global Leaderboards</h2>
-                    <p class="cs-desc">See how you rank in your class and beyond once competitive standings are enabled.
-                    </p>
+                    <p class="cs-desc">Ranking view not active yet.</p>
                     <div class="cs-badge">Coming soon</div>
-                    <div class="cs-features">
-                        <div class="cs-feature">Weekly class rankings</div>
-                        <div class="cs-feature">Global hall of fame</div>
-                        <div class="cs-feature">Badges and levels</div>
-                    </div>
                 </div>
             </div>
         </section>
@@ -397,6 +442,33 @@
                                 <label>User ID</label>
                                 <input id="acc-user-id" type="text" readonly>
                             </div>
+                            <div class="input-group full-width">
+                                <label>Avatar</label>
+                                <div class="avatar-settings-panel">
+                                    <div class="avatar-current-card">
+                                        <div class="avatar-preview-shell">
+                                            <img id="acc-avatar-preview" alt="Selected avatar">
+                                        </div>
+                                        <div class="avatar-current-copy">
+                                            <div class="eyebrow">Public profile avatar</div>
+                                            <h4 id="acc-avatar-current-label" style="margin: 0;">Penguin</h4>
+                                            <p class="muted" style="margin: 0;">This curated animal avatar appears on
+                                                your profile page.</p>
+                                        </div>
+                                    </div>
+                                    <div id="acc-avatar-picker" class="avatar-picker-grid" role="radiogroup"
+                                        aria-label="Choose your avatar"></div>
+                                </div>
+                            </div>
+                            <div id="acc-practice-hub-popup-setting" class="input-group full-width" hidden>
+                                <label>Practice Hub auto-open</label>
+                                <label class="account-danger-confirm" style="margin: 0;">
+                                    <input id="acc-disable-practice-hub-popup" type="checkbox">
+                                    <span>Disable the automatic DeepSeek pop-up when I enter Practice Hub.</span>
+                                </label>
+                                <p class="muted" style="margin: 0;">You can still open DeepSeek manually from the
+                                    launcher anytime.</p>
+                            </div>
                         </div>
                         <div class="form-actions" style="margin-top: 14px;">
                             <button id="btn-save-account" class="btn pri">Save Profile Changes</button>
@@ -406,17 +478,11 @@
                     </div>
 
                     <aside class="panel-stack">
-                        <div class="card-muted-box student-side-note">
-                            <div class="empty-kicker">Account note</div>
-                            <p class="empty-copy">Keep routine profile edits in the main column and isolate destructive
-                                actions to the side so they never compete with day-to-day settings.</p>
-                        </div>
-
                         <div class="account-danger">
                             <div class="section-head" style="margin-bottom: 10px;">
                                 <div>
                                     <h3 style="margin: 0;">Danger Zone</h3>
-                                    <p class="section-subtitle">Delete is hidden until you explicitly reveal it.</p>
+                                    <p class="section-subtitle">Hidden until enabled.</p>
                                 </div>
                                 <button id="btn-reveal-delete" type="button" class="btn ghost">Show Delete Option</button>
                             </div>
@@ -459,40 +525,36 @@
                     <p id="coach-chat-context-summary" class="coach-chat-context-summary">Reviewing your coach and analytics history.</p>
                 </div>
                 <div class="coach-chat-head-actions">
-                    <span id="coach-chat-source" class="pill">Ready</span>
                     <button id="coach-chat-new" class="btn ghost coach-chat-utility-btn" type="button">New Chat</button>
                     <button id="coach-chat-fullscreen" class="btn ghost coach-chat-utility-btn" type="button" aria-pressed="false">Full Screen</button>
                     <button id="coach-chat-close" class="btn ghost coach-chat-close" type="button" aria-label="Close sidebar">×</button>
                 </div>
             </div>
 
-            <div class="coach-chat-toolbar">
-                <div id="coach-chat-mode-switch" class="coach-chat-mode-switch" role="tablist" aria-label="Assistant mode">
-                    <button class="coach-chat-mode-btn" type="button" data-mode="auto" aria-pressed="true">Auto</button>
-                    <button class="coach-chat-mode-btn" type="button" data-mode="coach" aria-pressed="false">Coach</button>
-                    <button class="coach-chat-mode-btn" type="button" data-mode="knowledge" aria-pressed="false">Knowledge</button>
+            <div id="coach-chat-body" class="coach-chat-body">
+                <div id="coach-chat-status-pills" class="coach-chat-status-pills"></div>
+                <div class="coach-chat-section-block">
+                    <div class="coach-chat-section-label">Quick access</div>
+                    <div id="coach-chat-workspace" class="coach-chat-workspace"></div>
                 </div>
-            </div>
-
-            <div id="coach-chat-status-pills" class="coach-chat-status-pills"></div>
-            <div class="coach-chat-section-block">
-                <div class="coach-chat-section-label">Quick access</div>
-                <div id="coach-chat-workspace" class="coach-chat-workspace"></div>
-            </div>
-            <div id="coach-chat-messages" class="coach-chat-messages" aria-live="polite"></div>
-            <div class="coach-chat-starter-block">
-                <div class="coach-chat-section-label">Suggested prompts</div>
-                <div id="coach-chat-starters" class="coach-chat-starters"></div>
+                <div id="coach-chat-messages" class="coach-chat-messages" aria-live="polite"></div>
+                <div class="coach-chat-starter-block">
+                    <div class="coach-chat-section-label">Suggested prompts</div>
+                    <div id="coach-chat-starters" class="coach-chat-starters"></div>
+                </div>
             </div>
 
             <form id="coach-chat-form" class="coach-chat-form">
                 <div class="coach-chat-section-label">Ask your own question</div>
                 <label class="coach-chat-input-wrap" for="coach-chat-input">
                     <textarea id="coach-chat-input" rows="2"
-                        placeholder="Ask what to train next, ask for a concept explanation, compare topics, or get a plan before an assignment."></textarea>
+                        placeholder="Ask for background on a topic, a timeline, a comparison, or what you should practice next. Auto will detect knowledge vs coaching."></textarea>
                 </label>
+                <div class="coach-chat-form-utility">
+                    <button id="coach-chat-thinking-toggle" class="coach-chat-thinking-toggle" type="button" aria-pressed="false">Thinking Model: Off</button>
+                </div>
                 <div class="coach-chat-form-actions">
-                    <div id="coach-chat-hint" class="muted">DeepSeek can send you straight into a targeted drill.</div>
+                    <div id="coach-chat-hint" class="muted">Auto mode can switch between knowledge-heavy answers and coaching with future steps.</div>
                     <button id="coach-chat-send" class="btn pri" type="submit">Send</button>
                 </div>
             </form>

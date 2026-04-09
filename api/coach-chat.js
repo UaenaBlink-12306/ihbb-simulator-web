@@ -9,18 +9,56 @@ const ALLOWED_ACTIONS = new Set([
   'open_review',
   'open_library'
 ]);
+const NOTEBOOK_ACTIONS = new Set([
+  'open_ai_notebook',
+  'apply_top_focus',
+  'generate_focus_drill'
+]);
 
 const ALLOWED_MODES = new Set(['auto', 'coach', 'knowledge']);
 const COACH_INTENT_TERMS = [
   'wrong bank', 'srs', 'notebook', 'ai notebook', 'lesson', 'coach',
   'practice', 'train', 'drill', 'session', 'review', 'setup', 'focus',
-  'due card', 'due now', 'assignment'
+  'due card', 'due now', 'assignment', 'next step', 'next steps',
+  'next move', 'future step', 'future steps', 'study plan', 'practice plan'
 ];
 const KNOWLEDGE_INTENT_TERMS = [
-  'who ', 'what ', 'when ', 'where ', 'why ', 'how ', 'explain', 'define',
-  'describe', 'summarize', 'summary', 'timeline', 'compare', 'contrast',
-  'significance', 'importance', 'overview', 'background', 'concept',
-  'cause', 'causes', 'effect', 'effects', 'turning point'
+  'explain', 'define', 'describe', 'summarize', 'summary', 'timeline',
+  'compare', 'contrast', 'significance', 'importance', 'overview',
+  'background', 'concept', 'cause', 'causes', 'effect', 'effects',
+  'turning point', 'detail', 'details', 'in detail', 'teach me',
+  'help me understand', 'break down', 'elaborate', 'deeper', 'more context'
+];
+const COACH_INTENT_PATTERNS = [
+  /\bwhat should i\b/,
+  /\bwhat do i do next\b/,
+  /\bwhat should i do next\b/,
+  /\bwhat should i practice next\b/,
+  /\bhow should i\b/,
+  /\bshould i use\b/,
+  /\bnext step\b/,
+  /\bnext steps\b/,
+  /\bnext move\b/,
+  /\bfuture step\b/,
+  /\bfuture steps\b/,
+  /\bbuild me\b.*\b(plan|drill|session)\b/,
+  /\bmake me\b.*\b(plan|drill|session)\b/,
+  /\bturn this into\b.*\b(plan|drill|session)\b/
+];
+const KNOWLEDGE_INTENT_PATTERNS = [
+  /\bwho (is|was|were|are|did|do|does)\b/,
+  /\bwhat (is|was|were|are|did|do|does|happened|caused)\b/,
+  /\bwhen (did|was|were|is|are)\b/,
+  /\bwhere (is|was|were|did)\b/,
+  /\bwhy\b/,
+  /\bhow (did|do|does|was|were|is|are)\b/,
+  /\btell me about\b/,
+  /\bgive me (?:a )?timeline of\b/,
+  /\bwhat is the significance of\b/,
+  /\bwhat was the significance of\b/,
+  /\bwhat caused\b/,
+  /\bwhat were the causes of\b/,
+  /\bwhat happened in\b/
 ];
 
 function stringValue(value) {
@@ -34,11 +72,113 @@ function normalizeText(value) {
   return stringValue(value).toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 }
 
+function countPatternHits(message, patterns = []) {
+  return patterns.reduce((total, pattern) => total + (pattern.test(message) ? 1 : 0), 0);
+}
+
+function countTermHits(message, terms = []) {
+  return terms.reduce((total, term) => total + (message.includes(term) ? 1 : 0), 0);
+}
+
+function analyzeIntent(message) {
+  const normalized = normalizeText(message);
+  const coachPatternHits = countPatternHits(normalized, COACH_INTENT_PATTERNS);
+  const knowledgePatternHits = countPatternHits(normalized, KNOWLEDGE_INTENT_PATTERNS);
+  const coachTermHits = countTermHits(normalized, COACH_INTENT_TERMS);
+  const knowledgeTermHits = countTermHits(normalized, KNOWLEDGE_INTENT_TERMS);
+  const coachScore = coachPatternHits * 3 + coachTermHits;
+  const knowledgeScore = knowledgePatternHits * 4 + knowledgeTermHits;
+
+  return {
+    normalized,
+    coachScore,
+    knowledgeScore,
+    strongCoach: coachPatternHits > 0,
+    strongKnowledge: knowledgePatternHits > 0,
+    mixedIntent: coachScore > 0 && knowledgeScore > 0,
+    asksForFutureSteps: /\b(next step|next steps|next move|future step|future steps|what should i do next|what should i practice next)\b/.test(normalized),
+    asksForExplanation: knowledgePatternHits > 0 || knowledgeTermHits > 0
+  };
+}
+
+function topicTokens(value) {
+  return Array.from(new Set(
+    normalizeText(value)
+      .split(' ')
+      .map(token => token.trim())
+      .filter(token => token.length >= 3)
+  ));
+}
+
+function topicsOverlap(left, right) {
+  const a = topicTokens(left);
+  const b = new Set(topicTokens(right));
+  const normalizedLeft = normalizeText(left);
+  const normalizedRight = normalizeText(right);
+  if (!a.length || !b.size) {
+    return !!normalizedLeft && !!normalizedRight && (
+      normalizedLeft.includes(normalizedRight) || normalizedRight.includes(normalizedLeft)
+    );
+  }
+  if (normalizedLeft.includes(normalizedRight) || normalizedRight.includes(normalizedLeft)) return true;
+  let hits = 0;
+  for (const token of a) {
+    if (b.has(token)) hits += 1;
+  }
+  return hits >= Math.min(2, Math.max(1, Math.min(a.length, b.size)));
+}
+
+function messageAskedForNotebook(message) {
+  return /\b(ai notebook|notebook|lesson|lessons|coach)\b/.test(normalizeText(message));
+}
+
+function messageAskedForStudyActions(message) {
+  const intent = analyzeIntent(message);
+  return intent.coachScore > 0 || intent.asksForFutureSteps;
+}
+
+function findFocusByKey(context, focusKey) {
+  const cleanKey = stringValue(focusKey);
+  if (!cleanKey) return null;
+  const recent = context?.recent_incorrect;
+  if (stringValue(recent?.key) === cleanKey) return recent;
+  return Array.isArray(context?.coach_notebook?.top_focuses)
+    ? context.coach_notebook.top_focuses.find(focus => stringValue(focus?.key) === cleanKey) || null
+    : null;
+}
+
+function notebookActionAllowed(action, mode, topic, payload, context) {
+  if (!NOTEBOOK_ACTIONS.has(stringValue(action?.id))) return true;
+  const message = stringValue(payload?.message);
+  if (messageAskedForNotebook(message)) return true;
+  if (mode === 'knowledge') return false;
+  if (messageAskedForStudyActions(message)) return true;
+  if (topicsOverlap(action?.query, topic) || topicsOverlap(action?.label, topic) || topicsOverlap(action?.reason, topic)) {
+    return true;
+  }
+  const focus = findFocusByKey(context, action?.focus_key);
+  return !!focus && [
+    focus?.title,
+    focus?.topic,
+    focus?.region,
+    focus?.era,
+    focus?.reason
+  ].some(value => topicsOverlap(value, topic));
+}
+
+function filterActionsForContext(actions, mode, topic, payload, context) {
+  return dedupeActions(actions).filter(action => notebookActionAllowed(action, mode, topic, payload, context)).slice(0, 3);
+}
+
 function parseJsonFromContent(content) {
   if (!content) return null;
   const trimmed = String(content).trim();
   try {
-    return JSON.parse(trimmed);
+    const parsed = JSON.parse(trimmed);
+    if (typeof parsed === 'string' && parsed.trim() && parsed.trim() !== trimmed) {
+      return parseJsonFromContent(parsed);
+    }
+    return parsed;
   } catch {}
 
   const cleaned = trimmed
@@ -48,10 +188,74 @@ function parseJsonFromContent(content) {
   const end = cleaned.lastIndexOf('}');
   if (start === -1 || end <= start) return null;
   try {
-    return JSON.parse(cleaned.slice(start, end + 1));
+    const parsed = JSON.parse(cleaned.slice(start, end + 1));
+    if (typeof parsed === 'string' && parsed.trim()) {
+      return parseJsonFromContent(parsed);
+    }
+    return parsed;
   } catch {
     return null;
   }
+}
+
+function extractDeepSeekMessageText(choice) {
+  const message = choice && typeof choice.message === 'object' && choice.message ? choice.message : {};
+  const candidates = [
+    message.content,
+    message.reasoning_content,
+    message.output_text,
+    choice?.text,
+    choice?.output_text,
+    choice?.content,
+    choice?.reasoning_content
+  ];
+
+  for (const candidate of candidates) {
+    if (Array.isArray(candidate)) {
+      const joined = candidate.map((part) => {
+        if (typeof part === 'string') return part;
+        if (part && typeof part === 'object') {
+          return stringValue(part.text || part.content || part.reasoning_content || part.reasoning || part.value);
+        }
+        return stringValue(part);
+      }).filter(Boolean).join('\n');
+      if (joined.trim()) return joined;
+      continue;
+    }
+    const text = stringValue(candidate);
+    if (text) return text;
+  }
+
+  if (message && typeof message === 'object') {
+    const wrapped = stringValue(message.text || message.value);
+    if (wrapped) return wrapped;
+  }
+
+  return '';
+}
+
+async function requestDeepSeekChatCompletion(headers, payload) {
+  const response = await fetch('https://api.deepseek.com/v1/chat/completions', {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(payload)
+  });
+  const text = await response.text();
+  let data = null;
+  try {
+    data = JSON.parse(text);
+  } catch {}
+  const choice = data?.choices?.[0] || {};
+  const messageText = extractDeepSeekMessageText(choice);
+  const parsedText = parseJsonFromContent(messageText);
+  return {
+    response,
+    text,
+    data,
+    finishReason: stringValue(data?.choices?.[0]?.finish_reason).toLowerCase(),
+    raw: parsedText,
+    messageText
+  };
 }
 
 function safeInt(value, fallback = 0) {
@@ -65,11 +269,11 @@ function normalizeMode(value, fallback = 'auto') {
 }
 
 function looksLikeCoachIntent(message) {
-  return COACH_INTENT_TERMS.some(term => message.includes(term));
+  return analyzeIntent(message).coachScore > 0;
 }
 
 function looksLikeKnowledgeIntent(message) {
-  return KNOWLEDGE_INTENT_TERMS.some(term => message.includes(term));
+  return analyzeIntent(message).knowledgeScore > 0;
 }
 
 function wikiLinkForTopic(topic) {
@@ -101,9 +305,19 @@ function normalizeContext(payload) {
   const lastSession = (sessionHistory.last_session && typeof sessionHistory.last_session === 'object') ? sessionHistory.last_session : {};
   const setup = (raw.setup && typeof raw.setup === 'object') ? raw.setup : {};
   const activeSet = (raw.active_set && typeof raw.active_set === 'object') ? raw.active_set : {};
+  const analytics = (raw.analytics && typeof raw.analytics === 'object') ? raw.analytics : {};
   const recentIncorrect = normalizeFocus(raw.recent_incorrect) || {};
   const topFocuses = Array.isArray(notebook.top_focuses)
     ? notebook.top_focuses.map(normalizeFocus).filter(Boolean).slice(0, 4)
+    : [];
+  const blindSpots = Array.isArray(analytics.blind_spots)
+    ? analytics.blind_spots.map((spot) => {
+        if (!spot || typeof spot !== 'object') return null;
+        return {
+          title: stringValue(spot.title),
+          priority: ['high', 'medium', 'low'].includes(stringValue(spot.priority).toLowerCase()) ? stringValue(spot.priority).toLowerCase() : 'medium'
+        };
+      }).filter(Boolean).slice(0, 3)
     : [];
 
   return {
@@ -138,7 +352,12 @@ function normalizeContext(payload) {
       name: stringValue(activeSet.name),
       item_count: Math.max(0, safeInt(activeSet.item_count, 0))
     },
-    recent_incorrect: recentIncorrect
+    recent_incorrect: recentIncorrect,
+    analytics: {
+      total_attempts: Math.max(0, safeInt(analytics.total_attempts, 0)),
+      total_accuracy: Math.max(0, Math.min(100, safeInt(analytics.total_accuracy, 0))),
+      blind_spots: blindSpots
+    }
   };
 }
 
@@ -149,13 +368,45 @@ function focusTitle(focus) {
     || 'your top focus';
 }
 
+function buildContextBrief(context) {
+  const parts = [];
+  const recentTitle = focusTitle(context.recent_incorrect || {});
+  const topFocusTitle = focusTitle(context.coach_notebook.top_focuses[0] || {});
+  const blindSpots = Array.isArray(context.analytics?.blind_spots)
+    ? context.analytics.blind_spots.map(item => stringValue(item.title)).filter(Boolean)
+    : [];
+
+  if (context.current_view) parts.push(`Current view: ${context.current_view}`);
+  if (recentTitle) parts.push(`Latest miss: ${recentTitle}`);
+  if (context.wrong_bank.due_now > 0) parts.push(`Wrong-bank due now: ${context.wrong_bank.due_now}`);
+  if (context.coach_notebook.open_lessons > 0) parts.push(`Open notebook lessons: ${context.coach_notebook.open_lessons}`);
+  if (topFocusTitle) parts.push(`Top notebook focus: ${topFocusTitle}`);
+  if (context.session_history.total_sessions > 0) {
+    parts.push(`Recent accuracy: ${context.session_history.recent_accuracy}% over ${context.session_history.total_sessions} sessions`);
+  }
+  if (context.analytics.total_attempts > 0) {
+    parts.push(`Analytics accuracy: ${context.analytics.total_accuracy}% over ${context.analytics.total_attempts} attempts`);
+  }
+  if (blindSpots.length) parts.push(`Blind spots: ${blindSpots.join(', ')}`);
+  if (context.setup.mode || context.setup.filters) parts.push(`Setup: ${[context.setup.mode, context.setup.length, context.setup.filters].filter(Boolean).join(' • ')}`);
+  if (context.active_set.name) parts.push(`Active set: ${context.active_set.name} (${context.active_set.item_count} items)`);
+
+  return parts.join('. ');
+}
+
 function resolveMode(payload, context = normalizeContext(payload)) {
   const requested = normalizeMode(payload.assistant_mode, 'auto');
   if (requested === 'coach' || requested === 'knowledge') return requested;
-  const message = normalizeText(payload.message);
-  if (!message) return 'coach';
-  if (looksLikeCoachIntent(message)) return 'coach';
-  if (looksLikeKnowledgeIntent(message)) return 'knowledge';
+  const intent = analyzeIntent(payload.message);
+  if (!intent.normalized) return 'coach';
+  if (intent.knowledgeScore > intent.coachScore) return 'knowledge';
+  if (intent.coachScore > intent.knowledgeScore) {
+    if (intent.strongKnowledge && intent.coachScore - intent.knowledgeScore <= 2) return 'knowledge';
+    return 'coach';
+  }
+  if (intent.strongKnowledge && !intent.strongCoach) return 'knowledge';
+  if (intent.strongCoach && !intent.strongKnowledge) return 'coach';
+  if (intent.knowledgeScore > 0) return 'knowledge';
   if (!context?.session_history?.total_sessions && !context?.coach_notebook?.total) return 'knowledge';
   return 'coach';
 }
@@ -165,20 +416,29 @@ function extractTopic(payload, context = normalizeContext(payload), resolvedMode
   if (direct) return direct.slice(0, 120);
 
   const message = stringValue(payload.message);
-  const normalized = normalizeText(message);
+  const intent = analyzeIntent(message);
+  const normalized = intent.normalized;
   const recentTitle = focusTitle(context.recent_incorrect || {});
   const topFocusTitle = focusTitle(context.coach_notebook.top_focuses[0] || {});
   if (!message) return resolvedMode === 'knowledge' ? (recentTitle || topFocusTitle) : (recentTitle || '');
-  if (resolvedMode !== 'knowledge' && looksLikeCoachIntent(normalized)) return recentTitle || topFocusTitle;
+  if (resolvedMode !== 'knowledge' && intent.coachScore > 0 && intent.knowledgeScore === 0) return recentTitle || topFocusTitle;
 
   let topic = message
     .replace(/^[^a-zA-Z0-9]*(who|what|when|where|why|how)\s+(is|was|were|are|did|do|does)\s+/i, '')
     .replace(/^(explain|define|describe|outline|summarize|compare|contrast|tell me about|give me (a )?timeline of|what is the significance of|what was the significance of|what caused|what were the causes of|what happened in)\s+/i, '')
+    .replace(/^(what should i (study|practice|review|learn|work on|do)( next)?( about| for)?\s*)/i, '')
+    .replace(/^(how should i (study|practice|train|review|use|approach|learn)\s+)/i, '')
+    .replace(/^(should i use\s+)/i, '')
+    .replace(/^(build me|make me|turn this into)\s+(a\s+)?(short\s+)?(study plan|practice plan|plan|drill|session)\s+(for|on)\s+/i, '')
     .replace(/[?.!]+$/g, '')
     .trim();
   if (!topic) topic = message.replace(/[?.!]+$/g, '').trim();
   if (topic.length > 120) topic = `${topic.slice(0, 117).trim()}...`;
-  if (!topic || looksLikeCoachIntent(normalizeText(topic))) return recentTitle || topFocusTitle;
+  if (!topic) return recentTitle || topFocusTitle;
+  const normalizedTopic = normalizeText(topic);
+  if (resolvedMode !== 'knowledge' && looksLikeCoachIntent(normalizedTopic) && !looksLikeKnowledgeIntent(normalizedTopic)) {
+    return recentTitle || topFocusTitle;
+  }
   return topic;
 }
 
@@ -441,10 +701,6 @@ function buildKnowledgeFallback(payload, context = normalizeContext(payload)) {
   const wiki = wikiLinkForTopic(topic);
   const actions = [];
   if (topic) actions.push(makeAction('open_library', `Search ${topic}`, 'Open the question library and search this topic.', { query: topic }));
-  if (context.coach_notebook.top_focuses[0]?.key && actions.length < 3) {
-    const topFocus = context.coach_notebook.top_focuses[0];
-    actions.push(makeAction('apply_top_focus', `Apply ${focusTitle(topFocus)}`, 'Turn your top notebook focus into a targeted practice block.', { focus_key: stringValue(topFocus.key) }));
-  }
 
   return {
     source: 'fallback',
@@ -452,12 +708,12 @@ function buildKnowledgeFallback(payload, context = normalizeContext(payload)) {
     title: topic ? `Study brief: ${topic}` : 'Study brief',
     topic,
     message: topic
-      ? `This looks like a knowledge question about ${topic}. When DeepSeek is available, I can give a full detailed explanation here. Right now I can still structure the topic, point you to the right reference, and suggest the best follow-up questions.`
-      : 'This looks like a knowledge question. When DeepSeek is available, I can answer it in full detail here. Right now I can still frame the topic and point you to the best follow-up prompts.',
+      ? `This looks like a knowledge question about ${topic}. Here is a concise study brief you can use right now.`
+      : 'This looks like a knowledge question. Here is a concise study brief you can use right now.',
     highlights: [
       'Knowledge mode',
-      topic ? 'Wikipedia reference ready' : 'Reference lookup ready',
-      context.coach_notebook.top_focuses[0]?.title ? `Top focus: ${focusTitle(context.coach_notebook.top_focuses[0])}` : 'Use follow-up prompts for depth'
+      topic ? 'Topic-focused answer' : 'Reference lookup ready',
+      'Follow-up prompts stay on topic'
     ].filter(Boolean).slice(0, 4),
     sections: [
       {
@@ -507,7 +763,9 @@ function normalizeResponse(raw, payload) {
       stringValue(context.recent_incorrect?.key)
     ].filter(Boolean)
   );
-  const actions = Array.isArray(obj.quick_actions)
+  const mode = normalizeMode(obj.mode, fallback.mode === 'knowledge' ? 'knowledge' : 'coach');
+  const topic = stringValue(obj.topic) || fallback.topic;
+  const rawActions = Array.isArray(obj.quick_actions)
     ? obj.quick_actions.map((action) => {
         if (!action || typeof action !== 'object') return null;
         const id = stringValue(action.id);
@@ -524,8 +782,9 @@ function normalizeResponse(raw, payload) {
         );
       }).filter(Boolean)
     : [];
-  const mode = normalizeMode(obj.mode, fallback.mode === 'knowledge' ? 'knowledge' : 'coach');
-  const topic = stringValue(obj.topic) || fallback.topic;
+  const filteredRawActions = filterActionsForContext(rawActions, mode, topic, payload, context);
+  const filteredFallbackActions = filterActionsForContext(fallback.quick_actions, mode, topic, payload, context);
+  const actions = filteredRawActions.length ? filteredRawActions : filteredFallbackActions;
   const links = normalizeLinks(obj.links);
   const fallbackLinks = Array.isArray(fallback.links) ? fallback.links : [];
   const mergedLinks = links.length
@@ -542,7 +801,7 @@ function normalizeResponse(raw, payload) {
     sections: normalizeSections(obj.sections).length ? normalizeSections(obj.sections) : fallback.sections,
     links: mergedLinks.slice(0, 4),
     follow_ups: normalizeFollowUps(obj.follow_ups).length ? normalizeFollowUps(obj.follow_ups) : fallback.follow_ups,
-    quick_actions: dedupeActions(actions.length ? actions : fallback.quick_actions)
+    quick_actions: actions
   };
 }
 
@@ -563,9 +822,12 @@ module.exports = async function handler(req, res) {
     }
 
     const context = normalizeContext(payload);
+    const contextBrief = buildContextBrief(context);
     const resolvedMode = resolveMode(payload, context);
+    const intent = analyzeIntent(payload.message);
+    const thinkingEnabled = !!payload.thinking_enabled;
     const conversation = Array.isArray(payload.conversation)
-      ? payload.conversation.slice(-8).map((entry) => {
+      ? payload.conversation.slice(-12).map((entry) => {
           if (!entry || typeof entry !== 'object') return null;
           const role = stringValue(entry.role).toLowerCase();
           const content = stringValue(entry.content);
@@ -584,6 +846,18 @@ module.exports = async function handler(req, res) {
       '1) Coach mode: recommend the best next study move using the provided app context and built-in app actions.',
       '2) Knowledge mode: answer history and IHBB concept questions in detail, with structured sections and at least one Wikipedia link when a topic is clear.',
       'Respect the requested assistant_mode when it is "coach" or "knowledge". If it is "auto", choose the best mode.',
+      'When the request is auto or mixed, use the user payload and intent_hint to detect the dominant goal.',
+      'Knowledge intent means explanation, background, timeline, comparison, causes, significance, or helping the user understand a topic.',
+      'Coach intent means next-step advice, future steps, what to practice, how to study, or which app tool to use next.',
+      'If both intents appear, keep the answer weighted toward the dominant one.',
+      'Knowledge-first replies should spend most of the space on knowledge and keep any study-next-steps to one short final section only if the user asked for it.',
+      'Coaching-first replies should spend most of the space on practical next actions and only include brief background unless the user explicitly asked for depth.',
+      'In knowledge mode, let the sections carry the explanation. Do not let quick actions crowd out the historical content.',
+      'In coach mode, prefer sections like Best Next Move, Why This Tool Fits, and What To Do After.',
+      'Use the whole study_context, not just the user message. Synthesize recent misses, wrong-bank status, notebook patterns, session history, current setup, active set, and analytics when present.',
+      'When the user asks a broad question, take initiative: infer the most helpful framing from the context and give a satisfying answer without forcing the user to pick a mode.',
+      'If the user seems to want both understanding and action, answer the knowledge need first and then give a concise next-step plan.',
+      'If the user asks for study guidance, make the plan sequenced, concrete, and grounded in the app surfaces that actually exist.',
       'Available app actions and surfaces:',
       '- Wrong-bank (SRS) practices previously missed questions that are due.',
       '- AI Notebook stores DeepSeek lessons from incorrect answers.',
@@ -596,6 +870,11 @@ module.exports = async function handler(req, res) {
       'If you are uncertain about a historical fact, say so instead of bluffing.',
       'Coach mode should stay practical and tied to the user context.',
       'Knowledge mode should be more detailed and structured.',
+      'Keep replies easy to scan: prefer a short message plus 2 or 3 sections instead of an over-complicated answer.',
+      'You may use simple Markdown style inside message and section body strings, such as short bullet lists or **bold** labels.',
+      'Do not append unrelated notebook topics, notebook links, or notebook actions at the end of an answer.',
+      'For knowledge questions, do not suggest AI Notebook, Apply Top Focus, or Generate Focus Drill unless the user explicitly asked about notebook study workflow.',
+      'If you include quick actions for a knowledge answer, prefer Open Library only.',
       `Recommend at most 3 quick actions and only use these action ids: ${Array.from(ALLOWED_ACTIONS).sort().join(', ')}.`,
       `If you use focus_key, it must exactly match one of these keys: ${validFocusKeys.length ? validFocusKeys.join(', ') : '(none available)'}.`,
       'Return strict JSON only with this shape:',
@@ -604,38 +883,84 @@ module.exports = async function handler(req, res) {
 
     const user = {
       assistant_mode: resolvedMode,
+      intent_hint: {
+        detected_mode: resolvedMode,
+        mixed_intent: intent.mixedIntent,
+        asks_for_future_steps: intent.asksForFutureSteps,
+        asks_for_explanation: intent.asksForExplanation,
+        coach_score: intent.coachScore,
+        knowledge_score: intent.knowledgeScore
+      },
+      thinking_enabled: thinkingEnabled,
+      context_brief: contextBrief,
       message: stringValue(payload.message) || 'What should I practice next?',
       conversation,
       study_context: context,
       fallback_plan: fallback
     };
 
-    const response = await fetch('https://api.deepseek.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${process.env.DEEPSEEK_API_KEY}`
-      },
-      body: JSON.stringify({
-        model: process.env.DEEPSEEK_MODEL || 'deepseek-chat',
+    const model = thinkingEnabled
+      ? (process.env.DEEPSEEK_REASONER_MODEL || 'deepseek-reasoner')
+      : (process.env.DEEPSEEK_MODEL || 'deepseek-chat');
+    const chatModel = process.env.DEEPSEEK_MODEL || 'deepseek-chat';
+    const chatMaxTokens = resolvedMode === 'knowledge' ? 1400 : 900;
+    const chatTemperature = resolvedMode === 'knowledge' ? 0.18 : 0.2;
+    const reasonerMaxTokens = Math.max(
+      chatMaxTokens,
+      safeInt(process.env.DEEPSEEK_REASONER_MAX_TOKENS, resolvedMode === 'knowledge' ? 8000 : 6000)
+    );
+    const reasonerRetryMaxTokens = Math.max(
+      reasonerMaxTokens + 1000,
+      safeInt(process.env.DEEPSEEK_REASONER_RETRY_MAX_TOKENS, resolvedMode === 'knowledge' ? 10000 : 8000)
+    );
+    const buildCompletionPayload = (modelName, maxTokens, temperature) => {
+      const completionPayload = {
+        model: modelName,
         messages: [
           { role: 'system', content: system },
           { role: 'user', content: JSON.stringify(user) }
         ],
-        response_format: { type: 'json_object' },
-        temperature: resolvedMode === 'knowledge' ? 0.18 : 0.2,
-        max_tokens: resolvedMode === 'knowledge' ? 1200 : 900
-      })
-    });
+        max_tokens: maxTokens
+      };
+      if (!/reasoner/i.test(String(modelName || ''))) {
+        completionPayload.response_format = { type: 'json_object' };
+      }
+      if (typeof temperature === 'number') {
+        completionPayload.temperature = temperature;
+      }
+      return completionPayload;
+    };
 
-    const text = await response.text();
-    if (!response.ok) {
+    const requestHeaders = {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${process.env.DEEPSEEK_API_KEY}`
+    };
+
+    let completion = await requestDeepSeekChatCompletion(
+      requestHeaders,
+      buildCompletionPayload(model, thinkingEnabled ? reasonerMaxTokens : chatMaxTokens, thinkingEnabled ? null : chatTemperature)
+    );
+    if (thinkingEnabled && completion.response.ok && (!completion.raw || completion.finishReason === 'length')) {
+      console.warn(`DeepSeek reasoner coach chat returned ${completion.finishReason || 'unparseable'} output; retrying with ${reasonerRetryMaxTokens} max_tokens.`);
+      completion = await requestDeepSeekChatCompletion(
+        requestHeaders,
+        buildCompletionPayload(model, reasonerRetryMaxTokens, null)
+      );
+    }
+    if (thinkingEnabled && (!completion.response.ok || !completion.raw)) {
+      if (completion.response.ok && !completion.raw && completion.messageText) {
+        console.warn('DeepSeek reasoner returned a non-JSON reply shape; retrying with chat model.');
+      }
+      completion = await requestDeepSeekChatCompletion(
+        requestHeaders,
+        buildCompletionPayload(chatModel, chatMaxTokens, chatTemperature)
+      );
+    }
+    if (!completion.response.ok || !completion.raw) {
       return res.status(200).json(fallback);
     }
 
-    const data = JSON.parse(text);
-    const raw = parseJsonFromContent(data?.choices?.[0]?.message?.content || '');
-    return res.status(200).json(normalizeResponse(raw, payload));
+    return res.status(200).json(normalizeResponse(completion.raw, payload));
   } catch (error) {
     return res.status(200).json(buildFallback(payload));
   }

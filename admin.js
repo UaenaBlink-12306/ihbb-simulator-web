@@ -15,6 +15,34 @@ document.addEventListener('DOMContentLoaded', () => {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
+  const avatarCatalog = window.AvatarCatalog || {};
+  const normalizeAvatarId = (value) => {
+    if (typeof avatarCatalog.normalizeAvatarId === 'function') return avatarCatalog.normalizeAvatarId(value);
+    return 'penguin';
+  };
+  const avatarAssetPath = (value) => {
+    if (typeof avatarCatalog.avatarAssetPath === 'function') return avatarCatalog.avatarAssetPath(value);
+    return `/assets/avatars/${normalizeAvatarId(value)}.png`;
+  };
+  const applyAvatarImage = (img, value, altText) => {
+    if (!img) return;
+    if (typeof avatarCatalog.applyAvatarImage === 'function') {
+      avatarCatalog.applyAvatarImage(img, value, altText);
+      return;
+    }
+    img.alt = altText || 'Avatar';
+    img.src = avatarAssetPath(value);
+  };
+  const userAvatarHtml = (value, name) => {
+    const resolvedAvatarId = normalizeAvatarId(value);
+    return `<span style="width:40px;height:40px;flex:0 0 auto;display:inline-grid;place-items:center;overflow:hidden;border-radius:14px;border:1px solid rgba(125,211,252,0.48);background:radial-gradient(circle at 30% 24%, rgba(255,255,255,0.62), transparent 34%), linear-gradient(180deg, #dff4ff, #b8e2ff);box-shadow:inset 0 1px 0 rgba(255,255,255,0.6), 0 14px 24px -24px rgba(8,47,73,0.45);"><img data-avatar-id="${esc(resolvedAvatarId)}" src="${esc(avatarAssetPath(resolvedAvatarId))}" alt="${esc(name || 'User')} avatar" style="width:80%;height:80%;display:block;object-fit:contain;transform:scale(1.12);transform-origin:center;"></span>`;
+  };
+  const hydrateAvatarImages = (root) => {
+    const scope = root && typeof root.querySelectorAll === 'function' ? root : document;
+    scope.querySelectorAll('img[data-avatar-id]').forEach((img) => {
+      applyAvatarImage(img, img.dataset.avatarId, img.alt || 'Avatar');
+    });
+  };
 
   const formatDate = (value) => {
     const text = String(value || '').trim();
@@ -201,9 +229,14 @@ document.addEventListener('DOMContentLoaded', () => {
           ${users.map((user) => `
             <tr>
               <td>
-                <strong>${esc(user?.email || user?.display_name || user?.id || 'Unknown')}</strong>
-                <div class="admin-cell-note">${esc(user?.display_name || 'No display name')}</div>
-                <div class="admin-cell-note">${esc(user?.id || '')}</div>
+                <div style="display:flex;align-items:flex-start;gap:12px;min-width:0;">
+                  ${userAvatarHtml(user?.avatar_id, user?.display_name || user?.email || user?.id || 'Unknown')}
+                  <div style="min-width:0;">
+                    <strong>${esc(user?.email || user?.display_name || user?.id || 'Unknown')}</strong>
+                    <div class="admin-cell-note">${esc(user?.display_name || 'No display name')}</div>
+                    <div class="admin-cell-note">${esc(user?.id || '')}</div>
+                  </div>
+                </div>
               </td>
               <td>${esc(user?.role || '—')}</td>
               <td>${esc(`${user?.joined_classes || 0} joined / ${user?.owned_classes || 0} owned`)}</td>
@@ -217,6 +250,7 @@ document.addEventListener('DOMContentLoaded', () => {
         </tbody>
       </table>
     `;
+    hydrateAvatarImages(el);
   }
 
   function renderDatabase() {
