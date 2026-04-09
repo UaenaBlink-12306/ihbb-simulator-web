@@ -1,5 +1,3 @@
-const { persistGeneratedItems } = require('../lib/generated-review-store');
-
 const REGION_OPTIONS = [
   'Africa',
   'Central Asia',
@@ -272,14 +270,11 @@ module.exports = async function handler(req, res) {
       return res.status(502).json({ error: 'DeepSeek returned no valid generated questions.' });
     }
 
-    const persistence = await persistGeneratedItems(items);
-
     return res.status(200).json({
       source: 'deepseek',
       requested: count,
       returned: items.length,
-      items,
-      persistence
+      items
     });
   } catch (error) {
     return res.status(500).json({ error: error?.message || 'Question generation failed.' });

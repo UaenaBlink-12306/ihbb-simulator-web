@@ -1872,14 +1872,11 @@ def generate_questions_with_deepseek(payload: Dict[str, Any]) -> Dict[str, Any]:
         if not items:
             return {"error": "DeepSeek returned no valid generated questions."}
 
-        persistence = persist_generated_items(items)
-
         return {
             "source": "deepseek",
             "requested": count,
             "returned": len(items),
             "items": items,
-            "persistence": persistence,
         }
     except requests.exceptions.Timeout as e:
         log.error("DeepSeek generation timeout: %s", e)

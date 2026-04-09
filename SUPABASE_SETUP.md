@@ -41,7 +41,10 @@ CREATE TABLE IF NOT EXISTS classes (
 );
 
 ALTER TABLE classes ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Anyone can read classes" ON classes FOR SELECT USING (true);
+CREATE POLICY "Teachers and enrolled students can read classes" ON classes FOR SELECT USING (
+  auth.uid() = teacher_id
+  OR EXISTS (SELECT 1 FROM class_students cs WHERE cs.class_id = classes.id AND cs.student_id = auth.uid())
+);
 CREATE POLICY "Teachers insert own classes" ON classes FOR INSERT WITH CHECK (auth.uid() = teacher_id);
 CREATE POLICY "Teachers delete own classes" ON classes FOR DELETE USING (auth.uid() = teacher_id);
 
@@ -61,11 +64,43 @@ CREATE POLICY "Members can read" ON class_students FOR SELECT USING (
   OR EXISTS (SELECT 1 FROM classes WHERE classes.id = class_students.class_id AND classes.teacher_id = auth.uid())
 );
 CREATE POLICY "Students can leave" ON class_students FOR DELETE USING (auth.uid() = student_id);
+
+CREATE OR REPLACE FUNCTION join_class_by_code(p_code TEXT)
+RETURNS TABLE(id UUID, name TEXT, code VARCHAR)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  target_class public.classes%ROWTYPE;
+BEGIN
+  SELECT *
+    INTO target_class
+    FROM public.classes
+   WHERE UPPER(TRIM(code)) = UPPER(TRIM(p_code))
+   LIMIT 1;
+
+  IF target_class.id IS NULL THEN
+    RAISE EXCEPTION 'Class not found' USING ERRCODE = 'P0002';
+  END IF;
+
+  INSERT INTO public.class_students (class_id, student_id)
+  VALUES (target_class.id, auth.uid())
+  ON CONFLICT (class_id, student_id) DO NOTHING;
+
+  RETURN QUERY
+  SELECT target_class.id, target_class.name, target_class.code;
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION join_class_by_code(TEXT) TO authenticated;
 ```
 
 ### 1A. Existing Databases: Avatar Catalog Migration
 
 If your `profiles` table already exists, run [`migrations/20260407_profiles_avatar_catalog.sql`](./migrations/20260407_profiles_avatar_catalog.sql) once in the Supabase SQL Editor before deploying the avatar UI.
+
+If you already deployed class or Live Bee tables with public read policies, also run [`migrations/20260409_private_collab_policies.sql`](./migrations/20260409_private_collab_policies.sql) to tighten privacy and enable code-based joins without exposing all classes or rooms.
 
 ## 2. Assignment Tables
 
@@ -296,7 +331,10 @@ CREATE TABLE IF NOT EXISTS bee_rooms (
 );
 
 ALTER TABLE bee_rooms ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Anyone can read rooms" ON bee_rooms FOR SELECT USING (true);
+CREATE POLICY "Hosts and room members can read rooms" ON bee_rooms FOR SELECT USING (
+  auth.uid() = host_id
+  OR EXISTS (SELECT 1 FROM bee_participants bp WHERE bp.room_id = bee_rooms.id AND bp.user_id = auth.uid())
+);
 CREATE POLICY "Host creates rooms" ON bee_rooms FOR INSERT WITH CHECK (auth.uid() = host_id);
 CREATE POLICY "Host updates rooms" ON bee_rooms FOR UPDATE USING (auth.uid() = host_id);
 CREATE POLICY "Host deletes rooms" ON bee_rooms FOR DELETE USING (auth.uid() = host_id);
@@ -312,13 +350,75 @@ CREATE TABLE IF NOT EXISTS bee_participants (
 );
 
 ALTER TABLE bee_participants ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Anyone can read participants" ON bee_participants FOR SELECT USING (true);
+CREATE POLICY "Hosts and room members can read participants" ON bee_participants FOR SELECT USING (
+  auth.uid() = user_id
+  OR EXISTS (SELECT 1 FROM bee_rooms br WHERE br.id = bee_participants.room_id AND br.host_id = auth.uid())
+  OR EXISTS (SELECT 1 FROM bee_participants me WHERE me.room_id = bee_participants.room_id AND me.user_id = auth.uid())
+);
 CREATE POLICY "Users join rooms" ON bee_participants FOR INSERT WITH CHECK (auth.uid() = user_id);
 CREATE POLICY "Users leave rooms" ON bee_participants FOR DELETE USING (auth.uid() = user_id);
 CREATE POLICY "Host updates scores" ON bee_participants FOR UPDATE USING (
   auth.uid() = user_id
   OR EXISTS (SELECT 1 FROM bee_rooms WHERE bee_rooms.id = bee_participants.room_id AND bee_rooms.host_id = auth.uid())
 );
+
+CREATE OR REPLACE FUNCTION join_bee_room_by_code(p_code TEXT, p_display_name TEXT DEFAULT NULL)
+RETURNS TABLE(id UUID, code VARCHAR, host_id UUID, status VARCHAR, participant_count INTEGER)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  target_room public.bee_rooms%ROWTYPE;
+  already_joined BOOLEAN;
+  current_count INTEGER;
+BEGIN
+  SELECT *
+    INTO target_room
+    FROM public.bee_rooms
+   WHERE UPPER(TRIM(code)) = UPPER(TRIM(p_code))
+   LIMIT 1;
+
+  IF target_room.id IS NULL THEN
+    RAISE EXCEPTION 'Room not found' USING ERRCODE = 'P0002';
+  END IF;
+
+  IF target_room.status = 'finished' THEN
+    RAISE EXCEPTION 'This room has already ended.' USING ERRCODE = 'P0001';
+  END IF;
+
+  SELECT EXISTS (
+    SELECT 1
+      FROM public.bee_participants bp
+     WHERE bp.room_id = target_room.id
+       AND bp.user_id = auth.uid()
+  ) INTO already_joined;
+
+  SELECT COUNT(*)
+    INTO current_count
+    FROM public.bee_participants bp
+   WHERE bp.room_id = target_room.id;
+
+  IF NOT already_joined AND current_count >= 8 THEN
+    RAISE EXCEPTION 'Room is full (max 8 players).' USING ERRCODE = 'P0001';
+  END IF;
+
+  INSERT INTO public.bee_participants (room_id, user_id, display_name, score)
+  VALUES (target_room.id, auth.uid(), NULLIF(TRIM(COALESCE(p_display_name, '')), ''), 0)
+  ON CONFLICT (room_id, user_id)
+  DO UPDATE SET display_name = COALESCE(EXCLUDED.display_name, public.bee_participants.display_name);
+
+  SELECT COUNT(*)
+    INTO current_count
+    FROM public.bee_participants bp
+   WHERE bp.room_id = target_room.id;
+
+  RETURN QUERY
+  SELECT target_room.id, target_room.code, target_room.host_id, target_room.status, current_count;
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION join_bee_room_by_code(TEXT, TEXT) TO authenticated;
 ```
 
 ## 5. Next Steps

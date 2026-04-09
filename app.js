@@ -88,6 +88,7 @@ const BASE_KEY_COACH_PENDING = 'ihbb_v2_coach_pending';
 const BASE_KEY_COACH_DRILL = 'ihbb_student_coach_drill';
 const BASE_KEY_COACH_CHAT_ACTION = 'ihbb_v2_coach_chat_action';
 const BASE_COACH_CHAT_UI_KEY = 'ihbb_v2_coach_chat_ui';
+const BASE_COACH_CHAT_SUPPRESS_KEY = 'ihbb_v2_coach_chat_suppressed';
 let KEY_SETTINGS = BASE_KEY_SETTINGS;
 let KEY_SESS = BASE_KEY_SESS;
 let KEY_WRONG = BASE_KEY_WRONG;
@@ -102,7 +103,7 @@ const PRACTICE_HUB_AUTO_OPEN_DISABLED_KEY = 'ihbb_v2_practice_hub_auto_open_disa
 const WRONG_SYNC_TABLE = 'user_wrong_questions';
 const SESSION_SYNC_TABLE = 'user_drill_sessions';
 const COACH_SYNC_TABLE = 'user_coach_attempts';
-const GENERATED_QUESTIONS_BANK_URL = './generated_questions_bank.json';
+const GENERATED_SYNC_TABLE = 'generated_questions';
 
 function normalizeStorageScopeUserId(userId) {
   return String(userId || '').trim();
@@ -158,6 +159,12 @@ const CoachSync = {
   userId: null,
   enabled: true,
   warned: false,
+  queue: Promise.resolve()
+};
+const GeneratedQuestionsSync = {
+  enabled: true,
+  warned: false,
+  hydrated: false,
   queue: Promise.resolve()
 };
 
@@ -309,6 +316,32 @@ function queueCoachSync(task) {
       await task(window.supabaseClient, userId);
     })
     .catch(handleCoachSyncError);
+}
+
+function handleGeneratedQuestionsSyncError(err) {
+  console.warn('[GeneratedQuestionsSync] disabled:', err);
+  GeneratedQuestionsSync.enabled = false;
+  if (GeneratedQuestionsSync.warned) return;
+  GeneratedQuestionsSync.warned = true;
+  if (isWrongSyncSchemaIssue(err)) {
+    toast('Private generated-question sync unavailable (setup missing). Generated drills stay on this device.');
+  }
+}
+
+function queueGeneratedQuestionsSync(task) {
+  if (!GeneratedQuestionsSync.enabled || !window.supabaseClient) return Promise.resolve(null);
+  GeneratedQuestionsSync.queue = GeneratedQuestionsSync.queue
+    .then(async () => {
+      if (!GeneratedQuestionsSync.enabled || !window.supabaseClient) return null;
+      const userId = await ensureSessionSyncUserId();
+      if (!userId) return null;
+      return await task(window.supabaseClient, userId);
+    })
+    .catch((err) => {
+      handleGeneratedQuestionsSyncError(err);
+      return null;
+    });
+  return GeneratedQuestionsSync.queue;
 }
 
 function safeReadJson(key, fallback) {
@@ -654,7 +687,6 @@ const COACH_CHAT_NOTEBOOK_ACTIONS = new Set([
   'apply_top_focus',
   'generate_focus_drill'
 ]);
-const COACH_CHAT_SUPPRESS_KEY = 'ihbb_v2_coach_chat_suppressed';
 const COACH_CHAT_SIZE_PRESETS = {
   standard: 820,
   wide: 980,
@@ -1974,13 +2006,17 @@ function coachChatPromptForReason(reason = 'manual') {
   return 'What should I practice next in this practice hub?';
 }
 
+function coachChatSuppressSessionKey(userId = StorageScopeUserId) {
+  return scopedStorageKey(BASE_COACH_CHAT_SUPPRESS_KEY, userId);
+}
+
 function isCoachChatAutoSuppressed() {
-  try { return sessionStorage.getItem(COACH_CHAT_SUPPRESS_KEY) === '1'; } catch { return false; }
+  try { return sessionStorage.getItem(coachChatSuppressSessionKey()) === '1'; } catch { return false; }
 }
 
 function openCoachChat(options = {}) {
   if (!options.auto) {
-    try { sessionStorage.removeItem(COACH_CHAT_SUPPRESS_KEY); } catch { /* noop */ }
+    try { sessionStorage.removeItem(coachChatSuppressSessionKey()); } catch { /* noop */ }
   }
   CoachChat.suggestedReason = String(options.reason || 'manual').trim() || 'manual';
   CoachChat.open = true;
@@ -1992,7 +2028,7 @@ function openCoachChat(options = {}) {
 
 function closeCoachChat({ manual = true } = {}) {
   if (manual) {
-    try { sessionStorage.setItem(COACH_CHAT_SUPPRESS_KEY, '1'); } catch { /* noop */ }
+    try { sessionStorage.setItem(coachChatSuppressSessionKey(), '1'); } catch { /* noop */ }
   }
   CoachChat.open = false;
   renderCoachChatChrome();
@@ -2821,7 +2857,7 @@ function questionMergeKey(item) {
   return `${answer}::${question}`;
 }
 
-function findSharedQuestionSet() {
+function findPrimaryQuestionSet() {
   const sets = Array.isArray(Library.sets) ? Library.sets : [];
   return sets.find(set => /IHBB Questions/i.test(String(set?.name || '').trim()))
     || sets.find(set => set?.volatile)
@@ -2861,9 +2897,9 @@ function mergeQuestionItems(existingItems, incomingItems) {
   return { items: nextItems, sessionItems, insertedCount };
 }
 
-function mergeGeneratedQuestionsIntoSharedLibrary(incomingItems, { activate = true } = {}) {
+function mergeGeneratedQuestionsIntoLibrary(incomingItems, { activate = true, persistLocal = true } = {}) {
   Library.sets = Array.isArray(Library.sets) ? Library.sets : [];
-  let set = findSharedQuestionSet();
+  let set = findPrimaryQuestionSet();
   if (!set) {
     set = { id: uid(), name: 'IHBB Questions', items: [], volatile: true };
     Library.sets.unshift(set);
@@ -2871,6 +2907,7 @@ function mergeGeneratedQuestionsIntoSharedLibrary(incomingItems, { activate = tr
   const merged = mergeQuestionItems(set.items || [], incomingItems);
   set.items = merged.items;
   if (activate || !Library.activeSetId) Library.activeSetId = set.id;
+  if (persistLocal) saveLibrarySafe('mergeGeneratedQuestionsIntoLibrary');
   renderLibrarySelectors();
   renderLibraryTable();
   updateSetMeta();
@@ -2884,27 +2921,73 @@ function mergeGeneratedQuestionsIntoSharedLibrary(incomingItems, { activate = tr
   };
 }
 
-async function fetchSharedGeneratedQuestionItems() {
+function normalizeGeneratedQuestionRecord(raw) {
+  return normalizeJsonItem({
+    id: String(raw?.id || '').trim(),
+    question: String(raw?.question_text || '').trim(),
+    answer: String(raw?.answer_text || '').trim(),
+    aliases: Array.isArray(raw?.aliases) ? raw.aliases : [],
+    meta: {
+      category: String(raw?.category || '').trim(),
+      era: String(raw?.era || '').trim(),
+      source: String(raw?.source || 'generated').trim() || 'generated'
+    },
+    topic: String(raw?.topic || '').trim(),
+    created_from: String(raw?.created_from || '').trim(),
+    created_by_role: String(raw?.created_by_role || '').trim()
+  });
+}
+
+async function fetchPrivateGeneratedQuestionItems(forceCloud = false) {
+  if (!window.supabaseClient || !GeneratedQuestionsSync.enabled) return [];
   try {
-    const res = await fetch(GENERATED_QUESTIONS_BANK_URL, { cache: 'no-cache' });
-    if (!res.ok) return [];
-    const obj = await res.json();
-    if (Array.isArray(obj?.items)) {
-      return normalizeJsonItems(obj.items);
-    }
-    if (Array.isArray(obj?.sets)) {
-      return obj.sets.flatMap(set => normalizeJsonItems(set?.items || []));
-    }
-    const parsed = parseJsonImport(obj, 'Shared Generated Questions');
-    if (!parsed) return [];
-    if (parsed.type === 'library') {
-      return parsed.sets.flatMap(set => Array.isArray(set?.items) ? set.items : []);
-    }
-    return Array.isArray(parsed.set?.items) ? parsed.set.items : [];
+    const userId = await ensureSessionSyncUserId();
+    if (!userId) return [];
+    const { data, error } = await window.supabaseClient
+      .from(GENERATED_SYNC_TABLE)
+      .select('id, question_text, answer_text, aliases, category, era, source, topic, created_from, created_by_role')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false })
+      .limit(300);
+    if (error) throw error;
+    GeneratedQuestionsSync.hydrated = true;
+    return (Array.isArray(data) ? data : []).map(normalizeGeneratedQuestionRecord).filter(Boolean);
   } catch (err) {
-    console.warn('[GeneratedQuestions] shared bank unavailable:', err);
+    if (forceCloud) handleGeneratedQuestionsSyncError(err);
+    else console.warn('[GeneratedQuestionsSync] private fetch failed; using local only.', err);
     return [];
   }
+}
+
+async function syncGeneratedQuestionsToCloud(items) {
+  const safeItems = normalizeJsonItems(items);
+  if (!safeItems.length) return { cloudSaved: false, savedCount: 0 };
+  const rows = safeItems.map((item) => ({
+    id: String(item.id || '').trim(),
+    question_text: String(item.question || '').trim(),
+    answer_text: String(item.answer || '').trim(),
+    aliases: Array.isArray(item.aliases) ? item.aliases : [],
+    category: String(item.meta?.category || '').trim(),
+    era: String(item.meta?.era || '').trim(),
+    source: String(item.meta?.source || 'generated').trim() || 'generated',
+    topic: String(item.topic || '').trim(),
+    created_from: String(item.created_from || '').trim(),
+    created_by_role: String(item.created_by_role || '').trim()
+  }));
+  const result = await queueGeneratedQuestionsSync(async (sb, userId) => {
+    const payload = rows.map((row) => ({ ...row, user_id: userId }));
+    const { error } = await sb.from(GENERATED_SYNC_TABLE).upsert(payload, { onConflict: 'id' });
+    if (error) throw error;
+    return payload.length;
+  });
+  return { cloudSaved: typeof result === 'number' && result > 0, savedCount: Number(result || 0) };
+}
+
+async function hydratePrivateGeneratedQuestions(forceCloud = false) {
+  const items = await fetchPrivateGeneratedQuestionItems(forceCloud);
+  if (!items.length) return false;
+  mergeGeneratedQuestionsIntoLibrary(items, { activate: false, persistLocal: true });
+  return true;
 }
 
 function collectAvoidAnswers(focus = null) {
@@ -2947,8 +3030,7 @@ async function requestGeneratedQuestions(options = {}) {
     throw new Error(data?.error || `Question generation failed (${res.status})`);
   }
   return {
-    items: (data.items || []).map(normalizeJsonItem).filter(Boolean),
-    persistence: data?.persistence || null
+    items: (data.items || []).map(normalizeJsonItem).filter(Boolean)
   };
 }
 
@@ -2975,20 +3057,17 @@ async function startGeneratedFocusDrill(focus, options = {}) {
     });
     const items = generated.items || [];
     if (!items.length) throw new Error('No valid generated questions were returned.');
-    const mergeResult = mergeGeneratedQuestionsIntoSharedLibrary(items, { activate: true });
+    const mergeResult = mergeGeneratedQuestionsIntoLibrary(items, { activate: true, persistLocal: true });
+    const syncResult = await syncGeneratedQuestionsToCloud(mergeResult.sessionItems);
     App.sessionOverrideItems = mergeResult.sessionItems.slice();
     App.size = 'all';
     App.mode = 'sequential';
     App.filters = { cat: '', cats: [], era: '', eras: [], src: '' };
     if (options.clearPending) clearPendingCoachDrill();
     if (options.startSession !== false) startSession();
-    const persistence = generated.persistence || {};
-    const sharedAdded = Number(persistence.shared_bank_added || 0);
-    const persistenceNote = persistence.warning
-      ? ` ${String(persistence.warning).trim()}`
-      : (sharedAdded > 0
-        ? ` Added ${sharedAdded} to the shared bank.`
-        : ' Already present in the shared bank.');
+    const persistenceNote = syncResult.cloudSaved
+      ? ' Saved privately to your account.'
+      : ' Saved only on this device.';
     toast(`Generated ${mergeResult.sessionItems.length} fresh question${mergeResult.sessionItems.length === 1 ? '' : 's'} for ${title}.${persistenceNote}`);
     return true;
   } catch (err) {
@@ -4905,16 +4984,8 @@ async function tryFetchDefault(force = false) {
       const obj = await rj.json();
       const parsed = parseJsonImport(obj, 'IHBB Questions');
       if (!parsed) { toast('questions.json format is invalid'); return false; }
-      const sharedGeneratedItems = await fetchSharedGeneratedQuestionItems();
       if (parsed.type === 'library') {
         (parsed.sets || []).forEach(set => ensureSetItemSources(set, 'original'));
-        if (sharedGeneratedItems.length) {
-          const targetSet = parsed.sets.find(set => /IHBB Questions/i.test(String(set?.name || '').trim())) || parsed.sets[0];
-          if (targetSet) {
-            const merged = mergeQuestionItems(targetSet.items || [], sharedGeneratedItems);
-            targetSet.items = merged.items;
-          }
-        }
         Library.sets = parsed.sets; Library.activeSetId = parsed.activeSetId || (parsed.sets[0]?.id || null);
         saveLibrary(); renderLibrarySelectors(); renderLibraryTable(); updateSetMeta();
         renderWrongBank();
@@ -4923,10 +4994,6 @@ async function tryFetchDefault(force = false) {
       }
       const set = parsed.set;
       ensureSetItemSources(set, 'original');
-      if (sharedGeneratedItems.length) {
-        const merged = mergeQuestionItems(set.items || [], sharedGeneratedItems);
-        set.items = merged.items;
-      }
       Library.sets.unshift(set); Library.activeSetId = set.id;
       saveLibrary(); renderLibrarySelectors(); renderLibraryTable(); updateSetMeta();
       renderWrongBank();
@@ -4970,6 +5037,7 @@ async function tryFetchDefault(force = false) {
   if (!(ASSIGNMENT_ID && HAS_ASSIGNMENT_PAYLOAD)) {
     await tryFetchDefault(false);
   }
+  await hydratePrivateGeneratedQuestions(false);
   updateSetupOverview();
   renderCoachChatChrome();
   await applyPendingCoachChatAction();

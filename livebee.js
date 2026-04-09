@@ -10,6 +10,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     const uid = session.user.id;
 
     const KEY_SETTINGS = `ihbb_v2_settings_${uid}`;
+    const isMissingRpcError = (error) => {
+        const code = String(error?.code || '').trim();
+        const message = String(error?.message || '').toLowerCase();
+        return code === '42883' || code === 'PGRST202' || (message.includes('function') && message.includes('not found'));
+    };
     const avatarCatalog = window.AvatarCatalog || {};
     const normalizeAvatarId = (value) => {
         if (typeof avatarCatalog.normalizeAvatarId === 'function') return avatarCatalog.normalizeAvatarId(value);
@@ -302,6 +307,28 @@ document.addEventListener('DOMContentLoaded', async () => {
     $('btn-join-room')?.addEventListener('click', async () => {
         const code = ($('join-code').value || '').trim().toUpperCase();
         if (!code || code.length < 4) { showAlert('Please enter a valid room code.'); return; }
+
+        const rpcJoin = await sb.rpc('join_bee_room_by_code', {
+            p_code: code,
+            p_display_name: myName
+        });
+        if (!rpcJoin.error) {
+            const joined = Array.isArray(rpcJoin.data) ? rpcJoin.data[0] : rpcJoin.data;
+            if (!joined?.id) { showAlert('Room not found. Check the code.'); return; }
+            room = {
+                id: joined.id,
+                code: joined.code,
+                host_id: joined.host_id,
+                status: joined.status
+            };
+            playBeeCue('join');
+            enterWaitingRoom();
+            return;
+        }
+        if (!isMissingRpcError(rpcJoin.error)) {
+            showAlert(rpcJoin.error.message || 'Failed to join room.');
+            return;
+        }
 
         const { data: r } = await sb.from('bee_rooms').select('*').eq('code', code).single();
         if (!r) { showAlert('Room not found. Check the code.'); return; }

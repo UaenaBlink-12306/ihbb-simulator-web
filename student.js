@@ -23,6 +23,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     const ANALYTICS_INSIGHTS_CACHE_KEY = `ihbb_student_analytics_insights_${uid}`;
     const DAY_MS = 24 * 60 * 60 * 1000;
     let userEmail = String(session.user?.email || '').trim();
+    const isMissingRpcError = (error) => {
+        const code = String(error?.code || '').trim();
+        const message = String(error?.message || '').toLowerCase();
+        return code === '42883' || code === 'PGRST202' || (message.includes('function') && message.includes('not found'));
+    };
     const avatarCatalog = window.AvatarCatalog || {};
     const avatarOptions = Array.isArray(avatarCatalog.AVATAR_OPTIONS) && avatarCatalog.AVATAR_OPTIONS.length
         ? avatarCatalog.AVATAR_OPTIONS
@@ -1545,6 +1550,18 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Name is required before joining
         if (!profile.display_name || !profile.display_name.trim()) {
             document.getElementById('name-modal').classList.remove('hidden');
+            return;
+        }
+        const rpcJoin = await sb.rpc('join_class_by_code', { p_code: code });
+        if (!rpcJoin.error) {
+            document.getElementById('join-code').value = '';
+            showAlert('Joined class!', 'success');
+            loadClasses();
+            loadAssignments();
+            return;
+        }
+        if (!isMissingRpcError(rpcJoin.error)) {
+            showAlert(rpcJoin.error.message, 'error');
             return;
         }
         const { data: cls } = await sb.from('classes').select('id').eq('code', code).single();
