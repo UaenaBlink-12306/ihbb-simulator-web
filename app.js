@@ -73,22 +73,70 @@ const uid = () => Math.random().toString(36).slice(2) + Date.now().toString(36);
 const vibrate = (pat) => { try { if (Settings.haptics && navigator.vibrate) navigator.vibrate(pat); } catch { /* noop */ } };
 
 /********************* Storage keys *********************/
-const KEY_SETTINGS = 'ihbb_v2_settings';
-const KEY_SESS = 'ihbb_v2_sessions';
-const KEY_WRONG = 'ihbb_v2_wrong_srs';   // { [id]: {box,dueAt,lastSeen,lapses,answer,aliases,q} }
-const KEY_LIBRARY = 'ihbb_v2_library';     // {sets:[{id,name,items:[]}], activeSetId}
-const KEY_PRESETS = 'ihbb_v2_presets';
+const STORAGE_SCOPE_GUEST = 'guest';
+let StorageScopeUserId = '';
+const BASE_KEY_SETTINGS = 'ihbb_v2_settings';
+const BASE_KEY_SESS = 'ihbb_v2_sessions';
+const BASE_KEY_WRONG = 'ihbb_v2_wrong_srs';   // { [id]: {box,dueAt,lastSeen,lapses,answer,aliases,q} }
+const BASE_KEY_LIBRARY = 'ihbb_v2_library';     // {sets:[{id,name,items:[]}], activeSetId}
+const BASE_KEY_PRESETS = 'ihbb_v2_presets';
 const KEY_WRONG_SYNC_SEEN = 'ihbb_v2_wrong_sync_seen'; // per-user marker: <prefix>_<userId>
 const KEY_SESS_SYNC_SEEN = 'ihbb_v2_session_sync_seen'; // per-user marker: <prefix>_<userId>
-const KEY_COACH_LOCAL = 'ihbb_v2_coach_attempts';
-const KEY_COACH_PENDING = 'ihbb_v2_coach_pending';
-const KEY_COACH_DRILL = 'ihbb_student_coach_drill';
-const KEY_COACH_CHAT_ACTION = 'ihbb_v2_coach_chat_action';
+const BASE_KEY_COACH_LOCAL = 'ihbb_v2_coach_attempts';
+const BASE_KEY_COACH_PENDING = 'ihbb_v2_coach_pending';
+const BASE_KEY_COACH_DRILL = 'ihbb_student_coach_drill';
+const BASE_KEY_COACH_CHAT_ACTION = 'ihbb_v2_coach_chat_action';
+const BASE_COACH_CHAT_UI_KEY = 'ihbb_v2_coach_chat_ui';
+let KEY_SETTINGS = BASE_KEY_SETTINGS;
+let KEY_SESS = BASE_KEY_SESS;
+let KEY_WRONG = BASE_KEY_WRONG;
+let KEY_LIBRARY = BASE_KEY_LIBRARY;
+let KEY_PRESETS = BASE_KEY_PRESETS;
+let KEY_COACH_LOCAL = BASE_KEY_COACH_LOCAL;
+let KEY_COACH_PENDING = BASE_KEY_COACH_PENDING;
+let KEY_COACH_DRILL = BASE_KEY_COACH_DRILL;
+let KEY_COACH_CHAT_ACTION = BASE_KEY_COACH_CHAT_ACTION;
+let COACH_CHAT_UI_KEY = BASE_COACH_CHAT_UI_KEY;
 const PRACTICE_HUB_AUTO_OPEN_DISABLED_KEY = 'ihbb_v2_practice_hub_auto_open_disabled';
 const WRONG_SYNC_TABLE = 'user_wrong_questions';
 const SESSION_SYNC_TABLE = 'user_drill_sessions';
 const COACH_SYNC_TABLE = 'user_coach_attempts';
 const GENERATED_QUESTIONS_BANK_URL = './generated_questions_bank.json';
+
+function normalizeStorageScopeUserId(userId) {
+  return String(userId || '').trim();
+}
+function scopedStorageKey(baseKey, userId = StorageScopeUserId) {
+  const scope = normalizeStorageScopeUserId(userId) || STORAGE_SCOPE_GUEST;
+  return `${baseKey}_${scope}`;
+}
+function applyStorageScope(userId) {
+  StorageScopeUserId = normalizeStorageScopeUserId(userId);
+  KEY_SETTINGS = scopedStorageKey(BASE_KEY_SETTINGS, StorageScopeUserId);
+  KEY_SESS = scopedStorageKey(BASE_KEY_SESS, StorageScopeUserId);
+  KEY_WRONG = scopedStorageKey(BASE_KEY_WRONG, StorageScopeUserId);
+  KEY_LIBRARY = scopedStorageKey(BASE_KEY_LIBRARY, StorageScopeUserId);
+  KEY_PRESETS = scopedStorageKey(BASE_KEY_PRESETS, StorageScopeUserId);
+  KEY_COACH_LOCAL = scopedStorageKey(BASE_KEY_COACH_LOCAL, StorageScopeUserId);
+  KEY_COACH_PENDING = scopedStorageKey(BASE_KEY_COACH_PENDING, StorageScopeUserId);
+  KEY_COACH_DRILL = scopedStorageKey(BASE_KEY_COACH_DRILL, StorageScopeUserId);
+  KEY_COACH_CHAT_ACTION = scopedStorageKey(BASE_KEY_COACH_CHAT_ACTION, StorageScopeUserId);
+  COACH_CHAT_UI_KEY = scopedStorageKey(BASE_COACH_CHAT_UI_KEY, StorageScopeUserId);
+}
+async function initStorageScope() {
+  let userId = '';
+  if (window.supabaseClient) {
+    try {
+      const { data, error } = await window.supabaseClient.auth.getSession();
+      if (error) throw error;
+      userId = data?.session?.user?.id || '';
+    } catch (err) {
+      console.warn('[StorageScope] session lookup failed; using guest scope.', err);
+    }
+  }
+  applyStorageScope(userId);
+  return StorageScopeUserId;
+}
 
 const WrongSync = {
   userId: null,
@@ -604,7 +652,6 @@ const COACH_CHAT_NOTEBOOK_ACTIONS = new Set([
   'generate_focus_drill'
 ]);
 const COACH_CHAT_SUPPRESS_KEY = 'ihbb_v2_coach_chat_suppressed';
-const COACH_CHAT_UI_KEY = 'ihbb_v2_coach_chat_ui';
 const COACH_CHAT_SIZE_PRESETS = {
   standard: 820,
   wide: 980,
@@ -675,8 +722,6 @@ function saveCoachChatUiPrefs() {
     }));
   } catch { /* noop */ }
 }
-
-loadCoachChatUiPrefs();
 
 function trimCoachChatMessages() {
   if (CoachChat.messages.length > 18) {
@@ -4889,6 +4934,8 @@ async function tryFetchDefault(force = false) {
 
 /********************* Init *********************/
 (async function init() {
+  await initStorageScope();
+  loadCoachChatUiPrefs();
   loadAll(); populateVoices();
   migrateLibrarySources();
   const rr = $('rate'); if (rr) rr.value = Settings.rate || 1.0;

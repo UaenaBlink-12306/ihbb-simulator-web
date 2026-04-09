@@ -9,6 +9,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (!session) { window.location.replace('login.html'); return; }
     const uid = session.user.id;
 
+    const KEY_SETTINGS = `ihbb_v2_settings_${uid}`;
     const avatarCatalog = window.AvatarCatalog || {};
     const normalizeAvatarId = (value) => {
         if (typeof avatarCatalog.normalizeAvatarId === 'function') return avatarCatalog.normalizeAvatarId(value);
@@ -113,7 +114,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // ==================== SOUND EFFECTS ====================
     const beePrefs = (() => {
-        try { return JSON.parse(localStorage.getItem('ihbb_v2_settings') || '{}') || {}; } catch { return {}; }
+        try { return JSON.parse(localStorage.getItem(KEY_SETTINGS) || '{}') || {}; } catch { return {}; }
     })();
     const BeeFeedback = {
         sound: beePrefs.cueBeep !== false,

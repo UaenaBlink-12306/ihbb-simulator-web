@@ -11,13 +11,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (!profile || profile.role !== 'student') { window.location.replace('index.html'); return; }
     if (guard) guard.remove();
 
-    const KEY_SESS = 'ihbb_v2_sessions';
-    const KEY_COACH_LOCAL = 'ihbb_v2_coach_attempts';
-    const KEY_WRONG = 'ihbb_v2_wrong_srs';
-    const COACH_CHAT_NAV_STORAGE_KEY = 'ihbb_v2_coach_chat_action';
+    const scopedStorageKey = (baseKey) => `${baseKey}_${uid}`;
+    const KEY_SESS = scopedStorageKey('ihbb_v2_sessions');
+    const KEY_COACH_LOCAL = scopedStorageKey('ihbb_v2_coach_attempts');
+    const KEY_WRONG = scopedStorageKey('ihbb_v2_wrong_srs');
+    const COACH_CHAT_NAV_STORAGE_KEY = scopedStorageKey('ihbb_v2_coach_chat_action');
     const SESSION_SYNC_TABLE = 'user_drill_sessions';
     const COACH_SYNC_TABLE = 'user_coach_attempts';
-    const COACH_DRILL_STORAGE_KEY = 'ihbb_student_coach_drill';
+    const COACH_DRILL_STORAGE_KEY = scopedStorageKey('ihbb_student_coach_drill');
     const PRACTICE_HUB_AUTO_OPEN_DISABLED_KEY = 'ihbb_v2_practice_hub_auto_open_disabled';
     const ANALYTICS_INSIGHTS_CACHE_KEY = `ihbb_student_analytics_insights_${uid}`;
     const DAY_MS = 24 * 60 * 60 * 1000;
