@@ -1716,7 +1716,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (!questions || !questions.length) { showAlert('No questions in this assignment.', 'error'); return; }
 
         // Store in localStorage for the practice hub to pick up
-        const storageKey = 'ihbb_assignment_' + assignId;
+        const storageKey = `ihbb_assignment_${assignId}_${uid}`;
         localStorage.setItem(storageKey, JSON.stringify({ title, questions }));
 
         // Redirect to practice hub with assignment param

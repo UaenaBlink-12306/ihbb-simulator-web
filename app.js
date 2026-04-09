@@ -75,6 +75,7 @@ const vibrate = (pat) => { try { if (Settings.haptics && navigator.vibrate) navi
 /********************* Storage keys *********************/
 const STORAGE_SCOPE_GUEST = 'guest';
 let StorageScopeUserId = '';
+let StorageScopeReady = false;
 const BASE_KEY_SETTINGS = 'ihbb_v2_settings';
 const BASE_KEY_SESS = 'ihbb_v2_sessions';
 const BASE_KEY_WRONG = 'ihbb_v2_wrong_srs';   // { [id]: {box,dueAt,lastSeen,lapses,answer,aliases,q} }
@@ -124,6 +125,7 @@ function applyStorageScope(userId) {
   COACH_CHAT_UI_KEY = scopedStorageKey(BASE_COACH_CHAT_UI_KEY, StorageScopeUserId);
 }
 async function initStorageScope() {
+  if (StorageScopeReady) return StorageScopeUserId;
   let userId = '';
   if (window.supabaseClient) {
     try {
@@ -135,6 +137,7 @@ async function initStorageScope() {
     }
   }
   applyStorageScope(userId);
+  StorageScopeReady = true;
   return StorageScopeUserId;
 }
 
@@ -2571,11 +2574,21 @@ async function openCoachNotebook(attemptId = '') {
 // Detect assignment launch early so init can avoid overriding the assignment set.
 const URL_PARAMS = new URLSearchParams(window.location.search);
 const ASSIGNMENT_ID = URL_PARAMS.get('assignment');
-const ASSIGNMENT_STORAGE_KEY = ASSIGNMENT_ID ? ('ihbb_assignment_' + ASSIGNMENT_ID) : null;
-const HAS_ASSIGNMENT_PAYLOAD = (() => {
-  if (!ASSIGNMENT_STORAGE_KEY) return false;
-  try { return !!localStorage.getItem(ASSIGNMENT_STORAGE_KEY); } catch { return false; }
-})();
+let ASSIGNMENT_STORAGE_KEY = null;
+let HAS_ASSIGNMENT_PAYLOAD = false;
+function assignmentStorageKey(assignId, userId = StorageScopeUserId) {
+  const id = String(assignId || '').trim();
+  if (!id) return null;
+  return `ihbb_assignment_${id}_${normalizeStorageScopeUserId(userId) || STORAGE_SCOPE_GUEST}`;
+}
+function refreshAssignmentStorageState(userId = StorageScopeUserId) {
+  ASSIGNMENT_STORAGE_KEY = assignmentStorageKey(ASSIGNMENT_ID, userId);
+  if (!ASSIGNMENT_STORAGE_KEY) {
+    HAS_ASSIGNMENT_PAYLOAD = false;
+    return;
+  }
+  try { HAS_ASSIGNMENT_PAYLOAD = !!localStorage.getItem(ASSIGNMENT_STORAGE_KEY); } catch { HAS_ASSIGNMENT_PAYLOAD = false; }
+}
 
 /********************* Voices *********************/
 const PREF = [/Microsoft .* Online .*Natural/i, /Google US English/i, /en[-_]?US/i, /en[-_]?GB/i];
@@ -4935,6 +4948,7 @@ async function tryFetchDefault(force = false) {
 /********************* Init *********************/
 (async function init() {
   await initStorageScope();
+  refreshAssignmentStorageState();
   loadCoachChatUiPrefs();
   loadAll(); populateVoices();
   migrateLibrarySources();
@@ -5254,54 +5268,58 @@ try {
   const assignId = ASSIGNMENT_ID;
   if (!assignId) return;
 
-  const storageKey = ASSIGNMENT_STORAGE_KEY || ('ihbb_assignment_' + assignId);
-  const raw = localStorage.getItem(storageKey);
-  if (!raw) return;
+  void (async () => {
+    await initStorageScope();
+    refreshAssignmentStorageState();
+    const storageKey = ASSIGNMENT_STORAGE_KEY || assignmentStorageKey(assignId);
+    const raw = storageKey ? localStorage.getItem(storageKey) : null;
+    if (!raw) return;
 
-  try {
-    const assignData = JSON.parse(raw);
-    const items = (assignData.questions || []).map(q => ({
-      id: q.question_id || q.id || uid(),
-      question: q.question_text || q.question || q.q || '',
-      answer: q.answer_text || q.answer || q.a || '',
-      aliases: Array.isArray(q.aliases) ? q.aliases : [],
-      meta: { category: q.category || '', era: q.era || '', source: q.source || '' }
-    }));
+    try {
+      const assignData = JSON.parse(raw);
+      const items = (assignData.questions || []).map(q => ({
+        id: q.question_id || q.id || uid(),
+        question: q.question_text || q.question || q.q || '',
+        answer: q.answer_text || q.answer || q.a || '',
+        aliases: Array.isArray(q.aliases) ? q.aliases : [],
+        meta: { category: q.category || '', era: q.era || '', source: q.source || '' }
+      }));
 
-    if (!items.length) return;
+      if (!items.length) return;
 
-    // Inject as a volatile library set
-    const set = { id: 'assignment_' + assignId, name: assignData.title || 'Assignment', items, volatile: true };
-    Library.sets.unshift(set);
-    Library.activeSetId = set.id;
-    renderLibrarySelectors();
-    updateSetMeta();
+      // Inject as a volatile library set
+      const set = { id: 'assignment_' + assignId, name: assignData.title || 'Assignment', items, volatile: true };
+      Library.sets.unshift(set);
+      Library.activeSetId = set.id;
+      renderLibrarySelectors();
+      updateSetMeta();
 
-    // Set session length to ALL questions and mode to sequential
-    App.size = 'all';
-    App.mode = 'sequential';
-    App.filters = { cat: '', cats: [], era: '', eras: [], src: '' };
+      // Set session length to ALL questions and mode to sequential
+      App.size = 'all';
+      App.mode = 'sequential';
+      App.filters = { cat: '', cats: [], era: '', eras: [], src: '' };
 
-    // Auto-start the session after a short delay (DOM needs to be ready)
-    setTimeout(() => {
-      toast('📝 Starting assignment: ' + (assignData.title || 'Assignment'));
-      startSession();
-    }, 500);
+      // Auto-start the session after a short delay (DOM needs to be ready)
+      setTimeout(() => {
+        toast('📝 Starting assignment: ' + (assignData.title || 'Assignment'));
+        startSession();
+      }, 500);
 
-    // Monitor for session end (review view becomes active) and submit score.
-    // Session completion phase is "done" in this app.
-    const checkDone = setInterval(() => {
-      const reviewActive = document.getElementById('view-review')?.classList.contains('active');
-      const sessionComplete = App.phase === 'done' || (App.phase === 'idle' && App.i >= App.order.length);
-      if (reviewActive && sessionComplete) {
-        clearInterval(checkDone);
-        submitAssignmentScore(assignId, items.length);
-      }
-    }, 500);
+      // Monitor for session end (review view becomes active) and submit score.
+      // Session completion phase is "done" in this app.
+      const checkDone = setInterval(() => {
+        const reviewActive = document.getElementById('view-review')?.classList.contains('active');
+        const sessionComplete = App.phase === 'done' || (App.phase === 'idle' && App.i >= App.order.length);
+        if (reviewActive && sessionComplete) {
+          clearInterval(checkDone);
+          submitAssignmentScore(assignId, items.length);
+        }
+      }, 500);
 
-  } catch (e) {
-    console.error('Assignment hook error:', e);
-  }
+    } catch (e) {
+      console.error('Assignment hook error:', e);
+    }
+  })();
 
   async function submitAssignmentScore(aId, total) {
     if (window._assignmentSubmitted) return;
