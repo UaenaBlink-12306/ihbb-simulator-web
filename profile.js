@@ -2,6 +2,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const sb = window.supabaseClient;
     const guard = document.getElementById('auth-guard');
     const alertBox = document.getElementById('alert-box');
+    const STUDY_DATA_RESET_CUTOFF_ISO = '2026-04-10T02:07:20Z';
 
     const showAlert = (msg, type = 'error') => {
         if (!alertBox) return;
@@ -126,16 +127,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     async function loadProfileAnalytics(targetUserId) {
         const [sessions, submissions, wrongBank, coachAttempts, classMemberships] = await Promise.all([
             safeSelect('user_drill_sessions', 'correct, total, dur, ts, created_at', (query) =>
-                query.eq('user_id', targetUserId).order('created_at', { ascending: false })
+                query.eq('user_id', targetUserId).gte('created_at', STUDY_DATA_RESET_CUTOFF_ISO).order('created_at', { ascending: false })
             ),
             safeSelect('assignment_submissions', 'correct, total, submitted_at, created_at', (query) =>
                 query.eq('student_id', targetUserId).order('submitted_at', { ascending: false })
             ),
             safeSelect('user_wrong_questions', 'created_at', (query) =>
-                query.eq('user_id', targetUserId).order('created_at', { ascending: false })
+                query.eq('user_id', targetUserId).gte('created_at', STUDY_DATA_RESET_CUTOFF_ISO).order('created_at', { ascending: false })
             ),
             safeSelect('user_coach_attempts', 'created_at', (query) =>
-                query.eq('user_id', targetUserId).order('created_at', { ascending: false })
+                query.eq('user_id', targetUserId).gte('created_at', STUDY_DATA_RESET_CUTOFF_ISO).order('created_at', { ascending: false })
             ),
             safeSelect('class_students', 'joined_at', (query) =>
                 query.eq('student_id', targetUserId).order('joined_at', { ascending: false })

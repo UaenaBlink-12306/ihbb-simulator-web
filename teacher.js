@@ -17,6 +17,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (!profile || profile.role !== 'teacher') { window.location.replace('index.html'); return; }
     if (guard) guard.remove();
     let userEmail = String(session.user?.email || '').trim();
+    const STUDY_DATA_RESET_CUTOFF_ISO = '2026-04-10T02:07:20Z';
     const avatarCatalog = window.AvatarCatalog || {};
     const avatarOptions = Array.isArray(avatarCatalog.AVATAR_OPTIONS) && avatarCatalog.AVATAR_OPTIONS.length
         ? avatarCatalog.AVATAR_OPTIONS
@@ -595,13 +596,13 @@ document.addEventListener('DOMContentLoaded', async () => {
                     ? sb.from('assignment_submissions').select('assignment_id, student_id, correct, total, submitted_at, created_at').in('assignment_id', assignmentIds)
                     : Promise.resolve({ data: [] }),
                 studentIds.length
-                    ? sb.from('user_drill_sessions').select('user_id, total, correct, dur, ts, created_at').in('user_id', studentIds)
+                    ? sb.from('user_drill_sessions').select('user_id, total, correct, dur, ts, created_at').in('user_id', studentIds).gte('created_at', STUDY_DATA_RESET_CUTOFF_ISO)
                     : Promise.resolve({ data: [] }),
                 studentIds.length
-                    ? sb.from('user_wrong_questions').select('user_id, created_at').in('user_id', studentIds)
+                    ? sb.from('user_wrong_questions').select('user_id, created_at').in('user_id', studentIds).gte('created_at', STUDY_DATA_RESET_CUTOFF_ISO)
                     : Promise.resolve({ data: [] }),
                 studentIds.length
-                    ? sb.from('user_coach_attempts').select('user_id, created_at').in('user_id', studentIds)
+                    ? sb.from('user_coach_attempts').select('user_id, created_at').in('user_id', studentIds).gte('created_at', STUDY_DATA_RESET_CUTOFF_ISO)
                     : Promise.resolve({ data: [] })
             ]);
             if (version !== teacherAnalyticsLoadVersion) return;

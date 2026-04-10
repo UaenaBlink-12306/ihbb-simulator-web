@@ -89,6 +89,17 @@ const BASE_KEY_COACH_DRILL = 'ihbb_student_coach_drill';
 const BASE_KEY_COACH_CHAT_ACTION = 'ihbb_v2_coach_chat_action';
 const BASE_COACH_CHAT_UI_KEY = 'ihbb_v2_coach_chat_ui';
 const BASE_COACH_CHAT_SUPPRESS_KEY = 'ihbb_v2_coach_chat_suppressed';
+const STUDY_DATA_RESET_CUTOFF_ISO = '2026-04-10T02:07:20Z';
+const STUDY_DATA_RESET_MARKER = 'ihbb_v2_study_data_reset_20260410_v1';
+const STUDY_DATA_RESET_PREFIXES = [
+  BASE_KEY_SESS,
+  BASE_KEY_WRONG,
+  BASE_KEY_COACH_LOCAL,
+  BASE_KEY_COACH_PENDING,
+  KEY_WRONG_SYNC_SEEN,
+  KEY_SESS_SYNC_SEEN,
+  'ihbb_student_analytics_insights'
+];
 let KEY_SETTINGS = BASE_KEY_SETTINGS;
 let KEY_SESS = BASE_KEY_SESS;
 let KEY_WRONG = BASE_KEY_WRONG;
@@ -356,6 +367,35 @@ function safeReadJson(key, fallback) {
 }
 function setJsonSafe(key, value) {
   try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* noop */ }
+}
+function localStorageKeys() {
+  const keys = [];
+  try {
+    for (let i = 0; i < localStorage.length; i += 1) {
+      const key = localStorage.key(i);
+      if (key) keys.push(String(key));
+    }
+  } catch {
+    return [];
+  }
+  return keys;
+}
+function matchesStudyDataResetPrefix(key) {
+  const target = String(key || '');
+  return STUDY_DATA_RESET_PREFIXES.some(prefix => target === prefix || target.startsWith(`${prefix}_`));
+}
+function purgeSharedStudyDataLocal() {
+  try {
+    if (localStorage.getItem(STUDY_DATA_RESET_MARKER) === '1') return;
+    const keys = localStorageKeys();
+    for (const key of keys) {
+      if (!matchesStudyDataResetPrefix(key)) continue;
+      localStorage.removeItem(key);
+    }
+    localStorage.setItem(STUDY_DATA_RESET_MARKER, '1');
+  } catch {
+    // Ignore storage failures.
+  }
 }
 function inferSourceFallbackForSet(set) {
   const name = String(set?.name || '').trim();
@@ -3658,7 +3698,8 @@ async function initWrongBankSync() {
     const { data: remoteRows, error: remoteErr } = await window.supabaseClient
       .from(WRONG_SYNC_TABLE)
       .select('question_id')
-      .eq('user_id', userId);
+      .eq('user_id', userId)
+      .gte('created_at', STUDY_DATA_RESET_CUTOFF_ISO);
     if (remoteErr) throw remoteErr;
 
     let remoteIds = normalizeQuestionIds((remoteRows || []).map(r => r.question_id));
@@ -4081,6 +4122,7 @@ async function fetchCoachNotebookRecords(forceCloud = false) {
           .from(COACH_SYNC_TABLE)
           .select('client_attempt_id,client_session_id,question_id,question_text,expected_answer,user_answer,correct,reason,coach,category,era,source,focus_topic,mastered,mastered_at,created_at')
           .eq('user_id', userId)
+          .gte('created_at', STUDY_DATA_RESET_CUTOFF_ISO)
           .order('created_at', { ascending: false })
           .limit(200);
         if (error) throw error;
@@ -5015,6 +5057,7 @@ async function tryFetchDefault(force = false) {
 /********************* Init *********************/
 (async function init() {
   await initStorageScope();
+  purgeSharedStudyDataLocal();
   refreshAssignmentStorageState();
   loadCoachChatUiPrefs();
   loadAll(); populateVoices();

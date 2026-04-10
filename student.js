@@ -21,6 +21,17 @@ document.addEventListener('DOMContentLoaded', async () => {
     const COACH_DRILL_STORAGE_KEY = scopedStorageKey('ihbb_student_coach_drill');
     const PRACTICE_HUB_AUTO_OPEN_DISABLED_KEY = 'ihbb_v2_practice_hub_auto_open_disabled';
     const ANALYTICS_INSIGHTS_CACHE_KEY = `ihbb_student_analytics_insights_${uid}`;
+    const STUDY_DATA_RESET_CUTOFF_ISO = '2026-04-10T02:07:20Z';
+    const STUDY_DATA_RESET_MARKER = 'ihbb_v2_study_data_reset_20260410_v1';
+    const STUDY_DATA_RESET_PREFIXES = [
+        'ihbb_v2_sessions',
+        'ihbb_v2_wrong_srs',
+        'ihbb_v2_coach_attempts',
+        'ihbb_v2_coach_pending',
+        'ihbb_v2_wrong_sync_seen',
+        'ihbb_v2_session_sync_seen',
+        'ihbb_student_analytics_insights'
+    ];
     const DAY_MS = 24 * 60 * 60 * 1000;
     let userEmail = String(session.user?.email || '').trim();
     const avatarCatalog = window.AvatarCatalog || {};
@@ -143,6 +154,34 @@ document.addEventListener('DOMContentLoaded', async () => {
             // Ignore storage failures.
         }
     };
+    const localStorageKeys = () => {
+        const keys = [];
+        try {
+            for (let i = 0; i < localStorage.length; i += 1) {
+                const key = localStorage.key(i);
+                if (key) keys.push(String(key));
+            }
+        } catch {
+            return [];
+        }
+        return keys;
+    };
+    const matchesStudyDataResetPrefix = (key) => {
+        const target = String(key || '');
+        return STUDY_DATA_RESET_PREFIXES.some(prefix => target === prefix || target.startsWith(`${prefix}_`));
+    };
+    const purgeSharedStudyDataLocal = () => {
+        try {
+            if (localStorage.getItem(STUDY_DATA_RESET_MARKER) === '1') return;
+            localStorageKeys().forEach((key) => {
+                if (matchesStudyDataResetPrefix(key)) localStorage.removeItem(key);
+            });
+            localStorage.setItem(STUDY_DATA_RESET_MARKER, '1');
+        } catch {
+            // Ignore storage failures.
+        }
+    };
+    purgeSharedStudyDataLocal();
     const DASHBOARD_CHAT_STARTERS = [
         { label: 'What next?', prompt: 'What should I practice next from my student dashboard?' },
         { label: 'Explain the weak spot', prompt: 'Explain my current weak spot in detail and tell me what I should do next.' },
@@ -1792,6 +1831,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             .from(COACH_SYNC_TABLE)
             .select('client_attempt_id, client_session_id, question_text, expected_answer, user_answer, correct, reason, coach, category, era, source, focus_topic, mastered, mastered_at, created_at')
             .eq('user_id', uid)
+            .gte('created_at', STUDY_DATA_RESET_CUTOFF_ISO)
             .order('created_at', { ascending: false })
             .limit(200);
         if (error) throw error;
@@ -2216,6 +2256,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             .from(SESSION_SYNC_TABLE)
             .select('ts, total, correct, dur, buzz, items, results, meta, created_at')
             .eq('user_id', uid)
+            .gte('created_at', STUDY_DATA_RESET_CUTOFF_ISO)
             .gte('ts', cutoff)
             .order('ts', { ascending: true });
         if (error) throw error;

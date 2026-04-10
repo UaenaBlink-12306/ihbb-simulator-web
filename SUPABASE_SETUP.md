@@ -102,6 +102,8 @@ If your `profiles` table already exists, run [`migrations/20260407_profiles_avat
 
 If you already deployed class or Live Bee tables with public read policies, also run [`migrations/20260409_private_collab_policies.sql`](./migrations/20260409_private_collab_policies.sql) to tighten privacy and enable code-based joins without exposing all classes or rooms.
 
+If analytics, wrong-bank, or AI notebook data was already contaminated across accounts, run [`migrations/20260410_purge_study_data.sql`](./migrations/20260410_purge_study_data.sql) once to clear only those three study-data tables without deleting user accounts, profiles, classes, or assignments.
+
 ## 2. Assignment Tables
 
 ```sql
@@ -294,6 +296,16 @@ CREATE POLICY "Users insert own coach attempts" ON user_coach_attempts
   FOR INSERT WITH CHECK (auth.uid() = user_id);
 CREATE POLICY "Users update own coach attempts" ON user_coach_attempts
   FOR UPDATE USING (auth.uid() = user_id);
+```
+
+## 2.8 Emergency Study-Data Reset
+
+```sql
+-- Use only if analytics, wrong-bank, and AI notebook rows were already shared across accounts.
+-- This preserves auth.users, profiles, classes, assignments, and submissions.
+DELETE FROM public.user_wrong_questions;
+DELETE FROM public.user_drill_sessions;
+DELETE FROM public.user_coach_attempts;
 ```
 
 ## 3. Account Deletion RPC
