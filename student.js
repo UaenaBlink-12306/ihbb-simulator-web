@@ -76,13 +76,16 @@ document.addEventListener('DOMContentLoaded', async () => {
         const el = document.getElementById(id);
         if (el) el.textContent = String(value);
     };
-    const emptyStateHtml = (kicker, title, copy) => `
+    const emptyStateHtml = (kicker, title, copy, actionHtml = '') => `
         <div class="empty-state">
             <div class="empty-kicker">${esc(kicker)}</div>
             <h3 class="empty-title">${esc(title)}</h3>
             <p class="empty-copy">${esc(copy)}</p>
+            ${actionHtml ? `<div class="form-actions" style="justify-content:center;margin-top:16px;">${actionHtml}</div>` : ''}
         </div>
     `;
+    const joinClassActionHtml = (label = 'Enter a class code') =>
+        `<a href="#" class="btn ghost" data-action="focus-join-class">${esc(label)}</a>`;
     const canonicalCoachAnswer = (value) => String(value || '')
         .trim()
         .replace(/\s*\([^)]*\)/g, '')
@@ -375,6 +378,15 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (tabName === 'analytics') loadAnalytics();
         if (tabName === 'coach') loadCoachWorkspace(false);
         renderDashboardChatChrome();
+    }
+
+    function focusJoinClassEntry() {
+        activateDashboardTab('classes');
+        const joinInput = document.getElementById('join-code');
+        if (!joinInput) return;
+        joinInput.focus();
+        joinInput.select();
+        joinInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
 
     function readWrongBankState() {
@@ -1274,6 +1286,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.querySelectorAll('.dash-tab').forEach(tab => {
         tab.addEventListener('click', () => activateDashboardTab(tab.dataset.tab));
     });
+    document.addEventListener('click', (event) => {
+        const trigger = event.target.closest('[data-action="focus-join-class"]');
+        if (!trigger) return;
+        event.preventDefault();
+        focusJoinClassEntry();
+    });
 
     // ========== LOGOUT ==========
     document.getElementById('btn-logout').addEventListener('click', async (e) => {
@@ -1679,8 +1697,18 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (!memberships || !memberships.length) {
             setMetric('student-hero-todo', 0);
             setMetric('student-hero-done', 0);
-            document.getElementById('student-assignments-todo').innerHTML = emptyStateHtml('Assignments', 'Join a class first', 'Assignments will appear here once you are enrolled in at least one classroom.');
-            document.getElementById('student-assignments-completed').innerHTML = emptyStateHtml('Completed', 'Nothing completed yet', 'Finished assignments and redo links will appear here after your first drill.');
+            document.getElementById('student-assignments-todo').innerHTML = emptyStateHtml(
+                'Assignments',
+                'Join a class first',
+                'Assignments will appear here once you are enrolled in at least one classroom.',
+                joinClassActionHtml()
+            );
+            document.getElementById('student-assignments-completed').innerHTML = emptyStateHtml(
+                'Completed',
+                'Join a class to unlock class work',
+                'Finished assignments and redo links will appear here after you join a classroom.',
+                joinClassActionHtml()
+            );
             renderAssignmentsCoachBrief();
             return;
         }

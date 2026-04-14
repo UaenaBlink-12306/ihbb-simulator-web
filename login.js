@@ -2,8 +2,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const tabs = document.querySelectorAll('.tab');
     const form = document.getElementById('auth-form');
     const submitBtn = document.getElementById('submit-btn');
-    const classCodeGroup = document.getElementById('class-code-group');
-    const classCodeInput = document.getElementById('class-code');
     const passwordGroup = document.getElementById('password-group');
     const passwordInput = document.getElementById('password');
     const alertBox = document.getElementById('alert-box');
@@ -34,7 +32,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (currentMode === 'signup') {
             submitBtn.textContent = 'Create Account';
-            classCodeGroup.classList.remove('hidden');
             passwordGroup.classList.remove('hidden');
             passwordInput.required = true;
             if (authTitle) authTitle.textContent = 'Create Your Account';
@@ -44,7 +41,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         submitBtn.textContent = 'Sign In';
-        classCodeGroup.classList.add('hidden');
         passwordGroup.classList.remove('hidden');
         passwordInput.required = true;
         if (authTitle) authTitle.textContent = 'Welcome Back';
@@ -73,7 +69,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const email = document.getElementById('email').value.trim();
         const password = document.getElementById('password').value;
-        const classCode = classCodeInput.value.trim();
 
         if (!email) return showAlert('Email is required');
         if (!password) return showAlert('Password is required');
@@ -88,7 +83,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     email,
                     password,
                     options: {
-                        data: { class_code: classCode },
                         emailRedirectTo: window.location.origin
                     }
                 });
