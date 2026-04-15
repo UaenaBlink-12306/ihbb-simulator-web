@@ -188,7 +188,14 @@ const Settings = {
 const Library = { sets: [], activeSetId: null };
 let Presets = {};
 let CurrentProfileRole = '';
+let CurrentAccountSettings = null;
 let PendingCoachGeneration = false;
+const ACCOUNT_SETTING_DEFAULTS = Object.freeze({
+  practice_hub_auto_open: true,
+  assistant_thinking_enabled: false,
+  assistant_show_starters: true,
+  assistant_stream_responses: true
+});
 
 const App = {
   pool: [], order: [], i: 0, correct: 0, startTs: 0,
@@ -429,23 +436,82 @@ function migrateLibrarySources() {
   }
   if (changed) saveLibrarySafe('migrateLibrarySources');
 }
+function readLegacyPracticeHubAutoOpenDisabled(userId = StorageScopeUserId) {
+  try {
+    if (!userId) return null;
+    const raw = localStorage.getItem(practiceHubAutoOpenDisabledKey(userId));
+    if (raw === '1') return true;
+    if (raw === '0') return false;
+    return null;
+  } catch {
+    return null;
+  }
+}
+function readLegacyCoachChatUiPrefs() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(COACH_CHAT_UI_KEY) || '{}');
+    return raw && typeof raw === 'object' ? raw : {};
+  } catch {
+    return {};
+  }
+}
+function normalizeAccountSettings(value, { includeLegacy = true, userId = StorageScopeUserId } = {}) {
+  const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+  const legacyPracticeHubDisabled = includeLegacy ? readLegacyPracticeHubAutoOpenDisabled(userId) : null;
+  const legacyChatUi = includeLegacy ? readLegacyCoachChatUiPrefs() : {};
+  return {
+    practice_hub_auto_open: typeof source.practice_hub_auto_open === 'boolean'
+      ? source.practice_hub_auto_open
+      : legacyPracticeHubDisabled === null
+        ? ACCOUNT_SETTING_DEFAULTS.practice_hub_auto_open
+        : !legacyPracticeHubDisabled,
+    assistant_thinking_enabled: typeof source.assistant_thinking_enabled === 'boolean'
+      ? source.assistant_thinking_enabled
+      : !!legacyChatUi.thinkingEnabled,
+    assistant_show_starters: typeof source.assistant_show_starters === 'boolean'
+      ? source.assistant_show_starters
+      : ACCOUNT_SETTING_DEFAULTS.assistant_show_starters,
+    assistant_stream_responses: typeof source.assistant_stream_responses === 'boolean'
+      ? source.assistant_stream_responses
+      : ACCOUNT_SETTING_DEFAULTS.assistant_stream_responses
+  };
+}
+function getCurrentAccountSettings() {
+  return CurrentAccountSettings || normalizeAccountSettings(null, { includeLegacy: true });
+}
+function syncAccountSettingsToLegacyStorage() {
+  try {
+    if (!StorageScopeUserId) return;
+    localStorage.setItem(practiceHubAutoOpenDisabledKey(StorageScopeUserId), getCurrentAccountSettings().practice_hub_auto_open ? '0' : '1');
+  } catch {
+    /* noop */
+  }
+}
 async function ensureCurrentProfileRole() {
-  if (CurrentProfileRole) return CurrentProfileRole;
+  if (CurrentProfileRole && CurrentAccountSettings) return CurrentProfileRole;
   if (!window.supabaseClient) return '';
   try {
     const userId = await ensureSessionSyncUserId();
     if (!userId) return '';
     const { data, error } = await window.supabaseClient
       .from('profiles')
-      .select('role')
+      .select('role, account_settings')
       .eq('id', userId)
       .single();
     if (error) throw error;
     CurrentProfileRole = String(data?.role || '').trim();
+    CurrentAccountSettings = normalizeAccountSettings(data?.account_settings, { includeLegacy: true, userId });
+    syncAccountSettingsToLegacyStorage();
   } catch {
     CurrentProfileRole = '';
+    CurrentAccountSettings = normalizeAccountSettings(null, { includeLegacy: true });
   }
   return CurrentProfileRole;
+}
+async function ensureCurrentAccountSettings() {
+  if (CurrentAccountSettings) return CurrentAccountSettings;
+  await ensureCurrentProfileRole();
+  return getCurrentAccountSettings();
 }
 function isNotebookAttemptRecord(record) {
   return !!record && !record.correct;
@@ -763,6 +829,7 @@ function clampCoachChatWidth(value) {
 }
 
 function loadCoachChatUiPrefs() {
+  const accountSettings = getCurrentAccountSettings();
   try {
     const raw = JSON.parse(localStorage.getItem(COACH_CHAT_UI_KEY) || '{}');
     const sizeRaw = String(raw.size || '').trim();
@@ -770,7 +837,7 @@ function loadCoachChatUiPrefs() {
     const width = clampCoachChatWidth(raw.width || COACH_CHAT_SIZE_PRESETS[size] || COACH_CHAT_SIZE_PRESETS.standard);
     CoachChat.ui = {
       mode: 'auto',
-      thinkingEnabled: !!raw.thinkingEnabled,
+      thinkingEnabled: !!accountSettings.assistant_thinking_enabled,
       size,
       width,
       fullscreen: !!raw.fullscreen
@@ -778,7 +845,7 @@ function loadCoachChatUiPrefs() {
   } catch {
     CoachChat.ui = {
       mode: 'auto',
-      thinkingEnabled: false,
+      thinkingEnabled: !!accountSettings.assistant_thinking_enabled,
       size: 'standard',
       width: COACH_CHAT_SIZE_PRESETS.standard,
       fullscreen: false
@@ -844,6 +911,12 @@ function startCoachChatMessageStream(message) {
   const fullText = String(message.text || '');
   if (!fullText) {
     message.displayText = '';
+    renderCoachChatMessages();
+    return;
+  }
+  if (!getCurrentAccountSettings().assistant_stream_responses) {
+    message.displayText = fullText;
+    message.streaming = false;
     renderCoachChatMessages();
     return;
   }
@@ -1061,7 +1134,7 @@ function coachChatInputHasDraft() {
 }
 
 function shouldShowCoachChatStarters() {
-  return !hasCoachChatUserQuestion() && !coachChatInputHasDraft();
+  return !!getCurrentAccountSettings().assistant_show_starters && !hasCoachChatUserQuestion() && !coachChatInputHasDraft();
 }
 
 function coachChatStarterBox() {
@@ -2012,12 +2085,9 @@ function practiceHubAutoOpenDisabledKey(userId) {
 }
 
 function isPracticeHubAutoOpenDisabled(userId = CoachSync.userId || SessionSync.userId || WrongSync.userId) {
-  try {
-    if (!userId) return false;
-    return localStorage.getItem(practiceHubAutoOpenDisabledKey(userId)) === '1';
-  } catch {
-    return false;
-  }
+  if (CurrentAccountSettings) return !CurrentAccountSettings.practice_hub_auto_open;
+  const legacy = readLegacyPracticeHubAutoOpenDisabled(userId);
+  return legacy === true;
 }
 
 function toggleCoachChatFullscreen() {
@@ -5057,9 +5127,12 @@ async function tryFetchDefault(force = false) {
 /********************* Init *********************/
 (async function init() {
   await initStorageScope();
+  await ensureCurrentAccountSettings();
   purgeSharedStudyDataLocal();
   refreshAssignmentStorageState();
   loadCoachChatUiPrefs();
+  syncAccountSettingsToLegacyStorage();
+  saveCoachChatUiPrefs();
   loadAll(); populateVoices();
   migrateLibrarySources();
   const rr = $('rate'); if (rr) rr.value = Settings.rate || 1.0;

@@ -157,6 +157,32 @@ document.addEventListener('DOMContentLoaded', async () => {
             // Ignore storage failures.
         }
     };
+    const ACCOUNT_SETTING_DEFAULTS = Object.freeze({
+        practice_hub_auto_open: true,
+        assistant_thinking_enabled: false,
+        assistant_show_starters: true,
+        assistant_stream_responses: true
+    });
+    const readDashboardChatUiPrefSource = () => {
+        try {
+            const raw = JSON.parse(localStorage.getItem(`ihbb_student_dashboard_chat_ui_${uid}`) || '{}');
+            return raw && typeof raw === 'object' ? raw : {};
+        } catch {
+            return {};
+        }
+    };
+    const normalizeAccountSettings = (value, { includeLegacy = true } = {}) => {
+        const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+        const legacyDashboardUi = includeLegacy ? readDashboardChatUiPrefSource() : {};
+        const legacyPracticeHubAutoOpen = includeLegacy ? !isPracticeHubAutoOpenDisabled() : ACCOUNT_SETTING_DEFAULTS.practice_hub_auto_open;
+        return {
+            practice_hub_auto_open: typeof source.practice_hub_auto_open === 'boolean' ? source.practice_hub_auto_open : legacyPracticeHubAutoOpen,
+            assistant_thinking_enabled: typeof source.assistant_thinking_enabled === 'boolean' ? source.assistant_thinking_enabled : !!legacyDashboardUi.thinkingEnabled,
+            assistant_show_starters: typeof source.assistant_show_starters === 'boolean' ? source.assistant_show_starters : ACCOUNT_SETTING_DEFAULTS.assistant_show_starters,
+            assistant_stream_responses: typeof source.assistant_stream_responses === 'boolean' ? source.assistant_stream_responses : ACCOUNT_SETTING_DEFAULTS.assistant_stream_responses
+        };
+    };
+    let accountSettings = normalizeAccountSettings(profile.account_settings, { includeLegacy: true });
     const localStorageKeys = () => {
         const keys = [];
         try {
@@ -242,7 +268,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             const size = sizeRaw === 'custom' || Object.prototype.hasOwnProperty.call(DASHBOARD_CHAT_SIZE_PRESETS, sizeRaw) ? sizeRaw : 'standard';
             dashboardChat.ui = {
                 mode: 'auto',
-                thinkingEnabled: !!raw.thinkingEnabled,
+                thinkingEnabled: !!accountSettings.assistant_thinking_enabled,
                 size,
                 width: clampDashboardChatWidth(raw.width || DASHBOARD_CHAT_SIZE_PRESETS[size] || DASHBOARD_CHAT_SIZE_PRESETS.standard),
                 fullscreen: !!raw.fullscreen
@@ -250,7 +276,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         } catch {
             dashboardChat.ui = {
                 mode: 'auto',
-                thinkingEnabled: false,
+                thinkingEnabled: !!accountSettings.assistant_thinking_enabled,
                 size: 'standard',
                 width: DASHBOARD_CHAT_SIZE_PRESETS.standard,
                 fullscreen: false
@@ -322,6 +348,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         const fullText = String(message.text || '');
         if (!fullText) {
             message.displayText = '';
+            renderDashboardChatMessages();
+            return;
+        }
+        if (!accountSettings.assistant_stream_responses) {
+            message.displayText = fullText;
+            message.streaming = false;
             renderDashboardChatMessages();
             return;
         }
@@ -663,7 +695,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     function shouldShowDashboardChatStarters() {
-        return isDashboardChatPristine() && !dashboardChatInputHasDraft();
+        return !!accountSettings.assistant_show_starters && isDashboardChatPristine() && !dashboardChatInputHasDraft();
     }
 
     function dashboardChatStarterBox() {
@@ -1435,11 +1467,81 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     }
 
+    function readAccountSettingsFromForm() {
+        return normalizeAccountSettings({
+            practice_hub_auto_open: !!document.getElementById('acc-practice-hub-auto-open')?.checked,
+            assistant_thinking_enabled: !!document.getElementById('acc-assistant-thinking')?.checked,
+            assistant_show_starters: !!document.getElementById('acc-assistant-starters')?.checked,
+            assistant_stream_responses: !!document.getElementById('acc-assistant-streaming')?.checked
+        }, { includeLegacy: false });
+    }
+
+    function syncAccountToggle(config) {
+        const wrap = document.getElementById(config.wrapId);
+        const input = document.getElementById(config.inputId);
+        const state = document.getElementById(config.stateId);
+        const hint = document.getElementById(config.hintId);
+        if (!input) return;
+        const enabled = !!config.enabled;
+        input.checked = enabled;
+        input.setAttribute('aria-checked', enabled ? 'true' : 'false');
+        if (wrap) wrap.dataset.enabled = enabled ? 'true' : 'false';
+        if (state) state.textContent = enabled ? 'On' : 'Off';
+        if (hint) hint.textContent = enabled ? config.enabledHint : config.disabledHint;
+    }
+
+    function syncAccountSettingsInputs() {
+        syncAccountToggle({
+            wrapId: 'acc-setting-practice-hub-auto-open',
+            inputId: 'acc-practice-hub-auto-open',
+            stateId: 'acc-practice-hub-auto-open-state',
+            hintId: 'acc-practice-hub-auto-open-hint',
+            enabled: accountSettings.practice_hub_auto_open,
+            enabledHint: 'DeepSeek opens automatically when you enter Practice Hub. You can still launch it manually anytime.',
+            disabledHint: 'DeepSeek stays closed when you enter Practice Hub. You can still launch it manually anytime.'
+        });
+        syncAccountToggle({
+            wrapId: 'acc-setting-assistant-thinking',
+            inputId: 'acc-assistant-thinking',
+            stateId: 'acc-assistant-thinking-state',
+            hintId: 'acc-assistant-thinking-hint',
+            enabled: accountSettings.assistant_thinking_enabled,
+            enabledHint: 'The assistant uses deeper analysis by default on both the dashboard and Practice Hub.',
+            disabledHint: 'The assistant stays in the faster standard mode by default.'
+        });
+        syncAccountToggle({
+            wrapId: 'acc-setting-assistant-starters',
+            inputId: 'acc-assistant-starters',
+            stateId: 'acc-assistant-starters-state',
+            hintId: 'acc-assistant-starters-hint',
+            enabled: accountSettings.assistant_show_starters,
+            enabledHint: 'Starter prompts stay visible before you ask the first question.',
+            disabledHint: 'Starter prompts stay hidden until you begin the conversation yourself.'
+        });
+        syncAccountToggle({
+            wrapId: 'acc-setting-assistant-streaming',
+            inputId: 'acc-assistant-streaming',
+            stateId: 'acc-assistant-streaming-state',
+            hintId: 'acc-assistant-streaming-hint',
+            enabled: accountSettings.assistant_stream_responses,
+            enabledHint: 'Replies reveal progressively instead of appearing all at once.',
+            disabledHint: 'Replies appear fully rendered as soon as they are ready.'
+        });
+    }
+
+    function applyAccountSettingsLocally() {
+        setPracticeHubAutoOpenDisabled(!accountSettings.practice_hub_auto_open);
+        dashboardChat.ui.thinkingEnabled = !!accountSettings.assistant_thinking_enabled;
+        saveDashboardChatUiPrefs();
+        syncDashboardChatStarterVisibility();
+        renderDashboardChatChrome();
+    }
+
     function renderAccountProfile() {
-        const practiceHubToggleWrap = document.getElementById('acc-practice-hub-popup-setting');
-        if (practiceHubToggleWrap) {
+        const accountSettingsWrap = document.getElementById('acc-account-settings-group');
+        if (accountSettingsWrap) {
             const isOwnAccount = String(profile.id || uid) === String(uid);
-            practiceHubToggleWrap.hidden = !isOwnAccount;
+            accountSettingsWrap.hidden = !isOwnAccount;
         }
         setInput('acc-display-name', profile.display_name || 'Unnamed');
         setInput('acc-role', formatRole(profile.role));
@@ -1450,33 +1552,19 @@ document.addEventListener('DOMContentLoaded', async () => {
         selectedAvatarId = normalizeAvatarId(profile.avatar_id);
         renderAccountAvatarPreview();
         renderAccountAvatarPicker();
-        syncPracticeHubAutoOpenToggle();
-    }
-
-    function syncPracticeHubAutoOpenToggle() {
-        const toggle = document.getElementById('acc-practice-hub-auto-open');
-        const toggleWrap = document.getElementById('acc-practice-hub-popup-setting');
-        const toggleState = document.getElementById('acc-practice-hub-auto-open-state');
-        const toggleHint = document.getElementById('acc-practice-hub-auto-open-hint');
-        if (!toggle) return;
-        const enabled = !isPracticeHubAutoOpenDisabled();
-        toggle.checked = enabled;
-        toggle.setAttribute('aria-checked', enabled ? 'true' : 'false');
-        if (toggleWrap) toggleWrap.dataset.enabled = enabled ? 'true' : 'false';
-        if (toggleState) toggleState.textContent = enabled ? 'On' : 'Off';
-        if (toggleHint) {
-            toggleHint.textContent = enabled
-                ? 'DeepSeek opens automatically when you enter Practice Hub. You can still launch it manually anytime.'
-                : 'DeepSeek stays closed when you enter Practice Hub. You can still launch it manually anytime.';
-        }
+        accountSettings = normalizeAccountSettings(profile.account_settings, { includeLegacy: true });
+        syncAccountSettingsInputs();
+        applyAccountSettingsLocally();
     }
 
     renderAccountProfile();
 
-    document.getElementById('acc-practice-hub-auto-open')?.addEventListener('change', (event) => {
-        const enabled = !!event.target.checked;
-        setPracticeHubAutoOpenDisabled(!enabled);
-        syncPracticeHubAutoOpenToggle();
+    ['acc-practice-hub-auto-open', 'acc-assistant-thinking', 'acc-assistant-starters', 'acc-assistant-streaming'].forEach((id) => {
+        document.getElementById(id)?.addEventListener('change', () => {
+            accountSettings = readAccountSettingsFromForm();
+            syncAccountSettingsInputs();
+            applyAccountSettingsLocally();
+        });
     });
 
     saveAccountBtn?.addEventListener('click', async () => {
@@ -1501,10 +1589,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         const prevEmail = normalizeEmail(userEmail);
         const prevAvatarId = normalizeAvatarId(profile.avatar_id);
         const nextAvatarId = normalizeAvatarId(selectedAvatarId);
+        const nextAccountSettings = readAccountSettingsFromForm();
+        const hasPersistedAccountSettings = !!profile.account_settings && typeof profile.account_settings === 'object' && !Array.isArray(profile.account_settings);
+        const prevAccountSettings = normalizeAccountSettings(profile.account_settings, { includeLegacy: false });
         const changeName = nextName !== prevName;
         const changeEmail = nextEmail !== prevEmail;
         const changeAvatar = nextAvatarId !== prevAvatarId;
-        if (!changeName && !changeEmail && !changeAvatar) {
+        const changeSettings = !hasPersistedAccountSettings || JSON.stringify(nextAccountSettings) !== JSON.stringify(prevAccountSettings);
+        if (!changeName && !changeEmail && !changeAvatar && !changeSettings) {
             showAlert('No profile changes to save.', 'success');
             return;
         }
@@ -1517,14 +1609,17 @@ document.addEventListener('DOMContentLoaded', async () => {
             const successMsgs = [];
             const errorMsgs = [];
 
-            if (changeName || changeAvatar) {
+            if (changeName || changeAvatar || changeSettings) {
                 const profilePatch = {};
                 if (changeName) profilePatch.display_name = nextName;
                 if (changeAvatar) profilePatch.avatar_id = nextAvatarId;
+                if (changeSettings) profilePatch.account_settings = nextAccountSettings;
                 const { error } = await sb.from('profiles').update(profilePatch).eq('id', uid);
                 if (error) {
-                    if (changeName && changeAvatar) errorMsgs.push(`Profile update failed: ${error.message}`);
+                    if (changeSettings && (changeName || changeAvatar)) errorMsgs.push(`Profile update failed: ${error.message}`);
+                    else if (changeName && changeAvatar) errorMsgs.push(`Profile update failed: ${error.message}`);
                     else if (changeName) errorMsgs.push(`Name update failed: ${error.message}`);
+                    else if (changeSettings) errorMsgs.push(`Preferences update failed: ${error.message}`);
                     else errorMsgs.push(`Avatar update failed: ${error.message}`);
                 } else {
                     if (changeName) {
@@ -1534,6 +1629,11 @@ document.addEventListener('DOMContentLoaded', async () => {
                     if (changeAvatar) {
                         profile.avatar_id = nextAvatarId;
                         successMsgs.push('Avatar updated');
+                    }
+                    if (changeSettings) {
+                        accountSettings = normalizeAccountSettings(nextAccountSettings, { includeLegacy: false });
+                        profile.account_settings = { ...accountSettings };
+                        successMsgs.push('Preferences synced');
                     }
                 }
             }
@@ -1547,6 +1647,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                 }
             }
 
+            if (!changeSettings) {
+                accountSettings = nextAccountSettings;
+            }
             renderAccountProfile();
             if (successMsgs.length && !errorMsgs.length) {
                 const emailNote = changeEmail ? ' Check your inbox if verification is required.' : '';
