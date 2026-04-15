@@ -460,14 +460,24 @@
                                         aria-label="Choose your avatar"></div>
                                 </div>
                             </div>
-                            <div id="acc-practice-hub-popup-setting" class="input-group full-width" hidden>
+                            <div id="acc-practice-hub-popup-setting" class="input-group full-width practice-hub-toggle-setting"
+                                data-enabled="true" hidden>
                                 <label>Practice Hub auto-open</label>
-                                <label class="account-danger-confirm" style="margin: 0;">
-                                    <input id="acc-disable-practice-hub-popup" type="checkbox">
-                                    <span>Disable the automatic DeepSeek pop-up when I enter Practice Hub.</span>
-                                </label>
-                                <p class="muted" style="margin: 0;">You can still open DeepSeek manually from the
-                                    launcher anytime.</p>
+                                <div class="practice-hub-toggle-card">
+                                    <div class="practice-hub-toggle-copy">
+                                        <p class="practice-hub-toggle-summary">Open the DeepSeek sidebar automatically when
+                                            you enter Practice Hub.</p>
+                                        <p id="acc-practice-hub-auto-open-hint" class="muted practice-hub-toggle-hint">DeepSeek opens automatically when you enter Practice Hub. You can still launch it manually anytime.</p>
+                                    </div>
+                                    <label class="practice-hub-switch" for="acc-practice-hub-auto-open">
+                                        <input id="acc-practice-hub-auto-open" type="checkbox" role="switch"
+                                            aria-describedby="acc-practice-hub-auto-open-hint">
+                                        <span class="practice-hub-switch-track" aria-hidden="true">
+                                            <span class="practice-hub-switch-thumb"></span>
+                                        </span>
+                                        <span id="acc-practice-hub-auto-open-state" class="practice-hub-switch-state">On</span>
+                                    </label>
+                                </div>
                             </div>
                         </div>
                         <div class="form-actions" style="margin-top: 14px;">

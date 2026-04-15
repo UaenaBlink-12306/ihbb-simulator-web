@@ -1450,14 +1450,33 @@ document.addEventListener('DOMContentLoaded', async () => {
         selectedAvatarId = normalizeAvatarId(profile.avatar_id);
         renderAccountAvatarPreview();
         renderAccountAvatarPicker();
-        const toggle = document.getElementById('acc-disable-practice-hub-popup');
-        if (toggle) toggle.checked = isPracticeHubAutoOpenDisabled();
+        syncPracticeHubAutoOpenToggle();
+    }
+
+    function syncPracticeHubAutoOpenToggle() {
+        const toggle = document.getElementById('acc-practice-hub-auto-open');
+        const toggleWrap = document.getElementById('acc-practice-hub-popup-setting');
+        const toggleState = document.getElementById('acc-practice-hub-auto-open-state');
+        const toggleHint = document.getElementById('acc-practice-hub-auto-open-hint');
+        if (!toggle) return;
+        const enabled = !isPracticeHubAutoOpenDisabled();
+        toggle.checked = enabled;
+        toggle.setAttribute('aria-checked', enabled ? 'true' : 'false');
+        if (toggleWrap) toggleWrap.dataset.enabled = enabled ? 'true' : 'false';
+        if (toggleState) toggleState.textContent = enabled ? 'On' : 'Off';
+        if (toggleHint) {
+            toggleHint.textContent = enabled
+                ? 'DeepSeek opens automatically when you enter Practice Hub. You can still launch it manually anytime.'
+                : 'DeepSeek stays closed when you enter Practice Hub. You can still launch it manually anytime.';
+        }
     }
 
     renderAccountProfile();
 
-    document.getElementById('acc-disable-practice-hub-popup')?.addEventListener('change', (event) => {
-        setPracticeHubAutoOpenDisabled(!!event.target.checked);
+    document.getElementById('acc-practice-hub-auto-open')?.addEventListener('change', (event) => {
+        const enabled = !!event.target.checked;
+        setPracticeHubAutoOpenDisabled(!enabled);
+        syncPracticeHubAutoOpenToggle();
     });
 
     saveAccountBtn?.addEventListener('click', async () => {
