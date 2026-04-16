@@ -228,18 +228,12 @@ function syncPracticeWrongBankToggle() {
   const wrap = $('setup-setting-practice-wrong-bank');
   const input = $('practice-wrong-bank-toggle');
   const state = $('practice-wrong-bank-state');
-  const hint = $('practice-wrong-bank-hint');
   if (wrap) wrap.dataset.enabled = enabled ? 'true' : 'false';
   if (input) {
     input.checked = enabled;
     input.setAttribute('aria-checked', enabled ? 'true' : 'false');
   }
   if (state) state.textContent = practiceWrongBankLabel(enabled);
-  if (hint) {
-    hint.textContent = enabled
-      ? 'Yes uses your tracked wrong-bank queue in random order.'
-      : 'No uses the active set and current filters in random order.';
-  }
 }
 
 const EXPLICIT_NO_ATTEMPT_ANSWERS = new Set([
@@ -3922,6 +3916,11 @@ function startSession() {
   const set = getActiveSet();
   const practicingWrongBank = isWrongBankPracticeEnabled();
   if (!set && !practicingWrongBank) { toast('No active set'); return; }
+  if (practicingWrongBank && !wrongRecords().length) {
+    alert('Your wrong bank is empty.');
+    toast('Wrong bank empty');
+    return;
+  }
   App.correct = 0; App.sessionBuzzTimes = []; App.resultsCorrect = []; App.i = 0; App.phase = 'idle';
   App.sessionId = `sess_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
   App.submitBusy = false;
