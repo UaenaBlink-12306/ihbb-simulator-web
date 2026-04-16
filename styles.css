@@ -6162,15 +6162,29 @@ input[type=datetime-local]:focus {
   padding: 14px 16px;
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
+  align-items: flex-end;
+  justify-content: space-between;
   gap: 10px 14px;
 }
 
+
+.summary-note-copy {
+  display: flex;
+  flex: 1 1 220px;
+  min-width: 0;
+  flex-direction: column;
+  gap: 6px;
+}
 .summary-note .empty-kicker,
 .summary-note .empty-copy {
   margin: 0;
 }
 
+
+.summary-note-button {
+  flex: 0 0 auto;
+  min-width: max-content;
+}
 .analytics-panel-note {
   display: none;
 }
