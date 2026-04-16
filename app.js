@@ -4548,6 +4548,7 @@ function drawAccByCat() {
 /********************* Event wiring *********************/
 // Nav
 $('nav-setup')?.addEventListener('click', (e) => { e.preventDefault(); playFeedbackCue('nav'); navSet('nav-setup'); SHOW('view-setup'); });
+$('nav-session')?.addEventListener('click', (e) => { e.preventDefault(); playFeedbackCue('nav'); navSet('nav-session'); SHOW('view-session'); });
 $('nav-practice')?.addEventListener('click', (e) => {
   e.preventDefault(); playFeedbackCue('nav'); navSet('nav-practice'); SHOW('view-practice');
   schedulePracticeViewportFit({ align: true });

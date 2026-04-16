@@ -114,6 +114,7 @@
 
     <nav class="nav tab-strip">
       <a href="index.html" id="nav-setup" class="active">Setup</a>
+      <a href="#" id="nav-session">Session</a>
       <a href="#" id="nav-practice">Practice</a>
       <a href="#" id="nav-review">Review</a>
       <a href="#" id="nav-coach">AI Notebook</a>
@@ -257,51 +258,7 @@
             </div>
           </div>
 
-          <div class="card section-card setup-advanced-card">
-            <div class="section-head">
-              <div>
-                <div class="eyebrow">Session controls</div>
-                <h2 class="card-title">Session options</h2>
-              </div>
-              <button id="advToggle" class="btn ghost"><span id="advCaret" class="caret rotate">▾</span> Toggle</button>
-            </div>
 
-            <div id="setup-summary-advanced-pills" class="settings-summary"></div>
-
-            <div id="advBodyWrapper" class="adv-wrapper">
-              <div id="advBody" class="adv-inner">
-                <div class="sep"></div>
-                <div class="stack">
-                  <div class="setup-grid">
-                    <div class="input-group" style="margin: 0;">
-                      <label class="muted">Voice</label>
-                      <select id="voiceSel"></select>
-                    </div>
-                    <div class="input-group" style="margin: 0;">
-                      <label class="muted">Rate</label>
-                      <input id="rate" type="range" min="0.8" max="1.25" step="0.05" value="1.0">
-                    </div>
-                  </div>
-
-                  <div class="inline-actions">
-                    <button id="testVoice" class="btn ghost">Pronunciation test</button>
-                    <button id="openHelp" class="btn ghost">Open help</button>
-                  </div>
-
-                  <div class="chips">
-                    <label class="pill"><input id="strictMode" type="checkbox"> Strict Mode</label>
-                    <label class="pill"><input id="autoAdvance" type="checkbox"> Auto-advance</label>
-                    <label class="pill"><input id="cueTicks" type="checkbox" checked> Countdown ticks</label>
-                    <label class="pill"><input id="cueBeep" type="checkbox" checked> Feedback cues</label>
-                    <label class="pill"><input id="haptics" type="checkbox" checked> Haptics</label>
-                    <label class="pill">Delay <input id="autoAdvanceDelay" type="number" min="0" max="5" value="1" style="width:70px">s</label>
-                  </div>
-
-                  <div class="pill">Use the on-screen controls to buzz, score, replay audio, and move to the next question.</div>
-                </div>
-              </div>
-            </div>
-          </div>
 
         </aside>
       </div>
@@ -317,6 +274,58 @@
         <button id="startLastDock" class="btn ghost">Start last settings</button>
       </div>
     </div>
+
+    <section id="view-session" class="view">
+      <div class="stack" style="width:min(100%, 960px); margin:0 auto;">
+        <div class="card section-card setup-advanced-card">
+          <div class="section-head">
+            <div>
+              <div class="eyebrow">Session controls</div>
+              <h2 class="card-title">Session options</h2>
+            </div>
+            <button id="advToggle" class="btn ghost"><span id="advCaret" class="caret rotate">&#9662;</span> Toggle</button>
+          </div>
+
+          <p class="muted" style="margin:0 0 16px; max-width:62ch; line-height:1.6;">Adjust voice delivery, pacing, and feedback for every drill from one dedicated tab.</p>
+
+          <div id="setup-summary-advanced-pills" class="settings-summary"></div>
+
+          <div id="advBodyWrapper" class="adv-wrapper">
+            <div id="advBody" class="adv-inner">
+              <div class="sep"></div>
+              <div class="stack">
+                <div class="setup-grid">
+                  <div class="input-group" style="margin: 0;">
+                    <label class="muted">Voice</label>
+                    <select id="voiceSel"></select>
+                  </div>
+                  <div class="input-group" style="margin: 0;">
+                    <label class="muted">Rate</label>
+                    <input id="rate" type="range" min="0.8" max="1.25" step="0.05" value="1.0">
+                  </div>
+                </div>
+
+                <div class="inline-actions">
+                  <button id="testVoice" class="btn ghost">Pronunciation test</button>
+                  <button id="openHelp" class="btn ghost">Open help</button>
+                </div>
+
+                <div class="chips">
+                  <label class="pill"><input id="strictMode" type="checkbox"> Strict Mode</label>
+                  <label class="pill"><input id="autoAdvance" type="checkbox"> Auto-advance</label>
+                  <label class="pill"><input id="cueTicks" type="checkbox" checked> Countdown ticks</label>
+                  <label class="pill"><input id="cueBeep" type="checkbox" checked> Feedback cues</label>
+                  <label class="pill"><input id="haptics" type="checkbox" checked> Haptics</label>
+                  <label class="pill">Delay <input id="autoAdvanceDelay" type="number" min="0" max="5" value="1" style="width:70px">s</label>
+                </div>
+
+                <div class="pill">Use the on-screen controls to buzz, score, replay audio, and move to the next question.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
 
   <!-- PRACTICE -->
   <section id="view-practice" class="view">
