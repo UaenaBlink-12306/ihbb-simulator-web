@@ -168,8 +168,8 @@ BEGIN
 
   SELECT *
     INTO target_class
-    FROM public.classes
-   WHERE UPPER(TRIM(code)) = UPPER(TRIM(p_code))
+    FROM public.classes AS c
+   WHERE UPPER(TRIM(c.code)) = UPPER(TRIM(p_code))
    LIMIT 1;
 
   IF target_class.id IS NULL THEN
