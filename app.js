@@ -210,6 +210,38 @@ const App = {
   sessionOverrideItems: null
 };
 
+function normalizePracticeMode(mode) {
+  return mode === 'srs' ? 'srs' : 'random';
+}
+function isWrongBankPracticeEnabled() {
+  return normalizePracticeMode(App.mode) === 'srs';
+}
+function practiceWrongBankLabel(enabled = isWrongBankPracticeEnabled()) {
+  return enabled ? 'Yes' : 'No';
+}
+function setPracticeWrongBank(enabled) {
+  App.mode = enabled ? 'srs' : 'random';
+  syncPracticeWrongBankToggle();
+}
+function syncPracticeWrongBankToggle() {
+  const enabled = isWrongBankPracticeEnabled();
+  const wrap = $('setup-setting-practice-wrong-bank');
+  const input = $('practice-wrong-bank-toggle');
+  const state = $('practice-wrong-bank-state');
+  const hint = $('practice-wrong-bank-hint');
+  if (wrap) wrap.dataset.enabled = enabled ? 'true' : 'false';
+  if (input) {
+    input.checked = enabled;
+    input.setAttribute('aria-checked', enabled ? 'true' : 'false');
+  }
+  if (state) state.textContent = practiceWrongBankLabel(enabled);
+  if (hint) {
+    hint.textContent = enabled
+      ? 'Yes uses your tracked wrong-bank queue in random order.'
+      : 'No uses the active set and current filters in random order.';
+  }
+}
+
 const EXPLICIT_NO_ATTEMPT_ANSWERS = new Set([
   "I don't know",
   'IDK',
@@ -978,6 +1010,11 @@ function readCoachChatSessions() {
 }
 
 function buildCoachChatSetupFilterText() {
+  if (isWrongBankPracticeEnabled()) {
+    const dueNow = srsDueList().length;
+    const tracked = wrongRecords().length;
+    return `Wrong-bank queue • Due now ${dueNow} • Total tracked ${tracked}`;
+  }
   const cats = Array.isArray(App.filters.cats) ? App.filters.cats.filter(Boolean) : [];
   const eras = Array.isArray(App.filters.eras) ? App.filters.eras.filter(Boolean) : [];
   const filterCats = cats.length
@@ -1011,6 +1048,9 @@ function buildCoachChatStudyContext() {
   }));
   const recentIncorrect = getCoachChatRecentIncorrect();
   const set = getActiveSet();
+  const availableCount = isWrongBankPracticeEnabled()
+    ? (srsDueList().length || wrongRecords().length)
+    : buildFilteredPoolFromSet(set).length;
   const activeView = document.querySelector('.view.active');
   return {
     current_view: String(activeView?.id || 'view-setup').trim(),
@@ -1036,8 +1076,9 @@ function buildCoachChatStudyContext() {
       } : null
     },
     setup: {
-      mode: modeLabel(App.mode),
-      length: sessionLengthLabel(App.size, set),
+      question_order: 'Random',
+      wrong_bank: practiceWrongBankLabel(),
+      length: sessionLengthLabel(App.size, { availableCount }),
       filters: buildCoachChatSetupFilterText()
     },
     active_set: {
@@ -1076,7 +1117,7 @@ function buildCoachChatSummary(snapshot) {
   }
   return CoachChat.ui.mode === 'auto'
     ? 'Ask for background on a topic or what to practice next. Auto will detect the better answer style.'
-    : `Current setup: ${snapshot?.setup?.mode || 'Practice'} • ${snapshot?.setup?.filters || 'All filters'}`;
+    : `Current setup: ${snapshot?.setup?.question_order || 'Random'} • Wrong bank ${snapshot?.setup?.wrong_bank || 'No'} • ${snapshot?.setup?.filters || 'All filters'}`;
 }
 
 function updateCoachChatSourceLabel() {
@@ -3171,7 +3212,7 @@ async function startGeneratedFocusDrill(focus, options = {}) {
     const syncResult = await syncGeneratedQuestionsToCloud(mergeResult.sessionItems);
     App.sessionOverrideItems = mergeResult.sessionItems.slice();
     App.size = 'all';
-    App.mode = 'sequential';
+    setPracticeWrongBank(false);
     App.filters = { cat: '', cats: [], era: '', eras: [], src: '' };
     if (options.clearPending) clearPendingCoachDrill();
     if (options.startSession !== false) startSession();
@@ -3553,7 +3594,7 @@ function applyPreset(p) {
     Settings.cueTicks = !!p.cueTicks; const ct = $('cueTicks'); if (ct) ct.checked = Settings.cueTicks;
     Settings.cueBeep = !!p.cueBeep; const cb = $('cueBeep'); if (cb) cb.checked = Settings.cueBeep;
     Settings.haptics = !!p.haptics; const hp = $('haptics'); if (hp) hp.checked = Settings.haptics;
-    App.mode = p.mode; setChipActive('mode-chips', p.mode, 'mode');
+    setPracticeWrongBank(!!p.practiceWrongBank || p.mode === 'srs');
     if (p.size !== undefined) setLenFromPreset(p.size);
     if (p.filters) {
       // Merge with defaults to keep new keys like 'cats' and 'eras'
@@ -3575,14 +3616,9 @@ function applyPreset(p) {
 }
 
 /********************* Pool build & UI helpers *********************/
-function buildPool() {
-  if (Array.isArray(App.sessionOverrideItems) && App.sessionOverrideItems.length) {
-    App.pool = App.sessionOverrideItems.slice();
-    return;
-  }
-  const set = getActiveSet(); if (!set) { App.pool = []; return; }
+function buildFilteredPoolFromSet(set) {
+  if (!set) return [];
   let arr = set.items.slice();
-  // Multi-category filter from Setup chips
   if (Array.isArray(App.filters.cats) && App.filters.cats.length) {
     arr = arr.filter(it => App.filters.cats.includes((it.meta?.category || '')));
   }
@@ -3590,7 +3626,15 @@ function buildPool() {
   if (Array.isArray(App.filters.eras) && App.filters.eras.length) arr = arr.filter(it => App.filters.eras.includes((it.meta?.era || '')));
   else if (App.filters.era) arr = arr.filter(it => (it.meta?.era || '') === App.filters.era);
   if (App.filters.src) arr = arr.filter(it => (it.meta?.source || '') === App.filters.src);
-  App.pool = arr;
+  return arr;
+}
+function buildPool() {
+  if (Array.isArray(App.sessionOverrideItems) && App.sessionOverrideItems.length) {
+    App.pool = App.sessionOverrideItems.slice();
+    return;
+  }
+  const set = getActiveSet();
+  App.pool = buildFilteredPoolFromSet(set);
 }
 const shuffle = (n) => [...Array(n).keys()].sort(() => Math.random() - 0.5);
 function sampleIndices(n, k) { const idx = shuffle(n); return k === 'all' ? idx : idx.slice(0, Math.min(n, Number(k) || 10)); }
@@ -3602,17 +3646,16 @@ function updateHeader() {
   const p = $('drill-progress'); if (p) p.textContent = `${Math.min(App.i, App.order.length)} / ${App.order.length}`;
   const bf = $('barfill'); if (bf) bf.style.width = (App.order.length ? (App.i / App.order.length * 100) : 0) + '%';
 }
-function modeLabel(mode) {
-  if (mode === 'sequential') return 'Sequential';
-  if (mode === 'srs') return 'Wrong-bank (SRS)';
-  return 'Random';
-}
-function sessionLengthLabel(size, set) {
+function sessionLengthLabel(size, context = {}) {
+  const availableCount = Number(context?.availableCount);
   if (size === 'all') {
-    const total = Number(set?.items?.length || App.pool.length || 0);
+    const total = Number.isFinite(availableCount) ? availableCount : Number(context?.items?.length || App.pool.length || 0);
     return total ? `All ${total} questions` : 'All available questions';
   }
   const n = Number(size || 10);
+  if (Number.isFinite(availableCount) && availableCount > 0 && availableCount < n) {
+    return `${availableCount} question${availableCount === 1 ? '' : 's'} available`;
+  }
   return `${n} question${n === 1 ? '' : 's'}`;
 }
 function compactVoiceName(name) {
@@ -3626,6 +3669,12 @@ function compactVoiceName(name) {
 }
 function updateSetupOverview() {
   const set = getActiveSet();
+  const wrongBankEnabled = isWrongBankPracticeEnabled();
+  const dueNow = srsDueList().length;
+  const wrongBankCount = wrongRecords().length;
+  const availableCount = wrongBankEnabled
+    ? (dueNow || wrongBankCount)
+    : buildFilteredPoolFromSet(set).length;
   const cats = Array.isArray(App.filters.cats) ? App.filters.cats.filter(Boolean) : [];
   const eras = Array.isArray(App.filters.eras) ? App.filters.eras.filter(Boolean) : [];
   const setText = set ? `${set.name} (${set.items.length} items)` : 'No set loaded';
@@ -3641,11 +3690,13 @@ function updateSetupOverview() {
     Settings.autoAdvance ? `Auto-advance ${Settings.autoAdvanceDelay || 1}s` : 'Manual pacing',
     Settings.haptics ? 'Haptics on' : 'Haptics off'
   ].join(' • ');
-  const lengthText = sessionLengthLabel(App.size, set);
-  const filterSummary = `${filterCats} • ${filterEras} • ${filterSrc}`;
+  const lengthText = sessionLengthLabel(App.size, { availableCount });
+  const filterSummary = wrongBankEnabled
+    ? `Wrong-bank queue • Due now ${dueNow} • Total tracked ${wrongBankCount}`
+    : `${filterCats} • ${filterEras} • ${filterSrc}`;
 
   const setEl = $('setup-summary-set'); if (setEl) setEl.textContent = setText;
-  const modeEl = $('setup-summary-mode'); if (modeEl) modeEl.textContent = modeLabel(App.mode);
+  const wrongBankEl = $('setup-summary-wrong-bank'); if (wrongBankEl) wrongBankEl.textContent = practiceWrongBankLabel(wrongBankEnabled);
   const lengthEl = $('setup-summary-length'); if (lengthEl) lengthEl.textContent = lengthText;
   const filtersEl = $('setup-summary-filters'); if (filtersEl) filtersEl.textContent = filterSummary;
   const advEl = $('setup-summary-advanced'); if (advEl) advEl.textContent = advancedSummary;
@@ -3664,10 +3715,12 @@ function updateSetupOverview() {
   const nextEl = $('setup-summary-next');
   let nextText = 'Pick a set to start.';
   if (nextEl) {
-    if (!set) {
-      nextText = 'Load a question set.';
-    } else if (App.mode === 'srs' && !wrongRecords().length) {
+    if (wrongBankEnabled && !wrongBankCount) {
       nextText = 'No wrong-bank items yet.';
+    } else if (!set && !wrongBankEnabled) {
+      nextText = 'Load a question set.';
+    } else if (wrongBankEnabled) {
+      nextText = 'Wrong-bank queue ready.';
     } else if (cats.length || App.filters.cat || eras.length || App.filters.era || App.filters.src) {
       nextText = 'Session ready.';
     }
@@ -3676,19 +3729,24 @@ function updateSetupOverview() {
 
   const mobileSummaryEl = $('setup-mobile-summary');
   if (mobileSummaryEl) {
-    mobileSummaryEl.textContent = set
-      ? `${lengthText} • ${filterCats} • ${filterSrc}`
-      : 'Load a question set.';
+    mobileSummaryEl.textContent = wrongBankEnabled
+      ? `${lengthText} • Wrong-bank queue`
+      : set
+        ? `${lengthText} • ${filterCats} • ${filterSrc}`
+        : 'Load a question set.';
   }
-  const mobileModeEl = $('setup-mobile-mode'); if (mobileModeEl) mobileModeEl.textContent = modeLabel(App.mode);
+  const mobileWrongBankEl = $('setup-mobile-wrong-bank'); if (mobileWrongBankEl) mobileWrongBankEl.textContent = `Wrong bank: ${practiceWrongBankLabel(wrongBankEnabled)}`;
   const mobileNextEl = $('setup-mobile-next'); if (mobileNextEl) mobileNextEl.textContent = nextText;
-  const mobileDockModeEl = $('setup-mobile-dock-mode'); if (mobileDockModeEl) mobileDockModeEl.textContent = modeLabel(App.mode);
+  const mobileDockWrongBankEl = $('setup-mobile-dock-wrong-bank'); if (mobileDockWrongBankEl) mobileDockWrongBankEl.textContent = `Wrong bank: ${practiceWrongBankLabel(wrongBankEnabled)}`;
   const mobileDockSummaryEl = $('setup-mobile-dock-summary');
   if (mobileDockSummaryEl) {
-    mobileDockSummaryEl.textContent = set
-      ? `${lengthText} • ${filterCats} • ${filterSrc}`
-      : 'Load a question set.';
+    mobileDockSummaryEl.textContent = wrongBankEnabled
+      ? `${lengthText} • Wrong-bank queue`
+      : set
+        ? `${lengthText} • ${filterCats} • ${filterSrc}`
+        : 'Load a question set.';
   }
+  syncPracticeWrongBankToggle();
   updateSetupMobileDock();
   renderCoachChatChrome();
 }
@@ -3826,7 +3884,9 @@ function srsBuildPseudoItems(ids) { const s = getSRS(); return ids.map(id => ({ 
 
 /********************* Session Flow *********************/
 function startSession() {
-  const set = getActiveSet(); if (!set && App.mode !== 'srs') { toast('No active set'); return; }
+  const set = getActiveSet();
+  const practicingWrongBank = isWrongBankPracticeEnabled();
+  if (!set && !practicingWrongBank) { toast('No active set'); return; }
   App.correct = 0; App.sessionBuzzTimes = []; App.resultsCorrect = []; App.i = 0; App.phase = 'idle';
   App.sessionId = `sess_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
   App.submitBusy = false;
@@ -3839,7 +3899,7 @@ function startSession() {
   const cp = $('btn-copy-answer'); if (cp) cp.disabled = true;
   if (App._cdIv) { clearInterval(App._cdIv); App._cdIv = null; }
 
-  if (App.mode === 'srs') {
+  if (practicingWrongBank) {
     const dueIds = srsDueList();
     const map = set ? new Map(set.items.map(it => [it.id, it])) : new Map();
     let pool = dueIds.map(id => map.get(id) || null).filter(Boolean);
@@ -3854,13 +3914,7 @@ function startSession() {
     App.pool = pool; App.order = sampleIndices(App.pool.length, App.size);
   } else {
     buildPool(); if (!App.pool.length) { toast('No items in pool with current filters'); return; }
-    if (App.mode === 'sequential') {
-      const total = App.pool.length;
-      const want = App.size === 'all' ? total : Math.min(total, Number(App.size) || 10);
-      App.order = [...Array(total).keys()].slice(0, want);
-    } else {
-      App.order = sampleIndices(App.pool.length, App.size);
-    }
+    App.order = sampleIndices(App.pool.length, App.size);
   }
   App.sessionOverrideItems = null;
 
@@ -3959,7 +4013,7 @@ function markWrong() {
 
 function finishMark(isRight) {
   unlockPracticeAfterGrade();
-  if (App.mode === 'srs') srsMark(App.curItem.id, isRight);
+  if (isWrongBankPracticeEnabled()) srsMark(App.curItem.id, isRight);
   if (Settings.autoAdvance) {
     setPracticeButtons({ buzz: false, next: false, right: false, wrong: false, replay: true, alias: true, flag: true });
     const delay = clamp(parseInt(($('autoAdvanceDelay') && $('autoAdvanceDelay').value) || '1', 10), 0, 5);
@@ -4412,10 +4466,11 @@ function repeatSession(ts) {
   if (!s) { toast('Session not found'); return; }
   const set = getActiveSet();
   const map = set ? new Map(set.items.map(it => [it.id, it])) : new Map();
-  App.mode = 'random'; setChipActive('mode-chips', 'random', 'mode');
-  App.pool = s.items.map(id => map.get(id)).filter(Boolean);
-  App.order = [...Array(App.pool.length).keys()];
-  App.size = App.pool.length;
+  const sessionItems = s.items.map(id => map.get(id)).filter(Boolean);
+  if (!sessionItems.length) { toast('Saved questions are unavailable in this set'); return; }
+  setPracticeWrongBank(false);
+  App.sessionOverrideItems = sessionItems;
+  App.size = sessionItems.length;
   startSession();
 }
 
@@ -4472,7 +4527,9 @@ function renderWrongBank() {
 function reviewMissedNow() {
   const recs = wrongRecords().sort((a, b) => (a.rec.dueAt || 0) - (b.rec.dueAt || 0));
   if (!recs.length) { toast('Wrong bank empty'); return; }
-  App.mode = 'srs'; setChipActive('mode-chips', 'srs', 'mode'); startSession();
+  setPracticeWrongBank(true);
+  updateSetupOverview();
+  startSession();
 }
 
 function exportWrong() {
@@ -4622,11 +4679,9 @@ $('qs-picker')?.addEventListener('change', (e) => { Library.activeSetId = e.targ
 $('btn-upload-json')?.addEventListener('click', () => { const fi = $('fileInput'); if (fi) fi.click(); });
 $('btn-demo-fetch')?.addEventListener('click', () => { tryFetchDefault(true); });
 
-// Mode chips
-$('mode-chips')?.addEventListener('click', (e) => {
-  const chip = e.target.closest('.chip'); if (!chip) return;
-  document.querySelectorAll('#mode-chips .chip').forEach(c => c.classList.remove('active'));
-  chip.classList.add('active'); App.mode = chip.dataset.mode;
+// Wrong-bank toggle
+$('practice-wrong-bank-toggle')?.addEventListener('change', (e) => {
+  setPracticeWrongBank(!!e.target.checked);
   updateSetupOverview();
 });
 // Length chips
@@ -4662,7 +4717,9 @@ $('savePreset')?.addEventListener('click', () => {
     cueTicks: ($('cueTicks') && $('cueTicks').checked) || false,
     cueBeep: ($('cueBeep') && $('cueBeep').checked) || false,
     haptics: ($('haptics') && $('haptics').checked) || false,
-    mode: App.mode, size: App.size, filters: App.filters, setId: Library.activeSetId
+    mode: App.mode,
+    practiceWrongBank: isWrongBankPracticeEnabled(),
+    size: App.size, filters: App.filters, setId: Library.activeSetId
   };
   savePresets(); renderPresets(); toast('Preset saved');
 });
@@ -5481,7 +5538,7 @@ try {
 
       // Set session length to ALL questions and mode to sequential
       App.size = 'all';
-      App.mode = 'sequential';
+      setPracticeWrongBank(false);
       App.filters = { cat: '', cats: [], era: '', eras: [], src: '' };
 
       // Auto-start the session after a short delay (DOM needs to be ready)

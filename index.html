@@ -156,11 +156,22 @@
 
               <div class="setup-grid">
                 <div class="setup-group">
-                  <label class="muted">Mode</label>
-                  <div class="chips" id="mode-chips">
-                    <div class="chip active" data-mode="random">Random</div>
-                    <div class="chip" data-mode="sequential">Sequential</div>
-                    <div class="chip" data-mode="srs">Wrong-bank (SRS)</div>
+                  <label class="muted">Practice wrong bank</label>
+                  <div id="setup-setting-practice-wrong-bank" class="practice-hub-toggle-setting" data-enabled="false">
+                    <div class="practice-hub-toggle-card">
+                      <div class="practice-hub-toggle-copy">
+                        <p class="practice-hub-toggle-summary">Use your tracked wrong-bank queue for this session.</p>
+                        <p id="practice-wrong-bank-hint" class="muted practice-hub-toggle-hint">No uses the active set and current filters in random order.</p>
+                      </div>
+                      <label class="practice-hub-switch" for="practice-wrong-bank-toggle">
+                        <input id="practice-wrong-bank-toggle" type="checkbox" role="switch"
+                          aria-describedby="practice-wrong-bank-hint">
+                        <span class="practice-hub-switch-track" aria-hidden="true">
+                          <span class="practice-hub-switch-thumb"></span>
+                        </span>
+                        <span id="practice-wrong-bank-state" class="practice-hub-switch-state">No</span>
+                      </label>
+                    </div>
                   </div>
                 </div>
                 <div class="setup-group">
@@ -181,9 +192,9 @@
                 <div class="setup-mobile-quick-head">
                   <div>
                     <div class="empty-kicker">Quick start</div>
-                    <p id="setup-mobile-summary" class="setup-mobile-summary">Random • 10 questions • All regions</p>
+                    <p id="setup-mobile-summary" class="setup-mobile-summary">10 questions • All regions • All sources</p>
                   </div>
-                  <div class="setup-mobile-mode-pill" id="setup-mobile-mode">Random</div>
+                  <div class="setup-mobile-mode-pill" id="setup-mobile-wrong-bank">Wrong bank: No</div>
                 </div>
                 <div class="form-actions setup-mobile-run-actions">
                   <button id="startSessionMobile" class="btn pri">Start Session</button>
@@ -235,15 +246,15 @@
                 <strong id="setup-summary-set">No set loaded</strong>
               </div>
               <div class="summary-item">
-                <span>Mode</span>
-                <strong id="setup-summary-mode">Random</strong>
+                <span>Wrong bank</span>
+                <strong id="setup-summary-wrong-bank">No</strong>
               </div>
               <div class="summary-item">
                 <span>Length</span>
                 <strong id="setup-summary-length">10 questions</strong>
               </div>
               <div class="summary-item">
-                <span>Filters</span>
+                <span>Scope</span>
                 <strong id="setup-summary-filters">All regions, all eras, all sources</strong>
               </div>
               <div class="summary-item">
@@ -266,7 +277,7 @@
 
     <div id="setup-mobile-dock" class="setup-mobile-dock" hidden aria-live="polite">
       <div class="setup-mobile-dock-head">
-        <div class="setup-mobile-mode-pill" id="setup-mobile-dock-mode">Random</div>
+        <div class="setup-mobile-mode-pill" id="setup-mobile-dock-wrong-bank">Wrong bank: No</div>
         <p id="setup-mobile-dock-summary" class="setup-mobile-dock-summary">10 questions • All regions • All sources</p>
       </div>
       <div class="form-actions setup-mobile-dock-actions">
