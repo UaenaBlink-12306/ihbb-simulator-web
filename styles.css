@@ -4066,7 +4066,12 @@ body::after {
   gap: 18px;
 }
 
-.hero-brand h1,
+.hero-brand h1 {
+  margin: 0;
+  font-size: clamp(30px, 4vw, 42px);
+  letter-spacing: -0.03em;
+}
+
 .auth-header h1 {
   margin: 0;
   font-size: clamp(24px, 3vw, 32px);
@@ -6699,3 +6704,4 @@ input[type=datetime-local] {
     var(--glass-control-accent),
     var(--glass-control-fill-strong);
 }
+

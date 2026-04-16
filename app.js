@@ -3761,7 +3761,7 @@ function updateSetupOverview() {
     mobileSummaryEl.textContent = wrongBankEnabled
       ? `${lengthText} • Wrong-bank queue`
       : set
-        ? `${lengthText} • ${filterCats} • ${filterSrc}`
+        ? `${lengthText} • ${filterCats} • ${filterEras} • ${filterSrc}`
         : 'Load a question set.';
   }
   const mobileWrongBankEl = $('setup-mobile-wrong-bank'); if (mobileWrongBankEl) mobileWrongBankEl.textContent = `Wrong bank: ${practiceWrongBankLabel(wrongBankEnabled)}`;
@@ -3772,7 +3772,7 @@ function updateSetupOverview() {
     mobileDockSummaryEl.textContent = wrongBankEnabled
       ? `${lengthText} • Wrong-bank queue`
       : set
-        ? `${lengthText} • ${filterCats} • ${filterSrc}`
+        ? `${lengthText} • ${filterCats} • ${filterEras} • ${filterSrc}`
         : 'Load a question set.';
   }
   syncPracticeWrongBankToggle();
