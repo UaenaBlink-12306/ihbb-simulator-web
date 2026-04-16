@@ -22,6 +22,59 @@
             transition: opacity .2s
         }
     </style>
+    <style>
+        #tab-analytics .teacher-analytics-controls {
+            margin: 0;
+            min-width: min(100%, 260px);
+        }
+
+        #tab-analytics .teacher-analytics-metrics {
+            margin-top: 24px;
+            gap: 18px;
+        }
+
+        #tab-analytics .teacher-analytics-grid {
+            margin-top: 26px;
+            gap: clamp(20px, 2.4vw, 28px);
+            align-items: stretch;
+        }
+
+        #tab-analytics .teacher-analytics-stack {
+            gap: 20px;
+        }
+
+        #tab-analytics .teacher-analytics-card {
+            padding: 18px 20px;
+        }
+
+        #tab-analytics .teacher-analytics-title {
+            margin: 8px 0 6px;
+        }
+
+        #tab-analytics .teacher-analytics-copy {
+            margin: 0;
+        }
+
+        #tab-analytics .teacher-analytics-summary-list,
+        #tab-analytics .teacher-analytics-list {
+            margin-top: 16px;
+        }
+
+        @media (max-width: 720px) {
+            #tab-analytics .teacher-analytics-metrics {
+                margin-top: 20px;
+                gap: 14px;
+            }
+
+            #tab-analytics .teacher-analytics-grid {
+                margin-top: 22px;
+            }
+
+            #tab-analytics .teacher-analytics-card {
+                padding: 16px 18px;
+            }
+        }
+    </style>
     <script src="teacher.js" defer></script>
 </head>
 
@@ -276,13 +329,13 @@
                         <h2 class="card-title">Class Analytics</h2>
                         <p class="section-subtitle">Whole-class averages from rosters, submissions, drill sessions, wrong-bank rows, and coach attempts.</p>
                     </div>
-                    <div class="input-group" style="margin: 0; min-width: 260px;">
+                    <div class="input-group teacher-analytics-controls">
                         <label for="analytics-class-select">Focus class</label>
                         <select id="analytics-class-select"></select>
                     </div>
                 </div>
 
-                <div class="hero-metrics">
+                <div class="hero-metrics teacher-analytics-metrics">
                     <div class="metric-card">
                         <div class="metric-label">Students</div>
                         <div id="teacher-analytics-students" class="metric-value">0</div>
@@ -301,28 +354,28 @@
                     </div>
                 </div>
 
-                <div class="dashboard-split">
-                    <div class="panel-stack">
-                        <div class="card-muted-box">
+                <div class="dashboard-split teacher-analytics-grid">
+                    <div class="panel-stack teacher-analytics-stack">
+                        <div class="card-muted-box teacher-analytics-card">
                             <div class="eyebrow">Selected class</div>
-                            <h3 id="analytics-class-title" style="margin: 8px 0 6px;">Loading...</h3>
-                            <p id="analytics-class-summary" class="muted" style="margin: 0;">Choose a class to inspect the averages.</p>
-                            <div id="analytics-class-summary-list" class="summary-list" style="margin-top: 14px;"></div>
+                            <h3 id="analytics-class-title" class="teacher-analytics-title">Loading...</h3>
+                            <p id="analytics-class-summary" class="muted teacher-analytics-copy">Choose a class to inspect the averages.</p>
+                            <div id="analytics-class-summary-list" class="summary-list teacher-analytics-summary-list"></div>
                         </div>
-                        <div class="card-muted-box">
+                        <div class="card-muted-box teacher-analytics-card">
                             <div class="eyebrow">Top students</div>
-                            <div id="analytics-top-students" class="list-container" style="margin-top: 14px;"></div>
+                            <div id="analytics-top-students" class="list-container teacher-analytics-list"></div>
                         </div>
-                        <div class="card-muted-box">
+                        <div class="card-muted-box teacher-analytics-card">
                             <div class="eyebrow">Needs attention</div>
-                            <div id="analytics-watch-students" class="list-container" style="margin-top: 14px;"></div>
+                            <div id="analytics-watch-students" class="list-container teacher-analytics-list"></div>
                         </div>
                     </div>
 
-                    <div class="panel-stack">
-                        <div class="card-muted-box">
+                    <div class="panel-stack teacher-analytics-stack">
+                        <div class="card-muted-box teacher-analytics-card">
                             <div class="eyebrow">All classes</div>
-                            <div id="analytics-class-list" class="list-container" style="margin-top: 14px;">
+                            <div id="analytics-class-list" class="list-container teacher-analytics-list">
                                 <p class="muted">Loading class analytics...</p>
                             </div>
                         </div>
