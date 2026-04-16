@@ -34,6 +34,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     ];
     const DAY_MS = 24 * 60 * 60 * 1000;
     let userEmail = String(session.user?.email || '').trim();
+    let currentMemberships = [];
+    let analyticsCloudReady = true;
+    let analyticsCloudWarned = false;
+    let analyticsSnapshotCurrent = null;
+    let coachCloudReady = true;
+    let coachCloudWarned = false;
+    let coachRecordsCurrent = [];
+    let coachFocusSuggestionsCurrent = [];
     const avatarCatalog = window.AvatarCatalog || {};
     const avatarOptions = Array.isArray(avatarCatalog.AVATAR_OPTIONS) && avatarCatalog.AVATAR_OPTIONS.length
         ? avatarCatalog.AVATAR_OPTIONS
@@ -419,6 +427,90 @@ document.addEventListener('DOMContentLoaded', async () => {
         joinInput.focus();
         joinInput.select();
         joinInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+
+    function normalizeJoinedClassRecord(value) {
+        if (!value || typeof value !== 'object') return null;
+        const id = String(value.id || value.class_id || '').trim();
+        if (!id) return null;
+        return {
+            id,
+            name: String(value.name || 'Joined class').trim() || 'Joined class',
+            code: String(value.code || '').trim()
+        };
+    }
+
+    function classDetailsForMembership(membership) {
+        const embedded = membership?.classes;
+        if (Array.isArray(embedded)) return normalizeJoinedClassRecord(embedded[0] || null);
+        return normalizeJoinedClassRecord(embedded);
+    }
+
+    async function fetchStudentMemberships({ includeClassDetails = true } = {}) {
+        const membershipResult = await sb
+            .from('class_students')
+            .select('class_id, joined_at')
+            .eq('student_id', uid)
+            .order('joined_at', { ascending: false });
+        if (membershipResult.error) throw membershipResult.error;
+
+        const memberships = Array.isArray(membershipResult.data) ? membershipResult.data : [];
+        if (!includeClassDetails || !memberships.length) {
+            return memberships.map((membership) => ({ ...membership, classes: null }));
+        }
+
+        const classIds = [...new Set(
+            memberships
+                .map((membership) => String(membership?.class_id || '').trim())
+                .filter(Boolean)
+        )];
+        if (!classIds.length) return memberships.map((membership) => ({ ...membership, classes: null }));
+
+        const classResult = await sb
+            .from('classes')
+            .select('id, name, code')
+            .in('id', classIds);
+        if (classResult.error) {
+            console.warn('[Student Classes] class details unavailable:', classResult.error);
+            return memberships.map((membership) => ({ ...membership, classes: null }));
+        }
+
+        const classMap = new Map(
+            (Array.isArray(classResult.data) ? classResult.data : [])
+                .map((row) => [String(row?.id || '').trim(), normalizeJoinedClassRecord(row)])
+                .filter((entry) => entry[0] && entry[1])
+        );
+
+        return memberships.map((membership) => ({
+            ...membership,
+            classes: classMap.get(String(membership?.class_id || '').trim()) || null
+        }));
+    }
+
+    function renderClassesUnavailable(message = 'We could not load your classes right now. Try again in a moment.') {
+        const el = document.getElementById('student-classes');
+        if (!el) return;
+        setMetric('student-hero-classes', 0);
+        el.innerHTML = emptyStateHtml('Classes', 'Classes unavailable', message);
+    }
+
+    function applyJoinedClassLocally(joinedClass) {
+        const normalized = normalizeJoinedClassRecord(joinedClass);
+        if (!normalized) return;
+        const alreadyJoined = currentMemberships.some((membership) => {
+            const classId = String(membership?.class_id || classDetailsForMembership(membership)?.id || '').trim();
+            return classId === normalized.id;
+        });
+        if (alreadyJoined) return;
+        currentMemberships = [
+            {
+                class_id: normalized.id,
+                joined_at: new Date().toISOString(),
+                classes: normalized
+            },
+            ...currentMemberships
+        ];
+        renderClasses(currentMemberships);
     }
 
     function readWrongBankState() {
@@ -1692,64 +1784,103 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // ========== CLASSES ==========
     async function loadClasses() {
-        const { data } = await sb.from('class_students').select('class_id, classes(id, name, code)').eq('student_id', uid);
-        renderClasses(data || []);
+        try {
+            currentMemberships = await fetchStudentMemberships({ includeClassDetails: true });
+            renderClasses(currentMemberships);
+            return currentMemberships;
+        } catch (error) {
+            console.warn('[Student Classes] failed to load:', error);
+            currentMemberships = [];
+            renderClassesUnavailable();
+            return [];
+        }
     }
 
     function renderClasses(list) {
         const el = document.getElementById('student-classes');
-        setMetric('student-hero-classes', list.length);
-        if (!list.length) {
-            el.innerHTML = emptyStateHtml('Classes', 'No classes yet', 'Use the invite code above to join your first classroom.');
+        const safeList = Array.isArray(list) ? list : [];
+        setMetric('student-hero-classes', safeList.length);
+        if (!safeList.length) {
+            el.innerHTML = emptyStateHtml('Classes', 'No classes yet', 'Enter a class code above whenever you are ready to join your first classroom.');
             return;
         }
-        el.innerHTML = list.map(cs => {
-            const c = cs.classes;
+        el.innerHTML = safeList.map(cs => {
+            const c = classDetailsForMembership(cs);
+            const classTitle = c?.name || 'Joined class';
+            const classCode = c?.code || 'Pending';
+            const classMeta = c?.code
+                ? 'Invite code ready for assignments and live play.'
+                : 'Your membership is active. Class details may still be loading.';
+            const classId = String(cs?.class_id || c?.id || '').trim();
             return `<div class="list-item">
                 <div class="item-copy">
-                    <span class="item-title">${esc(c.name)}</span>
-                    <span class="item-meta">Invite code ready for assignments and live play.</span>
+                    <span class="item-title">${esc(classTitle)}</span>
+                    <span class="item-meta">${esc(classMeta)}</span>
                 </div>
-                <span class="item-badge">${c.code}</span>
+                <span class="item-badge">${esc(classCode)}</span>
                 <div class="item-actions">
-                    <button class="btn bad" onclick="leaveClass('${cs.class_id}')">Leave</button>
+                    ${classId ? `<button class="btn bad" onclick="leaveClass('${classId}')">Leave</button>` : ''}
                 </div>
             </div>`;
         }).join('');
     }
 
     document.getElementById('btn-join').addEventListener('click', async () => {
-        const code = document.getElementById('join-code').value.trim().toUpperCase();
+        const joinInput = document.getElementById('join-code');
+        const joinButton = document.getElementById('btn-join');
+        const code = joinInput.value.trim().toUpperCase();
         if (!code) return;
         // Name is required before joining
         if (!profile.display_name || !profile.display_name.trim()) {
             document.getElementById('name-modal').classList.remove('hidden');
             return;
         }
-        const rpcJoin = await sb.rpc('join_class_by_code', { p_code: code });
-        if (!rpcJoin.error) {
-            document.getElementById('join-code').value = '';
+        joinButton.disabled = true;
+        joinInput.disabled = true;
+        const originalButtonText = joinButton.textContent;
+        joinButton.textContent = 'Joining...';
+        try {
+            const rpcJoin = await sb.rpc('join_class_by_code', { p_code: code });
+            if (rpcJoin.error) {
+                const codeValue = String(rpcJoin.error?.code || '').trim();
+                const message = String(rpcJoin.error?.message || '').toLowerCase();
+                const missingRpc = codeValue === '42883'
+                    || codeValue === 'PGRST202'
+                    || (message.includes('function') && message.includes('not found'));
+                if (missingRpc) {
+                    showAlert('Class join is unavailable until the latest Supabase migration is applied.', 'error');
+                    return;
+                }
+                showAlert(rpcJoin.error.message, 'error');
+                return;
+            }
+
+            const joinedClass = Array.isArray(rpcJoin.data) ? rpcJoin.data[0] : rpcJoin.data;
+            applyJoinedClassLocally(joinedClass);
+            joinInput.value = '';
             showAlert('Joined class!', 'success');
-            loadClasses();
-            loadAssignments();
-            return;
+            await Promise.all([loadClasses(), loadAssignments()]);
+        } catch (error) {
+            console.warn('[Student Join Class] failed:', error);
+            showAlert(error?.message || 'We could not join that class right now.', 'error');
+        } finally {
+            joinButton.disabled = false;
+            joinInput.disabled = false;
+            joinButton.textContent = originalButtonText;
         }
-        const codeValue = String(rpcJoin.error?.code || '').trim();
-        const message = String(rpcJoin.error?.message || '').toLowerCase();
-        const missingRpc = codeValue === '42883'
-            || codeValue === 'PGRST202'
-            || (message.includes('function') && message.includes('not found'));
-        if (missingRpc) {
-            showAlert('Class join is unavailable until the latest Supabase migration is applied.', 'error');
-            return;
-        }
-        showAlert(rpcJoin.error.message, 'error');
     });
 
     window.leaveClass = async (classId) => {
         if (!confirm('Leave this class?')) return;
-        await sb.from('class_students').delete().eq('class_id', classId).eq('student_id', uid);
-        loadClasses(); loadAssignments();
+        const { error } = await sb.from('class_students').delete().eq('class_id', classId).eq('student_id', uid);
+        if (error) {
+            showAlert(error.message || 'We could not leave that class right now.', 'error');
+            return;
+        }
+        currentMemberships = currentMemberships.filter((membership) => String(membership?.class_id || '').trim() !== String(classId || '').trim());
+        renderClasses(currentMemberships);
+        showAlert('Left class.', 'success');
+        await Promise.all([loadClasses(), loadAssignments()]);
     };
 
     // ========== ASSIGNMENT SUB-TABS ==========
@@ -1815,33 +1946,64 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // ========== ASSIGNMENTS ==========
     async function loadAssignments() {
-        const { data: memberships } = await sb.from('class_students').select('class_id').eq('student_id', uid);
-        if (!memberships || !memberships.length) {
+        try {
+            const memberships = await fetchStudentMemberships({ includeClassDetails: false });
+            if (!memberships.length) {
+                setMetric('student-hero-todo', 0);
+                setMetric('student-hero-done', 0);
+                document.getElementById('student-assignments-todo').innerHTML = emptyStateHtml(
+                    'Assignments',
+                    'Join a class first',
+                    'Assignments will appear here once you are enrolled in at least one classroom.',
+                    joinClassActionHtml()
+                );
+                document.getElementById('student-assignments-completed').innerHTML = emptyStateHtml(
+                    'Completed',
+                    'Join a class to unlock class work',
+                    'Finished assignments and redo links will appear here after you join a classroom.',
+                    joinClassActionHtml()
+                );
+                renderAssignmentsCoachBrief();
+                return;
+            }
+            const classIds = memberships
+                .map((membership) => String(membership?.class_id || '').trim())
+                .filter(Boolean);
+            const assignmentsResult = await sb
+                .from('assignments')
+                .select('*, classes(name)')
+                .in('class_id', classIds)
+                .order('due_date', { ascending: true });
+            if (assignmentsResult.error) throw assignmentsResult.error;
+
+            const submissionsResult = await sb
+                .from('assignment_submissions')
+                .select('assignment_id, correct, total')
+                .eq('student_id', uid);
+            if (submissionsResult.error) throw submissionsResult.error;
+
+            const subMap = {};
+            (submissionsResult.data || []).forEach((submission) => {
+                subMap[submission.assignment_id] = submission;
+            });
+
+            renderAssignments(assignmentsResult.data || [], subMap);
+        } catch (error) {
+            console.warn('[Student Assignments] failed to load:', error);
             setMetric('student-hero-todo', 0);
             setMetric('student-hero-done', 0);
             document.getElementById('student-assignments-todo').innerHTML = emptyStateHtml(
                 'Assignments',
-                'Join a class first',
-                'Assignments will appear here once you are enrolled in at least one classroom.',
-                joinClassActionHtml()
+                'Assignments unavailable',
+                'We could not load your class assignments right now. Try again in a moment.'
             );
             document.getElementById('student-assignments-completed').innerHTML = emptyStateHtml(
                 'Completed',
-                'Join a class to unlock class work',
-                'Finished assignments and redo links will appear here after you join a classroom.',
-                joinClassActionHtml()
+                'Completed work unavailable',
+                'We could not load your completed assignments right now. Try again in a moment.'
             );
             renderAssignmentsCoachBrief();
-            return;
         }
-        const classIds = memberships.map(m => m.class_id);
-        const { data: assignments } = await sb.from('assignments').select('*, classes(name)').in('class_id', classIds).order('due_date', { ascending: true });
-
-        const { data: subs } = await sb.from('assignment_submissions').select('assignment_id, correct, total').eq('student_id', uid);
-        const subMap = {};
-        (subs || []).forEach(s => subMap[s.assignment_id] = s);
-
-        renderAssignments(assignments || [], subMap);
     }
 
     function renderAssignments(list, subMap) {
@@ -2362,14 +2524,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         const maybeCode = raw.length === 1 ? `0${raw}` : raw;
         return ERA_LABELS[maybeCode] || ERA_LABELS[raw] || raw;
     }
-
-    let analyticsCloudReady = true;
-    let analyticsCloudWarned = false;
-    let analyticsSnapshotCurrent = null;
-    let coachCloudReady = true;
-    let coachCloudWarned = false;
-    let coachRecordsCurrent = [];
-    let coachFocusSuggestionsCurrent = [];
 
     function isCloudAnalyticsSetupIssue(err) {
         const code = String(err?.code || '');
