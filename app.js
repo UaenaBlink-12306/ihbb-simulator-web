@@ -4668,20 +4668,6 @@ $('nav-coach')?.addEventListener('click', async (e) => {
 $('nav-library')?.addEventListener('click', (e) => { e.preventDefault(); playFeedbackCue('nav'); navSet('nav-library'); SHOW('view-library'); renderLibraryTable(); });
 window.addEventListener('resize', () => { schedulePracticeViewportFit(); });
 
-// Advanced toggle
-$('advToggle')?.addEventListener('click', () => {
-  playFeedbackCue('tap', { sound: false });
-  const wrapper = $('advBodyWrapper');
-  const car = $('advCaret');
-  if (!wrapper || !car) return;
-
-  wrapper.classList.toggle('open');
-  if (wrapper.classList.contains('open')) {
-    car.classList.remove('rotate');
-  } else {
-    car.classList.add('rotate');
-  }
-});
 
 // Setup events
 $('fileInput')?.addEventListener('change', async (e) => {
