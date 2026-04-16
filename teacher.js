@@ -191,8 +191,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         selectedClassId: '',
         classes: [],
         byClassId: new Map(),
+        studentsById: new Map(),
         totals: null
     };
+    const teacherStudentDetailState = {
+        studentId: '',
+        selectedClassId: ''
+    };
+    const DAY_MS = 24 * 60 * 60 * 1000;
     let teacherAnalyticsLoadVersion = 0;
     const toNum = (value, fallback = 0) => {
         const n = Number(value);
@@ -210,8 +216,29 @@ document.addEventListener('DOMContentLoaded', async () => {
         const n = Number(value);
         return Number.isFinite(n) ? `${n.toFixed(digits)}%` : '—';
     };
+    const formatDuration = (seconds) => {
+        const n = Number(seconds);
+        if (!Number.isFinite(n) || n <= 0) return '—';
+        if (n < 60) return `${Math.round(n)}s`;
+        const mins = Math.floor(n / 60);
+        const secs = Math.round(n % 60);
+        return `${mins}m ${String(secs).padStart(2, '0')}s`;
+    };
+    const formatDate = (value) => {
+        const ts = toTs(value);
+        return ts ? new Date(ts).toLocaleDateString() : '—';
+    };
+    const formatDateTime = (value) => {
+        const ts = toTs(value);
+        return ts ? new Date(ts).toLocaleString() : '—';
+    };
     const formatCount = (value, label) => `${value} ${label}${value === 1 ? '' : 's'}`;
     const sumBy = (list, getter) => (list || []).reduce((total, item) => total + toNum(getter(item), 0), 0);
+    const averageBy = (list, getter) => {
+        const rows = Array.isArray(list) ? list : [];
+        if (!rows.length) return null;
+        return sumBy(rows, getter) / rows.length;
+    };
     const uniqueValues = (list) => [...new Set((list || []).filter(Boolean))];
     const groupBy = (list, getter) => {
         const map = new Map();
@@ -222,13 +249,189 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
         return map;
     };
-    const renderStudentList = (containerId, rows, emptyCopy) => {
+    const dedupeByKey = (list, getter) => {
+        const map = new Map();
+        (list || []).forEach((item) => {
+            const key = getter(item);
+            if (!key || map.has(key)) return;
+            map.set(key, item);
+        });
+        return [...map.values()];
+    };
+    const pad2 = (n) => String(n).padStart(2, '0');
+    const dayKeyFromDate = (date) => `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
+    const dayKeyFromTs = (value) => {
+        const d = new Date(toTs(value));
+        d.setHours(0, 0, 0, 0);
+        return dayKeyFromDate(d);
+    };
+    const buildLast30Days = () => {
+        const out = [];
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        for (let i = 29; i >= 0; i--) {
+            const day = new Date(today);
+            day.setDate(day.getDate() - i);
+            out.push({
+                key: dayKeyFromDate(day),
+                label: `${day.getMonth() + 1}/${day.getDate()}`,
+                date: day,
+                attempts: 0,
+                correct: 0,
+                sessions: 0,
+                buzzSum: 0,
+                buzzN: 0,
+                accuracy: null,
+                avgBuzz: null
+            });
+        }
+        return out;
+    };
+    const normalizeAnalyticsRegion = (value) => {
+        const raw = String(value || '').trim();
+        return raw || 'Unknown Region';
+    };
+    const normalizeAnalyticsEra = (value) => {
+        const raw = String(value || '').trim();
+        if (!raw) return 'Unknown Era';
+        const maybeCode = raw.length === 1 ? `0${raw}` : raw;
+        return ERA_LABELS[maybeCode] || ERA_LABELS[raw] || raw;
+    };
+    const normalizeSessionForAnalytics = (raw) => {
+        const ts = Number(raw?.ts) || (raw?.created_at ? new Date(raw.created_at).getTime() : 0);
+        return {
+            ts,
+            total: toNum(raw?.total),
+            correct: toNum(raw?.correct),
+            dur: toNum(raw?.dur),
+            buzz: Array.isArray(raw?.buzz) ? raw.buzz : [],
+            items: Array.isArray(raw?.items) ? raw.items : [],
+            results: Array.isArray(raw?.results) ? raw.results : [],
+            meta: Array.isArray(raw?.meta) ? raw.meta : []
+        };
+    };
+    const addDimStat = (mapObj, name, isCorrect, buzzValue) => {
+        if (!mapObj[name]) mapObj[name] = { name, attempts: 0, correct: 0, buzzSum: 0, buzzN: 0 };
+        mapObj[name].attempts += 1;
+        if (isCorrect) mapObj[name].correct += 1;
+        if (Number.isFinite(buzzValue) && buzzValue > 0) {
+            mapObj[name].buzzSum += buzzValue;
+            mapObj[name].buzzN += 1;
+        }
+    };
+    const finalizeDimStats = (mapObj) => Object.values(mapObj).map((row) => ({
+        name: row.name,
+        attempts: row.attempts,
+        correct: row.correct,
+        accuracy: row.attempts ? Math.round((row.correct / row.attempts) * 100) : 0,
+        avgBuzz: row.buzzN ? (row.buzzSum / row.buzzN) : null
+    })).sort((a, b) => b.attempts - a.attempts || a.name.localeCompare(b.name));
+    const summarizeWindow = (days) => {
+        const attempts = sumBy(days, row => row.attempts);
+        const correct = sumBy(days, row => row.correct);
+        const buzzSum = sumBy(days, row => row.buzzSum);
+        const buzzN = sumBy(days, row => row.buzzN);
+        return {
+            attempts,
+            accuracy: attempts ? (correct / attempts * 100) : null,
+            avgBuzz: buzzN ? (buzzSum / buzzN) : null
+        };
+    };
+    const computeTeacherAnalyticsSnapshot = (sessionsRaw) => {
+        const cutoff = Date.now() - (30 * DAY_MS);
+        const sessions = (Array.isArray(sessionsRaw) ? sessionsRaw : [])
+            .map(normalizeSessionForAnalytics)
+            .filter((session) => Number(session.ts) >= cutoff)
+            .sort((a, b) => Number(a.ts) - Number(b.ts));
+        const days = buildLast30Days();
+        const dayMap = new Map(days.map((day) => [day.key, day]));
+        const eraAgg = {};
+        const regionAgg = {};
+        let totalAttempts = 0;
+        let totalCorrect = 0;
+        let totalBuzzSum = 0;
+        let totalBuzzN = 0;
+        let fastestBuzz = null;
+
+        sessions.forEach((session) => {
+            const day = dayMap.get(dayKeyFromTs(session.ts));
+            totalAttempts += session.total;
+            totalCorrect += session.correct;
+            if (day) {
+                day.sessions += 1;
+                day.attempts += session.total;
+                day.correct += session.correct;
+            }
+
+            (Array.isArray(session.buzz) ? session.buzz : []).forEach((buzzRaw) => {
+                const buzz = Number(buzzRaw);
+                if (!Number.isFinite(buzz) || buzz <= 0) return;
+                totalBuzzSum += buzz;
+                totalBuzzN += 1;
+                if (day) {
+                    day.buzzSum += buzz;
+                    day.buzzN += 1;
+                }
+                if (fastestBuzz === null || buzz < fastestBuzz) fastestBuzz = buzz;
+            });
+
+            const ids = Array.isArray(session.items) ? session.items : [];
+            const results = Array.isArray(session.results) ? session.results : [];
+            if (!ids.length || !results.length) return;
+            const maxLen = Math.min(ids.length, results.length);
+            for (let i = 0; i < maxLen; i++) {
+                const meta = Array.isArray(session.meta) ? session.meta[i] : null;
+                const region = normalizeAnalyticsRegion(meta?.category || '');
+                const era = normalizeAnalyticsEra(meta?.era || '');
+                const isCorrect = !!results[i];
+                const buzzValue = Number((Array.isArray(session.buzz) ? session.buzz : [])[i]);
+                addDimStat(regionAgg, region, isCorrect, buzzValue);
+                addDimStat(eraAgg, era, isCorrect, buzzValue);
+            }
+        });
+
+        days.forEach((day) => {
+            day.accuracy = day.attempts ? Math.round((day.correct / day.attempts) * 100) : null;
+            day.avgBuzz = day.buzzN ? (day.buzzSum / day.buzzN) : null;
+        });
+
+        const eraStats = finalizeDimStats(eraAgg);
+        const regionStats = finalizeDimStats(regionAgg);
+        const blindSpots = [
+            ...eraStats.map((row) => ({ ...row, dim: 'Era' })),
+            ...regionStats.map((row) => ({ ...row, dim: 'Region' }))
+        ]
+            .filter((row) => row.attempts >= 4)
+            .sort((a, b) => a.accuracy - b.accuracy || b.attempts - a.attempts || a.name.localeCompare(b.name))
+            .slice(0, 6);
+        const last7 = summarizeWindow(days.slice(-7));
+        const prev7 = summarizeWindow(days.slice(-14, -7));
+
+        return {
+            days,
+            sessionsCount: sessions.length,
+            totalAttempts,
+            totalCorrect,
+            totalAccuracy: totalAttempts ? Math.round((totalCorrect / totalAttempts) * 100) : 0,
+            avgBuzz: totalBuzzN ? (totalBuzzSum / totalBuzzN) : null,
+            fastestBuzz,
+            activeDays: days.filter((day) => day.attempts > 0).length,
+            accDelta7d: (last7.accuracy === null || prev7.accuracy === null) ? null : (last7.accuracy - prev7.accuracy),
+            buzzDelta7d: (last7.avgBuzz === null || prev7.avgBuzz === null) ? null : (last7.avgBuzz - prev7.avgBuzz),
+            eraStats,
+            regionStats,
+            blindSpots
+        };
+    };
+    const renderStudentList = (containerId, rows, emptyCopy, options = {}) => {
         const el = document.getElementById(containerId);
         if (!el) return;
         if (!rows || !rows.length) {
             el.innerHTML = `<p class="muted">${esc(emptyCopy)}</p>`;
             return;
         }
+        const clickable = !!options.clickable;
+        const classId = String(options.classId || '').trim();
         el.innerHTML = rows.map((row) => {
             const score = Number.isFinite(row.avgAssignmentScore) ? `${row.avgAssignmentScore}%` : '—';
             const scoreClass = Number.isFinite(row.avgAssignmentScore)
@@ -241,14 +444,21 @@ document.addEventListener('DOMContentLoaded', async () => {
                 row.wrongCount ? `${formatCount(row.wrongCount, 'wrong-bank row')}` : 'No wrong-bank rows',
                 row.coachCount ? `${formatCount(row.coachCount, 'coach attempt')}` : 'No coach attempts'
             ];
+            const actionHtml = clickable && row.id
+                ? `<div class="item-actions"><span class="item-badge">Open analytics</span></div>`
+                : '';
+            const attrs = clickable && row.id
+                ? `data-analytics-student-id="${esc(row.id)}" data-analytics-student-class-id="${esc(classId)}" tabindex="0" role="button"`
+                : '';
             return `
-                <div class="list-item">
+                <div class="list-item ${clickable && row.id ? 'analytics-student-row' : ''}" ${attrs}>
                     ${userAvatarHtml(row.avatarId || '', row.name || 'Unnamed')}
                     <div class="item-copy">
                         <span class="item-title">${esc(row.name || 'Unnamed')}</span>
                         <span class="item-meta">${esc(detailBits.join(' • '))}</span>
                     </div>
                     <span class="item-score ${scoreClass}">${esc(score)}</span>
+                    ${actionHtml}
                 </div>
             `;
         }).join('');
@@ -308,12 +518,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     };
     function normalizeTeacherAnalyticsClassRows(classRows, rosterRows, assignmentRows, submissionRows, sessionRows, wrongRows, coachRows, profileRows) {
         const rosterByClass = groupBy(rosterRows, row => String(row.class_id || ''));
+        const rosterByStudent = groupBy(rosterRows, row => String(row.student_id || ''));
         const assignmentsByClass = groupBy(assignmentRows, row => String(row.class_id || ''));
+        const assignmentById = new Map((assignmentRows || []).map((row) => [String(row.id || ''), row]));
         const submissionsByAssignment = groupBy(submissionRows, row => String(row.assignment_id || ''));
+        const submissionsByStudent = groupBy(submissionRows, row => String(row.student_id || ''));
         const sessionsByStudent = groupBy(sessionRows, row => String(row.user_id || ''));
         const wrongByStudent = groupBy(wrongRows, row => String(row.user_id || ''));
         const coachByStudent = groupBy(coachRows, row => String(row.user_id || ''));
         const profileById = new Map((profileRows || []).map((row) => [String(row.id || ''), row]));
+        const classRowById = new Map((classRows || []).map((row) => [String(row.id || ''), row]));
 
         const classStats = (classRows || []).map((classRow) => {
             const classId = String(classRow.id || '');
@@ -322,12 +536,12 @@ document.addEventListener('DOMContentLoaded', async () => {
             const submissions = assignmentList.length
                 ? assignmentList.flatMap((assignment) => submissionsByAssignment.get(String(assignment.id || '')) || [])
                 : [];
-            const submissionsByStudent = groupBy(submissions, row => String(row.student_id || ''));
+            const submissionsForClassByStudent = groupBy(submissions, row => String(row.student_id || ''));
             const studentIds = uniqueValues(roster.map((row) => String(row.student_id || '')).filter(Boolean));
             const assignmentCount = assignmentList.length;
             const studentRows = studentIds.map((studentId) => {
                 const profile = profileById.get(studentId) || {};
-                const studentSubmissions = submissionsByStudent.get(studentId) || [];
+                const studentSubmissions = submissionsForClassByStudent.get(studentId) || [];
                 const studentSessions = sessionsByStudent.get(studentId) || [];
                 const studentWrong = wrongByStudent.get(studentId) || [];
                 const studentCoach = coachByStudent.get(studentId) || [];
@@ -448,7 +662,134 @@ document.addEventListener('DOMContentLoaded', async () => {
             return a.name.localeCompare(b.name);
         });
 
+        const classStatsById = new Map(classStats.map((row) => [row.id, row]));
         const uniqueStudents = uniqueValues((rosterRows || []).map(row => String(row.student_id || '')));
+        const studentDetails = uniqueStudents.map((studentId) => {
+            const profile = profileById.get(studentId) || {};
+            const studentSessions = sessionsByStudent.get(studentId) || [];
+            const studentWrong = wrongByStudent.get(studentId) || [];
+            const studentCoach = coachByStudent.get(studentId) || [];
+            const membershipRows = rosterByStudent.get(studentId) || [];
+            const studentSubmissionRows = submissionsByStudent.get(studentId) || [];
+
+            const classes = membershipRows.map((membershipRow) => {
+                const classId = String(membershipRow.class_id || '');
+                const classInfo = classRowById.get(classId) || {};
+                const classSummary = classStatsById.get(classId) || {};
+                const assignmentList = assignmentsByClass.get(classId) || [];
+                const latestSubmissionByAssignment = new Map();
+                studentSubmissionRows.forEach((submission) => {
+                    const assignmentId = String(submission.assignment_id || '');
+                    if (!assignmentId) return;
+                    const assignment = assignmentById.get(assignmentId);
+                    if (String(assignment?.class_id || '') !== classId) return;
+                    const existing = latestSubmissionByAssignment.get(assignmentId);
+                    const existingTs = toTs(existing?.submitted_at || existing?.created_at);
+                    const nextTs = toTs(submission.submitted_at || submission.created_at);
+                    if (!existing || nextTs >= existingTs) latestSubmissionByAssignment.set(assignmentId, submission);
+                });
+
+                const assignmentItems = assignmentList.map((assignment) => {
+                    const assignmentId = String(assignment.id || '');
+                    const submission = latestSubmissionByAssignment.get(assignmentId) || null;
+                    const submissionTotal = toNum(submission?.total);
+                    const score = submission && submissionTotal > 0
+                        ? Math.round((toNum(submission?.correct) / submissionTotal) * 100)
+                        : null;
+                    return {
+                        assignmentId,
+                        classId,
+                        className: String(classInfo.name || classSummary.name || 'Unnamed Class'),
+                        classCode: String(classInfo.code || classSummary.code || ''),
+                        title: String(assignment.title || 'Untitled assignment'),
+                        dueDate: assignment.due_date || '',
+                        createdAt: assignment.created_at || '',
+                        submission: submission ? {
+                            correct: toNum(submission.correct),
+                            total: submissionTotal,
+                            submittedAt: submission.submitted_at || submission.created_at || '',
+                            score
+                        } : null
+                    };
+                }).sort((a, b) => {
+                    const aPending = !a.submission;
+                    const bPending = !b.submission;
+                    if (aPending !== bPending) return aPending ? -1 : 1;
+                    const aTs = toTs(a.submission?.submittedAt || a.dueDate || a.createdAt);
+                    const bTs = toTs(b.submission?.submittedAt || b.dueDate || b.createdAt);
+                    return bTs - aTs || a.title.localeCompare(b.title);
+                });
+
+                const submittedItems = assignmentItems.filter((item) => item.submission);
+                const assignmentCorrect = sumBy(submittedItems, item => item.submission.correct);
+                const assignmentTotal = sumBy(submittedItems, item => item.submission.total);
+                const joinedAt = membershipRow.joined_at || '';
+                const lastActivity = Math.max(
+                    toTs(joinedAt),
+                    ...assignmentItems.map((item) => toTs(item.submission?.submittedAt || item.dueDate || item.createdAt)),
+                    toTs(classSummary.lastActivity || 0),
+                    0
+                );
+
+                return {
+                    classId,
+                    className: String(classInfo.name || classSummary.name || 'Unnamed Class'),
+                    classCode: String(classInfo.code || classSummary.code || ''),
+                    joinedAt,
+                    assignmentCount: assignmentItems.length,
+                    submissionCount: submittedItems.length,
+                    completionRate: assignmentItems.length ? Math.round((submittedItems.length / assignmentItems.length) * 100) : null,
+                    avgAssignmentScore: assignmentTotal > 0 ? Math.round((assignmentCorrect / assignmentTotal) * 100) : null,
+                    lastActivity,
+                    assignmentItems
+                };
+            }).sort((a, b) => a.className.localeCompare(b.className));
+
+            const assignmentItems = dedupeByKey(classes.flatMap((classInfo) => classInfo.assignmentItems), (item) => item.assignmentId);
+            const submittedAssignments = assignmentItems.filter((item) => item.submission);
+            const assignmentCorrect = sumBy(submittedAssignments, item => item.submission.correct);
+            const assignmentTotal = sumBy(submittedAssignments, item => item.submission.total);
+            const sessionCorrect = sumBy(studentSessions, row => row.correct);
+            const sessionTotal = sumBy(studentSessions, row => row.total);
+            const totalAnswers = assignmentTotal + sessionTotal;
+            const latestActivity = Math.max(
+                ...classes.map((classInfo) => toTs(classInfo.lastActivity)),
+                ...studentSessions.map((row) => toTs(row.ts || row.created_at)),
+                ...studentWrong.map((row) => toTs(row.created_at)),
+                ...studentCoach.map((row) => toTs(row.created_at)),
+                0
+            );
+
+            return {
+                id: studentId,
+                name: String(profile.display_name || 'Unnamed'),
+                avatarId: normalizeAvatarId(profile.avatar_id),
+                classes,
+                assignmentItems,
+                sessions: studentSessions,
+                wrongRows: studentWrong,
+                coachRows: studentCoach,
+                snapshot: computeTeacherAnalyticsSnapshot(studentSessions),
+                summary: {
+                    overallAccuracy: totalAnswers > 0 ? Math.round(((assignmentCorrect + sessionCorrect) / totalAnswers) * 100) : null,
+                    totalAnswers,
+                    sessionAnswers: sessionTotal,
+                    assignmentAnswers: assignmentTotal,
+                    practiceSessions: studentSessions.length,
+                    sessionAccuracy: sessionTotal > 0 ? Math.round((sessionCorrect / sessionTotal) * 100) : null,
+                    avgSessionDuration: averageBy(studentSessions, row => row.dur),
+                    assignmentCount: assignmentItems.length,
+                    assignmentSubmissions: submittedAssignments.length,
+                    assignmentAccuracy: assignmentTotal > 0 ? Math.round((assignmentCorrect / assignmentTotal) * 100) : null,
+                    overallCompletion: assignmentItems.length ? Math.round((submittedAssignments.length / assignmentItems.length) * 100) : null,
+                    wrongBankRows: studentWrong.length,
+                    coachAttempts: studentCoach.length,
+                    classMemberships: classes.length,
+                    latestActivity: latestActivity || null
+                }
+            };
+        });
+
         const totalSubmissions = sumBy(submissionRows, row => 1);
         const totalCorrect = sumBy(submissionRows, row => row.correct);
         const totalPossible = sumBy(submissionRows, row => row.total);
@@ -467,6 +808,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             classes: classStats,
             selectedClassId: classStats[0]?.id || '',
             byClassId: new Map(classStats.map((row) => [row.id, row])),
+            studentsById: new Map(studentDetails.map((row) => [row.id, row])),
             totals: {
                 classCount: totalClasses,
                 studentCount: uniqueStudents.length,
@@ -479,6 +821,434 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         };
     }
+    const getTeacherStudentContext = (detail, selectedClassId) => {
+        const requestedClassId = String(selectedClassId || '').trim();
+        const selectedClass = requestedClassId
+            ? (detail?.classes || []).find((row) => row.classId === requestedClassId) || null
+            : null;
+        const assignmentItems = selectedClass ? selectedClass.assignmentItems : (detail?.assignmentItems || []);
+        const submittedItems = assignmentItems.filter((item) => item?.submission);
+        const assignmentCorrect = sumBy(submittedItems, item => item.submission.correct);
+        const assignmentTotal = sumBy(submittedItems, item => item.submission.total);
+        const sessionCorrect = sumBy(detail?.sessions || [], row => row.correct);
+        const sessionTotal = sumBy(detail?.sessions || [], row => row.total);
+        const totalAnswers = assignmentTotal + sessionTotal;
+        const latestActivity = Math.max(
+            toTs(detail?.summary?.latestActivity),
+            ...assignmentItems.map((item) => toTs(item?.submission?.submittedAt || item?.dueDate || item?.createdAt)),
+            0
+        );
+        return {
+            selectedClass,
+            selectedClassId: selectedClass?.classId || '',
+            classLabel: selectedClass
+                ? `${selectedClass.className}${selectedClass.classCode ? ` (${selectedClass.classCode})` : ''}`
+                : 'All visible classes',
+            assignmentItems,
+            submittedItems,
+            assignmentAccuracy: assignmentTotal > 0 ? Math.round((assignmentCorrect / assignmentTotal) * 100) : null,
+            completionRate: assignmentItems.length ? Math.round((submittedItems.length / assignmentItems.length) * 100) : null,
+            overallAccuracy: totalAnswers > 0 ? Math.round(((assignmentCorrect + sessionCorrect) / totalAnswers) * 100) : null,
+            latestActivity: latestActivity || null,
+            pendingCount: assignmentItems.filter((item) => !item?.submission).length
+        };
+    };
+    const buildTeacherStudentPerformanceListHtml = (stats, emptyCopy) => {
+        if (!Array.isArray(stats) || !stats.length) return `<p class="muted">${esc(emptyCopy)}</p>`;
+        return `
+            <div class="analytics-perf-list">
+                ${stats.slice(0, 6).map((row) => `
+                    <div class="analytics-perf-row">
+                        <div class="analytics-perf-top">
+                            <div class="analytics-perf-name">${esc(row.name || 'Unknown')}</div>
+                            <div class="analytics-perf-meta">${esc(`${row.attempts || 0} q`)}</div>
+                        </div>
+                        <div class="analytics-perf-bar">
+                            <span class="analytics-perf-fill" style="width:${Math.max(4, Number(row.accuracy || 0))}%; --perf-color:${Number(row.accuracy || 0) >= 75 ? '#34d399' : (Number(row.accuracy || 0) >= 60 ? '#fbbf24' : '#f87171')};"></span>
+                        </div>
+                        <div class="analytics-perf-bottom">
+                            <span>${esc(Number.isFinite(row.avgBuzz) ? `${row.avgBuzz.toFixed(2)}s avg buzz` : 'No buzz timing saved')}</span>
+                            <strong>${esc(formatPct(row.accuracy))}</strong>
+                        </div>
+                    </div>
+                `).join('')}
+            </div>
+        `;
+    };
+    const buildTeacherStudentBlindSpotsHtml = (spots) => {
+        if (!Array.isArray(spots) || !spots.length) return '<p class="muted">No blind spots detected from the recent drill data.</p>';
+        return `
+            <div class="analytics-blind-list">
+                ${spots.slice(0, 6).map((spot) => {
+                    const severity = Number(spot.accuracy) < 50 ? 'High priority' : (Number(spot.accuracy) < 70 ? 'Watch' : 'Emerging');
+                    return `
+                        <div class="analytics-blind-card">
+                            <div class="analytics-blind-head">
+                                <div class="analytics-blind-name">${esc(spot.name || 'Unknown')}</div>
+                                <div class="analytics-blind-tag">${esc(severity)}</div>
+                            </div>
+                            <div class="analytics-perf-bottom">
+                                <span>${esc(`${spot.dim || 'Focus'} • ${spot.attempts || 0} questions`)}</span>
+                                <strong>${esc(formatPct(spot.accuracy))}</strong>
+                            </div>
+                            <div class="analytics-perf-bottom">
+                                <span>${esc(Number.isFinite(spot.avgBuzz) ? `${spot.avgBuzz.toFixed(2)}s avg buzz` : 'No buzz timing saved')}</span>
+                                <strong>${esc(`${spot.correct || 0}/${spot.attempts || 0} correct`)}</strong>
+                            </div>
+                        </div>
+                    `;
+                }).join('')}
+            </div>
+        `;
+    };
+    const buildTeacherStudentHeatmapHtml = (snapshot) => {
+        const days = Array.isArray(snapshot?.days) ? snapshot.days : [];
+        if (!days.length || !snapshot?.totalAttempts) {
+            return `
+                <div class="analytics-heatmap">
+                    ${Array.from({ length: 30 }).map(() => '<div class="analytics-heat-cell analytics-heat-0"></div>').join('')}
+                </div>
+                <div class="muted" style="margin-top:10px;">No 30-day drill activity yet.</div>
+            `;
+        }
+        const maxAttempts = Math.max(...days.map((day) => Number(day.attempts || 0)), 0);
+        const cells = days.map((day) => {
+            const attempts = Number(day.attempts || 0);
+            const ratio = maxAttempts > 0 ? (attempts / maxAttempts) : 0;
+            const intensity = attempts <= 0 ? 0 : Math.max(1, Math.min(4, Math.ceil(ratio * 4)));
+            const title = `${day.label}: ${attempts} questions${day.accuracy === null ? '' : ` • ${day.accuracy}% accuracy`}`;
+            return `<div class="analytics-heat-cell analytics-heat-${intensity}" title="${esc(title)}"></div>`;
+        }).join('');
+        const caption = `${snapshot.activeDays || 0} active days in the last 30. Fastest buzz: ${Number.isFinite(snapshot.fastestBuzz) ? `${snapshot.fastestBuzz.toFixed(2)}s` : '—'}.`;
+        return `
+            <div class="analytics-heatmap">${cells}</div>
+            <div class="muted" style="margin-top:10px;">${esc(caption)}</div>
+        `;
+    };
+    const buildTeacherStudentAssignmentsHtml = (context) => {
+        if (!Array.isArray(context?.assignmentItems) || !context.assignmentItems.length) {
+            return '<p class="muted">No assignments are attached to this class context yet.</p>';
+        }
+        return context.assignmentItems.map((item) => {
+            const submission = item.submission;
+            const score = Number.isFinite(submission?.score) ? `${submission.score}%` : '—';
+            const scoreClass = Number.isFinite(submission?.score)
+                ? (submission.score >= 80 ? 'good' : (submission.score < 65 ? 'bad' : ''))
+                : '';
+            const meta = [
+                item.className ? item.className : '',
+                item.dueDate ? `Due ${formatDate(item.dueDate)}` : '',
+                submission?.submittedAt ? `Submitted ${formatDateTime(submission.submittedAt)}` : 'No submission yet'
+            ].filter(Boolean);
+            return `
+                <div class="list-item">
+                    <div class="item-copy">
+                        <span class="item-title">${esc(item.title || 'Untitled assignment')}</span>
+                        <span class="item-meta">${esc(meta.join(' • '))}</span>
+                    </div>
+                    ${submission
+                        ? `<span class="status-pill done">Completed</span><span class="item-score ${scoreClass}">${esc(`${submission.correct}/${submission.total} • ${score}`)}</span>`
+                        : `<span class="status-pill pending">Pending</span>`}
+                </div>
+            `;
+        }).join('');
+    };
+    const buildTeacherStudentRecentActivityHtml = (detail, context) => {
+        const events = [];
+        (context?.submittedItems || []).forEach((item) => {
+            const submittedAt = item?.submission?.submittedAt || '';
+            events.push({
+                ts: toTs(submittedAt),
+                title: item.title || 'Assignment submission',
+                type: 'Assignment',
+                detail: `${item.className || 'Class'} • ${item.submission.correct}/${item.submission.total} • ${Number.isFinite(item.submission.score) ? `${item.submission.score}%` : '—'}`
+            });
+        });
+        (detail?.sessions || []).forEach((session) => {
+            const total = toNum(session.total);
+            const correct = toNum(session.correct);
+            const accuracy = total > 0 ? Math.round((correct / total) * 100) : null;
+            events.push({
+                ts: toTs(session.ts || session.created_at),
+                title: `${formatCount(total, 'question')} in practice`,
+                type: 'Drill session',
+                detail: `${accuracy === null ? '—' : `${accuracy}% accuracy`} • ${formatDuration(session.dur)}`
+            });
+        });
+        (detail?.wrongRows || []).forEach((row) => {
+            events.push({
+                ts: toTs(row.created_at),
+                title: 'Added a question to the wrong-bank queue',
+                type: 'Wrong-bank',
+                detail: 'Saved for later review'
+            });
+        });
+        (detail?.coachRows || []).forEach((row) => {
+            events.push({
+                ts: toTs(row.created_at),
+                title: 'Saved a coach notebook attempt',
+                type: 'Coach',
+                detail: 'Stored for follow-up review'
+            });
+        });
+        const ranked = events
+            .filter((event) => event.ts > 0)
+            .sort((a, b) => b.ts - a.ts)
+            .slice(0, 8);
+        if (!ranked.length) return '<p class="muted">No recent activity has been saved for this student yet.</p>';
+        return ranked.map((event) => `
+            <div class="summary-item">
+                <span>${esc(event.type)}</span>
+                <strong>${esc(event.title)}</strong>
+                <div class="muted">${esc(`${event.detail} • ${formatDateTime(event.ts)}`)}</div>
+            </div>
+        `).join('');
+    };
+    const buildTeacherStudentClassListHtml = (detail, selectedClassId) => {
+        const activeClassId = String(selectedClassId || '').trim();
+        const allMeta = `${formatCount(detail?.classes?.length || 0, 'class')} visible to this teacher`;
+        const rows = [
+            `
+                <div class="list-item analytics-class-context-row ${activeClassId ? '' : 'is-active'}" data-student-detail-class-id="" tabindex="0" role="button">
+                    <div class="item-copy">
+                        <span class="item-title">All visible classes</span>
+                        <span class="item-meta">${esc(allMeta)} • Combine assignment context across every class this teacher manages.</span>
+                    </div>
+                    <div class="item-actions">
+                        <span class="item-badge">${activeClassId ? 'Switch' : 'Selected'}</span>
+                    </div>
+                </div>
+            `
+        ];
+        (detail?.classes || []).forEach((classInfo) => {
+            const meta = [
+                classInfo.assignmentCount ? formatCount(classInfo.assignmentCount, 'assignment') : 'No assignments yet',
+                classInfo.submissionCount ? formatCount(classInfo.submissionCount, 'submission') : 'No submissions yet',
+                Number.isFinite(classInfo.completionRate) ? `${classInfo.completionRate}% completion` : 'No completion yet',
+                classInfo.joinedAt ? `Joined ${formatDate(classInfo.joinedAt)}` : ''
+            ].filter(Boolean);
+            rows.push(`
+                <div class="list-item analytics-class-context-row ${activeClassId === classInfo.classId ? 'is-active' : ''}" data-student-detail-class-id="${esc(classInfo.classId)}" tabindex="0" role="button">
+                    <div class="item-copy">
+                        <span class="item-title">${esc(classInfo.className)}</span>
+                        <span class="item-meta">${esc(meta.join(' • '))}</span>
+                    </div>
+                    <span class="item-badge">${esc(classInfo.classCode || 'No code')}</span>
+                    <div class="item-actions">
+                        <span class="item-badge">${activeClassId === classInfo.classId ? 'Selected' : 'Switch'}</span>
+                    </div>
+                </div>
+            `);
+        });
+        return rows.join('');
+    };
+    function renderTeacherStudentAnalyticsModal() {
+        const detail = teacherAnalyticsState.studentsById.get(teacherStudentDetailState.studentId);
+        if (!detail) {
+            showModal('Student analytics', '<p class="muted">Student analytics are not available yet.</p>');
+            return;
+        }
+        const selectedClassId = teacherStudentDetailState.selectedClassId && detail.classes.some((row) => row.classId === teacherStudentDetailState.selectedClassId)
+            ? teacherStudentDetailState.selectedClassId
+            : '';
+        teacherStudentDetailState.selectedClassId = selectedClassId;
+        const context = getTeacherStudentContext(detail, selectedClassId);
+        const snapshot = detail.snapshot || computeTeacherAnalyticsSnapshot([]);
+        const classOptions = [
+            '<option value="">All visible classes</option>',
+            ...detail.classes.map((classInfo) => `<option value="${esc(classInfo.classId)}">${esc(classInfo.className)}${classInfo.classCode ? ` (${esc(classInfo.classCode)})` : ''}</option>`)
+        ].join('');
+        const heroTitle = context.overallAccuracy === null
+            ? 'No graded history yet'
+            : (context.overallAccuracy >= 80 ? 'Strong overall signal' : (context.overallAccuracy >= 65 ? 'Mixed but workable' : 'Clear follow-up needed'));
+        const summaryCopy = context.assignmentItems.length
+            ? `${context.submittedItems.length}/${context.assignmentItems.length} assignments completed in ${context.classLabel}. Drill, wrong-bank, and coach activity remain student-wide because practice sessions are not tied to a class.`
+            : `No assignments are attached to ${context.classLabel} yet. Drill, wrong-bank, and coach activity remain student-wide because practice sessions are not tied to a class.`;
+        const bodyHtml = `
+            <div class="teacher-student-analytics-shell">
+                <div class="card-muted-box teacher-student-analytics-toolbar">
+                    ${userAvatarHtml(detail.avatarId || '', detail.name || 'Unnamed')}
+                    <div class="item-copy">
+                        <div class="eyebrow">Student detail</div>
+                        <span class="item-title">${esc(detail.name || 'Unnamed')}</span>
+                        <span class="item-meta">${esc(`${detail.summary.classMemberships || 0} class memberships • Latest activity ${formatDateTime(context.latestActivity || detail.summary.latestActivity)}`)}</span>
+                    </div>
+                    <div class="input-group teacher-student-class-switch">
+                        <label for="student-analytics-class-select">Class context</label>
+                        <select id="student-analytics-class-select">${classOptions}</select>
+                    </div>
+                    <div class="item-actions">
+                        <a class="btn ghost" href="profile.html?user=${encodeURIComponent(detail.id)}">Open Profile</a>
+                    </div>
+                </div>
+
+                <div class="analytics-hero">
+                    <div class="analytics-hero-copy">
+                        <div class="eyebrow">${esc(context.classLabel)}</div>
+                        <h3>${esc(heroTitle)}</h3>
+                        <p class="analytics-hero-summary">${esc(summaryCopy)}</p>
+                    </div>
+                    <div class="analytics-hero-meta">
+                        <div class="analytics-hero-chip">
+                            <span>Latest activity</span>
+                            <strong>${esc(formatDateTime(context.latestActivity || detail.summary.latestActivity))}</strong>
+                        </div>
+                        <div class="analytics-hero-chip">
+                            <span>30-day active days</span>
+                            <strong>${esc(`${snapshot.activeDays || 0} / 30`)}</strong>
+                        </div>
+                        <div class="analytics-hero-chip">
+                            <span>Fastest buzz</span>
+                            <strong>${esc(Number.isFinite(snapshot.fastestBuzz) ? `${snapshot.fastestBuzz.toFixed(2)}s` : '—')}</strong>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="analytics-kpis">
+                    <div class="analytics-kpi">
+                        <div class="analytics-kpi-label">Overall Accuracy</div>
+                        <div class="analytics-kpi-value">${esc(formatPct(context.overallAccuracy))}</div>
+                    </div>
+                    <div class="analytics-kpi">
+                        <div class="analytics-kpi-label">Assignment Average</div>
+                        <div class="analytics-kpi-value">${esc(formatPct(context.assignmentAccuracy))}</div>
+                    </div>
+                    <div class="analytics-kpi">
+                        <div class="analytics-kpi-label">Class Completion</div>
+                        <div class="analytics-kpi-value">${esc(formatPct(context.completionRate))}</div>
+                    </div>
+                    <div class="analytics-kpi">
+                        <div class="analytics-kpi-label">30-Day Questions</div>
+                        <div class="analytics-kpi-value">${esc((snapshot.totalAttempts || 0).toLocaleString())}</div>
+                    </div>
+                    <div class="analytics-kpi">
+                        <div class="analytics-kpi-label">Wrong-Bank Rows</div>
+                        <div class="analytics-kpi-value">${esc(String(detail.summary.wrongBankRows || 0))}</div>
+                    </div>
+                    <div class="analytics-kpi">
+                        <div class="analytics-kpi-label">Coach Attempts</div>
+                        <div class="analytics-kpi-value">${esc(String(detail.summary.coachAttempts || 0))}</div>
+                    </div>
+                </div>
+
+                <div class="summary-list teacher-student-summary-grid">
+                    <div class="summary-item">
+                        <span>Practice</span>
+                        <strong>${esc(`${detail.summary.practiceSessions || 0} total sessions • ${formatPct(detail.summary.sessionAccuracy)} accuracy`)}</strong>
+                    </div>
+                    <div class="summary-item">
+                        <span>Session Length</span>
+                        <strong>${esc(formatDuration(detail.summary.avgSessionDuration))}</strong>
+                    </div>
+                    <div class="summary-item">
+                        <span>Assignment Volume</span>
+                        <strong>${esc(`${context.submittedItems.length}/${context.assignmentItems.length || 0} completed • ${context.pendingCount} pending`)}</strong>
+                    </div>
+                    <div class="summary-item">
+                        <span>Visible Classes</span>
+                        <strong>${esc(formatCount(detail.summary.classMemberships || 0, 'class'))}</strong>
+                    </div>
+                </div>
+
+                <div class="analytics-split-grid teacher-student-detail-grid">
+                    <div class="analytics-panel">
+                        <div class="analytics-panel-head">
+                            <div>
+                                <div class="analytics-panel-kicker">Assignments</div>
+                                <h3>Class work</h3>
+                                <p class="analytics-panel-note">Every assignment in the selected class context, including incomplete work.</p>
+                            </div>
+                        </div>
+                        <div class="list-container teacher-analytics-list">${buildTeacherStudentAssignmentsHtml(context)}</div>
+                    </div>
+                    <div class="analytics-panel">
+                        <div class="analytics-panel-head">
+                            <div>
+                                <div class="analytics-panel-kicker">Class context</div>
+                                <h3>Switch classes</h3>
+                                <p class="analytics-panel-note">Change the assignment context without leaving the teacher analytics view.</p>
+                            </div>
+                        </div>
+                        <div class="list-container teacher-analytics-list">${buildTeacherStudentClassListHtml(detail, context.selectedClassId)}</div>
+                    </div>
+                </div>
+
+                <div class="analytics-split-grid teacher-student-detail-grid">
+                    <div class="analytics-panel">
+                        <div class="analytics-panel-head">
+                            <div>
+                                <div class="analytics-panel-kicker">Breakdown</div>
+                                <h3>Era performance</h3>
+                                <p class="analytics-panel-note">30-day drill accuracy by era.</p>
+                            </div>
+                        </div>
+                        ${buildTeacherStudentPerformanceListHtml(snapshot.eraStats, 'No era-tagged drill data yet.')}
+                    </div>
+                    <div class="analytics-panel">
+                        <div class="analytics-panel-head">
+                            <div>
+                                <div class="analytics-panel-kicker">Breakdown</div>
+                                <h3>Region performance</h3>
+                                <p class="analytics-panel-note">30-day drill accuracy by region.</p>
+                            </div>
+                        </div>
+                        ${buildTeacherStudentPerformanceListHtml(snapshot.regionStats, 'No region-tagged drill data yet.')}
+                    </div>
+                </div>
+
+                <div class="analytics-split-grid teacher-student-detail-grid">
+                    <div class="analytics-panel">
+                        <div class="analytics-panel-head">
+                            <div>
+                                <div class="analytics-panel-kicker">Diagnosis</div>
+                                <h3>Blind spot radar</h3>
+                                <p class="analytics-panel-note">Low-accuracy clusters from the most recent 30-day drill history.</p>
+                            </div>
+                        </div>
+                        ${buildTeacherStudentBlindSpotsHtml(snapshot.blindSpots)}
+                    </div>
+                    <div class="analytics-panel">
+                        <div class="analytics-panel-head">
+                            <div>
+                                <div class="analytics-panel-kicker">Cadence</div>
+                                <h3>Consistency heatmap</h3>
+                                <p class="analytics-panel-note">Read this as a rhythm map for the last 30 days of drill activity.</p>
+                            </div>
+                        </div>
+                        ${buildTeacherStudentHeatmapHtml(snapshot)}
+                    </div>
+                </div>
+
+                <div class="analytics-panel">
+                    <div class="analytics-panel-head">
+                        <div>
+                            <div class="analytics-panel-kicker">Recent activity</div>
+                            <h3>Latest saved events</h3>
+                            <p class="analytics-panel-note">Assignments respect the class filter. Practice, wrong-bank, and coach events stay student-wide.</p>
+                        </div>
+                    </div>
+                    <div class="summary-list teacher-student-activity-list">${buildTeacherStudentRecentActivityHtml(detail, context)}</div>
+                </div>
+            </div>
+        `;
+        showModal(`${detail.name} Analytics`, bodyHtml, {
+            wide: true,
+            bodyClass: 'teacher-student-analytics-body'
+        });
+        const select = document.getElementById('student-analytics-class-select');
+        if (select) select.value = context.selectedClassId;
+    }
+    function openTeacherStudentAnalytics(studentId, preferredClassId = '') {
+        const nextStudentId = String(studentId || '').trim();
+        if (!nextStudentId || !teacherAnalyticsState.studentsById.has(nextStudentId)) return;
+        const detail = teacherAnalyticsState.studentsById.get(nextStudentId);
+        const requestedClassId = String(preferredClassId || '').trim();
+        teacherStudentDetailState.studentId = nextStudentId;
+        teacherStudentDetailState.selectedClassId = requestedClassId && detail?.classes?.some((row) => row.classId === requestedClassId)
+            ? requestedClassId
+            : '';
+        renderTeacherStudentAnalyticsModal();
+    }
     function renderTeacherAnalytics() {
         const classSelect = document.getElementById('analytics-class-select');
         const classList = document.getElementById('analytics-class-list');
@@ -487,6 +1257,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const summaryListEl = document.getElementById('analytics-class-summary-list');
         const topEl = document.getElementById('analytics-top-students');
         const watchEl = document.getElementById('analytics-watch-students');
+        const rosterEl = document.getElementById('analytics-class-roster');
         const selectedId = teacherAnalyticsState.selectedClassId || teacherAnalyticsState.classes[0]?.id || '';
         const selected = selectedId ? teacherAnalyticsState.byClassId.get(selectedId) : null;
         const classes = teacherAnalyticsState.classes || [];
@@ -511,6 +1282,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (summaryListEl) summaryListEl.innerHTML = '';
             if (topEl) topEl.innerHTML = `<p class="muted">${esc(teacherAnalyticsState.loading ? 'Loading class analytics...' : 'No class analytics yet.')}</p>`;
             if (watchEl) watchEl.innerHTML = `<p class="muted">${esc(teacherAnalyticsState.loading ? 'Loading class analytics...' : 'No class analytics yet.')}</p>`;
+            if (rosterEl) rosterEl.innerHTML = `<p class="muted">${esc(teacherAnalyticsState.loading ? 'Loading roster analytics...' : 'No students to inspect yet.')}</p>`;
             if (classList) classList.innerHTML = `<p class="muted">${esc(teacherAnalyticsState.loading ? 'Loading class analytics...' : 'Create a class to see the whole-class breakdown.')}</p>`;
             return;
         }
@@ -532,11 +1304,12 @@ document.addEventListener('DOMContentLoaded', async () => {
             const latest = selected.lastActivity ? ` Last activity ${new Date(selected.lastActivity).toLocaleString()}.` : '';
             const avgScore = Number.isFinite(selected.avgAssignmentScore) ? ` The class is averaging ${selected.avgAssignmentScore}% on submitted work.` : ' There are no scored submissions yet.';
             const completion = Number.isFinite(selected.completionRate) ? ` Submission completion is ${selected.completionRate}%.` : ' Submission completion is not available yet.';
-            summaryEl.textContent = `${formatCount(selected.studentCount, 'student')} across ${formatCount(selected.assignmentCount, 'assignment')}.${avgScore}${completion}${latest}${errorNote}`;
+            summaryEl.textContent = `${formatCount(selected.studentCount, 'student')} across ${formatCount(selected.assignmentCount, 'assignment')}.${avgScore}${completion} Click any student below to open the full drill-down.${latest}${errorNote}`;
         }
         if (summaryListEl) summaryListEl.innerHTML = buildClassSummaryList(selected);
-        renderStudentList('analytics-top-students', selected.topStudents, 'No top students yet.');
-        renderStudentList('analytics-watch-students', selected.watchStudents, 'No students need attention yet.');
+        renderStudentList('analytics-top-students', selected.topStudents, 'No top students yet.', { clickable: true, classId: selected.id });
+        renderStudentList('analytics-watch-students', selected.watchStudents, 'No students need attention yet.', { clickable: true, classId: selected.id });
+        renderStudentList('analytics-class-roster', selected.students, 'No students are enrolled in this class yet.', { clickable: true, classId: selected.id });
         if (classList) {
             classList.innerHTML = classes.map((item) => {
                 const active = item.id === selected.id;
@@ -568,6 +1341,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             teacherAnalyticsState.loading = false;
             teacherAnalyticsState.classes = [];
             teacherAnalyticsState.byClassId = new Map();
+            teacherAnalyticsState.studentsById = new Map();
             teacherAnalyticsState.totals = null;
             renderTeacherAnalytics();
             return;
@@ -580,7 +1354,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     ? sb.from('class_students').select('class_id, student_id, joined_at').in('class_id', classIds)
                     : Promise.resolve({ data: [] }),
                 classIds.length
-                    ? sb.from('assignments').select('id, class_id, title, created_at').in('class_id', classIds)
+                    ? sb.from('assignments').select('id, class_id, title, due_date, created_at').in('class_id', classIds)
                     : Promise.resolve({ data: [] })
             ]);
             if (version !== teacherAnalyticsLoadVersion) return;
@@ -596,7 +1370,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     ? sb.from('assignment_submissions').select('assignment_id, student_id, correct, total, submitted_at, created_at').in('assignment_id', assignmentIds)
                     : Promise.resolve({ data: [] }),
                 studentIds.length
-                    ? sb.from('user_drill_sessions').select('user_id, total, correct, dur, ts, created_at').in('user_id', studentIds).gte('created_at', STUDY_DATA_RESET_CUTOFF_ISO)
+                    ? sb.from('user_drill_sessions').select('user_id, total, correct, dur, ts, buzz, items, results, meta, created_at').in('user_id', studentIds).gte('created_at', STUDY_DATA_RESET_CUTOFF_ISO)
                     : Promise.resolve({ data: [] }),
                 studentIds.length
                     ? sb.from('user_wrong_questions').select('user_id, created_at').in('user_id', studentIds).gte('created_at', STUDY_DATA_RESET_CUTOFF_ISO)
@@ -621,6 +1395,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             teacherAnalyticsState.error = '';
             teacherAnalyticsState.classes = analytics.classes;
             teacherAnalyticsState.byClassId = analytics.byClassId;
+            teacherAnalyticsState.studentsById = analytics.studentsById;
             teacherAnalyticsState.totals = analytics.totals;
             teacherAnalyticsState.selectedClassId = teacherAnalyticsState.selectedClassId && analytics.byClassId.has(teacherAnalyticsState.selectedClassId)
                 ? teacherAnalyticsState.selectedClassId
@@ -653,6 +1428,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 watchStudents: []
             }));
             teacherAnalyticsState.byClassId = new Map(teacherAnalyticsState.classes.map((row) => [row.id, row]));
+            teacherAnalyticsState.studentsById = new Map();
             teacherAnalyticsState.totals = {
                 classCount: myClasses.length,
                 studentCount: 0,
@@ -741,7 +1517,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
 
     // Account profile
+    const deleteBtn = document.getElementById('btn-delete-account');
     const saveAccountBtn = document.getElementById('btn-save-account');
+    const revealDeleteBtn = document.getElementById('btn-reveal-delete');
+    const dangerPanel = document.getElementById('account-danger-panel');
+    const confirmDeleteReveal = document.getElementById('confirm-delete-reveal');
     function setInput(id, value) {
         const el = document.getElementById(id);
         if (!el) return;
@@ -884,8 +1664,23 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     });
 
+    revealDeleteBtn?.addEventListener('click', () => {
+        if (!dangerPanel) return;
+        const show = dangerPanel.classList.contains('hidden');
+        dangerPanel.classList.toggle('hidden', !show);
+        revealDeleteBtn.textContent = show ? 'Hide Delete Option' : 'Show Delete Option';
+        if (!show && confirmDeleteReveal) {
+            confirmDeleteReveal.checked = false;
+            if (deleteBtn) deleteBtn.disabled = true;
+        }
+    });
+
+    confirmDeleteReveal?.addEventListener('change', () => {
+        if (deleteBtn) deleteBtn.disabled = !confirmDeleteReveal.checked;
+    });
+
     // Delete account
-    document.getElementById('btn-delete-account').addEventListener('click', async () => {
+    deleteBtn?.addEventListener('click', async () => {
         if (!confirm('⚠️ Permanently delete your account and ALL data?')) return;
         if (!confirm('FINAL WARNING: This cannot be undone!')) return;
         try { await sb.rpc('delete_user'); await sb.auth.signOut(); window.location.replace('login.html'); }
@@ -928,18 +1723,46 @@ document.addEventListener('DOMContentLoaded', async () => {
     window.copyCode = (code) => { navigator.clipboard.writeText(code).then(() => showAlert('Code copied: ' + code, 'success')); };
 
     // Modal helpers
-    function showModal(title, bodyHtml) {
+    function showModal(title, bodyHtml, options = {}) {
+        const modal = document.getElementById('teacher-modal');
+        const modalCard = document.getElementById('teacher-modal-card');
         document.getElementById('modal-title').textContent = title;
         const body = document.getElementById('modal-body');
+        body.className = options.bodyClass ? `list-container ${options.bodyClass}` : 'list-container';
         body.innerHTML = bodyHtml;
+        if (modalCard) {
+            modalCard.className = `modal-card card${options.wide ? ' teacher-modal-wide' : ''}${options.cardClass ? ` ${options.cardClass}` : ''}`;
+        }
         hydrateAvatarImages(body);
-        document.getElementById('teacher-modal').classList.remove('hidden');
+        modal.classList.remove('hidden');
     }
-    document.getElementById('modal-close').addEventListener('click', () => {
+    const closeTeacherModal = () => {
         document.getElementById('teacher-modal').classList.add('hidden');
+    };
+    document.getElementById('modal-close').addEventListener('click', () => {
+        closeTeacherModal();
     });
     document.getElementById('teacher-modal').addEventListener('click', (e) => {
-        if (e.target === e.currentTarget) document.getElementById('teacher-modal').classList.add('hidden');
+        if (e.target === e.currentTarget) closeTeacherModal();
+    });
+    document.getElementById('modal-body').addEventListener('change', (event) => {
+        if (event.target?.id !== 'student-analytics-class-select') return;
+        teacherStudentDetailState.selectedClassId = String(event.target.value || '').trim();
+        renderTeacherStudentAnalyticsModal();
+    });
+    document.getElementById('modal-body').addEventListener('click', (event) => {
+        const classRow = event.target.closest('[data-student-detail-class-id]');
+        if (!classRow) return;
+        teacherStudentDetailState.selectedClassId = String(classRow.dataset.studentDetailClassId || '').trim();
+        renderTeacherStudentAnalyticsModal();
+    });
+    document.getElementById('modal-body').addEventListener('keydown', (event) => {
+        const classRow = event.target.closest('[data-student-detail-class-id]');
+        if (!classRow) return;
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        event.preventDefault();
+        teacherStudentDetailState.selectedClassId = String(classRow.dataset.studentDetailClassId || '').trim();
+        renderTeacherStudentAnalyticsModal();
     });
 
     window.viewStudents = async (classId) => {
@@ -980,6 +1803,23 @@ document.addEventListener('DOMContentLoaded', async () => {
         const button = event.target.closest('[data-analytics-class-id]');
         if (!button) return;
         selectAnalyticsClass(button.dataset.analyticsClassId);
+    });
+    const handleAnalyticsStudentOpen = (event) => {
+        const trigger = event.target.closest('[data-analytics-student-id]');
+        if (!trigger) return;
+        openTeacherStudentAnalytics(trigger.dataset.analyticsStudentId, trigger.dataset.analyticsStudentClassId);
+    };
+    const handleAnalyticsStudentKeydown = (event) => {
+        const trigger = event.target.closest('[data-analytics-student-id]');
+        if (!trigger) return;
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        event.preventDefault();
+        openTeacherStudentAnalytics(trigger.dataset.analyticsStudentId, trigger.dataset.analyticsStudentClassId);
+    };
+    ['analytics-top-students', 'analytics-watch-students', 'analytics-class-roster'].forEach((id) => {
+        const el = document.getElementById(id);
+        el?.addEventListener('click', handleAnalyticsStudentOpen);
+        el?.addEventListener('keydown', handleAnalyticsStudentKeydown);
     });
 
     document.getElementById('btn-new-class').addEventListener('click', () => {

@@ -3903,8 +3903,16 @@ body.coach-chat-resizing {
   --panel-shadow: 0 24px 50px -34px rgba(0, 0, 0, 0.8), 0 16px 34px -26px rgba(99, 168, 255, 0.22);
   --panel-shadow-soft: 0 18px 34px -28px rgba(0, 0, 0, 0.64), 0 12px 26px -28px rgba(99, 168, 255, 0.18);
   --panel-shadow-hover: 0 32px 60px -30px rgba(0, 0, 0, 0.82), 0 20px 38px -24px rgba(40, 210, 176, 0.22);
-  --glass-blur: 16px;
-  --glass-blur-soft: 10px;
+  --glass-blur: 14px;
+  --glass-blur-soft: 8px;
+  --glass-control-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.06) 52%, rgba(255, 255, 255, 0.02) 100%);
+  --glass-control-bg-strong: linear-gradient(180deg, rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0.08) 48%, rgba(255, 255, 255, 0.03) 100%);
+  --glass-control-accent: linear-gradient(135deg, rgba(99, 168, 255, 0.32), rgba(99, 168, 255, 0.18) 46%, rgba(40, 210, 176, 0.12) 100%);
+  --glass-control-border: rgba(255, 255, 255, 0.18);
+  --glass-control-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18), 0 14px 24px -24px rgba(0, 0, 0, 0.78), 0 8px 18px -20px rgba(99, 168, 255, 0.18);
+  --glass-control-shadow-hover: inset 0 1px 0 rgba(255, 255, 255, 0.24), 0 18px 28px -22px rgba(0, 0, 0, 0.82), 0 12px 22px -18px rgba(40, 210, 176, 0.2);
+  --glass-control-shine: linear-gradient(120deg, rgba(255, 255, 255, 0.5) 0%, rgba(255, 255, 255, 0.18) 18%, rgba(255, 255, 255, 0.05) 42%, transparent 72%, rgba(255, 255, 255, 0.14) 100%);
+  --glass-control-shine-soft: linear-gradient(125deg, rgba(255, 255, 255, 0.38) 0%, rgba(255, 255, 255, 0.12) 22%, transparent 52%, transparent 78%, rgba(255, 255, 255, 0.08) 100%);
   --float-distance: 3px;
   --page-max: 1280px;
   --section-gap: 16px;
@@ -4628,12 +4636,24 @@ input[type=datetime-local]:focus {
   display: grid;
   gap: 20px;
   grid-template-columns: minmax(0, 1.5fr) minmax(320px, 0.9fr);
-  align-items: start;
+  align-items: stretch;
 }
 
 .setup-main,
 .setup-side {
+  display: flex;
+  flex-direction: column;
   min-width: 0;
+}
+
+.setup-main > .section-card,
+.setup-side > .section-card {
+  flex: 1 1 auto;
+}
+
+.setup-overview-card {
+  display: flex;
+  flex-direction: column;
 }
 
 .setup-group {
@@ -4707,6 +4727,26 @@ input[type=datetime-local]:focus {
   flex: 0 0 auto;
 }
 
+.setup-tab-link {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 14px;
+}
+
+.setup-inline-link {
+  color: var(--accent);
+  font-size: 14px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.setup-inline-link:hover,
+.setup-inline-link:focus-visible {
+  text-decoration: underline;
+}
+
 .setup-grid {
   display: grid;
   gap: 18px;
@@ -4717,6 +4757,7 @@ input[type=datetime-local]:focus {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  flex: 1 1 auto;
 }
 
 .summary-item {
@@ -4750,7 +4791,7 @@ input[type=datetime-local]:focus {
 }
 
 .summary-note {
-  margin-top: 16px;
+  margin-top: auto;
 }
 
 .settings-summary {
@@ -5064,6 +5105,76 @@ input[type=datetime-local]:focus {
   overflow: auto;
 }
 
+.teacher-modal-wide {
+  width: min(1100px, 100%);
+  max-height: 88vh;
+}
+
+.teacher-student-analytics-body {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.teacher-student-analytics-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.teacher-student-analytics-toolbar {
+  display: grid;
+  gap: 16px;
+  align-items: center;
+  grid-template-columns: auto minmax(0, 1.4fr) minmax(220px, 320px) auto;
+}
+
+.teacher-student-analytics-toolbar .item-copy {
+  min-width: 0;
+}
+
+.teacher-student-class-switch {
+  margin: 0;
+}
+
+.teacher-student-summary-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+}
+
+.teacher-student-detail-grid {
+  align-items: start;
+}
+
+.teacher-student-activity-list {
+  gap: 12px;
+}
+
+.analytics-student-row,
+.analytics-class-context-row {
+  cursor: pointer;
+  transition: border-color 0.18s ease, transform 0.18s ease, background 0.18s ease;
+}
+
+.analytics-student-row:hover,
+.analytics-class-context-row:hover {
+  border-color: rgba(96, 165, 250, 0.55);
+  background: rgba(96, 165, 250, 0.08);
+  transform: translateY(-1px);
+}
+
+.analytics-student-row:focus-visible,
+.analytics-class-context-row:focus-visible {
+  outline: 2px solid rgba(96, 165, 250, 0.7);
+  outline-offset: 2px;
+}
+
+.analytics-class-context-row.is-active {
+  border-color: rgba(96, 165, 250, 0.55);
+  background: rgba(96, 165, 250, 0.1);
+}
+
 .auth-modal-card {
   width: min(100%, 460px);
   text-align: center;
@@ -5120,6 +5231,14 @@ input[type=datetime-local]:focus {
 @media (max-width: 760px) {
   .shell {
     padding: 22px 16px 90px;
+  }
+
+  .teacher-student-analytics-toolbar {
+    grid-template-columns: 1fr;
+  }
+
+  .teacher-student-class-switch {
+    min-width: 0;
   }
 
   .setup-main .stack {
@@ -5961,6 +6080,7 @@ input[type=datetime-local]:focus {
   line-height: 1.2;
   flex: 0 0 auto;
 }
+
 .item-copy {
   min-width: min(420px, 100%);
   display: flex;
@@ -6115,6 +6235,7 @@ input[type=datetime-local]:focus {
   .teacher-builder-shell .compact-number-input {
     width: 100%;
   }
+
   .mobile-record-list {
     display: flex;
   }
@@ -6133,6 +6254,10 @@ input[type=datetime-local]:focus {
 
   .setup-preset-actions > * {
     width: 100%;
+  }
+
+  .setup-tab-link {
+    align-items: flex-start;
   }
 
   .practice-status-band,
