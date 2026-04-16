@@ -4646,10 +4646,6 @@ input[type=datetime-local]:focus {
   min-width: 0;
 }
 
-.setup-side {
-  align-self: start;
-}
-
 .setup-main > .section-card,
 .setup-side > .section-card {
   flex: 1 1 auto;
@@ -4662,8 +4658,6 @@ input[type=datetime-local]:focus {
 .setup-overview-card {
   display: flex;
   flex-direction: column;
-  position: sticky;
-  top: 24px;
 }
 
 .setup-group {
@@ -6159,7 +6153,7 @@ input[type=datetime-local]:focus {
 }
 
 .summary-note {
-  margin-top: 14px;
+  margin-top: auto;
   padding: 14px 16px;
   display: flex;
   flex-wrap: wrap;

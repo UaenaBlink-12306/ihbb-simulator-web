@@ -1009,6 +1009,34 @@ function readCoachChatSessions() {
   return Array.isArray(raw) ? raw : [];
 }
 
+function normalizedFilterSelection(values, format = (value) => value) {
+  const seen = new Set();
+  const out = [];
+  for (const raw of (values || [])) {
+    const value = String(raw || '').trim();
+    if (!value || seen.has(value)) continue;
+    seen.add(value);
+    out.push(format(value));
+  }
+  return out;
+}
+
+function getSetupFilterDetails() {
+  const cats = Array.isArray(App.filters.cats) ? App.filters.cats : [];
+  const eras = Array.isArray(App.filters.eras) ? App.filters.eras : [];
+  const selectedRegions = normalizedFilterSelection(cats.length ? cats : (App.filters.cat ? [App.filters.cat] : []));
+  const selectedEras = normalizedFilterSelection(eras.length ? eras : (App.filters.era ? [App.filters.era] : []), getEraName);
+  const selectedSources = normalizedFilterSelection(App.filters.src ? [App.filters.src] : []);
+  return {
+    selectedRegions,
+    selectedEras,
+    selectedSources,
+    regionSummary: selectedRegions.length ? selectedRegions.join(', ') : 'All regions',
+    eraSummary: selectedEras.length ? selectedEras.join(', ') : 'All eras',
+    sourceSummary: selectedSources.length ? selectedSources.join(', ') : 'All sources'
+  };
+}
+
 function buildCoachChatSetupFilterText() {
   if (isWrongBankPracticeEnabled()) {
     const dueNow = srsDueList().length;
@@ -3690,16 +3718,8 @@ function updateSetupOverview() {
   const availableCount = wrongBankEnabled
     ? (dueNow || wrongBankCount)
     : buildFilteredPoolFromSet(set).length;
-  const cats = Array.isArray(App.filters.cats) ? App.filters.cats.filter(Boolean) : [];
-  const eras = Array.isArray(App.filters.eras) ? App.filters.eras.filter(Boolean) : [];
+  const { selectedRegions, selectedEras, regionSummary, eraSummary, sourceSummary } = getSetupFilterDetails();
   const setText = set ? `${set.name} (${set.items.length} items)` : 'No set loaded';
-  const filterCats = cats.length
-    ? `${cats.length} region${cats.length === 1 ? '' : 's'}`
-    : (App.filters.cat ? App.filters.cat : 'All regions');
-  const filterEras = eras.length
-    ? `${eras.length} era${eras.length === 1 ? '' : 's'}`
-    : (App.filters.era ? getEraName(App.filters.era) : 'All eras');
-  const filterSrc = App.filters.src ? App.filters.src : 'All sources';
   const advancedSummary = [
     Settings.strict ? 'Strict spelling' : 'Flexible grading',
     Settings.autoAdvance ? `Auto-advance ${Settings.autoAdvanceDelay || 1}s` : 'Manual pacing',
@@ -3708,7 +3728,7 @@ function updateSetupOverview() {
   const lengthText = sessionLengthLabel(App.size, { availableCount });
   const filterSummary = wrongBankEnabled
     ? `Wrong-bank queue • Due now ${dueNow} • Total tracked ${wrongBankCount}`
-    : `${filterCats} • ${filterEras} • ${filterSrc}`;
+    : `Regions: ${regionSummary} • Eras: ${eraSummary} • Source: ${sourceSummary}`;
 
   const setEl = $('setup-summary-set'); if (setEl) setEl.textContent = setText;
   const wrongBankEl = $('setup-summary-wrong-bank'); if (wrongBankEl) wrongBankEl.textContent = practiceWrongBankLabel(wrongBankEnabled);
@@ -3736,7 +3756,7 @@ function updateSetupOverview() {
       nextText = 'Load a question set.';
     } else if (wrongBankEnabled) {
       nextText = 'Wrong-bank queue ready.';
-    } else if (cats.length || App.filters.cat || eras.length || App.filters.era || App.filters.src) {
+    } else if (selectedRegions.length || selectedEras.length || App.filters.src) {
       nextText = 'Session ready.';
     }
     nextEl.textContent = nextText;
@@ -4620,6 +4640,11 @@ function drawAccByCat() {
 /********************* Event wiring *********************/
 // Nav
 $('nav-setup')?.addEventListener('click', (e) => { e.preventDefault(); playFeedbackCue('nav'); navSet('nav-setup'); SHOW('view-setup'); });
+function openSessionOptionsView() {
+  navSet('nav-session');
+  SHOW('view-session');
+  requestAnimationFrame(() => alignPracticeNavIntoView());
+}
 $('nav-session')?.addEventListener('click', (e) => { e.preventDefault(); playFeedbackCue('nav'); navSet('nav-session'); SHOW('view-session'); });
 $('nav-practice')?.addEventListener('click', (e) => {
   e.preventDefault(); playFeedbackCue('nav'); navSet('nav-practice'); SHOW('view-practice');
