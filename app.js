@@ -3667,6 +3667,21 @@ function compactVoiceName(name) {
     .replace(/\s+Online.*$/i, '')
     .trim() || raw;
 }
+function uniqueFilterLabels(values, format = (value) => value) {
+  const seen = new Set();
+  const out = [];
+  for (const raw of (values || [])) {
+    const value = String(raw || '').trim();
+    if (!value || seen.has(value)) continue;
+    seen.add(value);
+    out.push(format(value));
+  }
+  return out;
+}
+function formatDetailedFilterSelection(label, values, allLabel) {
+  if (!Array.isArray(values) || !values.length) return `${label}: ${allLabel}`;
+  return `${label}: ${values.join(', ')}`;
+}
 function updateSetupOverview() {
   const set = getActiveSet();
   const wrongBankEnabled = isWrongBankPracticeEnabled();
@@ -4751,6 +4766,13 @@ $('startSessionDock')?.addEventListener('click', startSession);
 $('startLast')?.addEventListener('click', startLastPresetSession);
 $('startLastMobile')?.addEventListener('click', startLastPresetSession);
 $('startLastDock')?.addEventListener('click', startLastPresetSession);
+document.querySelectorAll('[data-open-session-options="true"]').forEach((link) => {
+  link.addEventListener('click', (e) => {
+    e.preventDefault();
+    playFeedbackCue('nav');
+    openSessionOptionsView();
+  });
+});
 
 // Practice buttons
 $('btn-buzz')?.addEventListener('click', buzz);

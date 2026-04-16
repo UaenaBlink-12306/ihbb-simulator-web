@@ -4646,14 +4646,24 @@ input[type=datetime-local]:focus {
   min-width: 0;
 }
 
+.setup-side {
+  align-self: start;
+}
+
 .setup-main > .section-card,
 .setup-side > .section-card {
   flex: 1 1 auto;
 }
 
+.setup-builder-head {
+  align-items: center;
+}
+
 .setup-overview-card {
   display: flex;
   flex-direction: column;
+  position: sticky;
+  top: 24px;
 }
 
 .setup-group {
@@ -5259,6 +5269,10 @@ input[type=datetime-local]:focus {
 
   .setup-side {
     gap: 14px;
+  }
+
+  .setup-builder-head {
+    align-items: flex-start;
   }
 
   #view-setup {
