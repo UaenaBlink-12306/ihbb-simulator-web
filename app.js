@@ -3720,9 +3720,7 @@ function updateSetupOverview() {
     Settings.haptics ? 'Haptics on' : 'Haptics off'
   ].join(' • ');
   const lengthText = sessionLengthLabel(App.size, { availableCount });
-  const filterSummary = wrongBankEnabled
-    ? `Wrong-bank queue • Due now ${dueNow} • Total tracked ${wrongBankCount}`
-    : `Regions: ${regionSummary} • Eras: ${eraSummary} • Source: ${sourceSummary}`;
+  const filterSummary = `${filterCats} • ${filterEras} • ${filterSrc}`;
 
   const setEl = $('setup-summary-set'); if (setEl) setEl.textContent = setText;
   const wrongBankEl = $('setup-summary-wrong-bank'); if (wrongBankEl) wrongBankEl.textContent = practiceWrongBankLabel(wrongBankEnabled);
@@ -3758,22 +3756,18 @@ function updateSetupOverview() {
 
   const mobileSummaryEl = $('setup-mobile-summary');
   if (mobileSummaryEl) {
-    mobileSummaryEl.textContent = wrongBankEnabled
-      ? `${lengthText} • Wrong-bank queue`
-      : set
-        ? `${lengthText} • ${filterCats} • ${filterEras} • ${filterSrc}`
-        : 'Load a question set.';
+    mobileSummaryEl.textContent = (set || wrongBankEnabled)
+      ? `${lengthText} • ${filterCats} • ${filterEras} • ${filterSrc}`
+      : 'Load a question set.';
   }
   const mobileWrongBankEl = $('setup-mobile-wrong-bank'); if (mobileWrongBankEl) mobileWrongBankEl.textContent = `Wrong bank: ${practiceWrongBankLabel(wrongBankEnabled)}`;
   const mobileNextEl = $('setup-mobile-next'); if (mobileNextEl) mobileNextEl.textContent = nextText;
   const mobileDockWrongBankEl = $('setup-mobile-dock-wrong-bank'); if (mobileDockWrongBankEl) mobileDockWrongBankEl.textContent = `Wrong bank: ${practiceWrongBankLabel(wrongBankEnabled)}`;
   const mobileDockSummaryEl = $('setup-mobile-dock-summary');
   if (mobileDockSummaryEl) {
-    mobileDockSummaryEl.textContent = wrongBankEnabled
-      ? `${lengthText} • Wrong-bank queue`
-      : set
-        ? `${lengthText} • ${filterCats} • ${filterEras} • ${filterSrc}`
-        : 'Load a question set.';
+    mobileDockSummaryEl.textContent = (set || wrongBankEnabled)
+      ? `${lengthText} • ${filterCats} • ${filterEras} • ${filterSrc}`
+      : 'Load a question set.';
   }
   syncPracticeWrongBankToggle();
   updateSetupMobileDock();
