@@ -1561,10 +1561,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     function readAccountSettingsFromForm() {
         return normalizeAccountSettings({
+            ...accountSettings,
             practice_hub_auto_open: !!document.getElementById('acc-practice-hub-auto-open')?.checked,
-            assistant_thinking_enabled: !!document.getElementById('acc-assistant-thinking')?.checked,
-            assistant_show_starters: !!document.getElementById('acc-assistant-starters')?.checked,
-            assistant_stream_responses: !!document.getElementById('acc-assistant-streaming')?.checked
         }, { includeLegacy: false });
     }
 
@@ -1591,33 +1589,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             enabled: accountSettings.practice_hub_auto_open,
             enabledHint: 'DeepSeek opens automatically when you enter Practice Hub. You can still launch it manually anytime.',
             disabledHint: 'DeepSeek stays closed when you enter Practice Hub. You can still launch it manually anytime.'
-        });
-        syncAccountToggle({
-            wrapId: 'acc-setting-assistant-thinking',
-            inputId: 'acc-assistant-thinking',
-            stateId: 'acc-assistant-thinking-state',
-            hintId: 'acc-assistant-thinking-hint',
-            enabled: accountSettings.assistant_thinking_enabled,
-            enabledHint: 'The assistant uses deeper analysis by default on both the dashboard and Practice Hub.',
-            disabledHint: 'The assistant stays in the faster standard mode by default.'
-        });
-        syncAccountToggle({
-            wrapId: 'acc-setting-assistant-starters',
-            inputId: 'acc-assistant-starters',
-            stateId: 'acc-assistant-starters-state',
-            hintId: 'acc-assistant-starters-hint',
-            enabled: accountSettings.assistant_show_starters,
-            enabledHint: 'Starter prompts stay visible before you ask the first question.',
-            disabledHint: 'Starter prompts stay hidden until you begin the conversation yourself.'
-        });
-        syncAccountToggle({
-            wrapId: 'acc-setting-assistant-streaming',
-            inputId: 'acc-assistant-streaming',
-            stateId: 'acc-assistant-streaming-state',
-            hintId: 'acc-assistant-streaming-hint',
-            enabled: accountSettings.assistant_stream_responses,
-            enabledHint: 'Replies reveal progressively instead of appearing all at once.',
-            disabledHint: 'Replies appear fully rendered as soon as they are ready.'
         });
     }
 
@@ -1651,7 +1622,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     renderAccountProfile();
 
-    ['acc-practice-hub-auto-open', 'acc-assistant-thinking', 'acc-assistant-starters', 'acc-assistant-streaming'].forEach((id) => {
+    ['acc-practice-hub-auto-open'].forEach((id) => {
         document.getElementById(id)?.addEventListener('change', () => {
             accountSettings = readAccountSettingsFromForm();
             syncAccountSettingsInputs();
