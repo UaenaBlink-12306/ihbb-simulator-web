@@ -1679,7 +1679,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (deleteBtn) deleteBtn.disabled = !confirmDeleteReveal.checked;
     });
 
-    // Delete account
+    // ========== DELETE ACCOUNT ==========
     deleteBtn?.addEventListener('click', async () => {
         if (!confirm('⚠️ Permanently delete your account and ALL data?')) return;
         if (!confirm('FINAL WARNING: This cannot be undone!')) return;

@@ -447,11 +447,27 @@
                             <button id="btn-save-account" class="btn pri">Save Profile Changes</button>
                             <a href="profile.html" class="btn ghost">View My Profile</a>
                         </div>
-                    </div>
+                        <p class="muted" style="margin: 8px 0 0;">Email changes may require inbox verification depending on
+                            your auth settings.</p>
 
-                    <aside class="panel-stack">
-                        <button id="btn-delete-account" class="btn warn">Delete My Account Permanently</button>
-                    </aside>
+                        <div class="account-danger" style="margin-top: 18px;">
+                            <div class="section-head" style="margin-bottom: 10px;">
+                                <div>
+                                    <h3 style="margin: 0;">Delete my account</h3>
+                                    <p class="section-subtitle">Permanently remove your account and all associated data.</p>
+                                </div>
+                                <button id="btn-reveal-delete" type="button" class="btn ghost">Show Delete Option</button>
+                            </div>
+                            <div id="account-danger-panel" class="hidden">
+                                <label class="account-danger-confirm">
+                                    <input id="confirm-delete-reveal" type="checkbox">
+                                    I understand this permanently deletes my account and all data.
+                                </label>
+                                <button id="btn-delete-account" class="btn warn" disabled style="margin-top: 12px;">Delete My
+                                    Account Permanently</button>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </section>
