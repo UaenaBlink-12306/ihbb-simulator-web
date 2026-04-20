@@ -6,9 +6,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const roleCards = document.querySelectorAll('.role-card');
     const btnNextRole = document.getElementById('btn-next-role');
 
-    const btnSkipStudent = document.getElementById('btn-skip-student');
     const btnFinishStudent = document.getElementById('btn-finish-student');
-    const studentClassCode = document.getElementById('student-class-code');
 
     const teacherClassName = document.getElementById('teacher-class-name');
     const generatedCodeInput = document.getElementById('generated-code');
@@ -102,14 +100,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
 
     // Student Flow
-    async function saveStudentProfile(classCode) {
+    async function saveStudentProfile() {
         try {
             // Note: Since we don't have the table created yet in the DB, 
             // this is an optimistic update/insert.
             await upsertProfileRecord({
                 id: currentUser.id,
                 role: 'student',
-                class_code: classCode
+                class_code: null
             });
 
             // Even if it fails (table not created), we let them into the app for now
@@ -121,11 +119,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
-    btnSkipStudent.addEventListener('click', () => saveStudentProfile(null));
-    btnFinishStudent.addEventListener('click', () => {
-        const code = studentClassCode.value.trim();
-        saveStudentProfile(code || null);
-    });
+    btnFinishStudent.addEventListener('click', () => saveStudentProfile());
 
     // Teacher Flow
     btnGenerateCode.addEventListener('click', () => {

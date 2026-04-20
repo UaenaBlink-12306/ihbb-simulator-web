@@ -1031,6 +1031,11 @@ function getSetupFilterDetails() {
   };
 }
 
+function formatDetailedFilterSelection(label, values, allLabel) {
+  if (!Array.isArray(values) || !values.length) return `${label}: ${allLabel}`;
+  return `${label}: ${values.join(', ')}`;
+}
+
 function buildCoachChatSetupFilterText() {
   if (isWrongBankPracticeEnabled()) {
     const dueNow = srsDueList().length;
@@ -3689,21 +3694,6 @@ function compactVoiceName(name) {
     .replace(/\s+Online.*$/i, '')
     .trim() || raw;
 }
-function uniqueFilterLabels(values, format = (value) => value) {
-  const seen = new Set();
-  const out = [];
-  for (const raw of (values || [])) {
-    const value = String(raw || '').trim();
-    if (!value || seen.has(value)) continue;
-    seen.add(value);
-    out.push(format(value));
-  }
-  return out;
-}
-function formatDetailedFilterSelection(label, values, allLabel) {
-  if (!Array.isArray(values) || !values.length) return `${label}: ${allLabel}`;
-  return `${label}: ${values.join(', ')}`;
-}
 function updateSetupOverview() {
   const set = getActiveSet();
   const wrongBankEnabled = isWrongBankPracticeEnabled();
@@ -3712,8 +3702,13 @@ function updateSetupOverview() {
   const availableCount = wrongBankEnabled
     ? (dueNow || wrongBankCount)
     : buildFilteredPoolFromSet(set).length;
-  const { selectedRegions, selectedEras, regionSummary, eraSummary, sourceSummary } = getSetupFilterDetails();
+  const cats = Array.isArray(App.filters.cats) ? App.filters.cats.filter(Boolean) : [];
+  const eras = Array.isArray(App.filters.eras) ? App.filters.eras.filter(Boolean) : [];
   const setText = set ? `${set.name} (${set.items.length} items)` : 'No set loaded';
+  const filterDetails = getSetupFilterDetails();
+  const filterCats = formatDetailedFilterSelection('Regions', filterDetails.selectedRegions, 'All regions');
+  const filterEras = formatDetailedFilterSelection('Eras', filterDetails.selectedEras, 'All eras');
+  const filterSrc = formatDetailedFilterSelection('Source', filterDetails.selectedSources, 'All sources');
   const advancedSummary = [
     Settings.strict ? 'Strict spelling' : 'Flexible grading',
     Settings.autoAdvance ? `Auto-advance ${Settings.autoAdvanceDelay || 1}s` : 'Manual pacing',
@@ -3748,7 +3743,7 @@ function updateSetupOverview() {
       nextText = 'Load a question set.';
     } else if (wrongBankEnabled) {
       nextText = 'Wrong-bank queue ready.';
-    } else if (selectedRegions.length || selectedEras.length || App.filters.src) {
+    } else if (cats.length || App.filters.cat || eras.length || App.filters.era || App.filters.src) {
       nextText = 'Session ready.';
     }
     nextEl.textContent = nextText;
@@ -3757,7 +3752,7 @@ function updateSetupOverview() {
   const mobileSummaryEl = $('setup-mobile-summary');
   if (mobileSummaryEl) {
     mobileSummaryEl.textContent = (set || wrongBankEnabled)
-      ? `${lengthText} • ${filterCats} • ${filterEras} • ${filterSrc}`
+      ? `${lengthText} • Regions: ${filterDetails.regionSummary} • Eras: ${filterDetails.eraSummary} • Source: ${filterDetails.sourceSummary}`
       : 'Load a question set.';
   }
   const mobileWrongBankEl = $('setup-mobile-wrong-bank'); if (mobileWrongBankEl) mobileWrongBankEl.textContent = `Wrong bank: ${practiceWrongBankLabel(wrongBankEnabled)}`;
@@ -3766,7 +3761,7 @@ function updateSetupOverview() {
   const mobileDockSummaryEl = $('setup-mobile-dock-summary');
   if (mobileDockSummaryEl) {
     mobileDockSummaryEl.textContent = (set || wrongBankEnabled)
-      ? `${lengthText} • ${filterCats} • ${filterEras} • ${filterSrc}`
+      ? `${lengthText} • Regions: ${filterDetails.regionSummary} • Eras: ${filterDetails.eraSummary} • Source: ${filterDetails.sourceSummary}`
       : 'Load a question set.';
   }
   syncPracticeWrongBankToggle();
@@ -4634,11 +4629,25 @@ function drawAccByCat() {
 // Nav
 $('nav-setup')?.addEventListener('click', (e) => { e.preventDefault(); playFeedbackCue('nav'); navSet('nav-setup'); SHOW('view-setup'); });
 function openSessionOptionsView() {
-  navSet('nav-session');
-  SHOW('view-session');
-  requestAnimationFrame(() => alignPracticeNavIntoView());
+  const sessionNav = $('nav-session');
+  const sessionView = $('view-session');
+  if (sessionNav && sessionView) {
+    navSet('nav-session');
+    SHOW('view-session');
+    requestAnimationFrame(() => alignPracticeNavIntoView());
+    return;
+  }
+  const target = $('setup-session-options-card');
+  if (!target) return;
+  requestAnimationFrame(() => {
+    const shell = document.querySelector('.shell.page-shell');
+    const shellTopPad = shell ? parseFloat(getComputedStyle(shell).paddingTop || '0') || 0 : 0;
+    const topInset = Math.max(12, Math.round(shellTopPad / 2));
+    const targetTop = target.getBoundingClientRect().top + window.scrollY;
+    window.scrollTo({ top: Math.max(0, targetTop - topInset), behavior: 'smooth' });
+  });
 }
-$('nav-session')?.addEventListener('click', (e) => { e.preventDefault(); playFeedbackCue('nav'); navSet('nav-session'); SHOW('view-session'); });
+$('nav-session')?.addEventListener('click', (e) => { e.preventDefault(); playFeedbackCue('nav'); openSessionOptionsView(); });
 $('nav-practice')?.addEventListener('click', (e) => {
   e.preventDefault(); playFeedbackCue('nav'); navSet('nav-practice'); SHOW('view-practice');
   schedulePracticeViewportFit({ align: true });
@@ -4661,7 +4670,6 @@ $('nav-coach')?.addEventListener('click', async (e) => {
 });
 $('nav-library')?.addEventListener('click', (e) => { e.preventDefault(); playFeedbackCue('nav'); navSet('nav-library'); SHOW('view-library'); renderLibraryTable(); });
 window.addEventListener('resize', () => { schedulePracticeViewportFit(); });
-
 
 // Setup events
 $('fileInput')?.addEventListener('change', async (e) => {
@@ -5562,7 +5570,7 @@ try {
       renderLibrarySelectors();
       updateSetMeta();
 
-      // Set session length to ALL questions and mode to sequential
+      // Set session length to ALL questions in random order
       App.size = 'all';
       setPracticeWrongBank(false);
       App.filters = { cat: '', cats: [], era: '', eras: [], src: '' };

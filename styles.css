@@ -4651,6 +4651,10 @@ input[type=datetime-local]:focus {
   min-width: 0;
 }
 
+.setup-side {
+  align-self: start;
+}
+
 .setup-main > .section-card,
 .setup-side > .section-card {
   flex: 1 1 auto;
@@ -4663,6 +4667,8 @@ input[type=datetime-local]:focus {
 .setup-overview-card {
   display: flex;
   flex-direction: column;
+  position: sticky;
+  top: 24px;
 }
 
 .setup-group {
@@ -6158,7 +6164,7 @@ input[type=datetime-local]:focus {
 }
 
 .summary-note {
-  margin-top: auto;
+  margin-top: 14px;
   padding: 14px 16px;
   display: flex;
   flex-wrap: wrap;
@@ -6167,7 +6173,6 @@ input[type=datetime-local]:focus {
   gap: 10px 14px;
 }
 
-
 .summary-note-copy {
   display: flex;
   flex: 1 1 220px;
@@ -6175,16 +6180,17 @@ input[type=datetime-local]:focus {
   flex-direction: column;
   gap: 6px;
 }
+
 .summary-note .empty-kicker,
 .summary-note .empty-copy {
   margin: 0;
 }
 
-
 .summary-note-button {
   flex: 0 0 auto;
   min-width: max-content;
 }
+
 .analytics-panel-note {
   display: none;
 }
