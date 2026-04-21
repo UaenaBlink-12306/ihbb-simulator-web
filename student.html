@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Student Dashboard - IHBB Premium Drill</title>
+    <title>Student Dashboard - IHBB Premium Hub</title>
     <link rel="icon" href="favicon.svg" type="image/svg+xml">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -61,7 +61,7 @@
             </div>
             <div class="hero-actions">
                 <button id="btn-walkthrough" class="btn ghost">Help / Tour</button>
-                <a href="index.html?drill=1" class="btn ghost">Practice Drill</a>
+                <a href="index.html?drill=1" class="btn ghost">Practice Hub</a>
                 <a href="livebee.html" class="btn ghost">Live Bee</a>
                 <a href="#" id="btn-logout" class="btn bad">Logout</a>
                 <button id="coach-chat-launcher" class="coach-chat-launcher" type="button" aria-controls="coach-chat-sidebar"
@@ -83,7 +83,7 @@
             <button class="dash-tab" data-tab="assignments">Assignments</button>
             <button class="dash-tab" data-tab="coach" title="Access Coach mode: review AI notes and personal focuses">Coach</button>
             <button class="dash-tab" data-tab="livebee">Live Bee</button>
-            <button class="dash-tab" data-tab="analytics" title="View your Blind Spot Analytics and 30-day drill performance history">Analytics</button>
+            <button class="dash-tab" data-tab="analytics" title="View your Blind Spot Analytics and 30-day hub performance history">Analytics</button>
             <button class="dash-tab" data-tab="leaderboard">Leaderboard</button>
             <button class="dash-tab" data-tab="account">Account</button>
             <button class="dash-tab" data-tab="whatsnew">What's New</button>
@@ -149,8 +149,8 @@
                                     <div class="eyebrow">Current focus</div>
                                     <h3>Assignment Coach</h3>
                                 </div>
-                                <div class="inline-actions">
-                                    <button id="btn-assignments-coach-drill" class="btn pri" type="button" title="Start an assignment drill with active DeepSeek AI Coach guidance">Guided Drill</button>
+                                <div class="assignment-actions" style="margin-top: 10px;">
+                                    <button id="btn-assignments-coach-drill" class="btn pri" type="button" title="Start an assignment hub with active DeepSeek AI Coach guidance">Guided Hub</button>
                                     <button id="btn-assignments-coach-tab" class="btn ghost" type="button" title="Open the Coach Workspace to review lessons and focuses">Workspace</button>
                                 </div>
                             </div>
@@ -167,7 +167,7 @@
                 <div class="section-head">
                     <div>
                         <h2 id="drill-title" class="card-title">Assignment</h2>
-                        <p id="drill-progress" class="section-subtitle">Preparing your drill...</p>
+                        <p id="drill-progress" class="section-subtitle">Preparing your hub...</p>
                     </div>
                     <button id="btn-back-assignments" class="btn ghost">Back</button>
                 </div>
@@ -226,8 +226,8 @@
                 <div class="analytics-shell">
                     <div class="section-head">
                         <div>
-                            <h2 class="card-title" title="Blind Spot Analytics aggregates your drill mistakes to identify the specific eras and regions where you need the most practice.">Blind Spot Analytics</h2>
-                            <p class="section-subtitle">30-day drill data.</p>
+                            <h2 class="card-title" title="Blind Spot Analytics aggregates your hub mistakes to identify the specific eras and regions where you need the most practice.">Blind Spot Analytics</h2>
+                            <p class="section-subtitle">30-day hub data.</p>
                         </div>
                         <div class="inline-actions">
                             <span class="pill">30-day window</span>
@@ -237,8 +237,8 @@
 
                     <div id="analytics-empty" class="analytics-empty hidden">
                         <h3>No activity yet</h3>
-                        <p class="muted">Run a few drills to populate analytics.</p>
-                        <a href="index.html?drill=1" class="btn pri">Start Practice Drill</a>
+                        <p class="muted">Run a few hubs to populate analytics.</p>
+                        <a href="index.html?drill=1" class="btn pri">Start Practice Hub</a>
                     </div>
 
                     <div id="analytics-content">
@@ -293,7 +293,7 @@
                                     <div>
                                         <div class="analytics-panel-kicker">Signal</div>
                                         <h3>Accuracy Trend</h3>
-                                        <p class="analytics-panel-note">Watch whether recent drills are stabilizing or drifting before you change your study plan.</p>
+                                        <p class="analytics-panel-note">Watch whether recent hubs are stabilizing or drifting before you change your study plan.</p>
                                     </div>
                                 </div>
                                 <div class="analytics-chart-shell">
@@ -388,7 +388,7 @@
                                     <button id="btn-analytics-ai" class="btn pri" type="button">Generate Insights</button>
                                 </div>
                             </div>
-                            <div id="analytics-ai-status" class="analytics-ai-status muted">30-day drill data ready.</div>
+                            <div id="analytics-ai-status" class="analytics-ai-status muted">30-day hub data ready.</div>
                             <div id="analytics-ai-content" class="analytics-ai-content">
                                 <div class="analytics-ai-placeholder">
                                     <h4>Insights ready</h4>
@@ -406,7 +406,7 @@
                 <div class="section-head">
                     <div>
                         <h2 class="card-title">Leaderboards</h2>
-                        <p class="section-subtitle">Rankings based on total correct answers from your drill sessions.</p>
+                        <p class="section-subtitle">Rankings based on total correct answers from your hub sessions.</p>
                     </div>
                 </div>
 
@@ -600,7 +600,7 @@
                 <div class="section-head">
                     <div>
                         <h2 class="card-title">What's New</h2>
-                        <p class="section-subtitle">The latest updates and features added to IHBB Premium Drill.</p>
+                        <p class="section-subtitle">The latest updates and features added to IHBB Premium Hub.</p>
                     </div>
                 </div>
                 <div class="dashboard-split dashboard-split-solo">
@@ -631,7 +631,7 @@
                             <div>
                                 <h3 style="margin:0 0 4px;">App Walkthroughs</h3>
                                 <div class="pill">April 21, 2026</div>
-                                <p class="muted" style="margin: 8px 0 0;">Added an in-app walkthrough for new accounts to explain features like Practice Drill, Live Bee, Analytics, and DeepSeek. You can revisit it anytime via the "Help / Tour" button on the dashboard.</p>
+                                <p class="muted" style="margin: 8px 0 0;">Added an in-app walkthrough for new accounts to explain features like Practice Hub, Live Bee, Analytics, and DeepSeek. You can revisit it anytime via the "Help / Tour" button on the dashboard.</p>
                             </div>
                         </div>
                         <div class="list-item">
@@ -657,7 +657,7 @@
             </div>
             <div class="stack" style="text-align: left;">
                 <div class="card-muted-box">
-                    <h4 style="margin: 0 0 4px;">Practice Drill</h4>
+                    <h4 style="margin: 0 0 4px;">Practice Hub</h4>
                     <p class="muted" style="margin: 0;">Sharpen your skills with endless practice questions. Track your progress to identify weaknesses.</p>
                 </div>
                 <div class="card-muted-box">
