@@ -192,6 +192,41 @@ async function callDeepSeek(messages, maxTokens) {
   return parseJsonFromContent(data?.choices?.[0]?.message?.content?.trim());
 }
 
+
+async function validateGeneratedQuestion(item) {
+  if (!process.env.DEEPSEEK_API_KEY) {
+    return { valid: true, reason: 'Validation skipped (no API key)' };
+  }
+  const question = stringValue(item.question);
+  const answer = stringValue(item.answer);
+  if (!question || !answer) {
+    return { valid: false, reason: 'Missing question or answer text' };
+  }
+  const system = [
+    'You are a quality checker for IHBB (International History Bee and Bowl) tossup questions.',
+    'Given a question and its expected answer, check:',
+    '1. Is the question historically accurate? Are the facts correct?',
+    '2. Does it follow pyramid format (4 sentences, hardest clue first, giveaway last)?',
+    '3. Does the last sentence start with "For the point"?',
+    '4. Is the answer unambiguous and clearly the only correct response?',
+    '5. Does the question avoid revealing the answer before the final sentence?',
+    'Return strict JSON: {"valid": boolean, "reason": "short explanation"}'
+  ].join('\n');
+  const userPayload = { question, answer };
+  try {
+    const obj = await callDeepSeek([
+      { role: 'system', content: system },
+      { role: 'user', content: JSON.stringify(userPayload) }
+    ], 150);
+    if (obj && typeof obj.valid === 'boolean') {
+      return { valid: Boolean(obj.valid), reason: stringValue(obj.reason) };
+    }
+  } catch (error) {
+    console.warn('DeepSeek validation call failed:', error.message);
+  }
+  return { valid: true, reason: 'Validation call failed; accepted by default' };
+}
+
 module.exports = async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
@@ -262,18 +297,44 @@ module.exports = async function handler(req, res) {
       ? raw
       : (Array.isArray(raw?.items) ? raw.items : (Array.isArray(raw?.questions) ? raw.questions : []));
     const seenKeys = new Set();
-    const items = rawItems
+    const parsedItems = rawItems
       .map((item, index) => normalizeGeneratedItem(item, { region, era, topic, createdFrom, creatorRole }, index, seenKeys, avoidAnswers))
       .filter(Boolean);
 
-    if (!items.length) {
+    if (!parsedItems.length) {
       return res.status(502).json({ error: 'DeepSeek returned no valid generated questions.' });
     }
 
+    const skipValidation = Boolean(payload.skip_validation);
+    const items = [];
+    const validationResults = [];
+
+    for (const item of parsedItems) {
+      if (skipValidation) {
+        items.push(item);
+        validationResults.push({ valid: true, reason: 'Validation skipped' });
+      } else {
+        const result = await validateGeneratedQuestion(item);
+        validationResults.push(result);
+        if (result.valid) {
+          items.push(item);
+        } else {
+          console.log(`Generated question rejected by validation: answer=${item.answer} reason=${result.reason}`);
+        }
+      }
+    }
+
+    if (!items.length) {
+      return res.status(502).json({ error: 'All generated questions failed validation.', validation_results: validationResults });
+    }
+
+    // Serverless doesn't have local persistence; relying on client app.js to sync to Supabase table
     return res.status(200).json({
       source: 'deepseek',
       requested: count,
       returned: items.length,
+      validated: items.length,
+      rejected: parsedItems.length - items.length,
       items
     });
   } catch (error) {

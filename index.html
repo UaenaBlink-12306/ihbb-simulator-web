@@ -206,9 +206,11 @@
                 </div>
                 <div class="setup-group">
                   <label class="muted">Source</label>
-                  <select id="filter-src">
-                    <option value="">All</option>
-                  </select>
+                  <div id="src-chips" class="chips">
+                    <div class="chip active" data-src="">All sources</div>
+                    <div class="chip" data-src="original">Original</div>
+                    <div class="chip" data-src="generated">Generated</div>
+                  </div>
                 </div>
               </div>
 
@@ -523,15 +525,16 @@
             </div>
           </div>
 
-          <div class="row">
-            <div class="pill">Saved lessons: <span id="coach-count">0</span></div>
-            <div class="pill">To learn: <span id="coach-open-count">0</span></div>
-            <div class="pill">Mastered: <span id="coach-mastered-count">0</span></div>
-            <div class="grow"></div>
-            <button id="btn-coach-apply-top" class="btn pri" type="button">Apply Top Focus</button>
-            <button id="btn-coach-clear" class="btn bad" type="button">Clear Notebook</button>
-            <button id="btn-coach-back-review" class="btn ghost" type="button">Back to Review</button>
-          </div>
+            <div class="row">
+              <div class="pill">Saved lessons: <span id="coach-count">0</span></div>
+              <div class="pill">To learn: <span id="coach-open-count">0</span></div>
+              <div class="pill">Mastered: <span id="coach-mastered-count">0</span></div>
+              <div class="grow"></div>
+              <button id="btn-coach-generate-weak" class="btn action" type="button">Generate from Weak Spots</button>
+              <button id="btn-coach-apply-top" class="btn pri" type="button">Apply Top Focus</button>
+              <button id="btn-coach-clear" class="btn bad" type="button">Clear Notebook</button>
+              <button id="btn-coach-back-review" class="btn ghost" type="button">Back to Review</button>
+            </div>
 
         </div>
 

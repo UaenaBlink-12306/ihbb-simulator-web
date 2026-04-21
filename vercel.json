@@ -3,6 +3,9 @@
     "functions": {
         "api/coach-chat.js": {
             "maxDuration": 60
+        },
+        "api/generate-questions.js": {
+            "maxDuration": 60
         }
     },
     "rewrites": [
@@ -13,6 +16,10 @@
         {
             "source": "/api/analytics-insights",
             "destination": "/api/analytics-insights.js"
+        },
+        {
+            "source": "/api/generate-questions",
+            "destination": "/api/generate-questions.js"
         }
     ]
 }

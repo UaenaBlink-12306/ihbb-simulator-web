@@ -3168,6 +3168,53 @@ async function hydratePrivateGeneratedQuestions(forceCloud = false) {
   return true;
 }
 
+async function hydrateSharedGeneratedQuestions() {
+  if (!window.supabaseClient) return [];
+  try {
+    const { data, error } = await window.supabaseClient
+      .from(GENERATED_SYNC_TABLE)
+      .select('id, question_text, answer_text, aliases, category, era, source, topic, created_from, created_by_role')
+      .order('created_at', { ascending: false })
+      .limit(1000);
+    if (error) throw error;
+    
+    const items = (Array.isArray(data) ? data : []).map(normalizeGeneratedQuestionRecord).filter(Boolean);
+    if (items.length) {
+      mergeGeneratedQuestionsIntoLibrary(items, { activate: false, persistLocal: true });
+    }
+    return items;
+  } catch (err) {
+    console.warn('[GeneratedQuestionsSync] shared fetch failed.', err);
+    return [];
+  }
+}
+
+function renderSourceChips() {
+  const wrap = $('src-chips'); if (!wrap) return;
+  wrap.innerHTML = '';
+  const sources = [
+    { label: 'All sources', value: '' },
+    { label: 'Original', value: 'original' },
+    { label: 'Generated', value: 'generated' }
+  ];
+  const selected = String(App.filters.src || '').trim().toLowerCase();
+  
+  sources.forEach(src => {
+    const chip = document.createElement('div');
+    const isActive = selected === src.value;
+    chip.className = 'chip' + (isActive ? ' active' : '');
+    chip.textContent = src.label;
+    chip.dataset.src = src.value;
+    chip.onclick = () => {
+      App.filters.src = src.value;
+      renderSourceChips();
+      updateSetupOverview();
+    };
+    wrap.appendChild(chip);
+  });
+}
+
+
 function collectAvoidAnswers(focus = null) {
   const answers = new Set();
   for (const set of (Library.sets || [])) {
@@ -3652,7 +3699,11 @@ function buildFilteredPoolFromSet(set) {
   if (App.filters.cat) arr = arr.filter(it => (it.meta?.category || '') === App.filters.cat);
   if (Array.isArray(App.filters.eras) && App.filters.eras.length) arr = arr.filter(it => App.filters.eras.includes((it.meta?.era || '')));
   else if (App.filters.era) arr = arr.filter(it => (it.meta?.era || '') === App.filters.era);
-  if (App.filters.src) arr = arr.filter(it => (it.meta?.source || '') === App.filters.src);
+  if (App.filters.src) arr = arr.filter(it => {
+    const src = String(it.meta?.source || 'original').trim().toLowerCase();
+    const filterSrc = String(App.filters.src || '').trim().toLowerCase();
+    return filterSrc ? src === filterSrc : true;
+  });
   return arr;
 }
 function buildPool() {
@@ -5234,7 +5285,7 @@ async function tryFetchDefault(force = false) {
   const ct = $('cueTicks'); if (ct) ct.checked = (Settings.cueTicks ?? true);
   const cb = $('cueBeep'); if (cb) cb.checked = (Settings.cueBeep ?? true);
   const hp = $('haptics'); if (hp) hp.checked = (Settings.haptics ?? true);
-  renderPresets(); renderLibrarySelectors(); updateFilterRow();
+  renderPresets(); renderLibrarySelectors(); updateFilterRow(); renderSourceChips();
   try { const p = document.querySelector('#lib-cats')?.parentElement; if (p) p.innerHTML = p.innerHTML.replace('Categories:', 'Regions:'); } catch { }
   renderHistory(); renderWrongBank();
   await initWrongBankSync();
@@ -5246,6 +5297,7 @@ async function tryFetchDefault(force = false) {
     await tryFetchDefault(false);
   }
   await hydratePrivateGeneratedQuestions(false);
+  await hydrateSharedGeneratedQuestions();
   updateSetupOverview();
   renderCoachChatChrome();
   await applyPendingCoachChatAction();
@@ -5623,3 +5675,40 @@ try {
     }
   }
 })();
+
+
+async function generateQuestionsFromNotebook() {
+  const focuses = buildCoachFocusSuggestions(CoachNotebook.records);
+  const openFocuses = focuses.filter(f => f.unresolved > 0);
+  if (!openFocuses.length) {
+    toast('No open weak spots to generate questions for.');
+    return;
+  }
+  
+  const targetFocus = openFocuses[0]; // Take the most pressing weak spot
+  toast(`Generating questions to target your weak spot in ${buildFocusTitle(targetFocus)}...`);
+  
+  const btn = $('btn-coach-generate-weak');
+  const origText = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = 'Generating...'; }
+  
+  try {
+    const success = await startGeneratedFocusDrill(targetFocus, {
+      count: 5,
+      creatorRole: 'student',
+      createdFrom: 'notebook_auto_weak_spot',
+      clearPending: true,
+      startSession: false
+    });
+    if (success) {
+      toast('Generated questions added to the library! They will appear with the "Generated" source tag.');
+      navSet('nav-setup');
+      SHOW('view-setup');
+    }
+  } catch (err) {
+    console.error('Failed to generate weak spot questions:', err);
+    toast('Failed to generate questions. Please try again later.');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = origText; }
+  }
+}
