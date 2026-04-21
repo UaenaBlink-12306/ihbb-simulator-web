@@ -3727,7 +3727,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     <div class="score-rank ${rankLabelClass}">${r.rank}</div>
                     <img src="/assets/avatars/${normalizeAvatarId(r.avatar_id)}.png" alt="Avatar" width="36" height="36" style="border-radius: 10px;">
                     <div class="score-name">
-                        <span style="font-weight: ${isMe ? '800' : '600'}; font-size: ${isMe ? '15px' : '14px'};">${esc(r.display_name)}</span>
+                        <a href="profile.html?user=${r.student_id}" style="font-weight: ${isMe ? '800' : '600'}; font-size: ${isMe ? '15px' : '14px'}; color: inherit; text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px;">${esc(r.display_name)}</a>
                         ${isMe ? '<span class="pill" style="margin-left: 6px; padding: 2px 8px; font-size: 11px;">You</span>' : ''}
                     </div>
                     <div class="score-points">

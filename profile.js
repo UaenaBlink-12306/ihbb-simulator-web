@@ -228,11 +228,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     const requestedId = params.get('user');
     let targetId = requestedId || viewerId;
 
-    if (targetId !== viewerId && viewerProfile.role !== 'teacher') {
-        targetId = viewerId;
-        showAlert('You can only view your own profile.', 'error');
-    }
-
     const { data: targetProfile, error: targetErr } = await sb
         .from('profiles')
         .select('*')
