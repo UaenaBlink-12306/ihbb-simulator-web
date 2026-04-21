@@ -465,8 +465,19 @@
                                 </div>
                             </div>
                             <div id="acc-account-settings-group" class="input-group full-width" hidden>
-                                <label>Synced preference</label>
+                                <label>Student workspace defaults</label>
                                 <div style="display: grid; gap: 14px;">
+                                    <div class="input-group" style="margin: 0;">
+                                        <label for="acc-student-default-tab">Default dashboard tab</label>
+                                        <select id="acc-student-default-tab">
+                                            <option value="classes">My Classes</option>
+                                            <option value="assignments">Assignments</option>
+                                            <option value="coach">Coach</option>
+                                            <option value="analytics">Analytics</option>
+                                            <option value="leaderboard">Leaderboard</option>
+                                        </select>
+                                        <p class="muted" style="margin: 8px 0 0;">Choose which student workspace opens first after you sign in.</p>
+                                    </div>
                                     <div id="acc-setting-practice-hub-auto-open" class="practice-hub-toggle-setting" data-enabled="true">
                                         <div class="practice-hub-toggle-card">
                                             <div class="practice-hub-toggle-copy">
@@ -484,6 +495,38 @@
                                             </label>
                                         </div>
                                     </div>
+                                    <div id="acc-setting-assistant-thinking" class="practice-hub-toggle-setting" data-enabled="false">
+                                        <div class="practice-hub-toggle-card">
+                                            <div class="practice-hub-toggle-copy">
+                                                <p class="practice-hub-toggle-summary">Start the coach with Thinking Model enabled.</p>
+                                                <p id="acc-assistant-thinking-hint" class="muted practice-hub-toggle-hint">DeepSeek starts in its faster default mode until you turn on reasoning.</p>
+                                            </div>
+                                            <label class="practice-hub-switch" for="acc-assistant-thinking">
+                                                <input id="acc-assistant-thinking" type="checkbox" role="switch"
+                                                    aria-describedby="acc-assistant-thinking-hint">
+                                                <span class="practice-hub-switch-track" aria-hidden="true">
+                                                    <span class="practice-hub-switch-thumb"></span>
+                                                </span>
+                                                <span id="acc-assistant-thinking-state" class="practice-hub-switch-state">Off</span>
+                                            </label>
+                                        </div>
+                                    </div>
+                                    <div id="acc-setting-assistant-starters" class="practice-hub-toggle-setting" data-enabled="true">
+                                        <div class="practice-hub-toggle-card">
+                                            <div class="practice-hub-toggle-copy">
+                                                <p class="practice-hub-toggle-summary">Show suggested DeepSeek prompts in the dashboard coach.</p>
+                                                <p id="acc-assistant-starters-hint" class="muted practice-hub-toggle-hint">Starter prompts stay visible until you begin your own coach conversation.</p>
+                                            </div>
+                                            <label class="practice-hub-switch" for="acc-assistant-starters">
+                                                <input id="acc-assistant-starters" type="checkbox" role="switch"
+                                                    aria-describedby="acc-assistant-starters-hint">
+                                                <span class="practice-hub-switch-track" aria-hidden="true">
+                                                    <span class="practice-hub-switch-thumb"></span>
+                                                </span>
+                                                <span id="acc-assistant-starters-state" class="practice-hub-switch-state">On</span>
+                                            </label>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -491,7 +534,7 @@
                             <button id="btn-save-account" class="btn pri">Save Profile Changes</button>
                         </div>
                         <p class="muted" style="margin: 8px 0 0;">Email changes may require inbox verification depending on
-                            your auth settings. This preference saves to your account and syncs across devices.</p>
+                            your auth settings. These workspace defaults save to your account and sync across devices.</p>
 
                         <div class="account-danger" style="margin-top: 18px;">
                             <div class="section-head" style="margin-bottom: 10px;">

@@ -442,13 +442,42 @@
                                         aria-label="Choose your avatar"></div>
                                 </div>
                             </div>
+                            <div id="acc-account-settings-group" class="input-group full-width">
+                                <label>Teacher workspace defaults</label>
+                                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;">
+                                    <div class="input-group" style="margin:0;">
+                                        <label for="acc-teacher-default-class">Default assignment class</label>
+                                        <select id="acc-teacher-default-class"></select>
+                                        <p class="muted" style="margin:8px 0 0;">Used to prefill the class selector in the assignment builder.</p>
+                                    </div>
+                                    <div class="input-group" style="margin:0;">
+                                        <label for="acc-teacher-default-mode">Default builder mode</label>
+                                        <select id="acc-teacher-default-mode">
+                                            <option value="random">Random</option>
+                                            <option value="filter">By Topic / Era</option>
+                                            <option value="pick">Hand Pick</option>
+                                        </select>
+                                        <p class="muted" style="margin:8px 0 0;">Choose which assignment-building workflow opens first.</p>
+                                    </div>
+                                    <div class="input-group" style="margin:0;">
+                                        <label for="acc-teacher-default-count">Default question count</label>
+                                        <input id="acc-teacher-default-count" type="number" min="1" max="200" value="10">
+                                        <p class="muted" style="margin:8px 0 0;">Applied to both Random and By Topic / Era previews.</p>
+                                    </div>
+                                    <div class="input-group" style="margin:0;">
+                                        <label for="acc-teacher-analytics-class">Default analytics focus class</label>
+                                        <select id="acc-teacher-analytics-class"></select>
+                                        <p class="muted" style="margin:8px 0 0;">Used to open class analytics on the roster you check most often.</p>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                         <div class="form-actions" style="margin-top: 14px;">
                             <button id="btn-save-account" class="btn pri">Save Profile Changes</button>
                             <a href="profile.html" class="btn ghost">View My Profile</a>
                         </div>
                         <p class="muted" style="margin: 8px 0 0;">Email changes may require inbox verification depending on
-                            your auth settings.</p>
+                            your auth settings. These workspace defaults save to your account and sync across devices.</p>
 
                         <div class="account-danger" style="margin-top: 18px;">
                             <div class="section-head" style="margin-bottom: 10px;">

@@ -116,6 +116,19 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (!Number.isFinite(v)) return fallback;
         return Math.max(1, Math.min(200, v));
     };
+    const TEACHER_BUILDER_MODES = new Set(['random', 'filter', 'pick']);
+    const ACCOUNT_SETTING_DEFAULTS = Object.freeze({
+        teacher_builder_default_class_id: '',
+        teacher_builder_default_mode: 'random',
+        teacher_builder_default_question_count: 10,
+        teacher_analytics_default_class_id: ''
+    });
+    const normalizeTeacherClassId = (value) => String(value || '').trim();
+    const normalizeTeacherBuilderMode = (value) => {
+        const normalized = String(value || '').trim().toLowerCase();
+        return TEACHER_BUILDER_MODES.has(normalized) ? normalized : ACCOUNT_SETTING_DEFAULTS.teacher_builder_default_mode;
+    };
+    const normalizeTeacherQuestionCount = (value) => clampCount(value, ACCOUNT_SETTING_DEFAULTS.teacher_builder_default_question_count);
     const normalizeQuestionRecord = (raw) => {
         if (!raw || typeof raw !== 'object') return null;
         const question = String(raw.question || raw.q || raw.question_text || '').trim();
@@ -134,6 +147,17 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         };
     };
+    const normalizeAccountSettings = (value) => {
+        const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+        return {
+            ...source,
+            teacher_builder_default_class_id: normalizeTeacherClassId(source.teacher_builder_default_class_id),
+            teacher_builder_default_mode: normalizeTeacherBuilderMode(source.teacher_builder_default_mode),
+            teacher_builder_default_question_count: normalizeTeacherQuestionCount(source.teacher_builder_default_question_count),
+            teacher_analytics_default_class_id: normalizeTeacherClassId(source.teacher_analytics_default_class_id)
+        };
+    };
+    let accountSettings = normalizeAccountSettings(profile.account_settings);
     const updateGeneratorStatus = (message, type = 'muted') => {
         const el = document.getElementById('teacher-gen-status');
         if (!el) return;
@@ -1258,9 +1282,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         const topEl = document.getElementById('analytics-top-students');
         const watchEl = document.getElementById('analytics-watch-students');
         const rosterEl = document.getElementById('analytics-class-roster');
-        const selectedId = teacherAnalyticsState.selectedClassId || teacherAnalyticsState.classes[0]?.id || '';
-        const selected = selectedId ? teacherAnalyticsState.byClassId.get(selectedId) : null;
         const classes = teacherAnalyticsState.classes || [];
+        const selectedId = resolveTeacherActiveClassId(
+            teacherAnalyticsState.selectedClassId,
+            classes,
+            accountSettings.teacher_analytics_default_class_id
+        );
+        const selected = selectedId ? teacherAnalyticsState.byClassId.get(selectedId) : null;
 
         if (classSelect) {
             classSelect.innerHTML = classes.length
@@ -1397,9 +1425,11 @@ document.addEventListener('DOMContentLoaded', async () => {
             teacherAnalyticsState.byClassId = analytics.byClassId;
             teacherAnalyticsState.studentsById = analytics.studentsById;
             teacherAnalyticsState.totals = analytics.totals;
-            teacherAnalyticsState.selectedClassId = teacherAnalyticsState.selectedClassId && analytics.byClassId.has(teacherAnalyticsState.selectedClassId)
-                ? teacherAnalyticsState.selectedClassId
-                : analytics.selectedClassId;
+            teacherAnalyticsState.selectedClassId = resolveTeacherActiveClassId(
+                teacherAnalyticsState.selectedClassId,
+                analytics.classes,
+                accountSettings.teacher_analytics_default_class_id
+            );
             renderTeacherAnalytics();
             renderClasses();
         } catch (err) {
@@ -1439,9 +1469,11 @@ document.addEventListener('DOMContentLoaded', async () => {
                 wrongCount: 0,
                 coachCount: 0
             };
-            teacherAnalyticsState.selectedClassId = teacherAnalyticsState.selectedClassId && teacherAnalyticsState.byClassId.has(teacherAnalyticsState.selectedClassId)
-                ? teacherAnalyticsState.selectedClassId
-                : teacherAnalyticsState.classes[0]?.id || '';
+            teacherAnalyticsState.selectedClassId = resolveTeacherActiveClassId(
+                teacherAnalyticsState.selectedClassId,
+                teacherAnalyticsState.classes,
+                accountSettings.teacher_analytics_default_class_id
+            );
             renderTeacherAnalytics();
             renderClasses();
         }
@@ -1566,7 +1598,73 @@ document.addEventListener('DOMContentLoaded', async () => {
             });
         });
     }
-    function renderAccountProfile() {
+    function hasTeacherClassId(classId, classes = myClasses) {
+        const normalizedId = normalizeTeacherClassId(classId);
+        return !!normalizedId && (Array.isArray(classes) ? classes : []).some((row) => normalizeTeacherClassId(row?.id) === normalizedId);
+    }
+    function resolveTeacherActiveClassId(currentId, classes = myClasses, preferredId = accountSettings.teacher_analytics_default_class_id) {
+        if (hasTeacherClassId(currentId, classes)) return normalizeTeacherClassId(currentId);
+        return resolveTeacherClassOrFallback(preferredId, classes);
+    }
+    function resolveTeacherClassSelection(classId, classes = myClasses) {
+        return hasTeacherClassId(classId, classes) ? normalizeTeacherClassId(classId) : '';
+    }
+    function resolveTeacherClassOrFallback(classId, classes = myClasses) {
+        return resolveTeacherClassSelection(classId, classes) || normalizeTeacherClassId(classes?.[0]?.id);
+    }
+    function buildTeacherClassOptions(placeholder) {
+        if (!myClasses.length) return '<option value="">No classes yet</option>';
+        return [`<option value="">${esc(placeholder)}</option>`]
+            .concat(myClasses.map((row) => `<option value="${esc(String(row.id || ''))}">${esc(row.name || 'Untitled Class')} (${esc(row.code || 'no code')})</option>`))
+            .join('');
+    }
+    function populateTeacherSettingsClassDropdowns() {
+        const builderSelect = document.getElementById('acc-teacher-default-class');
+        const analyticsSelect = document.getElementById('acc-teacher-analytics-class');
+        if (builderSelect) builderSelect.innerHTML = buildTeacherClassOptions('First available class');
+        if (analyticsSelect) analyticsSelect.innerHTML = buildTeacherClassOptions('First available analytics class');
+    }
+    function readAccountSettingsFromForm() {
+        return normalizeAccountSettings({
+            ...accountSettings,
+            teacher_builder_default_class_id: document.getElementById('acc-teacher-default-class')?.value,
+            teacher_builder_default_mode: document.getElementById('acc-teacher-default-mode')?.value,
+            teacher_builder_default_question_count: document.getElementById('acc-teacher-default-count')?.value,
+            teacher_analytics_default_class_id: document.getElementById('acc-teacher-analytics-class')?.value
+        });
+    }
+    function syncAccountSettingsInputs() {
+        populateTeacherSettingsClassDropdowns();
+        setInput('acc-teacher-default-mode', normalizeTeacherBuilderMode(accountSettings.teacher_builder_default_mode));
+        setInput('acc-teacher-default-count', normalizeTeacherQuestionCount(accountSettings.teacher_builder_default_question_count));
+        const builderSelect = document.getElementById('acc-teacher-default-class');
+        const analyticsSelect = document.getElementById('acc-teacher-analytics-class');
+        if (builderSelect) builderSelect.value = resolveTeacherClassSelection(accountSettings.teacher_builder_default_class_id, myClasses);
+        if (analyticsSelect) analyticsSelect.value = resolveTeacherClassSelection(accountSettings.teacher_analytics_default_class_id, myClasses);
+    }
+    function applyAccountSettingsLocally({ force = false } = {}) {
+        setMode(normalizeTeacherBuilderMode(accountSettings.teacher_builder_default_mode));
+        const defaultQuestionCount = normalizeTeacherQuestionCount(accountSettings.teacher_builder_default_question_count);
+        setInput('random-count', defaultQuestionCount);
+        setInput('filter-count', defaultQuestionCount);
+
+        const classSelect = document.getElementById('assign-class');
+        if (classSelect) {
+            const currentClassId = normalizeTeacherClassId(classSelect.value);
+            const nextClassId = (force || !hasTeacherClassId(currentClassId, myClasses))
+                ? resolveTeacherClassOrFallback(accountSettings.teacher_builder_default_class_id, myClasses)
+                : currentClassId;
+            classSelect.value = nextClassId;
+        }
+
+        const analyticsClasses = teacherAnalyticsState.classes.length ? teacherAnalyticsState.classes : myClasses;
+        const currentAnalyticsId = normalizeTeacherClassId(teacherAnalyticsState.selectedClassId);
+        if (force || !hasTeacherClassId(currentAnalyticsId, analyticsClasses)) {
+            teacherAnalyticsState.selectedClassId = resolveTeacherClassOrFallback(accountSettings.teacher_analytics_default_class_id, analyticsClasses);
+        }
+        if (teacherAnalyticsState.classes.length) renderTeacherAnalytics();
+    }
+    function renderAccountProfile(forceSettings = false) {
         setInput('acc-display-name', profile.display_name || 'Unnamed');
         setInput('acc-role', formatRole(profile.role));
         setInput('acc-email', userEmail || '');
@@ -1576,8 +1674,18 @@ document.addEventListener('DOMContentLoaded', async () => {
         selectedAvatarId = normalizeAvatarId(profile.avatar_id);
         renderAccountAvatarPreview();
         renderAccountAvatarPicker();
+        accountSettings = normalizeAccountSettings(profile.account_settings);
+        syncAccountSettingsInputs();
+        applyAccountSettingsLocally({ force: forceSettings });
     }
-    renderAccountProfile();
+    renderAccountProfile(true);
+
+    ['acc-teacher-default-class', 'acc-teacher-default-mode', 'acc-teacher-default-count', 'acc-teacher-analytics-class'].forEach((id) => {
+        document.getElementById(id)?.addEventListener('change', () => {
+            accountSettings = readAccountSettingsFromForm();
+            syncAccountSettingsInputs();
+        });
+    });
 
     saveAccountBtn?.addEventListener('click', async () => {
         const nameInput = document.getElementById('acc-display-name');
@@ -1601,10 +1709,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         const prevEmail = normalizeEmail(userEmail);
         const prevAvatarId = normalizeAvatarId(profile.avatar_id);
         const nextAvatarId = normalizeAvatarId(selectedAvatarId);
+        const nextAccountSettings = readAccountSettingsFromForm();
+        const hasPersistedAccountSettings = !!profile.account_settings && typeof profile.account_settings === 'object' && !Array.isArray(profile.account_settings);
+        const prevAccountSettings = normalizeAccountSettings(profile.account_settings);
         const changeName = nextName !== prevName;
         const changeEmail = nextEmail !== prevEmail;
         const changeAvatar = nextAvatarId !== prevAvatarId;
-        if (!changeName && !changeEmail && !changeAvatar) {
+        const changeSettings = !hasPersistedAccountSettings || JSON.stringify(nextAccountSettings) !== JSON.stringify(prevAccountSettings);
+        if (!changeName && !changeEmail && !changeAvatar && !changeSettings) {
             showAlert('No profile changes to save.', 'success');
             return;
         }
@@ -1617,14 +1729,17 @@ document.addEventListener('DOMContentLoaded', async () => {
             const successMsgs = [];
             const errorMsgs = [];
 
-            if (changeName || changeAvatar) {
+            if (changeName || changeAvatar || changeSettings) {
                 const profilePatch = {};
                 if (changeName) profilePatch.display_name = nextName;
                 if (changeAvatar) profilePatch.avatar_id = nextAvatarId;
+                if (changeSettings) profilePatch.account_settings = nextAccountSettings;
                 const { error } = await sb.from('profiles').update(profilePatch).eq('id', uid);
                 if (error) {
-                    if (changeName && changeAvatar) errorMsgs.push(`Profile update failed: ${error.message}`);
+                    if (changeSettings && (changeName || changeAvatar)) errorMsgs.push(`Profile update failed: ${error.message}`);
+                    else if (changeName && changeAvatar) errorMsgs.push(`Profile update failed: ${error.message}`);
                     else if (changeName) errorMsgs.push(`Name update failed: ${error.message}`);
+                    else if (changeSettings) errorMsgs.push(`Preferences update failed: ${error.message}`);
                     else errorMsgs.push(`Avatar update failed: ${error.message}`);
                 } else {
                     if (changeName) {
@@ -1634,6 +1749,11 @@ document.addEventListener('DOMContentLoaded', async () => {
                     if (changeAvatar) {
                         profile.avatar_id = nextAvatarId;
                         successMsgs.push('Avatar updated');
+                    }
+                    if (changeSettings) {
+                        accountSettings = normalizeAccountSettings(nextAccountSettings);
+                        profile.account_settings = { ...accountSettings };
+                        successMsgs.push('Workspace defaults saved');
                     }
                 }
             }
@@ -1647,7 +1767,10 @@ document.addEventListener('DOMContentLoaded', async () => {
                 }
             }
 
-            renderAccountProfile();
+            if (!changeSettings) {
+                accountSettings = nextAccountSettings;
+            }
+            renderAccountProfile(changeSettings);
             if (successMsgs.length && !errorMsgs.length) {
                 const emailNote = changeEmail ? ' Check your inbox if verification is required.' : '';
                 showAlert(`${successMsgs.join('. ')}.${emailNote}`, 'success');
@@ -1693,6 +1816,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         myClasses = data || [];
         renderClasses();
         populateClassDropdown();
+        syncAccountSettingsInputs();
+        applyAccountSettingsLocally();
         void loadTeacherAnalytics();
     }
 
@@ -1842,9 +1967,14 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     function populateClassDropdown() {
         const sel = document.getElementById('assign-class');
+        if (!sel) return;
+        const currentClassId = normalizeTeacherClassId(sel.value);
         sel.innerHTML = myClasses.length
             ? myClasses.map(c => `<option value="${c.id}">${esc(c.name)} (${c.code})</option>`).join('')
             : '<option value="">Create a class first</option>';
+        sel.value = hasTeacherClassId(currentClassId, myClasses)
+            ? currentClassId
+            : resolveTeacherClassOrFallback(accountSettings.teacher_builder_default_class_id, myClasses);
     }
 
     // ========== ASSIGNMENTS ==========
@@ -2270,7 +2400,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     function esc(s) { const d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; }
 
     // Init
-    setMode(modeButtons.find(b => b.classList.contains('active'))?.dataset.mode || 'random');
+    setMode(normalizeTeacherBuilderMode(accountSettings.teacher_builder_default_mode || modeButtons.find(b => b.classList.contains('active'))?.dataset.mode || 'random'));
     loadClasses();
     loadAssignments();
 });
