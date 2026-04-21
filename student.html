@@ -403,11 +403,39 @@
 
         <section id="tab-leaderboard" class="view">
             <div class="card section-card">
-                <div class="coming-soon">
-                    <div class="cs-icon">Rank</div>
-                    <h2>Class and Global Leaderboards</h2>
-                    <p class="cs-desc">Ranking view not active yet.</p>
-                    <div class="cs-badge">Coming soon</div>
+                <div class="section-head">
+                    <div>
+                        <h2 class="card-title">Leaderboards</h2>
+                        <p class="section-subtitle">Rankings based on total correct answers from your drill sessions.</p>
+                    </div>
+                </div>
+
+                <div class="dashboard-split dashboard-split-solo">
+                    <div class="panel-stack">
+                        <div class="tab-strip subtab-strip">
+                            <button class="leaderboard-sub-tab active" data-sub="global">Global Top 100</button>
+                            <button class="leaderboard-sub-tab" data-sub="class">Class</button>
+                        </div>
+
+                        <div id="leaderboard-view-global" class="leaderboard-panel" style="margin-top: 18px;">
+                            <div id="leaderboard-list-global" class="list-container">
+                                <p class="muted">Loading global rankings...</p>
+                            </div>
+                        </div>
+                        <div id="leaderboard-view-class" class="leaderboard-panel hidden" style="margin-top: 18px;">
+                            <div class="card-muted-box" style="margin-bottom: 16px;">
+                                <div class="input-group" style="margin: 0;">
+                                    <label for="leaderboard-class-select" style="display: none;">Select a class</label>
+                                    <select id="leaderboard-class-select">
+                                        <option value="">Select a class...</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div id="leaderboard-list-class" class="list-container">
+                                <p class="muted">Select a class to view rankings.</p>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </section>
@@ -577,6 +605,14 @@
                 </div>
                 <div class="dashboard-split dashboard-split-solo">
                     <div class="list-container">
+                        <div class="list-item">
+                            <div>
+                                <h3 style="margin:0 0 4px;">Account Settings Overhaul</h3>
+                                <div class="pill">April 21, 2026</div>
+                                <p class="muted" style="margin: 8px 0 0;">The Account page has been redesigned so that saving profile basics (DisplayName, Email, Password) and workspace preferences are decoupled and immediately accessible without excessive scrolling. You can also now update your account password directly from this tab.</p>
+                            </div>
+                        </div>
+
                         <div class="list-item">
                             <div>
                                 <h3 style="margin:0 0 4px;">Feature Tooltips</h3>

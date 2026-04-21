@@ -447,6 +447,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         document.getElementById('tab-' + tabName)?.classList.add('active');
         if (tabName === 'analytics') loadAnalytics();
         if (tabName === 'coach') loadCoachWorkspace(false);
+        if (tabName === 'leaderboard') activateLeaderboardSubtab('global');
         renderDashboardChatChrome();
     }
 
@@ -3661,6 +3662,132 @@ document.addEventListener('DOMContentLoaded', async () => {
         renderBlindSpots(snapshot.blindSpots);
         renderHeatmap(snapshot.days, snapshot.activeDays, snapshot.fastestBuzz);
         renderDashboardChatChrome();
+    }
+
+    // ========== LEADERBOARDS ==========
+    function activateLeaderboardSubtab(subTabName) {
+        document.querySelectorAll('.leaderboard-sub-tab').forEach(t => t.classList.toggle('active', t.dataset.sub === subTabName));
+        document.querySelectorAll('.leaderboard-panel').forEach(p => p.classList.add('hidden'));
+        const activePanel = document.getElementById(`leaderboard-view-${subTabName}`);
+        if (activePanel) activePanel.classList.remove('hidden');
+
+        if (subTabName === 'global') {
+            loadLeaderboardGlobal();
+        } else if (subTabName === 'class') {
+            refreshLeaderboardClassSelect();
+        }
+    }
+
+    document.querySelectorAll('.leaderboard-sub-tab').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.preventDefault();
+            activateLeaderboardSubtab(btn.dataset.sub);
+        });
+    });
+
+    const leaderboardClassSelect = document.getElementById('leaderboard-class-select');
+    if (leaderboardClassSelect) {
+        leaderboardClassSelect.addEventListener('change', (e) => {
+            loadLeaderboardClass(e.target.value);
+        });
+    }
+
+    function renderLeaderboardNodes(listContainerId, records, metricLabel) {
+        const container = document.getElementById(listContainerId);
+        if (!container) return;
+        
+        if (!records || records.length === 0) {
+            container.innerHTML = `<div class="empty-state">
+                <h3 class="empty-title">No rankings yet</h3>
+                <p class="empty-copy">Complete more practice drills correctly to earn points and climb the board.</p>
+            </div>`;
+            return;
+        }
+
+        container.innerHTML = records.map((r, i) => {
+            const isMe = r.student_id === uid;
+            let rankLabelClass = '';
+            if (r.rank === 1) rankLabelClass = 'gold';
+            else if (r.rank === 2) rankLabelClass = 'silver';
+            else if (r.rank === 3) rankLabelClass = 'bronze';
+
+            return `
+                <div class="score-entry" style="${isMe ? 'background: rgba(96, 165, 250, 0.08); border-radius: 12px; border-bottom: 2px solid rgba(96, 165, 250, 0.2);' : ''}">
+                    <div class="score-rank ${rankLabelClass}">${r.rank}</div>
+                    <img src="/assets/avatars/${normalizeAvatarId(r.avatar_id)}.png" alt="Avatar" width="36" height="36" style="border-radius: 10px;">
+                    <div class="score-name">
+                        <span style="font-weight: ${isMe ? '800' : '600'}; font-size: ${isMe ? '15px' : '14px'};">${esc(r.display_name)}</span>
+                        ${isMe ? '<span class="pill" style="margin-left: 6px; padding: 2px 8px; font-size: 11px;">You</span>' : ''}
+                    </div>
+                    <div class="score-points">
+                        ${Number(r.total_correct || 0).toLocaleString()}
+                        <span style="font-size: 11px; color: var(--muted); font-family: 'Inter', sans-serif; margin-left: 4px; font-weight: 500;">${metricLabel}</span>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    async function loadLeaderboardGlobal() {
+        const container = document.getElementById('leaderboard-list-global');
+        if (!container) return;
+        container.innerHTML = '<p class="muted">Loading global rankings...</p>';
+        const { data, error } = await sb.rpc('get_leaderboard_global');
+        if (error) {
+            console.error('Error fetching global leaderboard', error);
+            container.innerHTML = '<p class="muted">Failed to load leaderboard rankings.</p>';
+            return;
+        }
+        renderLeaderboardNodes('leaderboard-list-global', data, 'pts');
+    }
+
+    function refreshLeaderboardClassSelect() {
+        const select = document.getElementById('leaderboard-class-select');
+        const container = document.getElementById('leaderboard-list-class');
+        if (!select || !container) return;
+        
+        if (!currentMemberships || currentMemberships.length === 0) {
+            select.innerHTML = '<option value="">No classes found.</option>';
+            select.disabled = true;
+            container.innerHTML = `<div class="empty-state">
+                <h3 class="empty-title">You need a class</h3>
+                <p class="empty-copy">Join a class via the 'My Classes' tab to rank against classmates.</p>
+            </div>`;
+            return;
+        }
+
+        select.disabled = false;
+        select.innerHTML = '<option value="">Select a class...</option>' + 
+                           currentMemberships.map(m => `<option value="${m.class_id}">${esc(m.classes?.name || m.classes?.code || 'Unknown Class')}</option>`).join('');
+        
+        if (currentMemberships.length === 1) {
+            select.value = currentMemberships[0].class_id;
+            loadLeaderboardClass(currentMemberships[0].class_id);
+            select.style.display = 'none'; // Hide if only 1 class
+            document.querySelector(`label[for="leaderboard-class-select"]`).textContent = `Viewing: ${currentMemberships[0].classes?.name}`;
+            document.querySelector(`label[for="leaderboard-class-select"]`).style.display = 'block';
+        } else {
+            select.style.display = 'block';
+            document.querySelector(`label[for="leaderboard-class-select"]`).style.display = 'none';
+            container.innerHTML = '<p class="muted">Select a class to view rankings.</p>';
+        }
+    }
+
+    async function loadLeaderboardClass(classId) {
+        const container = document.getElementById('leaderboard-list-class');
+        if (!container) return;
+        if (!classId) {
+            container.innerHTML = '<p class="muted">Select a class to view rankings.</p>';
+            return;
+        }
+        container.innerHTML = '<p class="muted">Loading class rankings...</p>';
+        const { data, error } = await sb.rpc('get_leaderboard_class', { p_class_id: classId });
+        if (error) {
+            console.error('Error fetching class leaderboard', error);
+            container.innerHTML = '<p class="muted">Failed to load class rankings.</p>';
+            return;
+        }
+        renderLeaderboardNodes('leaderboard-list-class', data, 'pts');
     }
 
     // ========== HELPERS ==========
