@@ -55,6 +55,28 @@ document.addEventListener('DOMContentLoaded', async () => {
     };
     let selectedAvatarId = normalizeAvatarId(profile.avatar_id);
 
+    // ========== WALKTHROUGH CHECK ==========
+    const walkthruModal = document.getElementById('walkthrough-modal');
+    const btnCloseWalkthru = document.getElementById('btn-close-walkthrough');
+    const btnOpenWalkthru = document.getElementById('btn-walkthrough');
+    const walkthroughKey = `ihbb_v2_walkthrough_seen_${uid}`;
+
+    if (walkthruModal && btnCloseWalkthru && btnOpenWalkthru) {
+        if (!localStorage.getItem(walkthroughKey)) {
+            walkthruModal.classList.remove('hidden');
+            localStorage.setItem(walkthroughKey, '1');
+        }
+        
+        btnOpenWalkthru.addEventListener('click', (e) => {
+            e.preventDefault();
+            walkthruModal.classList.remove('hidden');
+        });
+        
+        btnCloseWalkthru.addEventListener('click', () => {
+            walkthruModal.classList.add('hidden');
+        });
+    }
+
     // State
     let allQuestions = [];
     let selectedQuestions = [];
