@@ -458,18 +458,21 @@ AS $$
            SUM(total) as total_answered
     FROM public.user_drill_sessions
     GROUP BY user_id
+  ),
+  ranked AS (
+    SELECT p.id as student_id,
+           p.display_name,
+           p.avatar_id,
+           COALESCE(a.total_correct, 0) as total_correct,
+           COALESCE(a.total_answered, 0) as total_answered,
+           RANK() OVER (ORDER BY COALESCE(a.total_correct, 0) DESC, COALESCE(a.total_answered, 0) ASC) as rank
+    FROM public.profiles p
+    LEFT JOIN agg a ON a.user_id = p.id
+    WHERE p.role = 'student' AND p.display_name IS NOT NULL AND p.display_name != ''
   )
-  SELECT p.id as student_id,
-         p.display_name,
-         p.avatar_id,
-         COALESCE(a.total_correct, 0) as total_correct,
-         COALESCE(a.total_answered, 0) as total_answered,
-         RANK() OVER (ORDER BY COALESCE(a.total_correct, 0) DESC, COALESCE(a.total_answered, 0) ASC) as rank
-  FROM public.profiles p
-  LEFT JOIN agg a ON a.user_id = p.id
-  WHERE p.role = 'student' AND p.display_name IS NOT NULL AND p.display_name != ''
-  ORDER BY rank
-  LIMIT 100;
+  SELECT * FROM ranked
+  WHERE rank <= 100 OR student_id = auth.uid()
+  ORDER BY rank;
 $$;
 
 CREATE OR REPLACE FUNCTION get_leaderboard_class(p_class_id UUID)

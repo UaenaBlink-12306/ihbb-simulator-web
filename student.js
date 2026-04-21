@@ -3704,14 +3704,25 @@ document.addEventListener('DOMContentLoaded', async () => {
             return;
         }
 
-        container.innerHTML = records.map((r, i) => {
+        let htmlChunks = [];
+        let prevRank = 0;
+        records.forEach((r, i) => {
             const isMe = r.student_id === uid;
             let rankLabelClass = '';
             if (r.rank === 1) rankLabelClass = 'gold';
             else if (r.rank === 2) rankLabelClass = 'silver';
             else if (r.rank === 3) rankLabelClass = 'bronze';
 
-            return `
+            if (i > 0 && r.rank > prevRank + 1) {
+                htmlChunks.push(`
+                    <div style="text-align: center; color: var(--muted); padding: 8px 0; font-size: 14px; opacity: 0.6; letter-spacing: 4px;">
+                        &#8226;&#8226;&#8226;
+                    </div>
+                `);
+            }
+            prevRank = r.rank;
+
+            htmlChunks.push(`
                 <div class="score-entry" style="${isMe ? 'background: rgba(96, 165, 250, 0.08); border-radius: 12px; border-bottom: 2px solid rgba(96, 165, 250, 0.2);' : ''}">
                     <div class="score-rank ${rankLabelClass}">${r.rank}</div>
                     <img src="/assets/avatars/${normalizeAvatarId(r.avatar_id)}.png" alt="Avatar" width="36" height="36" style="border-radius: 10px;">
@@ -3724,8 +3735,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                         <span style="font-size: 11px; color: var(--muted); font-family: 'Inter', sans-serif; margin-left: 4px; font-weight: 500;">${metricLabel}</span>
                     </div>
                 </div>
-            `;
-        }).join('');
+            `);
+        });
+        container.innerHTML = htmlChunks.join('');
     }
 
     async function loadLeaderboardGlobal() {
