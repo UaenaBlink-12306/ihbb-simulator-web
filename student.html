@@ -65,7 +65,7 @@
                 <a href="livebee.html" class="btn ghost">Live Bee</a>
                 <a href="#" id="btn-logout" class="btn bad">Logout</a>
                 <button id="coach-chat-launcher" class="coach-chat-launcher" type="button" aria-controls="coach-chat-sidebar"
-                    aria-expanded="false" aria-label="Open DeepSeek training assistant">
+                    aria-expanded="false" aria-label="Open DeepSeek training assistant" title="Launch DeepSeek AI assistant for real-time explanations and guided practice">
                     <span class="coach-chat-launcher-icon">DS</span>
                     <span class="coach-chat-launcher-copy">
                         <span class="coach-chat-launcher-title">DeepSeek</span>
@@ -81,9 +81,9 @@
         <nav class="tab-strip dashboard-tabs">
             <button class="dash-tab active" data-tab="classes">My Classes</button>
             <button class="dash-tab" data-tab="assignments">Assignments</button>
-            <button class="dash-tab" data-tab="coach">Coach</button>
+            <button class="dash-tab" data-tab="coach" title="Access Coach mode: review AI notes and personal focuses">Coach</button>
             <button class="dash-tab" data-tab="livebee">Live Bee</button>
-            <button class="dash-tab" data-tab="analytics">Analytics</button>
+            <button class="dash-tab" data-tab="analytics" title="View your Blind Spot Analytics and 30-day drill performance history">Analytics</button>
             <button class="dash-tab" data-tab="leaderboard">Leaderboard</button>
             <button class="dash-tab" data-tab="account">Account</button>
             <button class="dash-tab" data-tab="whatsnew">What's New</button>
@@ -150,8 +150,8 @@
                                     <h3>Assignment Coach</h3>
                                 </div>
                                 <div class="inline-actions">
-                                    <button id="btn-assignments-coach-drill" class="btn pri" type="button">Guided Drill</button>
-                                    <button id="btn-assignments-coach-tab" class="btn ghost" type="button">Workspace</button>
+                                    <button id="btn-assignments-coach-drill" class="btn pri" type="button" title="Start an assignment drill with active DeepSeek AI Coach guidance">Guided Drill</button>
+                                    <button id="btn-assignments-coach-tab" class="btn ghost" type="button" title="Open the Coach Workspace to review lessons and focuses">Workspace</button>
                                 </div>
                             </div>
                             <div id="assignments-coach-summary" class="coach-brief-copy muted">Coach focus will appear here.</div>
@@ -226,7 +226,7 @@
                 <div class="analytics-shell">
                     <div class="section-head">
                         <div>
-                            <h2 class="card-title">Blind Spot Analytics</h2>
+                            <h2 class="card-title" title="Blind Spot Analytics aggregates your drill mistakes to identify the specific eras and regions where you need the most practice.">Blind Spot Analytics</h2>
                             <p class="section-subtitle">30-day drill data.</p>
                         </div>
                         <div class="inline-actions">
@@ -357,7 +357,7 @@
                                 <div class="analytics-panel-head">
                                     <div>
                                         <div class="analytics-panel-kicker">Diagnosis</div>
-                                        <h3>Blind Spot Radar</h3>
+                                        <h3 title="Highlights specific region and era combinations where your accuracy is lowest and volume is highest.">Blind Spot Radar</h3>
                                         <p class="analytics-panel-note">These are the places where volume and accuracy are combining into the clearest study targets.</p>
                                     </div>
                                 </div>
@@ -380,7 +380,7 @@
                             <div class="analytics-ai-head">
                                 <div>
                                     <div class="analytics-panel-kicker">Interpretation</div>
-                                    <h3>DeepSeek Weak-Area Coach</h3>
+                                    <h3 title="Uses DeepSeek AI to interpret your Blind Spot data and recommend a personalized study plan.">DeepSeek Weak-Area Coach</h3>
                                     <p class="section-subtitle">Weak-area summary.</p>
                                 </div>
                                 <div class="inline-actions">
@@ -504,7 +504,7 @@
                                             </label>
                                         </div>
                                     </div>
-                                    <div id="acc-setting-assistant-thinking" class="practice-hub-toggle-setting" data-enabled="false">
+                                    <div id="acc-setting-assistant-thinking" class="practice-hub-toggle-setting" data-enabled="false" title="When enabled, DeepSeek uses advanced reasoning to provide deeper, step-by-step coaching explanations.">
                                         <div class="practice-hub-toggle-card">
                                             <div class="practice-hub-toggle-copy">
                                                 <p class="practice-hub-toggle-summary">Start the coach with Thinking Model enabled.</p>
@@ -577,6 +577,13 @@
                 </div>
                 <div class="dashboard-split dashboard-split-solo">
                     <div class="list-container">
+                        <div class="list-item">
+                            <div>
+                                <h3 style="margin:0 0 4px;">Feature Tooltips</h3>
+                                <div class="pill">April 21, 2026</div>
+                                <p class="muted" style="margin: 8px 0 0;">Added descriptive hover tooltips to lesser-known features like DeepSeek, Coach modes, and Blind Spot Analytics so you can easily understand what they do before toggling them.</p>
+                            </div>
+                        </div>
                         <div class="list-item">
                             <div>
                                 <h3 style="margin:0 0 4px;">Account Settings Overhaul</h3>
@@ -690,7 +697,7 @@
                         placeholder="Ask for background on a topic, a timeline, a comparison, or what you should practice next. Auto will detect knowledge vs coaching."></textarea>
                 </label>
                 <div class="coach-chat-form-utility">
-                    <button id="coach-chat-thinking-toggle" class="coach-chat-thinking-toggle" type="button" aria-pressed="false">Thinking Model: Off</button>
+                    <button id="coach-chat-thinking-toggle" class="coach-chat-thinking-toggle" type="button" aria-pressed="false" title="Toggle DeepSeek Thinking Model: Enforces deeper AI reasoning for more detailed and structured explanations when turned ON.">Thinking Model: Off</button>
                 </div>
                 <div class="coach-chat-form-actions">
                     <div id="coach-chat-hint" class="muted">Auto mode can switch between knowledge-heavy answers and coaching with future steps.</div>
