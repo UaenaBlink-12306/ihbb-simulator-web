@@ -11,3 +11,4 @@
 - If the push is rejected because the remote changed, pull with rebase, resolve conflicts carefully without discarding user work, and push again.
 - Do not force-push unless the user explicitly asks for it.
 - In the final response, report the commit hash and whether the push succeeded.
+- When finishing a task, you must also add an entry to the "What's New" page (in student.html and teacher.html) with the date and info of your update, keeping the newest version visible to users.
