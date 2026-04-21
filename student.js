@@ -408,6 +408,28 @@ document.addEventListener('DOMContentLoaded', async () => {
         document.getElementById('name-modal').classList.remove('hidden');
     }
 
+    // ========== WALKTHROUGH CHECK ==========
+    const walkthroughKey = scopedStorageKey('ihbb_v2_walkthrough_seen');
+    const walkthruModal = document.getElementById('walkthrough-modal');
+    const btnCloseWalkthru = document.getElementById('btn-close-walkthrough');
+    const btnOpenWalkthru = document.getElementById('btn-walkthrough');
+
+    if (walkthruModal && btnCloseWalkthru && btnOpenWalkthru) {
+        if (!localStorage.getItem(walkthroughKey)) {
+            walkthruModal.classList.remove('hidden');
+            localStorage.setItem(walkthroughKey, '1');
+        }
+        
+        btnOpenWalkthru.addEventListener('click', (e) => {
+            e.preventDefault();
+            walkthruModal.classList.remove('hidden');
+        });
+        
+        btnCloseWalkthru.addEventListener('click', () => {
+            walkthruModal.classList.add('hidden');
+        });
+    }
+
     document.getElementById('btn-save-name').addEventListener('click', async () => {
         const name = document.getElementById('modal-name').value.trim();
         if (!name) { showAlert('Please enter your name.', 'error'); return; }
