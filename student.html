@@ -60,6 +60,7 @@
                 </div>
             </div>
             <div class="hero-actions">
+                <button id="btn-walkthrough" class="btn ghost">Help / Tour</button>
                 <a href="index.html?drill=1" class="btn ghost">Practice Drill</a>
                 <a href="livebee.html" class="btn ghost">Live Bee</a>
                 <a href="#" id="btn-logout" class="btn bad">Logout</a>
@@ -583,7 +584,13 @@
                                 <p class="muted" style="margin: 8px 0 0;">The Account page has been redesigned so that saving profile basics (DisplayName, Email, Password) and workspace preferences are decoupled and immediately accessible without excessive scrolling. You can also now update your account password directly from this tab.</p>
                             </div>
                         </div>
-
+                        <div class="list-item">
+                            <div>
+                                <h3 style="margin:0 0 4px;">App Walkthroughs</h3>
+                                <div class="pill">April 21, 2026</div>
+                                <p class="muted" style="margin: 8px 0 0;">Added an in-app walkthrough for new accounts to explain features like Practice Drill, Live Bee, Analytics, and DeepSeek. You can revisit it anytime via the "Help / Tour" button on the dashboard.</p>
+                            </div>
+                        </div>
                         <div class="list-item">
                             <div>
                                 <h3 style="margin:0 0 4px;">AI Notebook Weak Spot Generation & What's New Page</h3>
@@ -595,6 +602,42 @@
                 </div>
             </div>
         </section>
+    </div>
+
+    <div id="walkthrough-modal" class="modal-overlay hidden">
+        <div class="modal-card card auth-modal-card" style="max-width: 500px;">
+            <div class="section-head" style="margin-bottom: 16px;">
+                <div>
+                    <h2 style="margin: 0;">Welcome to Student Workspace!</h2>
+                    <p class="section-subtitle">Here is a quick guide to help you get started.</p>
+                </div>
+            </div>
+            <div class="stack" style="text-align: left;">
+                <div class="card-muted-box">
+                    <h4 style="margin: 0 0 4px;">Practice Drill</h4>
+                    <p class="muted" style="margin: 0;">Sharpen your skills with endless practice questions. Track your progress to identify weaknesses.</p>
+                </div>
+                <div class="card-muted-box">
+                    <h4 style="margin: 0 0 4px;">DeepSeek AI Coach</h4>
+                    <p class="muted" style="margin: 0;">A dedicated assistant to explain answers, guide your practice, and help you improve.</p>
+                </div>
+                <div class="card-muted-box">
+                    <h4 style="margin: 0 0 4px;">Live Bee</h4>
+                    <p class="muted" style="margin: 0;">Compete with classmates and others in real-time quiz bowls.</p>
+                </div>
+                <div class="card-muted-box">
+                    <h4 style="margin: 0 0 4px;">Assignments</h4>
+                    <p class="muted" style="margin: 0;">Complete exercises given to you by your teacher.</p>
+                </div>
+                <div class="card-muted-box">
+                    <h4 style="margin: 0 0 4px;">Analytics</h4>
+                    <p class="muted" style="margin: 0;">Review your performance, discover your blind spots, and track your history.</p>
+                </div>
+            </div>
+            <div class="form-actions" style="margin-top: 24px;">
+                <button id="btn-close-walkthrough" class="btn pri auth-option">Got it!</button>
+            </div>
+        </div>
     </div>
 
     <div id="name-modal" class="modal-overlay hidden">

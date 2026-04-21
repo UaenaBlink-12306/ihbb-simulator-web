@@ -105,6 +105,7 @@
                 </div>
             </div>
             <div class="hero-actions">
+                <button id="btn-walkthrough" class="btn ghost">Help / Tour</button>
                 <a href="index.html?drill=1" class="btn ghost">Practice Drill</a>
                 <a href="livebee.html" class="btn ghost">Host Live Bee</a>
                 <a href="#" id="btn-logout" class="btn bad">Logout</a>
@@ -526,7 +527,13 @@
                                 <p class="muted" style="margin: 8px 0 0;">The Account page has been redesigned so that saving profile basics (DisplayName, Email, Password) and workspace preferences are decoupled and immediately accessible without excessive scrolling. You can also now update your account password directly from this tab.</p>
                             </div>
                         </div>
-
+                        <div class="list-item">
+                            <div>
+                                <h3 style="margin:0 0 4px;">App Walkthroughs</h3>
+                                <div class="pill">April 21, 2026</div>
+                                <p class="muted" style="margin: 8px 0 0;">Added an in-app walkthrough for new accounts to explain features like Classes & Assignments, Assignment Builder, Live Bee, and Class Analytics. You can revisit it anytime via the "Help / Tour" button on the dashboard.</p>
+                            </div>
+                        </div>
                         <div class="list-item">
                             <div>
                                 <h3 style="margin:0 0 4px;">AI Notebook Weak Spot Generation & What's New Page</h3>
@@ -538,6 +545,38 @@
                 </div>
             </div>
         </section>
+    </div>
+
+    <div id="walkthrough-modal" class="modal-overlay hidden">
+        <div class="modal-card card auth-modal-card" style="max-width: 500px;">
+            <div class="section-head" style="margin-bottom: 16px;">
+                <div>
+                    <h2 style="margin: 0;">Welcome to the Teacher Workspace!</h2>
+                    <p class="section-subtitle">Here is a quick guide to help you manage your classroom.</p>
+                </div>
+            </div>
+            <div class="stack" style="text-align: left;">
+                <div class="card-muted-box">
+                    <h4 style="margin: 0 0 4px;">Classes & Assignments</h4>
+                    <p class="muted" style="margin: 0;">Create classrooms, invite students using codes, and prepare custom assignments for them.</p>
+                </div>
+                <div class="card-muted-box">
+                    <h4 style="margin: 0 0 4px;">Assignment Builder</h4>
+                    <p class="muted" style="margin: 0;">Generate targeted quizzes automatically or hand-pick specific questions.</p>
+                </div>
+                <div class="card-muted-box">
+                    <h4 style="margin: 0 0 4px;">Live Bee</h4>
+                    <p class="muted" style="margin: 0;">Host real-time, interactive quiz sessions to engage your entire class at once.</p>
+                </div>
+                <div class="card-muted-box">
+                    <h4 style="margin: 0 0 4px;">Class Analytics</h4>
+                    <p class="muted" style="margin: 0;">Monitor student performance to identify knowledge gaps.</p>
+                </div>
+            </div>
+            <div class="form-actions" style="margin-top: 24px;">
+                <button id="btn-close-walkthrough" class="btn pri auth-option">Got it!</button>
+            </div>
+        </div>
     </div>
 
     <div id="teacher-modal" class="modal-overlay hidden">
