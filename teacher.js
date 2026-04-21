@@ -1550,7 +1550,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Account profile
     const deleteBtn = document.getElementById('btn-delete-account');
-    const saveAccountBtn = document.getElementById('btn-save-account');
     const revealDeleteBtn = document.getElementById('btn-reveal-delete');
     const dangerPanel = document.getElementById('account-danger-panel');
     const confirmDeleteReveal = document.getElementById('confirm-delete-reveal');
@@ -1687,13 +1686,22 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     });
 
-    saveAccountBtn?.addEventListener('click', async () => {
+    
+    const saveAccountBtns = document.querySelectorAll('.btn-save-account-action');
+    const existingSaveBtn = document.getElementById('btn-save-account');
+    const allSaveBtns = Array.from(saveAccountBtns);
+    if (existingSaveBtn && !allSaveBtns.includes(existingSaveBtn)) allSaveBtns.push(existingSaveBtn);
+
+    allSaveBtns.forEach(btn => btn?.addEventListener('click', async () => {
+        const saveAccountBtn = btn;
         const nameInput = document.getElementById('acc-display-name');
         const emailInput = document.getElementById('acc-email');
+        const passInput = document.getElementById('acc-password');
         if (!nameInput || !emailInput) return;
 
         const nextName = String(nameInput.value || '').trim();
         const nextEmail = normalizeEmail(emailInput.value);
+        const nextPassword = passInput ? passInput.value : '';
         if (!nextName) {
             showAlert('Display name cannot be empty.', 'error');
             nameInput.focus();
@@ -1714,16 +1722,17 @@ document.addEventListener('DOMContentLoaded', async () => {
         const prevAccountSettings = normalizeAccountSettings(profile.account_settings);
         const changeName = nextName !== prevName;
         const changeEmail = nextEmail !== prevEmail;
+        const changePass = !!nextPassword;
         const changeAvatar = nextAvatarId !== prevAvatarId;
         const changeSettings = !hasPersistedAccountSettings || JSON.stringify(nextAccountSettings) !== JSON.stringify(prevAccountSettings);
-        if (!changeName && !changeEmail && !changeAvatar && !changeSettings) {
+        
+        if (!changeName && !changeEmail && !changeAvatar && !changeSettings && !changePass) {
             showAlert('No profile changes to save.', 'success');
             return;
         }
 
-        saveAccountBtn.disabled = true;
-        const originalText = saveAccountBtn.textContent;
-        saveAccountBtn.textContent = 'Saving...';
+        const originalTexts = allSaveBtns.map(b => b.textContent);
+        allSaveBtns.forEach(b => { b.disabled = true; b.textContent = 'Saving...'; });
 
         try {
             const successMsgs = [];
@@ -1736,11 +1745,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 if (changeSettings) profilePatch.account_settings = nextAccountSettings;
                 const { error } = await sb.from('profiles').update(profilePatch).eq('id', uid);
                 if (error) {
-                    if (changeSettings && (changeName || changeAvatar)) errorMsgs.push(`Profile update failed: ${error.message}`);
-                    else if (changeName && changeAvatar) errorMsgs.push(`Profile update failed: ${error.message}`);
-                    else if (changeName) errorMsgs.push(`Name update failed: ${error.message}`);
-                    else if (changeSettings) errorMsgs.push(`Preferences update failed: ${error.message}`);
-                    else errorMsgs.push(`Avatar update failed: ${error.message}`);
+                    errorMsgs.push(`Profile update failed: ${error.message}`);
                 } else {
                     if (changeName) {
                         profile.display_name = nextName;
@@ -1758,12 +1763,22 @@ document.addEventListener('DOMContentLoaded', async () => {
                 }
             }
 
-            if (changeEmail) {
-                const { data, error } = await sb.auth.updateUser({ email: nextEmail });
-                if (error) errorMsgs.push(`Email update failed: ${error.message}`);
-                else {
-                    userEmail = String(data?.user?.email || data?.user?.new_email || nextEmail).trim();
-                    successMsgs.push('Email change saved');
+            if (changeEmail || changePass) {
+                const authPatch = {};
+                if (changeEmail) authPatch.email = nextEmail;
+                if (changePass) authPatch.password = nextPassword;
+                const { data, error } = await sb.auth.updateUser(authPatch);
+                if (error) {
+                    errorMsgs.push(`Auth update failed: ${error.message}`);
+                } else {
+                    if (changeEmail) {
+                        userEmail = String(data?.user?.email || data?.user?.new_email || nextEmail).trim();
+                        successMsgs.push('Email change saved (check inbox to verify)');
+                    }
+                    if (changePass) {
+                        successMsgs.push('Password updated securely');
+                        if (passInput) passInput.value = '';
+                    }
                 }
             }
 
@@ -1772,8 +1787,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
             renderAccountProfile(changeSettings);
             if (successMsgs.length && !errorMsgs.length) {
-                const emailNote = changeEmail ? ' Check your inbox if verification is required.' : '';
-                showAlert(`${successMsgs.join('. ')}.${emailNote}`, 'success');
+                showAlert(`${successMsgs.join('. ')}.`, 'success');
             } else if (successMsgs.length && errorMsgs.length) {
                 showAlert(`${successMsgs.join('. ')}. ${errorMsgs.join(' ')}`, 'error');
             } else if (errorMsgs.length) {
@@ -1782,10 +1796,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         } catch (err) {
             showAlert(`Failed to save account changes: ${err?.message || err}`, 'error');
         } finally {
-            saveAccountBtn.disabled = false;
-            saveAccountBtn.textContent = originalText;
+            allSaveBtns.forEach((b, i) => { b.disabled = false; b.textContent = originalTexts[i]; });
         }
-    });
+    }));
 
     revealDeleteBtn?.addEventListener('click', () => {
         if (!dangerPanel) return;
