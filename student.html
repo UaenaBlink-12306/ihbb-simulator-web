@@ -102,7 +102,7 @@
                     <div class="panel-stack">
                         <div class="card-muted-box">
                             <div class="inline-form">
-                                <input type="text" id="join-code" placeholder="Enter class code (e.g. ABC123)">
+                                <input type="text" id="join-code" name="ihbb-class-invite-code" placeholder="Enter class code (e.g. ABC123)" autocomplete="off" autocapitalize="characters" spellcheck="false" inputmode="text" data-lpignore="true" data-1p-ignore="true" readonly>
                                 <button id="btn-join" class="btn pri">Join Class</button>
                             </div>
                             <p class="muted" style="margin: 10px 0 0;">Skip this any time and keep using independent
@@ -605,6 +605,13 @@
                 </div>
                 <div class="dashboard-split dashboard-split-solo">
                     <div class="list-container">
+                        <div class="list-item">
+                            <div>
+                                <h3 style="margin:0 0 4px;">Join Code Autofill Guard</h3>
+                                <div class="pill">April 22, 2026</div>
+                                <p class="muted" style="margin: 8px 0 0;">Updated the student My Classes join-code field so browsers and password managers are less likely to autofill unrelated saved information.</p>
+                            </div>
+                        </div>
                         <div class="list-item">
                             <div>
                                 <h3 style="margin:0 0 4px;">IHBB Practice Hub Naming</h3>

@@ -78,6 +78,19 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (!s) return 'Unknown';
         return s.charAt(0).toUpperCase() + s.slice(1);
     };
+    const joinCodeInput = document.getElementById('join-code');
+    if (joinCodeInput) {
+        const unlockJoinCodeInput = () => joinCodeInput.removeAttribute('readonly');
+        const clearInjectedJoinCode = () => {
+            if (document.activeElement !== joinCodeInput) joinCodeInput.value = '';
+        };
+        joinCodeInput.addEventListener('focus', unlockJoinCodeInput, { once: true });
+        joinCodeInput.addEventListener('pointerdown', unlockJoinCodeInput, { once: true });
+        joinCodeInput.addEventListener('keydown', unlockJoinCodeInput, { once: true });
+        window.addEventListener('pageshow', clearInjectedJoinCode);
+        setTimeout(clearInjectedJoinCode, 100);
+        setTimeout(clearInjectedJoinCode, 500);
+    }
     const normalizeEmail = (value) => String(value || '').trim().toLowerCase();
     const isValidEmail = (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || '').trim());
     const setMetric = (id, value) => {
