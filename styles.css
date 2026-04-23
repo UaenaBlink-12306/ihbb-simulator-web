@@ -1082,6 +1082,8 @@ tr:hover td {
 
 .practice-hub-toggle-copy {
   display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
   flex-direction: column;
   gap: 6px;
 }
@@ -1096,7 +1098,7 @@ tr:hover td {
 
 .practice-hub-toggle-hint {
   margin: 0;
-  max-width: 60ch;
+  max-width: none;
 }
 
 .practice-hub-switch {
@@ -5886,6 +5888,16 @@ input[type=datetime-local]:focus {
   gap: var(--layout-gap);
 }
 
+.session-options-shell {
+  width: 100%;
+  margin: 0;
+}
+
+.session-options-copy,
+.setup-advanced-card {
+  width: 100%;
+}
+
 .practice-stage-card {
   display: flex;
   flex-direction: column;
@@ -5935,7 +5947,8 @@ input[type=datetime-local]:focus {
 .practice-stage .practice-answer-entry,
 .practice-stage .answer,
 .practice-stage .coach-card {
-  width: min(760px, 100%);
+  width: 100%;
+  max-width: none;
 }
 
 .practice-stage .answer {
@@ -6130,6 +6143,11 @@ input[type=datetime-local]:focus {
   align-self: center;
 }
 
+.list-container > .list-item > div:first-child {
+  flex: 1 1 360px;
+  min-width: 0;
+}
+
 .student-side-note,
 .teacher-side-note {
   height: 100%;
@@ -6140,11 +6158,19 @@ input[type=datetime-local]:focus {
 }
 
 .dashboard-split.account-layout {
-  grid-template-columns: minmax(0, 1.82fr) minmax(240px, 0.56fr);
+  grid-template-columns: 1fr;
 }
 
 .account-layout .account-profile-card {
   height: 100%;
+  width: 100%;
+}
+
+.account-layout .form-grid,
+.account-layout .avatar-settings-panel,
+.account-layout .practice-hub-toggle-setting,
+.account-layout .account-danger {
+  width: 100%;
 }
 
 .admin-console-grid .section-card {
