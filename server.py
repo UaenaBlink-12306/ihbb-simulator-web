@@ -8,6 +8,7 @@ import time
 import base64
 import hmac
 import hashlib
+from datetime import datetime, timezone
 from typing import List, Dict, Any, Tuple, Optional
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import socket
@@ -60,6 +61,7 @@ APP_TABLES = [
     {"name": "user_wrong_questions", "order_by": "created_at.desc", "limit": 200},
     {"name": "user_drill_sessions", "order_by": "created_at.desc", "limit": 200},
     {"name": "user_coach_attempts", "order_by": "created_at.desc", "limit": 200},
+    {"name": "app_feedback", "order_by": "created_at.desc", "limit": 200},
 ]
 
 REGION_OPTIONS = [
@@ -2508,6 +2510,65 @@ def fetch_supabase_json(path: str, params: Dict[str, Any] = None, prefer: str = 
     return data, response.headers
 
 
+def write_supabase_json(method: str, path: str, payload: Dict[str, Any], params: Dict[str, Any] = None,
+                        prefer: str = "return=representation") -> Tuple[Any, Any]:
+    if not SUPABASE_SERVICE_ROLE_KEY or not SUPABASE_URL:
+        raise RuntimeError("Supabase service role is not configured.")
+    headers = {
+        "apikey": SUPABASE_SERVICE_ROLE_KEY,
+        "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}",
+        "Content-Type": "application/json",
+    }
+    if prefer:
+        headers["Prefer"] = prefer
+    response = requests.request(
+        method,
+        f"{SUPABASE_URL}{path}",
+        params=params or {},
+        headers=headers,
+        json=payload or {},
+        timeout=25,
+    )
+    text = response.text or ""
+    try:
+        data = json.loads(text) if text else None
+    except Exception:
+        data = text
+    if not response.ok:
+        message = data.get("msg", data.get("message")) if isinstance(data, dict) else ""
+        raise RuntimeError(message or text or f"{path} failed")
+    return data, response.headers
+
+
+def update_app_feedback_response(feedback_id: str, status: str, admin_response: str) -> Dict[str, Any]:
+    row_id = string_value(feedback_id)
+    try:
+        uuid.UUID(row_id)
+    except Exception:
+        raise ValueError("A valid feedback ID is required.")
+    normalized_status = string_value(status).lower()
+    if normalized_status not in {"pending", "in_review", "resolved"}:
+        raise ValueError("Feedback status must be pending, in_review, or resolved.")
+    response_text = string_value(admin_response)
+    if len(response_text) > 4000:
+        raise ValueError("Admin response must be 4000 characters or fewer.")
+    payload = {
+        "status": normalized_status,
+        "admin_response": response_text or None,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+    data, _ = write_supabase_json(
+        "PATCH",
+        "/rest/v1/app_feedback",
+        payload=payload,
+        params={"id": f"eq.{row_id}", "select": "*"},
+    )
+    rows = data if isinstance(data, list) else []
+    if not rows:
+        raise KeyError("Feedback row not found.")
+    return rows[0]
+
+
 def fetch_table_snapshot(config: Dict[str, Any]) -> Dict[str, Any]:
     params = {"select": "*", "limit": str(int(config.get("limit", 200) or 200))}
     if string_value(config.get("order_by")):
@@ -2560,6 +2621,7 @@ def build_user_directory(auth_users: List[Dict[str, Any]], tables: List[Dict[str
     wrong_by_user = count_by(table_map.get("user_wrong_questions"), "user_id")
     sessions_by_user = count_by(table_map.get("user_drill_sessions"), "user_id")
     coach_by_user = count_by(table_map.get("user_coach_attempts"), "user_id")
+    feedback_by_user = count_by(table_map.get("app_feedback"), "user_id")
     profile_by_id = {string_value(profile.get("id")): profile for profile in profiles if isinstance(profile, dict)}
     users: List[Dict[str, Any]] = []
     seen: set = set()
@@ -2587,6 +2649,7 @@ def build_user_directory(auth_users: List[Dict[str, Any]], tables: List[Dict[str
             "wrong_bank_rows": wrong_by_user.get(user_id, 0),
             "drill_sessions": sessions_by_user.get(user_id, 0),
             "coach_attempts": coach_by_user.get(user_id, 0),
+            "feedback_rows": feedback_by_user.get(user_id, 0),
         })
     for profile in profiles:
         user_id = string_value(profile.get("id"))
@@ -2609,6 +2672,7 @@ def build_user_directory(auth_users: List[Dict[str, Any]], tables: List[Dict[str
             "wrong_bank_rows": wrong_by_user.get(user_id, 0),
             "drill_sessions": sessions_by_user.get(user_id, 0),
             "coach_attempts": coach_by_user.get(user_id, 0),
+            "feedback_rows": feedback_by_user.get(user_id, 0),
         })
     users.sort(key=lambda item: string_value(item.get("email") or item.get("display_name") or item.get("id")))
     return users
@@ -2809,6 +2873,21 @@ class Handler(BaseHTTPRequestHandler):
                 "generated": state.get("records", []),
                 "pending": len([item for item in state.get("records", []) if string_value(item.get("review_status")) == "pending"]),
             })
+            return True
+        if action == "update_feedback":
+            try:
+                row = update_app_feedback_response(
+                    string_value(payload.get("id")),
+                    string_value(payload.get("status")),
+                    string_value(payload.get("admin_response")),
+                )
+                self._write_json(200, {"ok": True, "feedback": row})
+            except KeyError:
+                self._write_json(404, {"error": "Feedback row not found."})
+            except ValueError as exc:
+                self._write_json(400, {"error": str(exc)})
+            except RuntimeError as exc:
+                self._write_json(503, {"error": str(exc)})
             return True
         self._write_json(400, {"error": "Unknown admin action."})
         return True

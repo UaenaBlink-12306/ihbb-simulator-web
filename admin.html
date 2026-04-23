@@ -124,6 +124,25 @@
         </section>
       </div>
 
+      <section class="card section-card">
+        <div class="section-head">
+          <div>
+            <div class="eyebrow">User feedback</div>
+            <h2 class="card-title">Feedback Inbox</h2>
+            <p class="section-subtitle">Review dashboard complaints and send responses back to each user's feedback history.</p>
+          </div>
+          <div class="admin-toolbar">
+            <select id="admin-feedback-filter">
+              <option value="all">All statuses</option>
+              <option value="pending">Pending</option>
+              <option value="in_review">In Review</option>
+              <option value="resolved">Resolved</option>
+            </select>
+          </div>
+        </div>
+        <div id="admin-feedback-list" class="admin-generated-list"></div>
+      </section>
+
       <div class="admin-console-grid admin-console-grid-secondary">
         <section class="card section-card">
           <div class="section-head">

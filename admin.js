@@ -5,6 +5,7 @@ document.addEventListener('DOMContentLoaded', () => {
     data: null,
     generatedFilter: 'all',
     generatedSearch: '',
+    feedbackFilter: 'all',
     userSearch: '',
     localAdminOrigin: 'http://127.0.0.1:5057'
   };
@@ -50,6 +51,24 @@ document.addEventListener('DOMContentLoaded', () => {
     const date = new Date(text);
     if (Number.isNaN(date.getTime())) return text;
     return date.toLocaleString();
+  };
+
+  const FEEDBACK_STATUS_LABELS = {
+    pending: 'Pending',
+    in_review: 'In Review',
+    resolved: 'Resolved'
+  };
+
+  const normalizeFeedbackStatus = (value) => {
+    const status = String(value || '').trim().toLowerCase();
+    return Object.prototype.hasOwnProperty.call(FEEDBACK_STATUS_LABELS, status) ? status : 'pending';
+  };
+
+  const snapshotRows = (name) => {
+    const tables = state.data?.database?.tables;
+    if (!Array.isArray(tables)) return [];
+    const table = tables.find((item) => item?.name === name);
+    return Array.isArray(table?.rows) ? table.rows : [];
   };
 
   function localAdminUrl(origin = state.localAdminOrigin) {
@@ -188,6 +207,58 @@ document.addEventListener('DOMContentLoaded', () => {
     }).join('');
   }
 
+  function renderFeedbackInbox() {
+    const list = $('admin-feedback-list');
+    if (!list) return;
+    const serviceConfigured = Boolean(state.data?.database?.service_role_configured);
+    if (!serviceConfigured) {
+      list.innerHTML = `<div class="card-muted-box">Set <code>SUPABASE_SERVICE_ROLE_KEY</code> on the server to unlock feedback responses.</div>`;
+      return;
+    }
+    const usersById = new Map((state.data?.users || []).map((user) => [String(user?.id || ''), user]));
+    const filter = state.feedbackFilter;
+    const rows = snapshotRows('app_feedback').filter((row) => {
+      const status = normalizeFeedbackStatus(row?.status);
+      return filter === 'all' || status === filter;
+    });
+    if (!rows.length) {
+      list.innerHTML = `<div class="card-muted-box">No feedback rows match the current filter. If this table is missing, run the app feedback migration in Supabase.</div>`;
+      return;
+    }
+    list.innerHTML = rows.map((row) => {
+      const id = String(row?.id || '');
+      const status = normalizeFeedbackStatus(row?.status);
+      const user = usersById.get(String(row?.user_id || '')) || {};
+      const userLabel = user?.email || user?.display_name || row?.user_id || 'Unknown user';
+      return `
+        <article class="admin-generated-item admin-feedback-item" data-id="${esc(id)}">
+          <div class="admin-generated-head">
+            <div>
+              <div class="eyebrow">${esc(row?.category || 'Feedback')} • ${esc(FEEDBACK_STATUS_LABELS[status])}</div>
+              <h3>${esc(userLabel)}</h3>
+            </div>
+            <div class="admin-generated-actions">
+              <select class="admin-feedback-status" aria-label="Feedback status">
+                ${Object.entries(FEEDBACK_STATUS_LABELS).map(([value, label]) => `<option value="${esc(value)}" ${value === status ? 'selected' : ''}>${esc(label)}</option>`).join('')}
+              </select>
+              <button class="btn pri admin-feedback-save" type="button" data-id="${esc(id)}">Save Response</button>
+            </div>
+          </div>
+          <p class="admin-generated-question">${esc(row?.message || '')}</p>
+          <div class="admin-generated-meta">
+            <span>User ID: ${esc(row?.user_id || '')}</span>
+            <span>Submitted: ${esc(formatDate(row?.created_at))}</span>
+            <span>Updated: ${esc(formatDate(row?.updated_at))}</span>
+          </div>
+          <label class="admin-feedback-response-field">
+            <span>Admin response</span>
+            <textarea class="admin-feedback-response" rows="3" maxlength="4000" placeholder="Write the response users will see in their dashboard history.">${esc(row?.admin_response || '')}</textarea>
+          </label>
+        </article>
+      `;
+    }).join('');
+  }
+
   function renderUsers() {
     const el = $('admin-users');
     if (!el) return;
@@ -222,6 +293,7 @@ document.addEventListener('DOMContentLoaded', () => {
             <th>Wrong Bank</th>
             <th>Sessions</th>
             <th>Coach</th>
+            <th>Feedback</th>
             <th>Created</th>
           </tr>
         </thead>
@@ -244,6 +316,7 @@ document.addEventListener('DOMContentLoaded', () => {
               <td>${esc(user?.wrong_bank_rows || 0)}</td>
               <td>${esc(user?.drill_sessions || 0)}</td>
               <td>${esc(user?.coach_attempts || 0)}</td>
+              <td>${esc(user?.feedback_rows || 0)}</td>
               <td>${esc(formatDate(user?.created_at || user?.profile_created_at))}</td>
             </tr>
           `).join('')}
@@ -305,6 +378,7 @@ document.addEventListener('DOMContentLoaded', () => {
     renderConfigBanner();
     renderSummary();
     renderGenerated();
+    renderFeedbackInbox();
     renderUsers();
     renderDatabase();
   }
@@ -387,6 +461,11 @@ document.addEventListener('DOMContentLoaded', () => {
     renderUsers();
   });
 
+  $('admin-feedback-filter')?.addEventListener('change', (event) => {
+    state.feedbackFilter = String(event.target?.value || 'all');
+    renderFeedbackInbox();
+  });
+
   $('admin-approve-all')?.addEventListener('click', async () => {
     showAlert('');
     try {
@@ -411,6 +490,33 @@ document.addEventListener('DOMContentLoaded', () => {
     } catch (error) {
       showAlert(error.message || 'Action failed.');
       button.disabled = false;
+    }
+  });
+
+  $('admin-feedback-list')?.addEventListener('click', async (event) => {
+    const button = event.target.closest('.admin-feedback-save');
+    if (!button) return;
+    const item = button.closest('.admin-feedback-item');
+    const id = String(button.dataset.id || item?.dataset.id || '');
+    if (!id || !item) return;
+    const status = String(item.querySelector('.admin-feedback-status')?.value || 'pending');
+    const adminResponse = String(item.querySelector('.admin-feedback-response')?.value || '');
+    showAlert('');
+    button.disabled = true;
+    button.textContent = 'Saving...';
+    try {
+      await apiPost({
+        action: 'update_feedback',
+        id,
+        status,
+        admin_response: adminResponse
+      });
+      showAlert('Feedback response saved.', 'success');
+      await loadData();
+    } catch (error) {
+      showAlert(error.message || 'Feedback response failed.');
+      button.disabled = false;
+      button.textContent = 'Save Response';
     }
   });
 
