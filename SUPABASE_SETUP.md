@@ -307,6 +307,7 @@ CREATE TABLE IF NOT EXISTS public.app_feedback (
   user_id UUID NOT NULL DEFAULT auth.uid() REFERENCES auth.users(id) ON DELETE CASCADE,
   category TEXT NOT NULL,
   message TEXT NOT NULL,
+  is_anonymous BOOLEAN NOT NULL DEFAULT false,
   status TEXT NOT NULL DEFAULT 'pending',
   admin_response TEXT,
   created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT TIMEZONE('utc', NOW()),
@@ -357,9 +358,13 @@ CREATE POLICY "Users insert own app feedback" ON public.app_feedback
   WITH CHECK (auth.uid() = user_id);
 
 GRANT SELECT, INSERT ON public.app_feedback TO authenticated;
+
+-- If app_feedback already exists from the first feedback migration, run this once:
+ALTER TABLE public.app_feedback
+  ADD COLUMN IF NOT EXISTS is_anonymous BOOLEAN NOT NULL DEFAULT false;
 ```
 
-Use Supabase Table Editor, SQL, or the service-role-backed admin console to update `status` and `admin_response`. Row Level Security keeps regular users limited to their own submissions.
+Use Supabase Table Editor, SQL, or the service-role-backed admin console to update `status` and `admin_response`. Row Level Security keeps regular users limited to their own submissions. The `is_anonymous` flag hides sender identity in the app-facing admin inbox while preserving `user_id` for RLS ownership and account cleanup.
 
 ## 2.9 Emergency Study-Data Reset
 

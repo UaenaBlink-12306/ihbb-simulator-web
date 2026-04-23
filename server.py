@@ -2566,7 +2566,7 @@ def update_app_feedback_response(feedback_id: str, status: str, admin_response: 
     rows = data if isinstance(data, list) else []
     if not rows:
         raise KeyError("Feedback row not found.")
-    return rows[0]
+    return redact_app_feedback_row(rows[0])
 
 
 def fetch_table_snapshot(config: Dict[str, Any]) -> Dict[str, Any]:
@@ -2574,17 +2574,28 @@ def fetch_table_snapshot(config: Dict[str, Any]) -> Dict[str, Any]:
     if string_value(config.get("order_by")):
         params["order"] = string_value(config.get("order_by"))
     data, headers = fetch_supabase_json(f"/rest/v1/{config['name']}", params=params)
+    rows = data if isinstance(data, list) else []
+    if config.get("name") == "app_feedback":
+        rows = [redact_app_feedback_row(row) for row in rows]
     content_range = headers.get("content-range", "")
     total_text = content_range.split("/", 1)[1] if "/" in content_range else ""
     try:
         total = int(total_text)
     except Exception:
-        total = len(data or []) if isinstance(data, list) else 0
+        total = len(rows)
     return {
         "name": config["name"],
         "count": total,
-        "rows": data if isinstance(data, list) else [],
+        "rows": rows,
     }
+
+
+def redact_app_feedback_row(row: Any) -> Any:
+    if not isinstance(row, dict) or not row.get("is_anonymous"):
+        return row
+    redacted = dict(row)
+    redacted["user_id"] = ""
+    return redacted
 
 
 def fetch_auth_users() -> List[Dict[str, Any]]:

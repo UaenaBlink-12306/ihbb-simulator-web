@@ -6888,6 +6888,42 @@ input[type=datetime-local] {
   margin-bottom: 0;
 }
 
+.feedback-anonymous-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(96, 165, 250, 0.08);
+  cursor: pointer;
+}
+
+.feedback-anonymous-option input {
+  width: 18px;
+  height: 18px;
+  margin-top: 2px;
+  flex: 0 0 auto;
+  accent-color: var(--accent);
+}
+
+.feedback-anonymous-option span {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.feedback-anonymous-option strong {
+  color: var(--ink);
+  font-size: 14px;
+}
+
+.feedback-anonymous-option small {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
 .feedback-status-message {
   min-height: 20px;
   margin-top: 12px;

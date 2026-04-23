@@ -44,6 +44,13 @@
                 <label for="feedback-message">Message</label>
                 <textarea id="feedback-message" rows="4" maxlength="4000" placeholder="What is broken, confusing, or worth changing?" required></textarea>
               </div>
+              <label class="feedback-anonymous-option" for="feedback-anonymous">
+                <input id="feedback-anonymous" type="checkbox">
+                <span>
+                  <strong>Submit anonymously</strong>
+                  <small>Your dashboard history still shows this item, but the admin inbox will hide your name.</small>
+                </span>
+              </label>
             </div>
             <div id="feedback-status-message" class="feedback-status-message" aria-live="polite"></div>
           </form>
@@ -72,6 +79,7 @@
     const form = document.getElementById('feedback-form');
     const category = document.getElementById('feedback-category');
     const message = document.getElementById('feedback-message');
+    const anonymous = document.getElementById('feedback-anonymous');
     const submit = document.getElementById('feedback-submit');
     const refresh = document.getElementById('feedback-refresh');
     const statusMessage = document.getElementById('feedback-status-message');
@@ -79,7 +87,7 @@
     const historyList = document.getElementById('feedback-history-list');
     const state = { open: false, loaded: false, loading: false };
 
-    if (!toggle || !panel || !form || !category || !message || !submit || !refresh || !historyList) return;
+    if (!toggle || !panel || !form || !category || !message || !anonymous || !submit || !refresh || !historyList) return;
 
     toggle.addEventListener('click', () => {
       state.open = !state.open;
@@ -129,18 +137,23 @@
         return;
       }
 
+      const submitAnonymously = anonymous.checked;
       setStatus('Submitting feedback...', 'loading');
       setSubmitting(true);
       try {
         await getActiveSession();
         const { error } = await sb
           .from(FEEDBACK_TABLE)
-          .insert({ category: selectedCategory, message: feedbackMessage });
+          .insert({
+            category: selectedCategory,
+            message: feedbackMessage,
+            is_anonymous: submitAnonymously
+          });
         if (error) throw error;
         form.reset();
         category.value = CATEGORIES[0];
-        setStatus('Feedback submitted. Your history has been refreshed.', 'success');
-        alert('Feedback submitted. I will review it soon.');
+        setStatus(submitAnonymously ? 'Anonymous feedback submitted. Your history has been refreshed.' : 'Feedback submitted. Your history has been refreshed.', 'success');
+        alert(submitAnonymously ? 'Anonymous feedback submitted. I will review it soon.' : 'Feedback submitted. I will review it soon.');
         await loadFeedbackHistory({ quiet: true });
       } catch (error) {
         const text = error && error.message ? error.message : 'Feedback could not be submitted.';
@@ -162,7 +175,7 @@
         await getActiveSession();
         const { data, error } = await sb
           .from(FEEDBACK_TABLE)
-          .select('id, category, message, status, admin_response, created_at')
+          .select('id, category, message, status, admin_response, is_anonymous, created_at')
           .order('created_at', { ascending: false });
         if (error) throw error;
         const rows = Array.isArray(data) ? data : [];
@@ -199,7 +212,7 @@
             <div class="feedback-item-head">
               <div>
                 <h4>${escapeHtml(row && row.category ? row.category : 'Feedback')}</h4>
-                <div class="feedback-date">${escapeHtml(formatDate(row && row.created_at))}</div>
+                <div class="feedback-date">${escapeHtml(formatDate(row && row.created_at))}${row?.is_anonymous ? ' • Submitted anonymously' : ''}</div>
               </div>
               <span class="feedback-status feedback-status-${escapeHtml(status)}">${escapeHtml(STATUS_LABELS[status])}</span>
             </div>
@@ -220,6 +233,7 @@
       submit.textContent = isSubmitting ? 'Submitting...' : 'Submit';
       category.disabled = isSubmitting;
       message.disabled = isSubmitting;
+      anonymous.disabled = isSubmitting;
     }
 
     function setStatus(text, type) {
@@ -235,6 +249,7 @@
       refresh.disabled = true;
       category.disabled = true;
       message.disabled = true;
+      anonymous.disabled = true;
     }
   }
 

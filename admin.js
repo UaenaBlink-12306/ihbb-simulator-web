@@ -228,13 +228,14 @@ document.addEventListener('DOMContentLoaded', () => {
     list.innerHTML = rows.map((row) => {
       const id = String(row?.id || '');
       const status = normalizeFeedbackStatus(row?.status);
+      const isAnonymous = Boolean(row?.is_anonymous);
       const user = usersById.get(String(row?.user_id || '')) || {};
-      const userLabel = user?.email || user?.display_name || row?.user_id || 'Unknown user';
+      const userLabel = isAnonymous ? 'Anonymous user' : (user?.email || user?.display_name || row?.user_id || 'Unknown user');
       return `
         <article class="admin-generated-item admin-feedback-item" data-id="${esc(id)}">
           <div class="admin-generated-head">
             <div>
-              <div class="eyebrow">${esc(row?.category || 'Feedback')} • ${esc(FEEDBACK_STATUS_LABELS[status])}</div>
+              <div class="eyebrow">${esc(row?.category || 'Feedback')} • ${esc(FEEDBACK_STATUS_LABELS[status])}${isAnonymous ? ' • Anonymous' : ''}</div>
               <h3>${esc(userLabel)}</h3>
             </div>
             <div class="admin-generated-actions">
@@ -246,7 +247,7 @@ document.addEventListener('DOMContentLoaded', () => {
           </div>
           <p class="admin-generated-question">${esc(row?.message || '')}</p>
           <div class="admin-generated-meta">
-            <span>User ID: ${esc(row?.user_id || '')}</span>
+            <span>${isAnonymous ? 'Sender hidden by anonymous submission' : `User ID: ${esc(row?.user_id || '')}`}</span>
             <span>Submitted: ${esc(formatDate(row?.created_at))}</span>
             <span>Updated: ${esc(formatDate(row?.updated_at))}</span>
           </div>
