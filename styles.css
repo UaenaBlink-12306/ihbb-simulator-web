@@ -4120,6 +4120,17 @@ body::after {
   text-decoration: none;
 }
 
+.hero-actions .hub-nav-button {
+  min-height: 54px;
+  padding: 15px 26px;
+  border-radius: 16px;
+  font-size: 15px;
+  font-weight: 800;
+  box-shadow:
+    0 22px 34px -22px rgba(31, 111, 255, 0.58),
+    inset 0 1px 0 rgba(255, 255, 255, 0.54);
+}
+
 .hero-metrics,
 .stat-band {
   display: grid;
