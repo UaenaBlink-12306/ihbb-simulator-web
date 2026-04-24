@@ -900,9 +900,9 @@ module.exports = async function handler(req, res) {
     };
 
     const model = thinkingEnabled
-      ? (process.env.DEEPSEEK_REASONER_MODEL || 'deepseek-reasoner')
-      : (process.env.DEEPSEEK_MODEL || 'deepseek-chat');
-    const chatModel = process.env.DEEPSEEK_MODEL || 'deepseek-chat';
+      ? (process.env.DEEPSEEK_REASONER_MODEL || 'deepseek-v4-flash')
+      : (process.env.DEEPSEEK_MODEL || 'deepseek-v4-flash');
+    const chatModel = process.env.DEEPSEEK_MODEL || 'deepseek-v4-flash';
     const chatMaxTokens = resolvedMode === 'knowledge' ? 1400 : 900;
     const chatTemperature = resolvedMode === 'knowledge' ? 0.18 : 0.2;
     const reasonerMaxTokens = Math.max(
@@ -913,7 +913,7 @@ module.exports = async function handler(req, res) {
       reasonerMaxTokens + 1000,
       safeInt(process.env.DEEPSEEK_REASONER_RETRY_MAX_TOKENS, resolvedMode === 'knowledge' ? 10000 : 8000)
     );
-    const buildCompletionPayload = (modelName, maxTokens, temperature) => {
+    const buildCompletionPayload = (modelName, maxTokens, temperature, useThinking = false) => {
       const completionPayload = {
         model: modelName,
         messages: [
@@ -922,7 +922,11 @@ module.exports = async function handler(req, res) {
         ],
         max_tokens: maxTokens
       };
-      if (!/reasoner/i.test(String(modelName || ''))) {
+      if (useThinking) {
+        completionPayload.thinking = { type: 'enabled' };
+        completionPayload.reasoning_effort = 'high';
+      } else {
+        completionPayload.thinking = { type: 'disabled' };
         completionPayload.response_format = { type: 'json_object' };
       }
       if (typeof temperature === 'number') {
@@ -938,13 +942,18 @@ module.exports = async function handler(req, res) {
 
     let completion = await requestDeepSeekChatCompletion(
       requestHeaders,
-      buildCompletionPayload(model, thinkingEnabled ? reasonerMaxTokens : chatMaxTokens, thinkingEnabled ? null : chatTemperature)
+      buildCompletionPayload(
+        model,
+        thinkingEnabled ? reasonerMaxTokens : chatMaxTokens,
+        thinkingEnabled ? null : chatTemperature,
+        thinkingEnabled
+      )
     );
     if (thinkingEnabled && completion.response.ok && (!completion.raw || completion.finishReason === 'length')) {
       console.warn(`DeepSeek reasoner coach chat returned ${completion.finishReason || 'unparseable'} output; retrying with ${reasonerRetryMaxTokens} max_tokens.`);
       completion = await requestDeepSeekChatCompletion(
         requestHeaders,
-        buildCompletionPayload(model, reasonerRetryMaxTokens, null)
+        buildCompletionPayload(model, reasonerRetryMaxTokens, null, true)
       );
     }
     if (thinkingEnabled && (!completion.response.ok || !completion.raw)) {

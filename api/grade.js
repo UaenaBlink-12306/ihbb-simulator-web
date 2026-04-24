@@ -234,7 +234,7 @@ module.exports = async function handler(req, res) {
 
     async function callDeepSeek(messages, maxTokens) {
       const key = process.env.DEEPSEEK_API_KEY;
-      const model = process.env.DEEPSEEK_MODEL || 'deepseek-chat';
+      const model = process.env.DEEPSEEK_MODEL || 'deepseek-v4-flash';
       const response = await fetch('https://api.deepseek.com/v1/chat/completions', {
         method: 'POST',
         headers: {
@@ -243,6 +243,7 @@ module.exports = async function handler(req, res) {
         },
         body: JSON.stringify({
           model,
+          thinking: { type: 'disabled' },
           messages,
           response_format: { type: 'json_object' },
           temperature: 0.0,

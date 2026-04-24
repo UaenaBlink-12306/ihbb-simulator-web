@@ -25,8 +25,8 @@ load_dotenv()
 PORT = int(os.environ.get("IHBB_SERVER_PORT", "5057"))
 DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY")
 DEEPSEEK_URL = "https://api.deepseek.com/v1/chat/completions"
-MODEL = os.environ.get("DEEPSEEK_MODEL", "deepseek-chat")
-REASONER_MODEL = os.environ.get("DEEPSEEK_REASONER_MODEL", "deepseek-reasoner")
+MODEL = os.environ.get("DEEPSEEK_MODEL", "deepseek-v4-flash")
+REASONER_MODEL = os.environ.get("DEEPSEEK_REASONER_MODEL", "deepseek-v4-flash")
 ADMIN_COOKIE = "ihbb_admin_session"
 ADMIN_EMAIL = str(os.environ.get("IHBB_ADMIN_EMAIL", os.environ.get("ADMIN_EMAIL", ""))).strip().lower()
 ADMIN_PASSWORD_HASH = str(os.environ.get("IHBB_ADMIN_PASSWORD_HASH", os.environ.get("ADMIN_PASSWORD_HASH", ""))).strip()
@@ -427,7 +427,8 @@ def normalize_coach(raw: Any, payload: Dict[str, Any], correct: bool, reason: st
 
 
 def call_deepseek(messages: List[Dict[str, str]], max_tokens: int = 300, temperature: Optional[float] = 0.0,
-                  model: Optional[str] = None, timeout: int = 30, json_output: bool = True) -> Any:
+                  model: Optional[str] = None, timeout: int = 30, json_output: bool = True,
+                  thinking_enabled: bool = False) -> Any:
     headers = {
         "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
         "Content-Type": "application/json",
@@ -440,6 +441,9 @@ def call_deepseek(messages: List[Dict[str, str]], max_tokens: int = 300, tempera
             "messages": messages,
             "max_tokens": max_tokens,
         }
+        body["thinking"] = {"type": "enabled" if thinking_enabled else "disabled"}
+        if thinking_enabled:
+            body["reasoning_effort"] = "high"
         if use_json_output:
             body["response_format"] = {"type": "json_object"}
         if temperature is not None:
@@ -1687,6 +1691,7 @@ def coach_chat_with_deepseek(payload: Dict[str, Any]) -> Dict[str, Any]:
             temperature=None if thinking_enabled else chat_temperature,
             model=REASONER_MODEL if thinking_enabled else MODEL,
             timeout=reasoner_timeout if thinking_enabled else default_timeout,
+            thinking_enabled=thinking_enabled,
         )
         if thinking_enabled and not isinstance(obj, dict):
             log.warning(
@@ -1699,6 +1704,7 @@ def coach_chat_with_deepseek(payload: Dict[str, Any]) -> Dict[str, Any]:
                 temperature=None,
                 model=REASONER_MODEL,
                 timeout=reasoner_timeout,
+                thinking_enabled=True,
             )
         if not isinstance(obj, dict):
             chat_obj = fallback_to_chat_model()

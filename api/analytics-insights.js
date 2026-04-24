@@ -199,7 +199,8 @@ module.exports = async function handler(req, res) {
           Authorization: `Bearer ${process.env.DEEPSEEK_API_KEY}`
         },
         body: JSON.stringify({
-          model: process.env.DEEPSEEK_MODEL || 'deepseek-chat',
+          model: process.env.DEEPSEEK_MODEL || 'deepseek-v4-flash',
+          thinking: { type: 'disabled' },
           messages,
           response_format: { type: 'json_object' },
           temperature: 0.0,
