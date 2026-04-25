@@ -80,8 +80,8 @@
         <div id="alert-box" class="alert hidden"></div>
 
         <nav class="tab-strip dashboard-tabs">
-            <button class="dash-tab" data-tab="assignments">Assignments</button>
-            <button class="dash-tab active" data-tab="classes">My Classes</button>
+            <button class="dash-tab active" data-tab="assignments">Assignments</button>
+            <button class="dash-tab" data-tab="classes">My Classes</button>
             <button class="dash-tab" data-tab="coach" title="Access Coach mode: review AI notes and personal focuses">Coach</button>
             <button class="dash-tab" data-tab="livebee">Live Bee</button>
             <button class="dash-tab" data-tab="analytics" title="View your Blind Spot Analytics and 30-day hub performance history">Analytics</button>
@@ -90,7 +90,7 @@
             <button class="dash-tab" data-tab="whatsnew">What's New</button>
         </nav>
 
-        <section id="tab-classes" class="view active">
+        <section id="tab-classes" class="view">
             <div class="card section-card">
                 <div class="section-head">
                     <div>
@@ -117,7 +117,7 @@
             </div>
         </section>
 
-        <section id="tab-assignments" class="view">
+        <section id="tab-assignments" class="view active">
             <div class="card section-card">
                 <div class="section-head">
                     <div>
@@ -508,8 +508,8 @@
                                     <div class="input-group" style="margin: 0;">
                                         <label for="acc-student-default-tab">Default dashboard tab</label>
                                         <select id="acc-student-default-tab">
-                                            <option value="classes">My Classes</option>
                                             <option value="assignments">Assignments</option>
+                                            <option value="classes">My Classes</option>
                                             <option value="coach">Coach</option>
                                             <option value="analytics">Analytics</option>
                                             <option value="leaderboard">Leaderboard</option>
@@ -606,6 +606,13 @@
                 </div>
                 <div class="dashboard-split dashboard-split-solo">
                     <div class="list-container">
+                        <div class="list-item">
+                            <div>
+                                <h3 style="margin:0 0 4px;">Student Dashboard Default Tab</h3>
+                                <div class="pill">April 25, 2026</div>
+                                <p class="muted" style="margin: 8px 0 0;">Student dashboards now open to Assignments by default, while teacher dashboards keep My Classes as the first and default tab.</p>
+                            </div>
+                        </div>
                         <div class="list-item">
                             <div>
                                 <h3 style="margin:0 0 4px;">DeepSeek V4 Flash Model Update</h3>

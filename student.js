@@ -180,7 +180,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     };
     const STUDENT_DASHBOARD_TABS = new Set(['classes', 'assignments', 'coach', 'analytics', 'leaderboard']);
     const ACCOUNT_SETTING_DEFAULTS = Object.freeze({
-        student_dashboard_default_tab: 'classes',
+        student_dashboard_default_tab: 'assignments',
         practice_hub_auto_open: true,
         assistant_thinking_enabled: false,
         assistant_show_starters: true,
