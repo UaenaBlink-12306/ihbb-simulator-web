@@ -8,7 +8,7 @@
   };
 
   document.addEventListener('DOMContentLoaded', () => {
-    const shell = document.querySelector('.dashboard-shell');
+    const shell = document.querySelector('.dashboard-shell, .page-shell');
     if (!shell || document.getElementById('app-feedback-dock')) return;
     shell.insertAdjacentHTML('beforeend', feedbackDockHtml());
     initFeedbackDock();
