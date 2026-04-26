@@ -212,6 +212,113 @@ document.addEventListener('DOMContentLoaded', async () => {
     function buzzWrong() { playBeeCue('wrong'); }
     function buzzInSound() { playBeeCue('buzz'); }
 
+    // Procedural, lyric-free host music so no external/licensed audio files are needed.
+    const BeeHostMusic = {
+        enabled: isHost && beePrefs.liveBeeHostMusic !== false,
+        playing: false,
+        step: 0,
+        timer: null,
+        master: null,
+        filter: null,
+        track: 0,
+        tracks: [
+            {
+                lead: [659, 784, 880, 784, 659, 587, 659, 523, 659, 784, 988, 880, 784, 659, 587, 659],
+                bass: [165, 165, 196, 196, 147, 147, 175, 175],
+                pad: [330, 392, 294, 349]
+            },
+            {
+                lead: [587, 698, 784, 932, 784, 698, 587, 523, 587, 698, 880, 784, 698, 659, 587, 523],
+                bass: [147, 147, 175, 175, 131, 131, 196, 196],
+                pad: [294, 349, 262, 392]
+            },
+            {
+                lead: [523, 659, 784, 659, 587, 698, 880, 698, 659, 784, 988, 784, 698, 587, 659, 523],
+                bass: [131, 131, 165, 165, 147, 147, 196, 196],
+                pad: [262, 330, 294, 392]
+            }
+        ]
+    };
+    function ensureHostMusicNodes() {
+        if (!isHost) return null;
+        const ctx = getAudioCtx();
+        if (!ctx) return null;
+        if (!BeeHostMusic.master) {
+            const master = ctx.createGain();
+            const filter = ctx.createBiquadFilter();
+            filter.type = 'lowpass';
+            filter.frequency.value = 2400;
+            filter.Q.value = 0.55;
+            master.gain.value = 0.032;
+            master.connect(filter);
+            filter.connect(ctx.destination);
+            BeeHostMusic.master = master;
+            BeeHostMusic.filter = filter;
+        }
+        return ctx;
+    }
+    function playHostMusicNote(freq, dur, type, peak, when = 0) {
+        const ctx = ensureHostMusicNodes();
+        if (!ctx || !BeeHostMusic.master) return;
+        const start = ctx.currentTime + when;
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = type;
+        osc.frequency.setValueAtTime(freq, start);
+        gain.gain.setValueAtTime(0.0001, start);
+        gain.gain.linearRampToValueAtTime(peak, start + 0.025);
+        gain.gain.exponentialRampToValueAtTime(0.0001, start + dur);
+        osc.connect(gain);
+        gain.connect(BeeHostMusic.master);
+        osc.start(start);
+        osc.stop(start + dur + 0.04);
+    }
+    function tickHostMusic() {
+        if (!BeeHostMusic.playing || !BeeHostMusic.enabled) return;
+        const track = BeeHostMusic.tracks[BeeHostMusic.track % BeeHostMusic.tracks.length];
+        const step = BeeHostMusic.step;
+        const lead = track.lead[step % track.lead.length];
+        const bass = track.bass[Math.floor(step / 2) % track.bass.length];
+        const pad = track.pad[Math.floor(step / 8) % track.pad.length];
+        if (step % 2 === 0) playHostMusicNote(lead, 0.18, 'triangle', 0.10);
+        if (step % 4 === 0) playHostMusicNote(bass, 0.42, 'sine', 0.12);
+        if (step % 16 === 0) playHostMusicNote(pad, 1.35, 'sine', 0.05);
+        if (step > 0 && step % 64 === 0) BeeHostMusic.track = (BeeHostMusic.track + 1) % BeeHostMusic.tracks.length;
+        BeeHostMusic.step += 1;
+    }
+    async function startHostMusic() {
+        if (!BeeHostMusic.enabled || BeeHostMusic.playing || !isHost) return;
+        const ctx = ensureHostMusicNodes();
+        if (!ctx) return;
+        try { if (ctx.state === 'suspended') await ctx.resume(); } catch { }
+        BeeHostMusic.playing = true;
+        tickHostMusic();
+        BeeHostMusic.timer = setInterval(tickHostMusic, 250);
+        updateHostMusicButton();
+    }
+    function stopHostMusic() {
+        if (BeeHostMusic.timer) clearInterval(BeeHostMusic.timer);
+        BeeHostMusic.timer = null;
+        BeeHostMusic.playing = false;
+        updateHostMusicButton();
+    }
+    function setHostMusicEnabled(enabled) {
+        if (!isHost) return;
+        BeeHostMusic.enabled = !!enabled;
+        try { localStorage.setItem(KEY_SETTINGS, JSON.stringify({ ...beePrefs, liveBeeHostMusic: BeeHostMusic.enabled })); } catch { }
+        if (BeeHostMusic.enabled) void startHostMusic();
+        else stopHostMusic();
+        updateHostMusicButton();
+    }
+    function updateHostMusicButton() {
+        document.querySelectorAll('#btn-host-music, #btn-host-music-game').forEach((btn) => {
+            btn.textContent = BeeHostMusic.enabled ? 'Music On' : 'Music Off';
+            btn.setAttribute('aria-pressed', BeeHostMusic.enabled ? 'true' : 'false');
+            btn.classList.toggle('ghost', !BeeHostMusic.enabled);
+            btn.classList.toggle('pri', BeeHostMusic.enabled);
+        });
+    }
+
     // ==================== TTS ====================
     const VOICE_PREF = [/Microsoft .* Online .*Natural/i, /Google US English/i, /en[-_]?US/i];
     function getBestVoice() {
@@ -282,9 +389,18 @@ document.addEventListener('DOMContentLoaded', async () => {
     // ==================== LOBBY ====================
     if (isHost) {
         $('lobby-host').classList.remove('hidden');
+        updateHostMusicButton();
     } else {
         $('lobby-join').classList.remove('hidden');
     }
+
+    ['btn-host-music', 'btn-host-music-game'].forEach((id) => {
+        $(id)?.addEventListener('click', () => {
+            playBeeCue('tap', { sound: false });
+            setHostMusicEnabled(!BeeHostMusic.enabled);
+        });
+    });
+    window.addEventListener('pagehide', stopHostMusic);
 
     // Teacher: Create Room
     $('btn-create-room')?.addEventListener('click', async () => {
@@ -295,6 +411,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         upsertPlayer(uid, { name: myName, score: 0, avatarId: myAvatarId });
         await sb.from('bee_participants').insert({ room_id: room.id, user_id: uid, display_name: myName, score: 0 });
         playBeeCue('join');
+        void startHostMusic();
         enterWaitingRoom();
     });
 
@@ -488,6 +605,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Leave room
     $('btn-leave')?.addEventListener('click', async () => {
         playBeeCue('tap', { sound: false });
+        stopHostMusic();
         if (channel) {
             channel.send({ type: 'broadcast', event: 'player_leave', payload: { userId: uid } });
             sb.removeChannel(channel); channel = null;
@@ -633,6 +751,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     async function startBee() {
         if (!selectedQuestions.length) return;
         playBeeCue('start');
+        void startHostMusic();
 
         // Normalize questions
         gameQuestions = selectedQuestions.map(q => ({
@@ -880,6 +999,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     function handleGameEnd(payload) {
         ttsStop();
+        if (isHost) stopHostMusic();
         showView('view-results');
         const standings = getFinalStandings();
         renderResultsPodium(standings);
@@ -934,7 +1054,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         if ([
             'btn-create-room', 'btn-join-room', 'btn-leave',
             'btn-bee-random', 'btn-bee-filter', 'btn-bee-clear', 'btn-start-bee',
-            'bee-buzz', 'btn-submit-bee-answer', 'btn-next-question', 'btn-end-bee'
+            'bee-buzz', 'btn-submit-bee-answer', 'btn-next-question', 'btn-end-bee',
+            'btn-host-music', 'btn-host-music-game'
         ].includes(id)) return;
         playBeeCue('tap', { sound: false, haptic: true });
     }, true);
