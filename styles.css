@@ -99,18 +99,24 @@ h3,
 }
 
 .logo {
-  width: 56px;
-  height: 56px;
-  border-radius: 16px;
-  background: conic-gradient(from 200deg at 50% 50%, var(--accent), var(--accent2));
-  box-shadow: 0 16px 40px var(--ring), inset 0 1px 2px rgba(255, 255, 255, 0.6);
+  width: 132px;
+  height: 106px;
+  border-radius: 14px;
+  background: #000;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  box-shadow: 0 16px 40px var(--ring), inset 0 1px 2px rgba(255, 255, 255, 0.18);
   display: grid;
   place-items: center;
-  color: #000;
-  font-family: 'Outfit', sans-serif;
-  font-weight: 900;
-  font-size: 20px;
-  letter-spacing: -1px;
+  overflow: hidden;
+  flex: 0 0 auto;
+  padding: 6px;
+}
+
+.logo img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
 }
 
 h1 {
@@ -4936,9 +4942,8 @@ input[type=datetime-local]:focus {
 }
 
 .auth-logo {
-  width: 68px;
-  height: 68px;
-  font-size: 24px;
+  width: 168px;
+  height: 136px;
 }
 
 .auth-header-copy {
