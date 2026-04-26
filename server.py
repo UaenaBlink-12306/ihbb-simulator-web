@@ -8,7 +8,7 @@ import time
 import base64
 import hmac
 import hashlib
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import List, Dict, Any, Tuple, Optional
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import socket
@@ -2546,6 +2546,22 @@ def write_supabase_json(method: str, path: str, payload: Dict[str, Any], params:
     return data, response.headers
 
 
+def purge_expired_resolved_app_feedback(retention_days: int = 30) -> int:
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=max(1, int(retention_days)))).isoformat()
+    data, _ = write_supabase_json(
+        "DELETE",
+        "/rest/v1/app_feedback",
+        payload={},
+        params={
+            "status": "eq.resolved",
+            "updated_at": f"lt.{cutoff}",
+            "select": "id",
+        },
+    )
+    rows = data if isinstance(data, list) else []
+    return len(rows)
+
+
 def update_app_feedback_response(feedback_id: str, status: str, admin_response: str) -> Dict[str, Any]:
     row_id = string_value(feedback_id)
     try:
@@ -2706,6 +2722,10 @@ def fetch_database_snapshot() -> Dict[str, Any]:
         }
     warnings: List[str] = []
     tables: List[Dict[str, Any]] = []
+    try:
+        purge_expired_resolved_app_feedback()
+    except Exception as exc:
+        warnings.append(f"app_feedback cleanup: {exc}")
     for config in APP_TABLES:
         try:
             tables.append(fetch_table_snapshot(config))

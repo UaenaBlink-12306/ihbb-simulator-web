@@ -6,6 +6,7 @@
     in_review: 'In Review',
     resolved: 'Resolved'
   };
+  const RESOLVED_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 
   document.addEventListener('DOMContentLoaded', () => {
     const shell = document.querySelector('.dashboard-shell, .page-shell');
@@ -173,12 +174,13 @@
       refresh.disabled = true;
       try {
         await getActiveSession();
+        await purgeResolvedFeedback();
         const { data, error } = await sb
           .from(FEEDBACK_TABLE)
-          .select('id, category, message, status, admin_response, is_anonymous, created_at')
+          .select('id, category, message, status, admin_response, is_anonymous, created_at, updated_at')
           .order('created_at', { ascending: false });
         if (error) throw error;
-        const rows = Array.isArray(data) ? data : [];
+        const rows = (Array.isArray(data) ? data : []).filter((row) => !isExpiredResolvedFeedback(row));
         state.loaded = true;
         renderFeedbackRows(rows);
       } catch (error) {
@@ -191,6 +193,13 @@
       } finally {
         state.loading = false;
         refresh.disabled = false;
+      }
+    }
+
+    async function purgeResolvedFeedback() {
+      const { error } = await sb.rpc('purge_resolved_app_feedback');
+      if (error && !isMissingRpcError(error)) {
+        console.warn('Resolved feedback cleanup skipped:', error.message || error);
       }
     }
 
@@ -256,6 +265,18 @@
   function normalizeStatus(value) {
     const status = String(value || '').trim().toLowerCase();
     return Object.prototype.hasOwnProperty.call(STATUS_LABELS, status) ? status : 'pending';
+  }
+
+  function isExpiredResolvedFeedback(row) {
+    if (normalizeStatus(row && row.status) !== 'resolved') return false;
+    const date = new Date((row && row.updated_at) || (row && row.created_at) || '');
+    if (Number.isNaN(date.getTime())) return false;
+    return Date.now() - date.getTime() >= RESOLVED_RETENTION_MS;
+  }
+
+  function isMissingRpcError(error) {
+    const text = `${error?.code || ''} ${error?.message || ''} ${error?.details || ''}`.toLowerCase();
+    return text.includes('purge_resolved_app_feedback') || text.includes('could not find the function') || text.includes('pgrst202');
   }
 
   function formatDate(value) {
