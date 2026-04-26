@@ -6200,6 +6200,48 @@ input[type=datetime-local]:focus {
   max-height: 700px;
 }
 
+.library-answer-button {
+  appearance: none;
+  border: 0;
+  padding: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-weight: 800;
+  text-align: left;
+  cursor: pointer;
+}
+
+.library-answer-button:hover,
+.library-answer-button:focus-visible {
+  color: var(--accent-2);
+  text-decoration: underline;
+  outline: none;
+}
+
+.library-question-modal-card {
+  width: min(760px, 100%);
+}
+
+.library-question-modal-body {
+  display: grid;
+  gap: 18px;
+}
+
+.library-question-text {
+  margin: 8px 0 0;
+  color: var(--ink);
+  font-size: 17px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+}
+
+.library-question-meta-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
 .summary-note {
   margin-top: 14px;
   padding: 14px 16px;

@@ -5061,6 +5061,67 @@ function mergeDuplicatesInActiveSet() {
   toast(`Merged duplicates: ${removed.length}`);
 }
 $('lib-merge-dupes')?.addEventListener('click', mergeDuplicatesInActiveSet);
+
+function closeLibraryQuestionModal() {
+  const modal = $('library-question-modal');
+  if (modal) modal.remove();
+}
+
+function openLibraryQuestionModal(item, index) {
+  if (!item) return;
+  closeLibraryQuestionModal();
+  const modal = document.createElement('div');
+  modal.id = 'library-question-modal';
+  modal.className = 'modal-overlay library-question-modal';
+  modal.setAttribute('role', 'dialog');
+  modal.setAttribute('aria-modal', 'true');
+  modal.setAttribute('aria-labelledby', 'library-question-modal-title');
+  const aliases = (item.aliases || []).map(a => String(a || '').trim()).filter(Boolean);
+  modal.innerHTML = `
+    <div class="modal-card card library-question-modal-card">
+      <div class="section-head">
+        <div>
+          <div class="eyebrow">Question ${Number(index) + 1}</div>
+          <h2 id="library-question-modal-title" class="card-title">${escHtml(item.answer || 'Answer')}</h2>
+        </div>
+        <button class="btn ghost library-question-modal-close" type="button" aria-label="Close question popup">Close</button>
+      </div>
+      <div class="library-question-modal-body">
+        <div>
+          <div class="empty-kicker">Question</div>
+          <p class="library-question-text">${escHtml(item.question || 'No question text available.')}</p>
+        </div>
+        <div class="library-question-meta-grid">
+          <div class="pill">Region: ${escHtml(item.meta?.category || '—')}</div>
+          <div class="pill">Era: ${escHtml(getEraName(item.meta?.era || '') || '—')}</div>
+          <div class="pill">Source: ${escHtml(item.meta?.source || '—')}</div>
+        </div>
+        ${aliases.length ? `<div><div class="empty-kicker">Aliases</div><p class="muted">${escHtml(aliases.join(', '))}</p></div>` : ''}
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+  modal.querySelector('.library-question-modal-close')?.focus();
+}
+
+document.addEventListener('click', (e) => {
+  const openButton = e.target.closest?.('.library-answer-button');
+  if (openButton) {
+    const set = getActiveSet();
+    const index = Number(openButton.dataset.libraryIndex);
+    const item = Number.isInteger(index) ? set?.items?.[index] : null;
+    if (item) openLibraryQuestionModal(item, index);
+    return;
+  }
+  if (e.target.closest?.('.library-question-modal-close') || e.target.id === 'library-question-modal') {
+    closeLibraryQuestionModal();
+  }
+});
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && $('library-question-modal')) closeLibraryQuestionModal();
+});
+
 function renderLibraryTable() {
   const set = getActiveSet(); const tb = document.querySelector('#tbl-lib tbody'); if (!tb) return;
   tb.innerHTML = '';
@@ -5077,7 +5138,7 @@ function renderLibraryTable() {
     if (fc && (it.meta?.category || '') !== fc) return;
     if (fe && (it.meta?.era || '') !== fe) return;
     const tr = document.createElement('tr');
-    tr.innerHTML = `<td class='stat'>${idx + 1}</td><td>${it.answer}</td><td>${(it.aliases || []).slice(0, 3).join(', ')}</td><td>${it.meta?.category || ''}</td><td>${getEraName(it.meta?.era || '')}</td><td>${it.meta?.source || ''}</td>`;
+    tr.innerHTML = `<td class='stat'>${idx + 1}</td><td><button class="library-answer-button" type="button" data-library-index="${idx}">${escHtml(it.answer)}</button></td><td>${escHtml((it.aliases || []).slice(0, 3).join(', '))}</td><td>${escHtml(it.meta?.category || '')}</td><td>${escHtml(getEraName(it.meta?.era || ''))}</td><td>${escHtml(it.meta?.source || '')}</td>`;
     tb.appendChild(tr);
     mobileCards.push(mobileRecordCard({
       eyebrow: `Question ${idx + 1}`,
@@ -5089,7 +5150,8 @@ function renderLibraryTable() {
       details: [
         (it.aliases || []).length ? `Aliases: ${escHtml((it.aliases || []).slice(0, 3).join(', '))}` : 'Aliases: —',
         it.meta?.source ? `Source: ${escHtml(it.meta.source)}` : ''
-      ]
+      ],
+      actionHtml: `<button class="btn ghost library-answer-button" type="button" data-library-index="${idx}">View question</button>`
     }));
   });
   renderMobileRecordList('lib-mobile-list', mobileCards, 'No questions match', 'Try broadening the search term or clearing one of the active filters.');
