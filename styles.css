@@ -99,8 +99,8 @@ h3,
 }
 
 .logo {
-  width: 132px;
-  height: 106px;
+  width: 118px;
+  height: 118px;
   border-radius: 14px;
   background: #000;
   border: 1px solid rgba(255, 255, 255, 0.18);
@@ -109,7 +109,7 @@ h3,
   place-items: center;
   overflow: hidden;
   flex: 0 0 auto;
-  padding: 6px;
+  padding: 0;
 }
 
 .logo img {
@@ -4943,7 +4943,7 @@ input[type=datetime-local]:focus {
 
 .auth-logo {
   width: 168px;
-  height: 136px;
+  height: 168px;
 }
 
 .auth-header-copy {
