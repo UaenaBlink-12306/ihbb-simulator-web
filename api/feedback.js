@@ -76,7 +76,7 @@ async function fetchSupabase(pathname, searchParams = new URLSearchParams(), opt
 async function getAuthenticatedUserId(req) {
   const token = bearerToken(req);
   if (!token) {
-    const error = new Error('Please sign in again before deleting feedback.');
+    const error = new Error('Please sign in again before updating feedback.');
     error.statusCode = 401;
     throw error;
   }
@@ -86,7 +86,7 @@ async function getAuthenticatedUserId(req) {
   });
   const userId = stringValue(user?.id);
   if (!userId) {
-    const error = new Error('Please sign in again before deleting feedback.');
+    const error = new Error('Please sign in again before updating feedback.');
     error.statusCode = 401;
     throw error;
   }
@@ -102,6 +102,41 @@ function assertFeedbackId(value) {
     throw error;
   }
   return id;
+}
+
+function normalizeThreadMessages(value) {
+  let raw = value;
+  if (typeof raw === 'string') {
+    try {
+      raw = JSON.parse(raw);
+    } catch {
+      raw = [];
+    }
+  }
+  if (!Array.isArray(raw)) return [];
+  return raw.map((item) => {
+    const role = stringValue(item?.role).toLowerCase() === 'admin' ? 'admin' : 'user';
+    const message = stringValue(item?.message || item?.text);
+    if (!message) return null;
+    return {
+      role,
+      message,
+      created_at: stringValue(item?.created_at) || new Date().toISOString()
+    };
+  }).filter(Boolean).slice(-100);
+}
+
+function appendUserThreadMessage(messages, message, createdAt) {
+  const text = stringValue(message);
+  if (!text) return normalizeThreadMessages(messages);
+  const safe = normalizeThreadMessages(messages);
+  const last = safe[safe.length - 1];
+  if (last?.role === 'user' && last?.message === text) return safe;
+  return safe.concat({
+    role: 'user',
+    message: text,
+    created_at: createdAt || new Date().toISOString()
+  }).slice(-100);
 }
 
 async function deleteResolvedFeedback(req, feedbackId) {
@@ -134,6 +169,59 @@ async function deleteResolvedFeedback(req, feedbackId) {
   return Array.isArray(deletedRows) ? deletedRows.length : 0;
 }
 
+async function replyToFeedback(req, feedbackId, replyMessage) {
+  const id = assertFeedbackId(feedbackId);
+  const userId = await getAuthenticatedUserId(req);
+  const replyText = stringValue(replyMessage);
+  if (!replyText) {
+    const error = new Error('Reply message is required.');
+    error.statusCode = 400;
+    throw error;
+  }
+  if (replyText.length > 4000) {
+    const error = new Error('Reply message must be 4000 characters or fewer.');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const lookupParams = new URLSearchParams();
+  lookupParams.set('id', `eq.${id}`);
+  lookupParams.set('select', '*');
+  lookupParams.set('limit', '1');
+  const rows = await fetchSupabase('/rest/v1/app_feedback', lookupParams, { prefer: 'count=exact' });
+  const row = Array.isArray(rows) ? rows[0] : null;
+  if (!row || stringValue(row.user_id) !== userId) {
+    const error = new Error('Feedback row not found.');
+    error.statusCode = 404;
+    throw error;
+  }
+  if (!Object.prototype.hasOwnProperty.call(row, 'thread_messages')) {
+    const error = new Error('Feedback replies are not configured yet. Run the feedback thread migration first.');
+    error.statusCode = 503;
+    throw error;
+  }
+  if (stringValue(row.status).toLowerCase() !== 'needs_more_info') {
+    const error = new Error('You can reply when the admin marks this feedback as Needs More Info.');
+    error.statusCode = 409;
+    throw error;
+  }
+
+  const updatedAt = new Date().toISOString();
+  const updateParams = new URLSearchParams();
+  updateParams.set('id', `eq.${id}`);
+  updateParams.set('select', '*');
+  const updatedRows = await fetchSupabase('/rest/v1/app_feedback', updateParams, {
+    method: 'PATCH',
+    prefer: 'return=representation',
+    body: {
+      status: 'in_review',
+      thread_messages: appendUserThreadMessage(row.thread_messages, replyText, updatedAt),
+      updated_at: updatedAt
+    }
+  });
+  return Array.isArray(updatedRows) ? updatedRows[0] : null;
+}
+
 module.exports = async function handler(req, res) {
   if (req.method !== 'POST') {
     return json(res, 405, { error: 'Method not allowed.' });
@@ -144,6 +232,10 @@ module.exports = async function handler(req, res) {
     if (action === 'delete_resolved') {
       const deleted = await deleteResolvedFeedback(req, body.id);
       return json(res, 200, { ok: true, deleted });
+    }
+    if (action === 'reply_to_feedback') {
+      const feedback = await replyToFeedback(req, body.id, body.message);
+      return json(res, 200, { ok: true, feedback });
     }
     return json(res, 400, { error: 'Unknown feedback action.' });
   } catch (error) {

@@ -33,7 +33,7 @@ const APP_TABLES = [
   { name: 'user_coach_attempts', orderBy: 'created_at.desc', limit: 200 },
   { name: 'app_feedback', orderBy: 'created_at.desc', limit: 500 }
 ];
-const FEEDBACK_STATUSES = new Set(['pending', 'in_review', 'resolved']);
+const FEEDBACK_STATUSES = new Set(['pending', 'in_review', 'needs_more_info', 'resolved']);
 
 function stringValue(value) {
   if (value === null || value === undefined) return '';
@@ -231,6 +231,52 @@ function redactAppFeedbackRow(row) {
   };
 }
 
+function normalizeThreadMessages(value) {
+  let raw = value;
+  if (typeof raw === 'string') {
+    try {
+      raw = JSON.parse(raw);
+    } catch {
+      raw = [];
+    }
+  }
+  if (!Array.isArray(raw)) return [];
+  return raw.map((item) => {
+    const role = stringValue(item?.role).toLowerCase() === 'admin' ? 'admin' : 'user';
+    const message = stringValue(item?.message || item?.text);
+    if (!message) return null;
+    return {
+      role,
+      message,
+      created_at: stringValue(item?.created_at) || new Date().toISOString()
+    };
+  }).filter(Boolean).slice(-100);
+}
+
+function appendThreadMessage(messages, role, message, createdAt) {
+  const text = stringValue(message);
+  if (!text) return normalizeThreadMessages(messages);
+  const safeRole = stringValue(role).toLowerCase() === 'admin' ? 'admin' : 'user';
+  const safe = normalizeThreadMessages(messages);
+  const last = safe[safe.length - 1];
+  if (last?.role === safeRole && last?.message === text) return safe;
+  return safe.concat({
+    role: safeRole,
+    message: text,
+    created_at: createdAt || new Date().toISOString()
+  }).slice(-100);
+}
+
+async function fetchAppFeedbackRow(feedbackId) {
+  const params = new URLSearchParams();
+  params.set('id', `eq.${feedbackId}`);
+  params.set('select', '*');
+  params.set('limit', '1');
+  const result = await fetchSupabaseJson('/rest/v1/app_feedback', params);
+  const rows = Array.isArray(result.data) ? result.data : [];
+  return rows[0] || null;
+}
+
 async function purgeExpiredResolvedAppFeedback(retentionDays = 30) {
   const days = Math.max(1, Number.parseInt(String(retentionDays), 10) || 30);
   const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
@@ -248,7 +294,7 @@ async function purgeExpiredResolvedAppFeedback(retentionDays = 30) {
 function normalizeFeedbackStatus(value) {
   const status = stringValue(value).toLowerCase();
   if (!FEEDBACK_STATUSES.has(status)) {
-    throw new Error('Feedback status must be pending, in_review, or resolved.');
+    throw new Error('Feedback status must be pending, in_review, needs_more_info, or resolved.');
   }
   return status;
 }
@@ -269,17 +315,31 @@ async function updateAppFeedbackResponse(feedbackId, status, adminResponse) {
   if (responseText.length > 4000) {
     throw new Error('Admin response must be 4000 characters or fewer.');
   }
+  const existing = await fetchAppFeedbackRow(id);
+  if (!existing) {
+    const error = new Error('Feedback row not found.');
+    error.statusCode = 404;
+    throw error;
+  }
+  const updatedAt = new Date().toISOString();
+  const payload = {
+    status: normalizedStatus,
+    admin_response: responseText || null,
+    updated_at: updatedAt
+  };
+  if (Object.prototype.hasOwnProperty.call(existing, 'thread_messages')) {
+    const previousResponse = stringValue(existing.admin_response);
+    payload.thread_messages = responseText && responseText !== previousResponse
+      ? appendThreadMessage(existing.thread_messages, 'admin', responseText, updatedAt)
+      : normalizeThreadMessages(existing.thread_messages);
+  }
   const params = new URLSearchParams();
   params.set('id', `eq.${id}`);
   params.set('select', '*');
   const result = await fetchSupabaseJson('/rest/v1/app_feedback', params, {
     method: 'PATCH',
     prefer: 'return=representation',
-    body: {
-      status: normalizedStatus,
-      admin_response: responseText || null,
-      updated_at: new Date().toISOString()
-    }
+    body: payload
   });
   const rows = Array.isArray(result.data) ? result.data : [];
   if (!rows.length) {

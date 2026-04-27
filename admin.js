@@ -58,6 +58,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const FEEDBACK_STATUS_LABELS = {
     pending: 'Pending',
     in_review: 'In Review',
+    needs_more_info: 'Needs More Info',
     resolved: 'Resolved'
   };
 
@@ -141,7 +142,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const feedbackRows = snapshotRows('app_feedback');
     const openFeedbackCount = feedbackRows.filter((row) => {
       const status = normalizeFeedbackStatus(row?.status);
-      return status === 'pending' || status === 'in_review';
+      return status === 'pending' || status === 'in_review' || status === 'needs_more_info';
     }).length;
     const replyNeededCount = feedbackRows.filter((row) => {
       const status = normalizeFeedbackStatus(row?.status);
@@ -149,7 +150,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }).length;
     const resolvedFeedbackCount = feedbackRows.filter((row) => normalizeFeedbackStatus(row?.status) === 'resolved').length;
     const items = [
-      ['Open feedback', openFeedbackCount, 'Pending or in-review complaints waiting on a response.'],
+      ['Open feedback', openFeedbackCount, 'Pending, in-review, or needs-more-info complaints.'],
       ['Reply needed', replyNeededCount, 'Open complaints without an admin response yet.'],
       ['Resolved archive', resolvedFeedbackCount, 'Completed complaints available for later review.'],
       ['Pending generated', summary.generated_pending || 0, 'Needs explicit admin keep/delete review.'],
@@ -226,12 +227,84 @@ document.addEventListener('DOMContentLoaded', () => {
     return String(row?.admin_response || '').trim().length > 0;
   }
 
+  function parseThreadMessages(value) {
+    let raw = value;
+    if (typeof raw === 'string') {
+      try {
+        raw = JSON.parse(raw);
+      } catch {
+        raw = [];
+      }
+    }
+    if (!Array.isArray(raw)) return [];
+    return raw.map((item) => {
+      const role = String(item?.role || '').trim().toLowerCase() === 'admin' ? 'admin' : 'user';
+      const message = String(item?.message || item?.text || '').trim();
+      if (!message) return null;
+      return {
+        role,
+        message,
+        created_at: String(item?.created_at || '').trim()
+      };
+    }).filter(Boolean);
+  }
+
+  function feedbackThreadMessages(row, { includeOriginal = false, userLabel = 'User' } = {}) {
+    const messages = [];
+    const original = String(row?.message || '').trim();
+    if (includeOriginal && original) {
+      messages.push({
+        role: 'user',
+        label: userLabel,
+        message: original,
+        created_at: row?.created_at
+      });
+    }
+    const thread = parseThreadMessages(row?.thread_messages);
+    const response = String(row?.admin_response || '').trim();
+    const hasResponseInThread = response && thread.some((item) => item.role === 'admin' && item.message === response);
+    if (response && !hasResponseInThread) {
+      messages.push({
+        role: 'admin',
+        label: 'Admin',
+        message: response,
+        created_at: row?.updated_at
+      });
+    }
+    thread.forEach((item) => {
+      messages.push({
+        ...item,
+        label: item.role === 'admin' ? 'Admin' : userLabel
+      });
+    });
+    return messages;
+  }
+
+  function feedbackThreadHtml(row, userLabel) {
+    const messages = feedbackThreadMessages(row, { includeOriginal: false, userLabel });
+    if (!messages.length) return '';
+    return `
+      <div class="feedback-thread admin-feedback-thread" aria-label="Feedback conversation">
+        ${messages.map((item) => `
+          <div class="feedback-thread-message is-${esc(item.role)}">
+            <div class="feedback-thread-meta">
+              <strong>${esc(item.label)}</strong>
+              <span>${esc(formatDate(item.created_at))}</span>
+            </div>
+            <p>${esc(item.message)}</p>
+          </div>
+        `).join('')}
+      </div>
+    `;
+  }
+
   function feedbackMatchesSearch(row, user, needle) {
     if (!needle) return true;
     const haystack = [
       row?.category,
       row?.message,
       row?.admin_response,
+      ...parseThreadMessages(row?.thread_messages).map((item) => item.message),
       row?.created_at,
       row?.updated_at,
       row?.user_id,
@@ -288,6 +361,7 @@ document.addEventListener('DOMContentLoaded', () => {
           <span>Submitted: ${esc(formatDate(row?.created_at))}</span>
           <span>Updated: ${esc(formatDate(row?.updated_at))}</span>
         </div>
+        ${feedbackThreadHtml(row, userLabel)}
         <label class="admin-feedback-response-field">
           <span>Admin response</span>
           <textarea class="admin-feedback-response" rows="3" maxlength="4000" placeholder="Write the response users will see in their dashboard history.">${esc(row?.admin_response || '')}</textarea>
@@ -321,6 +395,7 @@ document.addEventListener('DOMContentLoaded', () => {
         ['Open', counts.open],
         ['Pending', counts.pending],
         ['In Review', counts.in_review],
+        ['Needs Info', counts.needs_more_info],
         ['Reply Needed', counts.replyNeeded]
       ]);
     }

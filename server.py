@@ -2562,6 +2562,56 @@ def purge_expired_resolved_app_feedback(retention_days: int = 30) -> int:
     return len(rows)
 
 
+def normalize_thread_messages(value: Any) -> List[Dict[str, str]]:
+    raw = value
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except Exception:
+            raw = []
+    if not isinstance(raw, list):
+        return []
+    messages = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        role = "admin" if string_value(item.get("role")).lower() == "admin" else "user"
+        message = string_value(item.get("message") or item.get("text"))
+        if not message:
+            continue
+        messages.append({
+            "role": role,
+            "message": message,
+            "created_at": string_value(item.get("created_at")) or datetime.now(timezone.utc).isoformat(),
+        })
+    return messages[-100:]
+
+
+def append_thread_message(messages: Any, role: str, message: str, created_at: str = "") -> List[Dict[str, str]]:
+    text = string_value(message)
+    safe = normalize_thread_messages(messages)
+    if not text:
+        return safe
+    safe_role = "admin" if string_value(role).lower() == "admin" else "user"
+    if safe and safe[-1].get("role") == safe_role and safe[-1].get("message") == text:
+        return safe
+    safe.append({
+        "role": safe_role,
+        "message": text,
+        "created_at": string_value(created_at) or datetime.now(timezone.utc).isoformat(),
+    })
+    return safe[-100:]
+
+
+def fetch_app_feedback_row(row_id: str) -> Dict[str, Any]:
+    data, _ = fetch_supabase_json(
+        "/rest/v1/app_feedback",
+        params={"id": f"eq.{row_id}", "select": "*", "limit": "1"},
+    )
+    rows = data if isinstance(data, list) else []
+    return rows[0] if rows else {}
+
+
 def update_app_feedback_response(feedback_id: str, status: str, admin_response: str) -> Dict[str, Any]:
     row_id = string_value(feedback_id)
     try:
@@ -2569,16 +2619,27 @@ def update_app_feedback_response(feedback_id: str, status: str, admin_response: 
     except Exception:
         raise ValueError("A valid feedback ID is required.")
     normalized_status = string_value(status).lower()
-    if normalized_status not in {"pending", "in_review", "resolved"}:
-        raise ValueError("Feedback status must be pending, in_review, or resolved.")
+    if normalized_status not in {"pending", "in_review", "needs_more_info", "resolved"}:
+        raise ValueError("Feedback status must be pending, in_review, needs_more_info, or resolved.")
     response_text = string_value(admin_response)
     if len(response_text) > 4000:
         raise ValueError("Admin response must be 4000 characters or fewer.")
+    existing = fetch_app_feedback_row(row_id)
+    if not existing:
+        raise KeyError("Feedback row not found.")
+    updated_at = datetime.now(timezone.utc).isoformat()
     payload = {
         "status": normalized_status,
         "admin_response": response_text or None,
-        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "updated_at": updated_at,
     }
+    if "thread_messages" in existing:
+        previous_response = string_value(existing.get("admin_response"))
+        payload["thread_messages"] = (
+            append_thread_message(existing.get("thread_messages"), "admin", response_text, updated_at)
+            if response_text and response_text != previous_response
+            else normalize_thread_messages(existing.get("thread_messages"))
+        )
     data, _ = write_supabase_json(
         "PATCH",
         "/rest/v1/app_feedback",
@@ -2594,7 +2655,7 @@ def update_app_feedback_response(feedback_id: str, status: str, admin_response: 
 def fetch_supabase_user_id_from_token(token: str) -> str:
     access_token = string_value(token)
     if not access_token:
-        raise PermissionError("Please sign in again before deleting feedback.")
+        raise PermissionError("Please sign in again before updating feedback.")
     if not SUPABASE_SERVICE_ROLE_KEY or not SUPABASE_URL:
         raise RuntimeError("Feedback cleanup is not configured on this server.")
     response = requests.get(
@@ -2613,10 +2674,10 @@ def fetch_supabase_user_id_from_token(token: str) -> str:
         data = {}
     if not response.ok:
         message = data.get("msg", data.get("message")) if isinstance(data, dict) else ""
-        raise PermissionError(message or "Please sign in again before deleting feedback.")
+        raise PermissionError(message or "Please sign in again before updating feedback.")
     user_id = string_value(data.get("id") if isinstance(data, dict) else "")
     if not user_id:
-        raise PermissionError("Please sign in again before deleting feedback.")
+        raise PermissionError("Please sign in again before updating feedback.")
     return user_id
 
 
@@ -2651,6 +2712,40 @@ def delete_resolved_app_feedback_for_user(feedback_id: str, headers: Any) -> int
     )
     deleted_rows = deleted if isinstance(deleted, list) else []
     return len(deleted_rows)
+
+
+def reply_to_app_feedback_for_user(feedback_id: str, reply_message: str, headers: Any) -> Dict[str, Any]:
+    row_id = string_value(feedback_id)
+    try:
+        uuid.UUID(row_id)
+    except Exception:
+        raise ValueError("A valid feedback ID is required.")
+    reply_text = string_value(reply_message)
+    if not reply_text:
+        raise ValueError("Reply message is required.")
+    if len(reply_text) > 4000:
+        raise ValueError("Reply message must be 4000 characters or fewer.")
+    user_id = fetch_supabase_user_id_from_token(access_token_from_headers(headers))
+    row = fetch_app_feedback_row(row_id)
+    if not row or string_value(row.get("user_id")) != user_id:
+        raise KeyError("Feedback row not found.")
+    if "thread_messages" not in row:
+        raise RuntimeError("Feedback replies are not configured yet. Run the feedback thread migration first.")
+    if string_value(row.get("status")).lower() != "needs_more_info":
+        raise ValueError("You can reply when the admin marks this feedback as Needs More Info.")
+    updated_at = datetime.now(timezone.utc).isoformat()
+    data, _ = write_supabase_json(
+        "PATCH",
+        "/rest/v1/app_feedback",
+        payload={
+            "status": "in_review",
+            "thread_messages": append_thread_message(row.get("thread_messages"), "user", reply_text, updated_at),
+            "updated_at": updated_at,
+        },
+        params={"id": f"eq.{row_id}", "select": "*"},
+    )
+    rows = data if isinstance(data, list) else []
+    return rows[0] if rows else {}
 
 
 def fetch_table_snapshot(config: Dict[str, Any]) -> Dict[str, Any]:
@@ -3006,6 +3101,23 @@ class Handler(BaseHTTPRequestHandler):
                 self._write_json(404, {"error": "Feedback row not found."})
             except ValueError as exc:
                 self._write_json(409 if "Only resolved" in str(exc) else 400, {"error": str(exc)})
+            except RuntimeError as exc:
+                self._write_json(503, {"error": str(exc)})
+            return True
+        if action == "reply_to_feedback":
+            try:
+                row = reply_to_app_feedback_for_user(
+                    string_value(payload.get("id")),
+                    string_value(payload.get("message")),
+                    self.headers,
+                )
+                self._write_json(200, {"ok": True, "feedback": row})
+            except PermissionError as exc:
+                self._write_json(401, {"error": str(exc)})
+            except KeyError:
+                self._write_json(404, {"error": "Feedback row not found."})
+            except ValueError as exc:
+                self._write_json(409 if "Needs More Info" in str(exc) else 400, {"error": str(exc)})
             except RuntimeError as exc:
                 self._write_json(503, {"error": str(exc)})
             return True

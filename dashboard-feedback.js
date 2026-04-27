@@ -4,6 +4,7 @@
   const STATUS_LABELS = {
     pending: 'Pending',
     in_review: 'In Review',
+    needs_more_info: 'Needs More Info',
     resolved: 'Resolved'
   };
   const RESOLVED_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
@@ -115,6 +116,13 @@
       void deleteResolvedFeedback(button);
     });
 
+    historyList.addEventListener('submit', (event) => {
+      const replyForm = event.target.closest('.feedback-reply-form');
+      if (!replyForm) return;
+      event.preventDefault();
+      void replyToFeedback(replyForm);
+    });
+
     if (!sb) {
       disableFeedback('Feedback is unavailable because Supabase is not loaded.');
       return;
@@ -183,7 +191,7 @@
         await purgeResolvedFeedback();
         const { data, error } = await sb
           .from(FEEDBACK_TABLE)
-          .select('id, category, message, status, admin_response, is_anonymous, created_at, updated_at')
+          .select('*')
           .order('created_at', { ascending: false });
         if (error) throw error;
         const rows = (Array.isArray(data) ? data : []).filter((row) => !isExpiredResolvedFeedback(row));
@@ -232,6 +240,37 @@
       }
     }
 
+    async function replyToFeedback(formEl) {
+      const feedbackId = String(formEl?.dataset?.id || '').trim();
+      const textarea = formEl?.querySelector('.feedback-reply-message');
+      const button = formEl?.querySelector('.feedback-reply-submit');
+      const replyText = String(textarea?.value || '').trim();
+      if (!feedbackId || !textarea || !button) return;
+      if (!replyText) {
+        alert('Please write a reply before sending.');
+        textarea.focus();
+        return;
+      }
+
+      button.disabled = true;
+      textarea.disabled = true;
+      button.textContent = 'Sending...';
+      setStatus('Sending reply...', 'loading');
+      try {
+        const session = await getActiveSession();
+        await requestFeedbackReply(feedbackId, replyText, session.access_token);
+        setStatus('Reply sent. The complaint is back in review.', 'success');
+        await loadFeedbackHistory({ quiet: true });
+      } catch (error) {
+        const text = error && error.message ? error.message : 'Reply could not be sent.';
+        setStatus(text, 'error');
+        alert(text);
+        button.disabled = false;
+        textarea.disabled = false;
+        button.textContent = 'Send Reply';
+      }
+    }
+
     async function requestFeedbackDelete(feedbackId, accessToken) {
       const response = await fetch('/api/feedback', {
         method: 'POST',
@@ -252,6 +291,27 @@
       return data;
     }
 
+    async function requestFeedbackReply(feedbackId, messageText, accessToken) {
+      const response = await fetch('/api/feedback', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${accessToken || ''}`
+        },
+        body: JSON.stringify({
+          action: 'reply_to_feedback',
+          id: feedbackId,
+          message: messageText
+        })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data?.error || `Reply failed (${response.status}).`);
+      }
+      return data;
+    }
+
     function renderFeedbackRows(rows) {
       if (summary) {
         summary.textContent = rows.length
@@ -264,9 +324,9 @@
       }
       historyList.innerHTML = rows.map((row) => {
         const status = normalizeStatus(row && row.status);
-        const response = String((row && row.admin_response) || '').trim();
         const id = String((row && row.id) || '');
         const canDelete = status === 'resolved' && id;
+        const canReply = status === 'needs_more_info' && id;
         return `
           <article class="feedback-item">
             <div class="feedback-item-head">
@@ -279,12 +339,17 @@
                 ${canDelete ? `<button class="btn ghost feedback-delete-resolved" type="button" data-id="${escapeHtml(id)}">Delete</button>` : ''}
               </div>
             </div>
-            <p class="feedback-message">${escapeHtml(row && row.message ? row.message : '')}</p>
-            ${response ? `
-              <div class="feedback-admin-response">
-                <strong>Response</strong>
-                <p>${escapeHtml(response)}</p>
-              </div>
+            ${feedbackThreadHtml(row, { includeOriginal: true, userLabel: 'You' })}
+            ${canReply ? `
+              <form class="feedback-reply-form" data-id="${escapeHtml(id)}">
+                <label class="feedback-reply-field">
+                  <span>Reply to admin</span>
+                  <textarea class="feedback-reply-message" rows="3" maxlength="4000" placeholder="Add the details requested by the admin." required></textarea>
+                </label>
+                <div class="feedback-reply-actions">
+                  <button class="btn pri feedback-reply-submit" type="submit">Send Reply</button>
+                </div>
+              </form>
             ` : ''}
           </article>
         `;
@@ -314,6 +379,77 @@
       message.disabled = true;
       anonymous.disabled = true;
     }
+  }
+
+  function parseThreadMessages(value) {
+    let raw = value;
+    if (typeof raw === 'string') {
+      try {
+        raw = JSON.parse(raw);
+      } catch {
+        raw = [];
+      }
+    }
+    if (!Array.isArray(raw)) return [];
+    return raw.map((item) => {
+      const role = String(item?.role || '').trim().toLowerCase() === 'admin' ? 'admin' : 'user';
+      const message = String(item?.message || item?.text || '').trim();
+      if (!message) return null;
+      return {
+        role,
+        message,
+        created_at: String(item?.created_at || '').trim()
+      };
+    }).filter(Boolean);
+  }
+
+  function buildThreadMessages(row, { includeOriginal = false, userLabel = 'User' } = {}) {
+    const messages = [];
+    const original = String(row?.message || '').trim();
+    if (includeOriginal && original) {
+      messages.push({
+        role: 'user',
+        label: userLabel,
+        message: original,
+        created_at: row?.created_at
+      });
+    }
+    const thread = parseThreadMessages(row?.thread_messages);
+    const response = String(row?.admin_response || '').trim();
+    const hasResponseInThread = response && thread.some((item) => item.role === 'admin' && item.message === response);
+    if (response && !hasResponseInThread) {
+      messages.push({
+        role: 'admin',
+        label: 'Admin',
+        message: response,
+        created_at: row?.updated_at
+      });
+    }
+    thread.forEach((item) => {
+      messages.push({
+        ...item,
+        label: item.role === 'admin' ? 'Admin' : userLabel
+      });
+    });
+    return messages;
+  }
+
+  function feedbackThreadHtml(row, options = {}) {
+    const messages = buildThreadMessages(row, options);
+    if (!messages.length) return '';
+    return `
+      <div class="feedback-thread" aria-label="Feedback conversation">
+        ${messages.map((item) => `
+          <div class="feedback-thread-message is-${escapeHtml(item.role)}">
+            <div class="feedback-thread-meta">
+              <strong>${escapeHtml(item.label)}</strong>
+              <span>${escapeHtml(formatDate(item.created_at))}</span>
+            </div>
+            <p>${escapeHtml(item.message)}</p>
+          </div>
+        `).join('')}
+      </div>
+    `;
   }
 
   function normalizeStatus(value) {
