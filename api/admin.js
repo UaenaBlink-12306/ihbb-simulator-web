@@ -30,8 +30,10 @@ const APP_TABLES = [
   { name: 'assignment_submissions', orderBy: 'submitted_at.desc', limit: 200 },
   { name: 'user_wrong_questions', orderBy: 'created_at.desc', limit: 200 },
   { name: 'user_drill_sessions', orderBy: 'created_at.desc', limit: 200 },
-  { name: 'user_coach_attempts', orderBy: 'created_at.desc', limit: 200 }
+  { name: 'user_coach_attempts', orderBy: 'created_at.desc', limit: 200 },
+  { name: 'app_feedback', orderBy: 'created_at.desc', limit: 200 }
 ];
+const FEEDBACK_STATUSES = new Set(['pending', 'in_review', 'resolved']);
 
 function stringValue(value) {
   if (value === null || value === undefined) return '';
@@ -208,13 +210,81 @@ async function fetchTableSnapshot(config) {
   params.set('limit', String(config.limit || 200));
   if (config.orderBy) params.set('order', config.orderBy);
   const result = await fetchSupabaseJson(`/rest/v1/${config.name}`, params);
+  const rows = Array.isArray(result.data) ? result.data : [];
   const contentRange = result.headers.get('content-range') || '';
   const total = Number.parseInt((contentRange.split('/')[1] || ''), 10);
   return {
     name: config.name,
-    count: Number.isFinite(total) ? total : (Array.isArray(result.data) ? result.data.length : 0),
-    rows: Array.isArray(result.data) ? result.data : []
+    count: Number.isFinite(total) ? total : rows.length,
+    rows: config.name === 'app_feedback' ? rows.map(redactAppFeedbackRow) : rows
   };
+}
+
+function redactAppFeedbackRow(row) {
+  if (!row || typeof row !== 'object' || !row.is_anonymous) return row;
+  return {
+    ...row,
+    user_id: ''
+  };
+}
+
+async function purgeExpiredResolvedAppFeedback(retentionDays = 30) {
+  const days = Math.max(1, Number.parseInt(String(retentionDays), 10) || 30);
+  const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+  const params = new URLSearchParams();
+  params.set('status', 'eq.resolved');
+  params.set('updated_at', `lt.${cutoff}`);
+  params.set('select', 'id');
+  const result = await fetchSupabaseJson('/rest/v1/app_feedback', params, {
+    method: 'DELETE',
+    prefer: 'return=representation'
+  });
+  return Array.isArray(result.data) ? result.data.length : 0;
+}
+
+function normalizeFeedbackStatus(value) {
+  const status = stringValue(value).toLowerCase();
+  if (!FEEDBACK_STATUSES.has(status)) {
+    throw new Error('Feedback status must be pending, in_review, or resolved.');
+  }
+  return status;
+}
+
+function assertFeedbackId(value) {
+  const id = stringValue(value);
+  const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  if (!uuidPattern.test(id)) {
+    throw new Error('A valid feedback ID is required.');
+  }
+  return id;
+}
+
+async function updateAppFeedbackResponse(feedbackId, status, adminResponse) {
+  const id = assertFeedbackId(feedbackId);
+  const normalizedStatus = normalizeFeedbackStatus(status);
+  const responseText = stringValue(adminResponse);
+  if (responseText.length > 4000) {
+    throw new Error('Admin response must be 4000 characters or fewer.');
+  }
+  const params = new URLSearchParams();
+  params.set('id', `eq.${id}`);
+  params.set('select', '*');
+  const result = await fetchSupabaseJson('/rest/v1/app_feedback', params, {
+    method: 'PATCH',
+    prefer: 'return=representation',
+    body: {
+      status: normalizedStatus,
+      admin_response: responseText || null,
+      updated_at: new Date().toISOString()
+    }
+  });
+  const rows = Array.isArray(result.data) ? result.data : [];
+  if (!rows.length) {
+    const error = new Error('Feedback row not found.');
+    error.statusCode = 404;
+    throw error;
+  }
+  return redactAppFeedbackRow(rows[0]);
 }
 
 async function fetchAuthUsers() {
@@ -252,6 +322,7 @@ function buildUserDirectory(authUsers, tables) {
   const wrongByUser = countBy(byTableName.user_wrong_questions, 'user_id');
   const sessionsByUser = countBy(byTableName.user_drill_sessions, 'user_id');
   const coachByUser = countBy(byTableName.user_coach_attempts, 'user_id');
+  const feedbackByUser = countBy(byTableName.app_feedback, 'user_id');
   const profileById = new Map(profiles.map((profile) => [stringValue(profile.id), profile]));
   const users = [];
   const seen = new Set();
@@ -275,7 +346,8 @@ function buildUserDirectory(authUsers, tables) {
       assignment_submissions: submissionsByStudent.get(id) || 0,
       wrong_bank_rows: wrongByUser.get(id) || 0,
       drill_sessions: sessionsByUser.get(id) || 0,
-      coach_attempts: coachByUser.get(id) || 0
+      coach_attempts: coachByUser.get(id) || 0,
+      feedback_rows: feedbackByUser.get(id) || 0
     });
   }
   for (const profile of profiles) {
@@ -297,7 +369,8 @@ function buildUserDirectory(authUsers, tables) {
       assignment_submissions: submissionsByStudent.get(id) || 0,
       wrong_bank_rows: wrongByUser.get(id) || 0,
       drill_sessions: sessionsByUser.get(id) || 0,
-      coach_attempts: coachByUser.get(id) || 0
+      coach_attempts: coachByUser.get(id) || 0,
+      feedback_rows: feedbackByUser.get(id) || 0
     });
   }
   return users.sort((a, b) => String(a.email || a.display_name || a.id).localeCompare(String(b.email || b.display_name || b.id)));
@@ -315,6 +388,11 @@ async function fetchDatabaseSnapshot() {
   }
   const warnings = [];
   const tableResults = [];
+  try {
+    await purgeExpiredResolvedAppFeedback();
+  } catch (error) {
+    warnings.push(`app_feedback cleanup: ${error.message}`);
+  }
   for (const tableConfig of APP_TABLES) {
     try {
       tableResults.push(await fetchTableSnapshot(tableConfig));
@@ -446,6 +524,16 @@ module.exports = async function handler(req, res) {
       generated: result.state.records,
       pending: result.state.records.filter((item) => item.review_status === 'pending').length
     });
+  }
+
+  if (postAction === 'update_feedback') {
+    try {
+      const row = await updateAppFeedbackResponse(body.id, body.status, body.admin_response);
+      return json(res, 200, { ok: true, feedback: row });
+    } catch (error) {
+      const statusCode = error.statusCode || (/valid feedback|status|4000/i.test(error.message || '') ? 400 : 503);
+      return json(res, statusCode, { error: error.message || 'Feedback response failed.' });
+    }
   }
 
   return json(res, 400, { error: 'Unknown admin action.' });

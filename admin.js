@@ -6,6 +6,7 @@ document.addEventListener('DOMContentLoaded', () => {
     generatedFilter: 'all',
     generatedSearch: '',
     feedbackFilter: 'all',
+    feedbackSearch: '',
     userSearch: '',
     localAdminOrigin: 'http://127.0.0.1:5057'
   };
@@ -136,7 +137,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const el = $('admin-summary');
     if (!el) return;
     const summary = state.data?.summary || {};
+    const feedbackRows = snapshotRows('app_feedback');
+    const openFeedbackCount = feedbackRows.filter((row) => {
+      const status = normalizeFeedbackStatus(row?.status);
+      return status === 'pending' || status === 'in_review';
+    }).length;
     const items = [
+      ['Open feedback', openFeedbackCount, 'Pending or in-review complaints waiting on a response.'],
       ['Pending generated', summary.generated_pending || 0, 'Needs explicit admin keep/delete review.'],
       ['Total generated', summary.generated_total || 0, 'Merged generated questions tracked by the review ledger.'],
       ['Main bank size', summary.questions_total || 0, 'Current `questions.json` question count.'],
@@ -146,7 +153,7 @@ document.addEventListener('DOMContentLoaded', () => {
     el.innerHTML = items.map(([label, value, note]) => `
       <div class="metric-card admin-metric-card">
         <div class="metric-label">${esc(label)}</div>
-        <div class="metric-value">${esc(value)}</div>
+        <div class="metric-value">${esc(String(value))}</div>
         <div class="metric-note">${esc(note)}</div>
       </div>
     `).join('');
@@ -209,17 +216,53 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function renderFeedbackInbox() {
     const list = $('admin-feedback-list');
+    const stats = $('admin-feedback-stats');
     if (!list) return;
     const serviceConfigured = Boolean(state.data?.database?.service_role_configured);
     if (!serviceConfigured) {
+      if (stats) stats.innerHTML = '';
       list.innerHTML = `<div class="card-muted-box">Set <code>SUPABASE_SERVICE_ROLE_KEY</code> on the server to unlock feedback responses.</div>`;
       return;
     }
     const usersById = new Map((state.data?.users || []).map((user) => [String(user?.id || ''), user]));
     const filter = state.feedbackFilter;
-    const rows = snapshotRows('app_feedback').filter((row) => {
+    const allRows = snapshotRows('app_feedback');
+    const counts = allRows.reduce((acc, row) => {
       const status = normalizeFeedbackStatus(row?.status);
-      return filter === 'all' || status === filter;
+      acc[status] = (acc[status] || 0) + 1;
+      acc.all += 1;
+      return acc;
+    }, { all: 0, pending: 0, in_review: 0, resolved: 0 });
+    if (stats) {
+      stats.innerHTML = [
+        ['All', counts.all],
+        ['Pending', counts.pending],
+        ['In Review', counts.in_review],
+        ['Resolved', counts.resolved]
+      ].map(([label, value]) => `
+        <div class="admin-feedback-count">
+          <strong>${Number(value) || 0}</strong>
+          <span>${esc(label)}</span>
+        </div>
+      `).join('');
+    }
+    const needle = state.feedbackSearch.trim().toLowerCase();
+    const rows = allRows.filter((row) => {
+      const status = normalizeFeedbackStatus(row?.status);
+      if (filter !== 'all' && status !== filter) return false;
+      if (!needle) return true;
+      const user = usersById.get(String(row?.user_id || '')) || {};
+      const haystack = [
+        row?.category,
+        row?.message,
+        row?.admin_response,
+        row?.created_at,
+        row?.updated_at,
+        row?.user_id,
+        user?.email,
+        user?.display_name
+      ].join(' ').toLowerCase();
+      return haystack.includes(needle);
     });
     if (!rows.length) {
       list.innerHTML = `<div class="card-muted-box">No feedback rows match the current filter. If this table is missing, run the app feedback migration in Supabase.</div>`;
@@ -232,7 +275,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const user = usersById.get(String(row?.user_id || '')) || {};
       const userLabel = isAnonymous ? 'Anonymous user' : (user?.email || user?.display_name || row?.user_id || 'Unknown user');
       return `
-        <article class="admin-generated-item admin-feedback-item" data-id="${esc(id)}">
+        <article class="admin-generated-item admin-feedback-item is-${esc(status)}" data-id="${esc(id)}">
           <div class="admin-generated-head">
             <div>
               <div class="eyebrow">${esc(row?.category || 'Feedback')} • ${esc(FEEDBACK_STATUS_LABELS[status])}${isAnonymous ? ' • Anonymous' : ''}</div>
@@ -464,6 +507,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
   $('admin-feedback-filter')?.addEventListener('change', (event) => {
     state.feedbackFilter = String(event.target?.value || 'all');
+    renderFeedbackInbox();
+  });
+
+  $('admin-feedback-search')?.addEventListener('input', (event) => {
+    state.feedbackSearch = String(event.target?.value || '');
     renderFeedbackInbox();
   });
 

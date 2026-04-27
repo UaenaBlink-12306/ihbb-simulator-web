@@ -25,8 +25,8 @@
           <div>
             <div class="hero-kicker">Developer only</div>
             <h1>Admin Console</h1>
-            <p class="hero-blurb">Inspect generated-question moderation, user records, and privileged table data from one
-              place.</p>
+            <p class="hero-blurb">Respond to complaints, review generated-question moderation, and inspect privileged
+              app data from one place.</p>
           </div>
         </div>
       </div>
@@ -90,6 +90,27 @@
     <section id="admin-console" class="stack hidden">
       <div id="admin-config-banner" class="card section-card admin-banner hidden"></div>
 
+      <section class="card section-card admin-feedback-panel">
+        <div class="section-head">
+          <div>
+            <div class="eyebrow">User feedback</div>
+            <h2 class="card-title">Feedback Inbox</h2>
+            <p class="section-subtitle">Review dashboard complaints and send responses back to each user's feedback history.</p>
+          </div>
+          <div class="admin-toolbar">
+            <input id="admin-feedback-search" type="search" placeholder="Search complaints">
+            <select id="admin-feedback-filter">
+              <option value="all">All statuses</option>
+              <option value="pending">Pending</option>
+              <option value="in_review">In Review</option>
+              <option value="resolved">Resolved</option>
+            </select>
+          </div>
+        </div>
+        <div id="admin-feedback-stats" class="admin-feedback-stats"></div>
+        <div id="admin-feedback-list" class="admin-generated-list"></div>
+      </section>
+
       <div class="admin-console-grid">
         <section class="card section-card">
           <div class="section-head">
@@ -123,25 +144,6 @@
           <div id="admin-generated-list" class="admin-generated-list"></div>
         </section>
       </div>
-
-      <section class="card section-card">
-        <div class="section-head">
-          <div>
-            <div class="eyebrow">User feedback</div>
-            <h2 class="card-title">Feedback Inbox</h2>
-            <p class="section-subtitle">Review dashboard complaints and send responses back to each user's feedback history.</p>
-          </div>
-          <div class="admin-toolbar">
-            <select id="admin-feedback-filter">
-              <option value="all">All statuses</option>
-              <option value="pending">Pending</option>
-              <option value="in_review">In Review</option>
-              <option value="resolved">Resolved</option>
-            </select>
-          </div>
-        </div>
-        <div id="admin-feedback-list" class="admin-generated-list"></div>
-      </section>
 
       <div class="admin-console-grid admin-console-grid-secondary">
         <section class="card section-card">
