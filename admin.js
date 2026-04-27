@@ -5,7 +5,7 @@ document.addEventListener('DOMContentLoaded', () => {
     data: null,
     generatedFilter: 'all',
     generatedSearch: '',
-    feedbackFilter: 'all',
+    feedbackFilter: 'open',
     feedbackSearch: '',
     userSearch: '',
     localAdminOrigin: 'http://127.0.0.1:5057'
@@ -230,15 +230,14 @@ document.addEventListener('DOMContentLoaded', () => {
     const counts = allRows.reduce((acc, row) => {
       const status = normalizeFeedbackStatus(row?.status);
       acc[status] = (acc[status] || 0) + 1;
-      acc.all += 1;
+      if (status !== 'resolved') acc.open += 1;
       return acc;
-    }, { all: 0, pending: 0, in_review: 0, resolved: 0 });
+    }, { open: 0, pending: 0, in_review: 0, resolved: 0 });
     if (stats) {
       stats.innerHTML = [
-        ['All', counts.all],
+        ['Open', counts.open],
         ['Pending', counts.pending],
-        ['In Review', counts.in_review],
-        ['Resolved', counts.resolved]
+        ['In Review', counts.in_review]
       ].map(([label, value]) => `
         <div class="admin-feedback-count">
           <strong>${Number(value) || 0}</strong>
@@ -249,7 +248,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const needle = state.feedbackSearch.trim().toLowerCase();
     const rows = allRows.filter((row) => {
       const status = normalizeFeedbackStatus(row?.status);
-      if (filter !== 'all' && status !== filter) return false;
+      if (status === 'resolved') return false;
+      if (filter !== 'open' && status !== filter) return false;
       if (!needle) return true;
       const user = usersById.get(String(row?.user_id || '')) || {};
       const haystack = [

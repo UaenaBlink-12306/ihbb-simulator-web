@@ -219,17 +219,8 @@
       button.textContent = 'Deleting...';
       setStatus('Deleting resolved feedback...', 'loading');
       try {
-        await getActiveSession();
-        const { data, error } = await sb
-          .from(FEEDBACK_TABLE)
-          .delete()
-          .eq('id', feedbackId)
-          .eq('status', 'resolved')
-          .select('id');
-        if (error) throw error;
-        if (!Array.isArray(data) || data.length === 0) {
-          throw new Error('Only resolved feedback can be deleted from your history.');
-        }
+        const session = await getActiveSession();
+        await requestFeedbackDelete(feedbackId, session.access_token);
         setStatus('Resolved feedback deleted.', 'success');
         await loadFeedbackHistory({ quiet: true });
       } catch (error) {
@@ -239,6 +230,26 @@
         button.disabled = false;
         button.textContent = originalText || 'Delete';
       }
+    }
+
+    async function requestFeedbackDelete(feedbackId, accessToken) {
+      const response = await fetch('/api/feedback', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${accessToken || ''}`
+        },
+        body: JSON.stringify({
+          action: 'delete_resolved',
+          id: feedbackId
+        })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data?.error || `Delete failed (${response.status}).`);
+      }
+      return data;
     }
 
     function renderFeedbackRows(rows) {

@@ -2591,6 +2591,72 @@ def update_app_feedback_response(feedback_id: str, status: str, admin_response: 
     return redact_app_feedback_row(rows[0])
 
 
+def is_open_app_feedback_row(row: Any) -> bool:
+    return string_value(row.get("status") if isinstance(row, dict) else "").lower() != "resolved"
+
+
+def fetch_supabase_user_id_from_token(token: str) -> str:
+    access_token = string_value(token)
+    if not access_token:
+        raise PermissionError("Please sign in again before deleting feedback.")
+    if not SUPABASE_SERVICE_ROLE_KEY or not SUPABASE_URL:
+        raise RuntimeError("Feedback cleanup is not configured on this server.")
+    response = requests.get(
+        f"{SUPABASE_URL}/auth/v1/user",
+        headers={
+            "apikey": SUPABASE_SERVICE_ROLE_KEY,
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": "application/json",
+        },
+        timeout=25,
+    )
+    text = response.text or ""
+    try:
+        data = json.loads(text) if text else {}
+    except Exception:
+        data = {}
+    if not response.ok:
+        message = data.get("msg", data.get("message")) if isinstance(data, dict) else ""
+        raise PermissionError(message or "Please sign in again before deleting feedback.")
+    user_id = string_value(data.get("id") if isinstance(data, dict) else "")
+    if not user_id:
+        raise PermissionError("Please sign in again before deleting feedback.")
+    return user_id
+
+
+def access_token_from_headers(headers: Any) -> str:
+    header = string_value(headers.get("Authorization", headers.get("authorization", ""))) if headers else ""
+    match = re.match(r"^Bearer\s+(.+)$", header, flags=re.IGNORECASE)
+    return string_value(match.group(1) if match else "")
+
+
+def delete_resolved_app_feedback_for_user(feedback_id: str, headers: Any) -> int:
+    row_id = string_value(feedback_id)
+    try:
+        uuid.UUID(row_id)
+    except Exception:
+        raise ValueError("A valid feedback ID is required.")
+    user_id = fetch_supabase_user_id_from_token(access_token_from_headers(headers))
+    data, _ = fetch_supabase_json(
+        "/rest/v1/app_feedback",
+        params={"id": f"eq.{row_id}", "select": "id,user_id,status", "limit": "1"},
+    )
+    rows = data if isinstance(data, list) else []
+    row = rows[0] if rows else {}
+    if not row or string_value(row.get("user_id")) != user_id:
+        raise KeyError("Feedback row not found.")
+    if string_value(row.get("status")).lower() != "resolved":
+        raise ValueError("Only resolved feedback can be deleted from your history.")
+    deleted, _ = write_supabase_json(
+        "DELETE",
+        "/rest/v1/app_feedback",
+        payload={},
+        params={"id": f"eq.{row_id}", "select": "id"},
+    )
+    deleted_rows = deleted if isinstance(deleted, list) else []
+    return len(deleted_rows)
+
+
 def fetch_table_snapshot(config: Dict[str, Any]) -> Dict[str, Any]:
     params = {"select": "*", "limit": str(int(config.get("limit", 200) or 200))}
     if string_value(config.get("order_by")):
@@ -2598,7 +2664,7 @@ def fetch_table_snapshot(config: Dict[str, Any]) -> Dict[str, Any]:
     data, headers = fetch_supabase_json(f"/rest/v1/{config['name']}", params=params)
     rows = data if isinstance(data, list) else []
     if config.get("name") == "app_feedback":
-        rows = [redact_app_feedback_row(row) for row in rows]
+        rows = [redact_app_feedback_row(row) for row in rows if is_open_app_feedback_row(row)]
     content_range = headers.get("content-range", "")
     total_text = content_range.split("/", 1)[1] if "/" in content_range else ""
     try:
@@ -2607,7 +2673,7 @@ def fetch_table_snapshot(config: Dict[str, Any]) -> Dict[str, Any]:
         total = len(rows)
     return {
         "name": config["name"],
-        "count": total,
+        "count": len(rows) if config.get("name") == "app_feedback" else total,
         "rows": rows,
     }
 
@@ -2929,6 +2995,27 @@ class Handler(BaseHTTPRequestHandler):
         self._write_json(400, {"error": "Unknown admin action."})
         return True
 
+    def _handle_feedback_post(self, payload: Dict[str, Any]) -> bool:
+        parsed = urlparse(self.path)
+        if parsed.path not in ("/feedback", "/api/feedback"):
+            return False
+        action = string_value(payload.get("action")).lower()
+        if action == "delete_resolved":
+            try:
+                deleted = delete_resolved_app_feedback_for_user(string_value(payload.get("id")), self.headers)
+                self._write_json(200, {"ok": True, "deleted": deleted})
+            except PermissionError as exc:
+                self._write_json(401, {"error": str(exc)})
+            except KeyError:
+                self._write_json(404, {"error": "Feedback row not found."})
+            except ValueError as exc:
+                self._write_json(409 if "Only resolved" in str(exc) else 400, {"error": str(exc)})
+            except RuntimeError as exc:
+                self._write_json(503, {"error": str(exc)})
+            return True
+        self._write_json(400, {"error": "Unknown feedback action."})
+        return True
+
     def do_OPTIONS(self):
         self._set_headers(204)
 
@@ -2978,12 +3065,17 @@ class Handler(BaseHTTPRequestHandler):
             "/api/generate-questions",
             "/admin",
             "/api/admin",
+            "/feedback",
+            "/api/feedback",
         ):
             self._write_json(404, {})
             return
         payload = self._read_json_body()
         if parsed.path in ("/admin", "/api/admin"):
             self._handle_admin_post(payload)
+            return
+        if parsed.path in ("/feedback", "/api/feedback"):
+            self._handle_feedback_post(payload)
             return
 
         if parsed.path in ("/grade", "/api/grade"):

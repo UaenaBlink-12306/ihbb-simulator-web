@@ -213,10 +213,13 @@ async function fetchTableSnapshot(config) {
   const rows = Array.isArray(result.data) ? result.data : [];
   const contentRange = result.headers.get('content-range') || '';
   const total = Number.parseInt((contentRange.split('/')[1] || ''), 10);
+  const visibleRows = config.name === 'app_feedback'
+    ? rows.filter(isOpenAppFeedbackRow).map(redactAppFeedbackRow)
+    : rows;
   return {
     name: config.name,
-    count: Number.isFinite(total) ? total : rows.length,
-    rows: config.name === 'app_feedback' ? rows.map(redactAppFeedbackRow) : rows
+    count: config.name === 'app_feedback' ? visibleRows.length : (Number.isFinite(total) ? total : rows.length),
+    rows: visibleRows
   };
 }
 
@@ -226,6 +229,10 @@ function redactAppFeedbackRow(row) {
     ...row,
     user_id: ''
   };
+}
+
+function isOpenAppFeedbackRow(row) {
+  return stringValue(row?.status).toLowerCase() !== 'resolved';
 }
 
 async function purgeExpiredResolvedAppFeedback(retentionDays = 30) {
