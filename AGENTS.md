@@ -5,6 +5,7 @@
 - Remote repository for this project: `https://github.com/UaenaBlink-12306/ihbb-simulator-web.git`
 - Every time you make an update to the app, add a new dated entry to both the teacher-facing and student-facing "What's New" sections. Each entry should include the date and a brief description of what changed.
 - After finishing an app update, suggest 3 additional features that would be useful and practical for the application.
+- When smoke testing signup/login or dashboard flows, do not create a new test account for every run. Create or identify one reusable Codex test account and use that same account for future smoke tests unless the task specifically requires a fresh account.
 - After making any edit in this repository, do not stop at local file changes.
 - Stage only the files changed for the current task. Do not include unrelated user changes.
 - Create a git commit after finishing the task.
