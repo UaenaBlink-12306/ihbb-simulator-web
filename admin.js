@@ -250,12 +250,20 @@ document.addEventListener('DOMContentLoaded', () => {
     `).join('');
   }
 
+  function feedbackPreferredName(user) {
+    return String(user?.display_name || '').trim();
+  }
+
   function feedbackCardHtml(row, usersById) {
     const id = String(row?.id || '');
     const status = normalizeFeedbackStatus(row?.status);
     const isAnonymous = Boolean(row?.is_anonymous);
     const user = usersById.get(String(row?.user_id || '')) || {};
-    const userLabel = isAnonymous ? 'Anonymous user' : (user?.email || user?.display_name || row?.user_id || 'Unknown user');
+    const preferredName = feedbackPreferredName(user);
+    const userLabel = isAnonymous ? 'Anonymous user' : (preferredName || 'Preferred name not set');
+    const senderLabel = isAnonymous
+      ? 'Sender hidden by anonymous submission'
+      : (preferredName ? `Preferred name: ${preferredName}` : 'Preferred name not set in profile');
     const replyBadge = hasAdminResponse(row) ? '' : '<span class="admin-feedback-badge reply-needed">Reply needed</span>';
     return `
       <article class="admin-generated-item admin-feedback-item is-${esc(status)}" data-id="${esc(id)}">
@@ -276,7 +284,7 @@ document.addEventListener('DOMContentLoaded', () => {
         </div>
         <p class="admin-generated-question">${esc(row?.message || '')}</p>
         <div class="admin-generated-meta">
-          <span>${isAnonymous ? 'Sender hidden by anonymous submission' : `User ID: ${esc(row?.user_id || '')}`}</span>
+          <span>${esc(senderLabel)}</span>
           <span>Submitted: ${esc(formatDate(row?.created_at))}</span>
           <span>Updated: ${esc(formatDate(row?.updated_at))}</span>
         </div>
