@@ -7022,6 +7022,20 @@ input[type=datetime-local] {
   font-weight: 800;
 }
 
+.feedback-item-actions {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.feedback-delete-resolved {
+  min-height: 32px;
+  padding: 6px 10px;
+}
+
 .feedback-status-pending {
   color: var(--warn);
   background: rgba(251, 191, 36, 0.1);
@@ -7107,6 +7121,10 @@ input[type=datetime-local] {
   .feedback-item-head {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .feedback-item-actions {
+    justify-content: flex-start;
   }
 
   .feedback-form-head .btn,

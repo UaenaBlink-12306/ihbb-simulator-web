@@ -109,6 +109,12 @@
       void loadFeedbackHistory({ quiet: false });
     });
 
+    historyList.addEventListener('click', (event) => {
+      const button = event.target.closest('.feedback-delete-resolved');
+      if (!button) return;
+      void deleteResolvedFeedback(button);
+    });
+
     if (!sb) {
       disableFeedback('Feedback is unavailable because Supabase is not loaded.');
       return;
@@ -203,6 +209,38 @@
       }
     }
 
+    async function deleteResolvedFeedback(button) {
+      const feedbackId = String(button?.dataset?.id || '').trim();
+      if (!feedbackId) return;
+      if (!confirm('Delete this resolved feedback item from your history?')) return;
+
+      const originalText = button.textContent;
+      button.disabled = true;
+      button.textContent = 'Deleting...';
+      setStatus('Deleting resolved feedback...', 'loading');
+      try {
+        await getActiveSession();
+        const { data, error } = await sb
+          .from(FEEDBACK_TABLE)
+          .delete()
+          .eq('id', feedbackId)
+          .eq('status', 'resolved')
+          .select('id');
+        if (error) throw error;
+        if (!Array.isArray(data) || data.length === 0) {
+          throw new Error('Only resolved feedback can be deleted from your history.');
+        }
+        setStatus('Resolved feedback deleted.', 'success');
+        await loadFeedbackHistory({ quiet: true });
+      } catch (error) {
+        const text = error && error.message ? error.message : 'Resolved feedback could not be deleted.';
+        setStatus(text, 'error');
+        alert(text);
+        button.disabled = false;
+        button.textContent = originalText || 'Delete';
+      }
+    }
+
     function renderFeedbackRows(rows) {
       if (summary) {
         summary.textContent = rows.length
@@ -216,6 +254,8 @@
       historyList.innerHTML = rows.map((row) => {
         const status = normalizeStatus(row && row.status);
         const response = String((row && row.admin_response) || '').trim();
+        const id = String((row && row.id) || '');
+        const canDelete = status === 'resolved' && id;
         return `
           <article class="feedback-item">
             <div class="feedback-item-head">
@@ -223,7 +263,10 @@
                 <h4>${escapeHtml(row && row.category ? row.category : 'Feedback')}</h4>
                 <div class="feedback-date">${escapeHtml(formatDate(row && row.created_at))}${row?.is_anonymous ? ' • Submitted anonymously' : ''}</div>
               </div>
-              <span class="feedback-status feedback-status-${escapeHtml(status)}">${escapeHtml(STATUS_LABELS[status])}</span>
+              <div class="feedback-item-actions">
+                <span class="feedback-status feedback-status-${escapeHtml(status)}">${escapeHtml(STATUS_LABELS[status])}</span>
+                ${canDelete ? `<button class="btn ghost feedback-delete-resolved" type="button" data-id="${escapeHtml(id)}">Delete</button>` : ''}
+              </div>
             </div>
             <p class="feedback-message">${escapeHtml(row && row.message ? row.message : '')}</p>
             ${response ? `

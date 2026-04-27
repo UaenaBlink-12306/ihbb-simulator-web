@@ -360,6 +360,11 @@ CREATE POLICY "Users insert own app feedback" ON public.app_feedback
   FOR INSERT TO authenticated
   WITH CHECK (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users delete resolved own app feedback" ON public.app_feedback;
+CREATE POLICY "Users delete resolved own app feedback" ON public.app_feedback
+  FOR DELETE TO authenticated
+  USING (auth.uid() = user_id AND status = 'resolved');
+
 CREATE OR REPLACE FUNCTION public.purge_resolved_app_feedback()
 RETURNS INTEGER
 LANGUAGE plpgsql
@@ -381,7 +386,7 @@ $$;
 REVOKE ALL ON FUNCTION public.purge_resolved_app_feedback() FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.purge_resolved_app_feedback() TO authenticated;
 
-GRANT SELECT, INSERT ON public.app_feedback TO authenticated;
+GRANT SELECT, INSERT, DELETE ON public.app_feedback TO authenticated;
 
 -- If app_feedback already exists from the first feedback migration, run this once:
 ALTER TABLE public.app_feedback
