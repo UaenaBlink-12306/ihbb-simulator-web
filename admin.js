@@ -7,6 +7,7 @@ document.addEventListener('DOMContentLoaded', () => {
     generatedSearch: '',
     feedbackFilter: 'open',
     feedbackSearch: '',
+    feedbackArchiveSearch: '',
     userSearch: '',
     localAdminOrigin: 'http://127.0.0.1:5057'
   };
@@ -142,8 +143,15 @@ document.addEventListener('DOMContentLoaded', () => {
       const status = normalizeFeedbackStatus(row?.status);
       return status === 'pending' || status === 'in_review';
     }).length;
+    const replyNeededCount = feedbackRows.filter((row) => {
+      const status = normalizeFeedbackStatus(row?.status);
+      return status !== 'resolved' && !hasAdminResponse(row);
+    }).length;
+    const resolvedFeedbackCount = feedbackRows.filter((row) => normalizeFeedbackStatus(row?.status) === 'resolved').length;
     const items = [
       ['Open feedback', openFeedbackCount, 'Pending or in-review complaints waiting on a response.'],
+      ['Reply needed', replyNeededCount, 'Open complaints without an admin response yet.'],
+      ['Resolved archive', resolvedFeedbackCount, 'Completed complaints available for later review.'],
       ['Pending generated', summary.generated_pending || 0, 'Needs explicit admin keep/delete review.'],
       ['Total generated', summary.generated_total || 0, 'Merged generated questions tracked by the review ledger.'],
       ['Main bank size', summary.questions_total || 0, 'Current `questions.json` question count.'],
@@ -214,6 +222,72 @@ document.addEventListener('DOMContentLoaded', () => {
     }).join('');
   }
 
+  function hasAdminResponse(row) {
+    return String(row?.admin_response || '').trim().length > 0;
+  }
+
+  function feedbackMatchesSearch(row, user, needle) {
+    if (!needle) return true;
+    const haystack = [
+      row?.category,
+      row?.message,
+      row?.admin_response,
+      row?.created_at,
+      row?.updated_at,
+      row?.user_id,
+      user?.email,
+      user?.display_name
+    ].join(' ').toLowerCase();
+    return haystack.includes(needle);
+  }
+
+  function feedbackStatsHtml(items) {
+    return items.map(([label, value]) => `
+      <div class="admin-feedback-count">
+        <strong>${Number(value) || 0}</strong>
+        <span>${esc(label)}</span>
+      </div>
+    `).join('');
+  }
+
+  function feedbackCardHtml(row, usersById) {
+    const id = String(row?.id || '');
+    const status = normalizeFeedbackStatus(row?.status);
+    const isAnonymous = Boolean(row?.is_anonymous);
+    const user = usersById.get(String(row?.user_id || '')) || {};
+    const userLabel = isAnonymous ? 'Anonymous user' : (user?.email || user?.display_name || row?.user_id || 'Unknown user');
+    const replyBadge = hasAdminResponse(row) ? '' : '<span class="admin-feedback-badge reply-needed">Reply needed</span>';
+    return `
+      <article class="admin-generated-item admin-feedback-item is-${esc(status)}" data-id="${esc(id)}">
+        <div class="admin-generated-head">
+          <div>
+            <div class="admin-feedback-titleline">
+              <div class="eyebrow">${esc(row?.category || 'Feedback')} • ${esc(FEEDBACK_STATUS_LABELS[status])}${isAnonymous ? ' • Anonymous' : ''}</div>
+              ${replyBadge}
+            </div>
+            <h3>${esc(userLabel)}</h3>
+          </div>
+          <div class="admin-generated-actions">
+            <select class="admin-feedback-status" aria-label="Feedback status">
+              ${Object.entries(FEEDBACK_STATUS_LABELS).map(([value, label]) => `<option value="${esc(value)}" ${value === status ? 'selected' : ''}>${esc(label)}</option>`).join('')}
+            </select>
+            <button class="btn pri admin-feedback-save" type="button" data-id="${esc(id)}">Save Response</button>
+          </div>
+        </div>
+        <p class="admin-generated-question">${esc(row?.message || '')}</p>
+        <div class="admin-generated-meta">
+          <span>${isAnonymous ? 'Sender hidden by anonymous submission' : `User ID: ${esc(row?.user_id || '')}`}</span>
+          <span>Submitted: ${esc(formatDate(row?.created_at))}</span>
+          <span>Updated: ${esc(formatDate(row?.updated_at))}</span>
+        </div>
+        <label class="admin-feedback-response-field">
+          <span>Admin response</span>
+          <textarea class="admin-feedback-response" rows="3" maxlength="4000" placeholder="Write the response users will see in their dashboard history.">${esc(row?.admin_response || '')}</textarea>
+        </label>
+      </article>
+    `;
+  }
+
   function renderFeedbackInbox() {
     const list = $('admin-feedback-list');
     const stats = $('admin-feedback-stats');
@@ -231,76 +305,62 @@ document.addEventListener('DOMContentLoaded', () => {
       const status = normalizeFeedbackStatus(row?.status);
       acc[status] = (acc[status] || 0) + 1;
       if (status !== 'resolved') acc.open += 1;
+      if (status !== 'resolved' && !hasAdminResponse(row)) acc.replyNeeded += 1;
       return acc;
-    }, { open: 0, pending: 0, in_review: 0, resolved: 0 });
+    }, { open: 0, pending: 0, in_review: 0, resolved: 0, replyNeeded: 0 });
     if (stats) {
-      stats.innerHTML = [
+      stats.innerHTML = feedbackStatsHtml([
         ['Open', counts.open],
         ['Pending', counts.pending],
-        ['In Review', counts.in_review]
-      ].map(([label, value]) => `
-        <div class="admin-feedback-count">
-          <strong>${Number(value) || 0}</strong>
-          <span>${esc(label)}</span>
-        </div>
-      `).join('');
+        ['In Review', counts.in_review],
+        ['Reply Needed', counts.replyNeeded]
+      ]);
     }
     const needle = state.feedbackSearch.trim().toLowerCase();
     const rows = allRows.filter((row) => {
       const status = normalizeFeedbackStatus(row?.status);
       if (status === 'resolved') return false;
       if (filter !== 'open' && status !== filter) return false;
-      if (!needle) return true;
       const user = usersById.get(String(row?.user_id || '')) || {};
-      const haystack = [
-        row?.category,
-        row?.message,
-        row?.admin_response,
-        row?.created_at,
-        row?.updated_at,
-        row?.user_id,
-        user?.email,
-        user?.display_name
-      ].join(' ').toLowerCase();
-      return haystack.includes(needle);
+      return feedbackMatchesSearch(row, user, needle);
     });
     if (!rows.length) {
       list.innerHTML = `<div class="card-muted-box">No feedback rows match the current filter. If this table is missing, run the app feedback migration in Supabase.</div>`;
       return;
     }
-    list.innerHTML = rows.map((row) => {
-      const id = String(row?.id || '');
-      const status = normalizeFeedbackStatus(row?.status);
-      const isAnonymous = Boolean(row?.is_anonymous);
+    list.innerHTML = rows.map((row) => feedbackCardHtml(row, usersById)).join('');
+  }
+
+  function renderFeedbackArchive() {
+    const list = $('admin-feedback-archive-list');
+    const stats = $('admin-feedback-archive-stats');
+    if (!list) return;
+    const serviceConfigured = Boolean(state.data?.database?.service_role_configured);
+    if (!serviceConfigured) {
+      if (stats) stats.innerHTML = '';
+      list.innerHTML = `<div class="card-muted-box">Set <code>SUPABASE_SERVICE_ROLE_KEY</code> on the server to unlock the resolved complaint archive.</div>`;
+      return;
+    }
+    const usersById = new Map((state.data?.users || []).map((user) => [String(user?.id || ''), user]));
+    const allRows = snapshotRows('app_feedback');
+    const resolvedRows = allRows.filter((row) => normalizeFeedbackStatus(row?.status) === 'resolved');
+    const replyNeededCount = resolvedRows.filter((row) => !hasAdminResponse(row)).length;
+    if (stats) {
+      stats.innerHTML = feedbackStatsHtml([
+        ['Resolved', resolvedRows.length],
+        ['Reply Needed', replyNeededCount]
+      ]);
+    }
+    const needle = state.feedbackArchiveSearch.trim().toLowerCase();
+    const rows = resolvedRows.filter((row) => {
       const user = usersById.get(String(row?.user_id || '')) || {};
-      const userLabel = isAnonymous ? 'Anonymous user' : (user?.email || user?.display_name || row?.user_id || 'Unknown user');
-      return `
-        <article class="admin-generated-item admin-feedback-item is-${esc(status)}" data-id="${esc(id)}">
-          <div class="admin-generated-head">
-            <div>
-              <div class="eyebrow">${esc(row?.category || 'Feedback')} • ${esc(FEEDBACK_STATUS_LABELS[status])}${isAnonymous ? ' • Anonymous' : ''}</div>
-              <h3>${esc(userLabel)}</h3>
-            </div>
-            <div class="admin-generated-actions">
-              <select class="admin-feedback-status" aria-label="Feedback status">
-                ${Object.entries(FEEDBACK_STATUS_LABELS).map(([value, label]) => `<option value="${esc(value)}" ${value === status ? 'selected' : ''}>${esc(label)}</option>`).join('')}
-              </select>
-              <button class="btn pri admin-feedback-save" type="button" data-id="${esc(id)}">Save Response</button>
-            </div>
-          </div>
-          <p class="admin-generated-question">${esc(row?.message || '')}</p>
-          <div class="admin-generated-meta">
-            <span>${isAnonymous ? 'Sender hidden by anonymous submission' : `User ID: ${esc(row?.user_id || '')}`}</span>
-            <span>Submitted: ${esc(formatDate(row?.created_at))}</span>
-            <span>Updated: ${esc(formatDate(row?.updated_at))}</span>
-          </div>
-          <label class="admin-feedback-response-field">
-            <span>Admin response</span>
-            <textarea class="admin-feedback-response" rows="3" maxlength="4000" placeholder="Write the response users will see in their dashboard history.">${esc(row?.admin_response || '')}</textarea>
-          </label>
-        </article>
-      `;
-    }).join('');
+      return feedbackMatchesSearch(row, user, needle);
+    });
+    if (!rows.length) {
+      list.innerHTML = `<div class="card-muted-box">No resolved complaints match the current archive search.</div>`;
+      return;
+    }
+    list.innerHTML = rows.map((row) => feedbackCardHtml(row, usersById)).join('');
   }
 
   function renderUsers() {
@@ -423,6 +483,7 @@ document.addEventListener('DOMContentLoaded', () => {
     renderSummary();
     renderGenerated();
     renderFeedbackInbox();
+    renderFeedbackArchive();
     renderUsers();
     renderDatabase();
   }
@@ -515,6 +576,11 @@ document.addEventListener('DOMContentLoaded', () => {
     renderFeedbackInbox();
   });
 
+  $('admin-feedback-archive-search')?.addEventListener('input', (event) => {
+    state.feedbackArchiveSearch = String(event.target?.value || '');
+    renderFeedbackArchive();
+  });
+
   $('admin-approve-all')?.addEventListener('click', async () => {
     showAlert('');
     try {
@@ -542,7 +608,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  $('admin-feedback-list')?.addEventListener('click', async (event) => {
+  async function handleFeedbackSave(event) {
     const button = event.target.closest('.admin-feedback-save');
     if (!button) return;
     const item = button.closest('.admin-feedback-item');
@@ -567,7 +633,10 @@ document.addEventListener('DOMContentLoaded', () => {
       button.disabled = false;
       button.textContent = 'Save Response';
     }
-  });
+  }
+
+  $('admin-feedback-list')?.addEventListener('click', handleFeedbackSave);
+  $('admin-feedback-archive-list')?.addEventListener('click', handleFeedbackSave);
 
   $('admin-open-local')?.addEventListener('click', () => {
     window.location.href = localAdminUrl();

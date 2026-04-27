@@ -61,7 +61,7 @@ APP_TABLES = [
     {"name": "user_wrong_questions", "order_by": "created_at.desc", "limit": 200},
     {"name": "user_drill_sessions", "order_by": "created_at.desc", "limit": 200},
     {"name": "user_coach_attempts", "order_by": "created_at.desc", "limit": 200},
-    {"name": "app_feedback", "order_by": "created_at.desc", "limit": 200},
+    {"name": "app_feedback", "order_by": "created_at.desc", "limit": 500},
 ]
 
 REGION_OPTIONS = [
@@ -2591,10 +2591,6 @@ def update_app_feedback_response(feedback_id: str, status: str, admin_response: 
     return redact_app_feedback_row(rows[0])
 
 
-def is_open_app_feedback_row(row: Any) -> bool:
-    return string_value(row.get("status") if isinstance(row, dict) else "").lower() != "resolved"
-
-
 def fetch_supabase_user_id_from_token(token: str) -> str:
     access_token = string_value(token)
     if not access_token:
@@ -2664,7 +2660,7 @@ def fetch_table_snapshot(config: Dict[str, Any]) -> Dict[str, Any]:
     data, headers = fetch_supabase_json(f"/rest/v1/{config['name']}", params=params)
     rows = data if isinstance(data, list) else []
     if config.get("name") == "app_feedback":
-        rows = [redact_app_feedback_row(row) for row in rows if is_open_app_feedback_row(row)]
+        rows = [redact_app_feedback_row(row) for row in rows]
     content_range = headers.get("content-range", "")
     total_text = content_range.split("/", 1)[1] if "/" in content_range else ""
     try:
@@ -2673,7 +2669,7 @@ def fetch_table_snapshot(config: Dict[str, Any]) -> Dict[str, Any]:
         total = len(rows)
     return {
         "name": config["name"],
-        "count": len(rows) if config.get("name") == "app_feedback" else total,
+        "count": total,
         "rows": rows,
     }
 

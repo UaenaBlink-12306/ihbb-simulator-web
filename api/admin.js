@@ -31,7 +31,7 @@ const APP_TABLES = [
   { name: 'user_wrong_questions', orderBy: 'created_at.desc', limit: 200 },
   { name: 'user_drill_sessions', orderBy: 'created_at.desc', limit: 200 },
   { name: 'user_coach_attempts', orderBy: 'created_at.desc', limit: 200 },
-  { name: 'app_feedback', orderBy: 'created_at.desc', limit: 200 }
+  { name: 'app_feedback', orderBy: 'created_at.desc', limit: 500 }
 ];
 const FEEDBACK_STATUSES = new Set(['pending', 'in_review', 'resolved']);
 
@@ -214,11 +214,11 @@ async function fetchTableSnapshot(config) {
   const contentRange = result.headers.get('content-range') || '';
   const total = Number.parseInt((contentRange.split('/')[1] || ''), 10);
   const visibleRows = config.name === 'app_feedback'
-    ? rows.filter(isOpenAppFeedbackRow).map(redactAppFeedbackRow)
+    ? rows.map(redactAppFeedbackRow)
     : rows;
   return {
     name: config.name,
-    count: config.name === 'app_feedback' ? visibleRows.length : (Number.isFinite(total) ? total : rows.length),
+    count: Number.isFinite(total) ? total : rows.length,
     rows: visibleRows
   };
 }
@@ -229,10 +229,6 @@ function redactAppFeedbackRow(row) {
     ...row,
     user_id: ''
   };
-}
-
-function isOpenAppFeedbackRow(row) {
-  return stringValue(row?.status).toLowerCase() !== 'resolved';
 }
 
 async function purgeExpiredResolvedAppFeedback(retentionDays = 30) {
