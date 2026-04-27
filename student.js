@@ -33,6 +33,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         'ihbb_student_analytics_insights'
     ];
     const DAY_MS = 24 * 60 * 60 * 1000;
+    const ASSIGNMENT_REMINDER_WINDOW_DAYS = 3;
+    const ASSIGNMENT_REMINDER_WINDOW_MS = ASSIGNMENT_REMINDER_WINDOW_DAYS * DAY_MS;
     let userEmail = String(session.user?.email || '').trim();
     let currentMemberships = [];
     let analyticsCloudReady = true;
@@ -1995,12 +1997,131 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
 
     // ========== ASSIGNMENTS ==========
+    function getAssignmentDueDate(assignment) {
+        if (!assignment?.due_date) return null;
+        const dueDate = new Date(assignment.due_date);
+        return Number.isNaN(dueDate.getTime()) ? null : dueDate;
+    }
+
+    function formatAssignmentDueDate(dueDate) {
+        if (!(dueDate instanceof Date) || Number.isNaN(dueDate.getTime())) return 'No deadline';
+        return new Intl.DateTimeFormat(undefined, {
+            month: 'short',
+            day: 'numeric',
+            hour: 'numeric',
+            minute: '2-digit'
+        }).format(dueDate);
+    }
+
+    function getAssignmentDueState(assignment, nowDate = new Date()) {
+        const dueDate = getAssignmentDueDate(assignment);
+        if (!dueDate) {
+            return {
+                level: 'none',
+                label: 'Pending',
+                detail: 'No due date has been set.',
+                sortTs: Number.POSITIVE_INFINITY,
+                reminder: false
+            };
+        }
+
+        const diffMs = dueDate.getTime() - nowDate.getTime();
+        const dueDay = new Date(dueDate.getFullYear(), dueDate.getMonth(), dueDate.getDate()).getTime();
+        const today = new Date(nowDate.getFullYear(), nowDate.getMonth(), nowDate.getDate()).getTime();
+        const daysUntilDue = Math.max(0, Math.round((dueDay - today) / DAY_MS));
+        const dueText = formatAssignmentDueDate(dueDate);
+
+        if (diffMs < 0) {
+            return {
+                level: 'overdue',
+                label: 'Overdue',
+                detail: `Was due ${dueText}`,
+                sortTs: dueDate.getTime(),
+                reminder: true
+            };
+        }
+
+        if (diffMs <= DAY_MS) {
+            return {
+                level: daysUntilDue <= 0 ? 'due-today' : 'due-soon',
+                label: daysUntilDue <= 0 ? 'Due today' : 'Due tomorrow',
+                detail: `Due ${dueText}`,
+                sortTs: dueDate.getTime(),
+                reminder: true
+            };
+        }
+
+        if (diffMs <= ASSIGNMENT_REMINDER_WINDOW_MS) {
+            return {
+                level: 'due-soon',
+                label: daysUntilDue === 1 ? 'Due tomorrow' : `Due in ${daysUntilDue} days`,
+                detail: `Due ${dueText}`,
+                sortTs: dueDate.getTime(),
+                reminder: true
+            };
+        }
+
+        return {
+            level: 'scheduled',
+            label: 'Pending',
+            detail: `Due ${dueText}`,
+            sortTs: dueDate.getTime(),
+            reminder: false
+        };
+    }
+
+    function renderAssignmentReminders(todoList) {
+        const reminderEl = document.getElementById('assignment-reminders');
+        if (!reminderEl) return;
+
+        const nowDate = new Date();
+        const reminders = (Array.isArray(todoList) ? todoList : [])
+            .map((assignment) => ({ assignment, state: getAssignmentDueState(assignment, nowDate) }))
+            .filter((entry) => entry.state.reminder)
+            .sort((a, b) => a.state.sortTs - b.state.sortTs);
+
+        if (!reminders.length) {
+            reminderEl.classList.add('hidden');
+            reminderEl.innerHTML = '';
+            return;
+        }
+
+        const overdueCount = reminders.filter((entry) => entry.state.level === 'overdue').length;
+        const soonCount = reminders.length - overdueCount;
+        const summaryParts = [];
+        if (overdueCount) summaryParts.push(`${overdueCount} overdue`);
+        if (soonCount) summaryParts.push(`${soonCount} due soon`);
+        const summary = summaryParts.join(' · ');
+
+        reminderEl.classList.remove('hidden');
+        reminderEl.innerHTML = `
+            <div class="assignment-reminder-summary">
+                <div>
+                    <div class="eyebrow">Due-date reminders</div>
+                    <strong>${esc(summary)}</strong>
+                </div>
+                <span class="assignment-reminder-window">Next ${ASSIGNMENT_REMINDER_WINDOW_DAYS * 24} hours</span>
+            </div>
+            <div class="assignment-reminder-list">
+                ${reminders.slice(0, 4).map(({ assignment, state }) => {
+                    const cls = assignment.classes?.name ? `${assignment.classes.name} · ` : '';
+                    return `<div class="assignment-reminder-row ${state.level}">
+                        <span class="assignment-reminder-label">${esc(state.label)}</span>
+                        <span class="assignment-reminder-title">${esc(assignment.title)}</span>
+                        <span class="assignment-reminder-detail">${esc(cls)}${esc(state.detail)}</span>
+                    </div>`;
+                }).join('')}
+            </div>
+        `;
+    }
+
     async function loadAssignments() {
         try {
             const memberships = await fetchStudentMemberships({ includeClassDetails: false });
             if (!memberships.length) {
                 setMetric('student-hero-todo', 0);
                 setMetric('student-hero-done', 0);
+                renderAssignmentReminders([]);
                 document.getElementById('student-assignments-todo').innerHTML = emptyStateHtml(
                     'Assignments',
                     'Join a class first',
@@ -2042,6 +2163,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             console.warn('[Student Assignments] failed to load:', error);
             setMetric('student-hero-todo', 0);
             setMetric('student-hero-done', 0);
+            renderAssignmentReminders([]);
             document.getElementById('student-assignments-todo').innerHTML = emptyStateHtml(
                 'Assignments',
                 'Assignments unavailable',
@@ -2064,20 +2186,22 @@ document.addEventListener('DOMContentLoaded', async () => {
         const doneList = list.filter(a => subMap[a.id]);
         setMetric('student-hero-todo', todoList.length);
         setMetric('student-hero-done', doneList.length);
+        renderAssignmentReminders(todoList);
 
         // Render To Do
         if (!todoList.length) {
             todoEl.innerHTML = emptyStateHtml('To do', 'All caught up', 'You do not have any pending assignments right now.');
         } else {
+            const nowDate = new Date();
             todoEl.innerHTML = todoList.map(a => {
-                const due = a.due_date ? new Date(a.due_date).toLocaleDateString() : 'No deadline';
+                const dueState = getAssignmentDueState(a, nowDate);
                 const cls = a.classes?.name || '';
                 return `<div class="list-item">
                     <div class="item-copy">
                         <span class="item-title">${esc(a.title)}</span>
-                        <span class="item-meta">${esc(cls)} · Due: ${due}</span>
+                        <span class="item-meta">${esc(cls)} · ${esc(dueState.detail)}</span>
                     </div>
-                    <span class="status-pill pending">Pending</span>
+                    <span class="status-pill pending ${esc(dueState.level)}">${esc(dueState.label)}</span>
                     <div class="item-actions">
                         <button class="btn pri" onclick="startAssignment('${a.id}', '${esc(a.title)}')">Start</button>
                     </div>

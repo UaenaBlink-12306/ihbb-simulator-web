@@ -4927,6 +4927,109 @@ input[type=datetime-local]:focus {
   border-color: rgba(251, 191, 36, 0.22);
 }
 
+.status-pill.overdue {
+  color: var(--bad);
+  background: rgba(248, 113, 113, 0.12);
+  border-color: rgba(248, 113, 113, 0.26);
+}
+
+.status-pill.due-today,
+.status-pill.due-soon {
+  color: var(--warn);
+  background: rgba(251, 191, 36, 0.16);
+  border-color: rgba(251, 191, 36, 0.28);
+}
+
+.assignment-reminder-panel {
+  margin: 0 0 18px;
+  padding: 16px;
+  border: 1px solid rgba(251, 191, 36, 0.24);
+  border-radius: 16px;
+  background:
+    linear-gradient(135deg, rgba(251, 191, 36, 0.12), rgba(96, 165, 250, 0.06)),
+    var(--surface-glass);
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.04);
+}
+
+.assignment-reminder-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.assignment-reminder-summary strong {
+  display: block;
+  margin-top: 2px;
+  font-size: 18px;
+}
+
+.assignment-reminder-window {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.assignment-reminder-list {
+  display: grid;
+  gap: 8px;
+}
+
+.assignment-reminder-row {
+  display: grid;
+  grid-template-columns: minmax(92px, auto) minmax(160px, 1fr) minmax(180px, 1.1fr);
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.assignment-reminder-label {
+  color: var(--warn);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.assignment-reminder-row.overdue .assignment-reminder-label {
+  color: var(--bad);
+}
+
+.assignment-reminder-title {
+  min-width: 0;
+  overflow: hidden;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.assignment-reminder-detail {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+@media (max-width: 760px) {
+  .assignment-reminder-summary,
+  .assignment-reminder-row {
+    align-items: flex-start;
+    grid-template-columns: 1fr;
+  }
+
+  .assignment-reminder-summary {
+    flex-direction: column;
+  }
+
+  .assignment-reminder-title {
+    white-space: normal;
+  }
+}
+
 .auth-page .shell {
   max-width: 1160px;
 }
