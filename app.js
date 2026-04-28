@@ -1359,11 +1359,15 @@ function coachChatInlineMarkdownHtml(text = '') {
 }
 
 function coachChatDividerHtml(label = '', options = {}) {
-  const text = escHtml(label);
+  const rawLabel = String(label || '').trim();
+  const text = escHtml(rawLabel);
   const subtle = !!options.subtle;
   const lineColor = subtle ? 'rgba(31, 111, 255, 0.16)' : 'rgba(31, 111, 255, 0.28)';
   const textColor = subtle ? '#60748c' : '#36597f';
   const background = subtle ? 'rgba(246, 250, 255, 0.86)' : 'rgba(240, 247, 255, 0.96)';
+  if (!rawLabel) {
+    return `<div aria-hidden="true" style="height:1px;margin:2px 0 4px;background:linear-gradient(90deg, transparent, ${lineColor}, transparent);"></div>`;
+  }
   return `
     <div style="display:flex;align-items:center;gap:10px;margin:2px 0 4px;">
       <span aria-hidden="true" style="flex:1;height:1px;background:linear-gradient(90deg, transparent, ${lineColor});"></span>
@@ -1439,8 +1443,7 @@ function coachChatMessageMarkdownText(message) {
   const sections = Array.isArray(message?.sections) ? message.sections : [];
   const links = Array.isArray(message?.links) ? message.links : [];
   const followUps = Array.isArray(message?.followUps) ? message.followUps : [];
-  const resultLabel = message?.source === 'deepseek' ? 'DeepSeek Result' : 'Study Result';
-  const lines = [`## ${resultLabel} Start`];
+  const lines = ['---'];
 
   if (message?.title) lines.push('', `### ${String(message.title).trim()}`);
   if (message?.text) lines.push('', String(message.text).trim());
@@ -1470,7 +1473,7 @@ function coachChatMessageMarkdownText(message) {
       if (label && prompt) lines.push(`- ${label}: ${prompt}`);
     });
   }
-  lines.push('', `## End of ${resultLabel}`);
+  lines.push('', '---');
   if (actions.length) {
     lines.push('', '## Suggested Actions Start');
     actions.forEach((action, actionIndex) => {
@@ -1494,7 +1497,6 @@ function coachChatMessageHtml(message, index) {
   const sections = Array.isArray(message.sections) ? message.sections : [];
   const links = Array.isArray(message.links) ? message.links : [];
   const followUps = Array.isArray(message.followUps) ? message.followUps : [];
-  const resultLabel = message.source === 'deepseek' ? 'DeepSeek Result' : 'Study Result';
   const blockStyle = 'display:grid;gap:12px;padding:14px 15px;border-radius:20px;border:1px solid rgba(15, 23, 42, 0.08);background:linear-gradient(180deg, rgba(255,255,255,0.97), rgba(246,250,255,0.9));box-shadow:inset 0 1px 0 rgba(255,255,255,0.85), 0 18px 28px -24px rgba(15,23,42,0.14);';
   const markdownWrapStyle = 'display:grid;gap:10px;';
   const toolsHtml = message.role === 'assistant' && !streaming ? `
@@ -1510,7 +1512,7 @@ function coachChatMessageHtml(message, index) {
       </div>
       ${message.role === 'assistant' ? `
         <div class="coach-chat-block coach-chat-result-block" style="${blockStyle}">
-          ${coachChatDividerHtml(`${resultLabel} Start`)}
+          ${coachChatDividerHtml()}
           ${message.title ? `<h3 class="coach-chat-message-title" style="margin:0;color:#0f223a;font-size:20px;font-weight:850;line-height:1.25;letter-spacing:-0.02em;">${escHtml(message.title)}</h3>` : ''}
           ${(visibleText || streaming) ? `<div class="coach-chat-markdown coach-chat-message-text" style="${markdownWrapStyle}">${coachChatMarkdownHtml(visibleText || '')}${streaming ? coachChatStreamingCursorHtml() : ''}</div>` : ''}
           ${!streaming && highlights.length ? `
@@ -1535,7 +1537,7 @@ function coachChatMessageHtml(message, index) {
               <button class="coach-chat-followup" type="button" data-message-index="${index}" data-followup-index="${followUpIndex}">${escHtml(followUp.label)}</button>
             `).join('')}</div>
           ` : ''}
-          ${coachChatDividerHtml(`End of ${resultLabel}`)}
+          ${coachChatDividerHtml()}
         </div>
         ${!streaming && actions.length ? `
           <div class="coach-chat-block coach-chat-action-block" style="${blockStyle}">
