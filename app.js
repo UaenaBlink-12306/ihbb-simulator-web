@@ -844,8 +844,8 @@ const CoachChat = {
   resizing: null
 };
 const COACH_CHAT_STREAM_MIN_MS = 240;
-const COACH_CHAT_STREAM_MAX_MS = 1800;
-const COACH_CHAT_STREAM_MS_PER_CHAR = 6;
+const COACH_CHAT_STREAM_MAX_MS = 7000;
+const COACH_CHAT_STREAM_MS_PER_WORD = 44;
 
 function clampCoachChatWidth(value) {
   const min = 720;
@@ -899,11 +899,15 @@ function trimCoachChatMessages() {
 }
 
 function coachChatStreamDuration(text = '') {
-  const normalizedLength = String(text || '').replace(/\s+/g, ' ').trim().length;
+  const wordCount = coachChatStreamTokens(text).length;
   return Math.max(
     COACH_CHAT_STREAM_MIN_MS,
-    Math.min(COACH_CHAT_STREAM_MAX_MS, 160 + normalizedLength * COACH_CHAT_STREAM_MS_PER_CHAR)
+    Math.min(COACH_CHAT_STREAM_MAX_MS, 180 + wordCount * COACH_CHAT_STREAM_MS_PER_WORD)
   );
+}
+
+function coachChatStreamTokens(text = '') {
+  return String(text || '').match(/\S+\s*/g) || [];
 }
 
 function isCoachChatMessageStreaming(message) {
@@ -934,7 +938,8 @@ function stopAllCoachChatStreams() {
 function startCoachChatMessageStream(message) {
   if (!message || message.role !== 'assistant') return;
   stopCoachChatMessageStream(message);
-  const fullText = String(message.text || '');
+  const fullText = coachChatMessageMarkdownText(message);
+  const streamTokens = coachChatStreamTokens(fullText);
   if (!fullText) {
     message.displayText = '';
     renderCoachChatMessages();
@@ -956,13 +961,13 @@ function startCoachChatMessageStream(message) {
       return;
     }
     const progress = Math.min(1, (now - startedAt) / duration);
-    const easedProgress = 1 - Math.pow(1 - progress, 1.75);
-    const nextLength = Math.max(1, Math.min(fullText.length, Math.ceil(fullText.length * easedProgress)));
-    if (nextLength !== String(message.displayText || '').length) {
-      message.displayText = fullText.slice(0, nextLength);
+    const nextTokenCount = Math.max(1, Math.min(streamTokens.length, Math.ceil(streamTokens.length * progress)));
+    const nextText = streamTokens.slice(0, nextTokenCount).join('');
+    if (nextText !== String(message.displayText || '')) {
+      message.displayText = nextText;
       renderCoachChatMessages();
     }
-    if (progress >= 1 || nextLength >= fullText.length) {
+    if (progress >= 1 || nextTokenCount >= streamTokens.length) {
       message.displayText = fullText;
       message.streaming = false;
       message.streamFrame = 0;
@@ -1513,7 +1518,7 @@ function coachChatMessageHtml(message, index) {
       ${message.role === 'assistant' ? `
         <div class="coach-chat-block coach-chat-result-block" style="${blockStyle}">
           ${coachChatDividerHtml()}
-          ${message.title ? `<h3 class="coach-chat-message-title" style="margin:0;color:#0f223a;font-size:20px;font-weight:850;line-height:1.25;letter-spacing:-0.02em;">${escHtml(message.title)}</h3>` : ''}
+          ${!streaming && message.title ? `<h3 class="coach-chat-message-title" style="margin:0;color:#0f223a;font-size:20px;font-weight:850;line-height:1.25;letter-spacing:-0.02em;">${escHtml(message.title)}</h3>` : ''}
           ${(visibleText || streaming) ? `<div class="coach-chat-markdown coach-chat-message-text" style="${markdownWrapStyle}">${coachChatMarkdownHtml(visibleText || '')}${streaming ? coachChatStreamingCursorHtml() : ''}</div>` : ''}
           ${!streaming && highlights.length ? `
             ${coachChatDividerHtml('Quick Context', { subtle: true })}

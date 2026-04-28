@@ -282,8 +282,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         resizing: null
     };
     const DASHBOARD_CHAT_STREAM_MIN_MS = 240;
-    const DASHBOARD_CHAT_STREAM_MAX_MS = 1800;
-    const DASHBOARD_CHAT_STREAM_MS_PER_CHAR = 6;
+    const DASHBOARD_CHAT_STREAM_MAX_MS = 7000;
+    const DASHBOARD_CHAT_STREAM_MS_PER_WORD = 44;
 
     function clampDashboardChatWidth(value) {
         const min = 720;
@@ -328,11 +328,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     function dashboardChatStreamDuration(text = '') {
-        const normalizedLength = String(text || '').replace(/\s+/g, ' ').trim().length;
+        const wordCount = dashboardChatStreamTokens(text).length;
         return Math.max(
             DASHBOARD_CHAT_STREAM_MIN_MS,
-            Math.min(DASHBOARD_CHAT_STREAM_MAX_MS, 160 + normalizedLength * DASHBOARD_CHAT_STREAM_MS_PER_CHAR)
+            Math.min(DASHBOARD_CHAT_STREAM_MAX_MS, 180 + wordCount * DASHBOARD_CHAT_STREAM_MS_PER_WORD)
         );
+    }
+
+    function dashboardChatStreamTokens(text = '') {
+        return String(text || '').match(/\S+\s*/g) || [];
     }
 
     function isDashboardChatMessageStreaming(message) {
@@ -360,6 +364,58 @@ document.addEventListener('DOMContentLoaded', async () => {
         dashboardChat.messages.forEach(stopDashboardChatMessageStream);
     }
 
+    function dashboardChatMessageMarkdownText(message) {
+        const lines = ['---'];
+        const title = String(message?.title || '').trim();
+        const text = String(message?.text || '').trim();
+        const highlights = Array.isArray(message?.highlights) ? message.highlights : [];
+        const sections = Array.isArray(message?.sections) ? message.sections : [];
+        const links = Array.isArray(message?.links) ? message.links : [];
+        const followUps = Array.isArray(message?.followUps) ? message.followUps : [];
+        const actions = Array.isArray(message?.actions) ? message.actions : [];
+
+        if (title) lines.push('', `### ${title}`);
+        if (text) lines.push('', text);
+        if (highlights.length) {
+            lines.push('', '### Highlights');
+            highlights.forEach(item => {
+                const value = String(item || '').trim();
+                if (value) lines.push(`- ${value}`);
+            });
+        }
+        sections.forEach(section => {
+            const heading = String(section?.heading || '').trim();
+            const body = String(section?.body || '').trim();
+            if (heading && body) lines.push('', `### ${heading}`, body);
+        });
+        if (links.length) {
+            lines.push('', '### References');
+            links.forEach(link => {
+                const label = String(link?.label || '').trim();
+                const url = String(link?.url || '').trim();
+                if (label && url) lines.push(`- [${label}](${url})`);
+            });
+        }
+        if (followUps.length) {
+            lines.push('', '### Follow-Up Prompts');
+            followUps.forEach(followUp => {
+                const label = String(followUp?.label || '').trim();
+                const prompt = String(followUp?.prompt || '').trim();
+                if (label && prompt) lines.push(`- ${label}: ${prompt}`);
+            });
+        }
+        lines.push('', '---');
+        if (actions.length) {
+            lines.push('', '### Suggested Actions');
+            actions.forEach((action, index) => {
+                const label = String(action?.label || 'Run action').trim();
+                const reason = String(action?.reason || 'Recommended from your current dashboard state.').trim();
+                lines.push(`${index + 1}. ${label}: ${reason}`);
+            });
+        }
+        return lines.join('\n').trim();
+    }
+
     function trimDashboardChatMessages() {
         if (dashboardChat.messages.length > 18) {
             dashboardChat.messages.slice(0, dashboardChat.messages.length - 18).forEach(stopDashboardChatMessageStream);
@@ -376,7 +432,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     function startDashboardChatMessageStream(message) {
         if (!message || message.role !== 'assistant') return;
         stopDashboardChatMessageStream(message);
-        const fullText = String(message.text || '');
+        const fullText = dashboardChatMessageMarkdownText(message);
+        const streamTokens = dashboardChatStreamTokens(fullText);
         if (!fullText) {
             message.displayText = '';
             renderDashboardChatMessages();
@@ -398,13 +455,13 @@ document.addEventListener('DOMContentLoaded', async () => {
                 return;
             }
             const progress = Math.min(1, (now - startedAt) / duration);
-            const easedProgress = 1 - Math.pow(1 - progress, 1.75);
-            const nextLength = Math.max(1, Math.min(fullText.length, Math.ceil(fullText.length * easedProgress)));
-            if (nextLength !== String(message.displayText || '').length) {
-                message.displayText = fullText.slice(0, nextLength);
+            const nextTokenCount = Math.max(1, Math.min(streamTokens.length, Math.ceil(streamTokens.length * progress)));
+            const nextText = streamTokens.slice(0, nextTokenCount).join('');
+            if (nextText !== String(message.displayText || '')) {
+                message.displayText = nextText;
                 renderDashboardChatMessages();
             }
-            if (progress >= 1 || nextLength >= fullText.length) {
+            if (progress >= 1 || nextTokenCount >= streamTokens.length) {
                 message.displayText = fullText;
                 message.streaming = false;
                 message.streamFrame = 0;
@@ -1008,7 +1065,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     <span>${esc(message.role === 'user' ? 'You' : (message.source === 'deepseek' ? 'DeepSeek' : 'Local fallback'))}</span>
                     <span>${esc(message.role === 'user' ? 'Prompt' : (message.mode === 'knowledge' ? 'Knowledge brief' : 'Coach advice'))}</span>
                 </div>
-                ${message.role === 'assistant' && message.title ? `<h3 class="coach-chat-message-title">${esc(message.title)}</h3>` : ''}
+                ${message.role === 'assistant' && !isDashboardChatMessageStreaming(message) && message.title ? `<h3 class="coach-chat-message-title">${esc(message.title)}</h3>` : ''}
                 ${(() => {
                     const streaming = isDashboardChatMessageStreaming(message);
                     const visibleText = dashboardChatVisibleText(message);
@@ -1539,7 +1596,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             const message = dashboardChat.messages?.[messageIndex];
             if (message?.text) {
                 if (navigator.clipboard?.writeText) {
-                    navigator.clipboard.writeText(String(message.text || '').trim()).then(() => showAlert('Assistant answer copied', 'success')).catch(() => showAlert('Copy failed', 'error'));
+                    navigator.clipboard.writeText(dashboardChatMessageMarkdownText(message)).then(() => showAlert('Assistant answer copied', 'success')).catch(() => showAlert('Copy failed', 'error'));
                 } else {
                     showAlert('Copy unavailable', 'error');
                 }
