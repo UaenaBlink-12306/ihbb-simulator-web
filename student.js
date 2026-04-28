@@ -259,6 +259,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         'open_library'
     ]);
     const DASHBOARD_CHAT_UI_KEY = `ihbb_student_dashboard_chat_ui_${uid}`;
+    const DASHBOARD_CHAT_SESSION_KEY = `ihbb_student_dashboard_chat_session_${uid}`;
+    const DASHBOARD_CHAT_SCROLL_KEY = `ihbb_student_dashboard_chat_scroll_${uid}`;
     const DASHBOARD_CHAT_SIZE_PRESETS = {
         standard: 820,
         wide: 980,
@@ -290,6 +292,59 @@ document.addEventListener('DOMContentLoaded', async () => {
         const max = Math.max(min, window.innerWidth - 32);
         const parsed = Number(value);
         return Math.max(min, Math.min(max, Number.isFinite(parsed) ? parsed : DASHBOARD_CHAT_SIZE_PRESETS.standard));
+    }
+
+    function saveDashboardChatSession() {
+        try {
+            // Only save essential message data, excluding ephemeral stream state
+            const messagesToSave = dashboardChat.messages.map(m => ({
+                role: m.role,
+                text: m.text,
+                source: m.source,
+                mode: m.mode,
+                title: m.title,
+                topic: m.topic,
+                highlights: m.highlights,
+                sections: m.sections,
+                links: m.links,
+                followUps: m.followUps,
+                actions: m.actions
+            }));
+            sessionStorage.setItem(DASHBOARD_CHAT_SESSION_KEY, JSON.stringify(messagesToSave));
+        } catch { /* noop */ }
+    }
+
+    function loadDashboardChatSession() {
+        try {
+            const raw = JSON.parse(sessionStorage.getItem(DASHBOARD_CHAT_SESSION_KEY) || '[]');
+            if (Array.isArray(raw) && raw.length > 0) {
+                dashboardChat.messages = raw.map(m => ({
+                    ...m,
+                    displayText: m.text,
+                    streaming: false,
+                    streamFrame: 0
+                }));
+            }
+        } catch { /* noop */ }
+    }
+
+    function saveDashboardChatScroll() {
+        try {
+            const bodyEl = document.getElementById('coach-chat-body');
+            if (bodyEl && dashboardChat.open) {
+                sessionStorage.setItem(DASHBOARD_CHAT_SCROLL_KEY, String(bodyEl.scrollTop));
+            }
+        } catch { /* noop */ }
+    }
+
+    function restoreDashboardChatScroll() {
+        try {
+            const bodyEl = document.getElementById('coach-chat-body');
+            const saved = sessionStorage.getItem(DASHBOARD_CHAT_SCROLL_KEY);
+            if (bodyEl && saved !== null) {
+                bodyEl.scrollTop = Number(saved);
+            }
+        } catch { /* noop */ }
     }
 
     function loadDashboardChatUiPrefs() {
@@ -427,6 +482,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (!message || typeof message !== 'object') return;
         dashboardChat.messages.push(message);
         trimDashboardChatMessages();
+        saveDashboardChatSession();
     }
 
     function startDashboardChatMessageStream(message) {
@@ -443,6 +499,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             message.displayText = fullText;
             message.streaming = false;
             renderDashboardChatMessages();
+            saveDashboardChatSession();
             return;
         }
         message.streaming = true;
@@ -466,6 +523,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 message.streaming = false;
                 message.streamFrame = 0;
                 renderDashboardChatMessages();
+                saveDashboardChatSession();
                 return;
             }
             message.streamFrame = requestAnimationFrame(step);
@@ -474,6 +532,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     loadDashboardChatUiPrefs();
+    loadDashboardChatSession();
 
     // ========== NAME CHECK ==========
     if (!profile.display_name || !profile.display_name.trim()) {
@@ -1367,6 +1426,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         stopAllDashboardChatStreams();
         dashboardChat.messages = [];
         dashboardChat.source = 'ready';
+        sessionStorage.removeItem(DASHBOARD_CHAT_SESSION_KEY);
+        sessionStorage.removeItem(DASHBOARD_CHAT_SCROLL_KEY);
         renderDashboardChatChrome();
     }
 
@@ -1464,6 +1525,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         dashboardChat.suggestedReason = 'manual';
         dashboardChat.open = true;
         renderDashboardChatChrome();
+        restoreDashboardChatScroll();
         setTimeout(() => document.getElementById('coach-chat-input')?.focus(), 60);
     }
 
@@ -1545,6 +1607,19 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('coach-chat-new')?.addEventListener('click', clearDashboardChatConversation);
     document.getElementById('coach-chat-fullscreen')?.addEventListener('click', toggleDashboardChatFullscreen);
     document.getElementById('coach-chat-thinking-toggle')?.addEventListener('click', toggleDashboardChatThinking);
+    document.getElementById('coach-chat-body')?.addEventListener('scroll', (event) => {
+        const el = event.target;
+        const btn = document.getElementById('coach-chat-jump-latest');
+        if (!el || !btn) return;
+        const isAtBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 60;
+        if (isAtBottom) {
+            btn.classList.remove('visible');
+        } else {
+            btn.classList.add('visible');
+        }
+        saveDashboardChatScroll();
+    });
+    document.getElementById('coach-chat-jump-latest')?.addEventListener('click', () => queueDashboardChatScrollToBottom());
     document.getElementById('coach-chat-size-presets')?.addEventListener('click', (event) => {
         const button = event.target.closest('.coach-chat-size-btn');
         if (!button) return;
