@@ -1277,6 +1277,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (!response.ok && !raw?.message) throw new Error(`Coach chat failed (${response.status})`);
         const fallback = buildDashboardChatFallback(payload.message);
         const sourceIsDeepSeek = String(raw?.source || '').trim().toLowerCase() === 'deepseek' && dashboardChatReplyHasDeepSeekContent(raw);
+        const rawActions = normalizeDashboardChatActions(raw?.quick_actions);
         return {
             source: sourceIsDeepSeek ? 'deepseek' : fallback.source,
             mode: String(raw?.mode || '').trim() === 'knowledge' ? 'knowledge' : fallback.mode,
@@ -1287,7 +1288,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             sections: normalizeDashboardChatSections(raw?.sections).length ? normalizeDashboardChatSections(raw?.sections) : fallback.sections,
             links: normalizeDashboardChatLinks(raw?.links).length ? normalizeDashboardChatLinks(raw?.links) : fallback.links,
             follow_ups: normalizeDashboardChatFollowUps(raw?.follow_ups).length ? normalizeDashboardChatFollowUps(raw?.follow_ups) : fallback.follow_ups,
-            quick_actions: normalizeDashboardChatActions(raw?.quick_actions || fallback.quick_actions)
+            quick_actions: sourceIsDeepSeek ? rawActions : (rawActions.length ? rawActions : normalizeDashboardChatActions(fallback.quick_actions))
         };
     }
 

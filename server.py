@@ -1057,6 +1057,18 @@ def normalize_coach_chat_context(payload: Dict[str, Any]) -> Dict[str, Any]:
     recent_incorrect = raw.get("recent_incorrect") if isinstance(raw.get("recent_incorrect"), dict) else {}
     setup = raw.get("setup") if isinstance(raw.get("setup"), dict) else {}
     active_set = raw.get("active_set") if isinstance(raw.get("active_set"), dict) else {}
+    analytics = raw.get("analytics") if isinstance(raw.get("analytics"), dict) else {}
+    blind_spots = []
+    raw_blind_spots = analytics.get("blind_spots") if isinstance(analytics.get("blind_spots"), list) else []
+    for spot in raw_blind_spots:
+        if not isinstance(spot, dict):
+            continue
+        priority = string_value(spot.get("priority")).lower()
+        if priority not in ("high", "medium", "low"):
+            priority = "medium"
+        title = string_value(spot.get("title"))
+        if title:
+            blind_spots.append({"title": title, "priority": priority})
     top_focuses = [normalize_coach_chat_focus(x) for x in (notebook.get("top_focuses") if isinstance(notebook.get("top_focuses"), list) else [])]
     top_focuses = [x for x in top_focuses if x.get("key") or x.get("title")]
     recent_focus = normalize_coach_chat_focus(recent_incorrect)
@@ -1093,6 +1105,11 @@ def normalize_coach_chat_context(payload: Dict[str, Any]) -> Dict[str, Any]:
             "item_count": max(0, safe_int(active_set.get("item_count"), 0)),
         },
         "recent_incorrect": recent_focus,
+        "analytics": {
+            "total_attempts": max(0, safe_int(analytics.get("total_attempts"), 0)),
+            "total_accuracy": max(0, min(100, safe_int(analytics.get("total_accuracy"), 0))),
+            "blind_spots": blind_spots[:3],
+        },
     }
 
 
@@ -1545,24 +1562,35 @@ def normalize_coach_chat_response(raw: Any, payload: Dict[str, Any]) -> Dict[str
                 focus_key,
                 string_value(item.get("query")),
             ))
+    raw_title = string_value(obj.get("title"))
+    raw_topic = string_value(obj.get("topic"))
+    raw_message = string_value(obj.get("message"))
+    raw_highlights = normalize_coach_chat_highlights(obj.get("highlights"))
+    raw_sections = normalize_coach_chat_sections(obj.get("sections"))
+    raw_follow_ups = normalize_coach_chat_followups(obj.get("follow_ups"))
+    raw_links = normalize_coach_chat_links(obj.get("links"))
+    quick_actions = dedupe_coach_chat_actions(actions)
+    has_deepseek_content = bool(
+        raw_title or raw_topic or raw_message or raw_highlights or
+        raw_sections or raw_links or raw_follow_ups or quick_actions
+    )
+    if not has_deepseek_content:
+        return fallback
+
     mode = normalize_coach_chat_mode(obj.get("mode"), "knowledge" if fallback.get("mode") == "knowledge" else "coach")
-    topic = string_value(obj.get("topic")) or string_value(fallback.get("topic"))
-    title = string_value(obj.get("title")) or string_value(fallback.get("title"))
-    message = string_value(obj.get("message"))
-    highlights = normalize_coach_chat_highlights(obj.get("highlights")) or fallback.get("highlights", [])
-    sections = normalize_coach_chat_sections(obj.get("sections")) or fallback.get("sections", [])
-    follow_ups = normalize_coach_chat_followups(obj.get("follow_ups")) or fallback.get("follow_ups", [])
-    links = normalize_coach_chat_links(obj.get("links"))
+    topic = raw_topic or string_value(fallback.get("topic"))
+    title = raw_title or string_value(fallback.get("title"))
+    message = raw_message
+    highlights = raw_highlights or fallback.get("highlights", [])
+    sections = raw_sections or fallback.get("sections", [])
+    follow_ups = raw_follow_ups or fallback.get("follow_ups", [])
+    links = raw_links
     if not links and topic:
         wiki = coach_chat_topic_link(topic)
         if wiki:
             links = [{"label": f"Wikipedia: {topic}", "url": wiki, "kind": "wikipedia"}]
     if not links:
         links = fallback.get("links", [])
-    quick_actions = dedupe_coach_chat_actions(actions or fallback["quick_actions"])
-    has_substantive_content = bool(message or highlights or sections or links or follow_ups or quick_actions)
-    if not has_substantive_content:
-        return fallback
     if not message:
         message = (
             "I put together a structured DeepSeek study brief below."
@@ -1620,6 +1648,7 @@ def coach_chat_with_deepseek(payload: Dict[str, Any]) -> Dict[str, Any]:
         "1) Coach mode: recommend the best next study move using the provided app context and built-in app actions.\n"
         "2) Knowledge mode: answer history and IHBB concept questions in detail, with structured sections and at least one Wikipedia link when a topic is clear.\n"
         "Respect the requested assistant_mode when it is coach or knowledge. If it is auto, choose the best mode.\n"
+        "You, not the app, choose quick_actions for DeepSeek replies. The app only validates action ids and focus keys.\n"
         "Available app actions and surfaces:\n"
         "- Wrong-bank (SRS) practices previously missed questions that are due.\n"
         "- AI Notebook stores DeepSeek lessons from incorrect answers.\n"
@@ -1632,6 +1661,11 @@ def coach_chat_with_deepseek(payload: Dict[str, Any]) -> Dict[str, Any]:
         "If you are uncertain about a historical fact, say so instead of bluffing.\n"
         "Coach mode should stay practical and tied to the user context.\n"
         "Knowledge mode should be more detailed and structured.\n"
+        "In coach mode, inspect the whole study_context and choose an agentic sequence of quick_actions that moves the learner through the app: clear due SRS, review misses, inspect notebook lessons, apply or generate a focus drill, adjust setup, start a session, or open review.\n"
+        "When the user asks about questions, use the active set, recent misses, notebook focus, and analytics to decide whether to open review, start practice, generate a focus drill, or open the library.\n"
+        "Do not default to Open Library, and do not label an action as Search plus the user's exact prompt. Use Open Library only when browsing the question bank is genuinely the best next move, and make query a concise historical topic or question-bank term.\n"
+        "For coaching requests, include 1 to 3 quick_actions when a sensible app move exists; order them as a practical next-step sequence. If no app action is useful, return an empty quick_actions array.\n"
+        "Action labels should be short commands, and action reasons should explain why that app move fits the current context.\n"
         "Recommend at most 3 quick actions and only use these action ids: "
         + ", ".join(sorted(COACH_CHAT_ALLOWED_ACTIONS))
         + ".\n"
@@ -1647,7 +1681,11 @@ def coach_chat_with_deepseek(payload: Dict[str, Any]) -> Dict[str, Any]:
         "message": string_value(payload.get("message")) or "What should I practice next?",
         "conversation": conversation,
         "study_context": context,
-        "fallback_plan": fallback,
+        "action_selection_context": {
+            "valid_focus_keys": top_focus_keys,
+            "allowed_action_ids": sorted(COACH_CHAT_ALLOWED_ACTIONS),
+            "choose_actions_from_deepseek": True,
+        },
     }
     messages = [
         {"role": "system", "content": system},

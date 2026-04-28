@@ -2079,10 +2079,10 @@ function normalizeCoachChatReply(raw, payload, snapshot) {
     }))
     : [];
   const filteredRawActions = filterCoachChatActionsByContext(rawActions, mode, topic, payload?.message || '', snapshot);
-  const filteredFallbackActions = filterCoachChatActionsByContext(fallback.quick_actions, mode, topic, payload?.message || '', snapshot);
-  const actions = filteredRawActions.length ? filteredRawActions : filteredFallbackActions;
   const links = normalizeCoachChatLinks(obj?.links);
   const sourceIsDeepSeek = String(obj?.source || '').trim().toLowerCase() === 'deepseek' && coachChatReplyHasDeepSeekContent(obj);
+  const filteredFallbackActions = filterCoachChatActionsByContext(fallback.quick_actions, mode, topic, payload?.message || '', snapshot);
+  const actions = sourceIsDeepSeek ? filteredRawActions : (filteredRawActions.length ? filteredRawActions : filteredFallbackActions);
   return {
     source: sourceIsDeepSeek ? 'deepseek' : 'fallback',
     mode,

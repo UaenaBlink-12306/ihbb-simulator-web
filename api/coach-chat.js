@@ -783,9 +783,21 @@ function normalizeResponse(raw, payload) {
       }).filter(Boolean)
     : [];
   const filteredRawActions = filterActionsForContext(rawActions, mode, topic, payload, context);
-  const filteredFallbackActions = filterActionsForContext(fallback.quick_actions, mode, topic, payload, context);
-  const actions = filteredRawActions.length ? filteredRawActions : filteredFallbackActions;
+  const rawHighlights = normalizeHighlights(obj.highlights);
+  const rawSections = normalizeSections(obj.sections);
+  const rawFollowUps = normalizeFollowUps(obj.follow_ups);
   const links = normalizeLinks(obj.links);
+  const hasDeepSeekContent = !!(
+    stringValue(obj.title) ||
+    stringValue(obj.topic) ||
+    stringValue(obj.message) ||
+    rawHighlights.length ||
+    rawSections.length ||
+    links.length ||
+    rawFollowUps.length ||
+    filteredRawActions.length
+  );
+  if (!hasDeepSeekContent) return fallback;
   const fallbackLinks = Array.isArray(fallback.links) ? fallback.links : [];
   const mergedLinks = links.length
     ? links
@@ -797,11 +809,11 @@ function normalizeResponse(raw, payload) {
     title: stringValue(obj.title) || fallback.title,
     topic,
     message: stringValue(obj.message) || fallback.message,
-    highlights: normalizeHighlights(obj.highlights).length ? normalizeHighlights(obj.highlights) : fallback.highlights,
-    sections: normalizeSections(obj.sections).length ? normalizeSections(obj.sections) : fallback.sections,
+    highlights: rawHighlights.length ? rawHighlights : fallback.highlights,
+    sections: rawSections.length ? rawSections : fallback.sections,
     links: mergedLinks.slice(0, 4),
-    follow_ups: normalizeFollowUps(obj.follow_ups).length ? normalizeFollowUps(obj.follow_ups) : fallback.follow_ups,
-    quick_actions: actions
+    follow_ups: rawFollowUps.length ? rawFollowUps : fallback.follow_ups,
+    quick_actions: filteredRawActions
   };
 }
 
@@ -847,6 +859,7 @@ module.exports = async function handler(req, res) {
       '2) Knowledge mode: answer history and IHBB concept questions in detail, with structured sections and at least one Wikipedia link when a topic is clear.',
       'Respect the requested assistant_mode when it is "coach" or "knowledge". If it is "auto", choose the best mode.',
       'When the request is auto or mixed, use the user payload and intent_hint to detect the dominant goal.',
+      'You, not the app, choose quick_actions for DeepSeek replies. The app only validates action ids and focus keys.',
       'Knowledge intent means explanation, background, timeline, comparison, causes, significance, or helping the user understand a topic.',
       'Coach intent means next-step advice, future steps, what to practice, how to study, or which app tool to use next.',
       'If both intents appear, keep the answer weighted toward the dominant one.',
@@ -875,6 +888,11 @@ module.exports = async function handler(req, res) {
       'Do not append unrelated notebook topics, notebook links, or notebook actions at the end of an answer.',
       'For knowledge questions, do not suggest AI Notebook, Apply Top Focus, or Generate Focus Drill unless the user explicitly asked about notebook study workflow.',
       'If you include quick actions for a knowledge answer, prefer Open Library only.',
+      'In coach mode, inspect the whole study_context and choose an agentic sequence of quick_actions that moves the learner through the app: clear due SRS, review misses, inspect notebook lessons, apply or generate a focus drill, adjust setup, start a session, or open review.',
+      'When the user asks about questions, use the active set, recent misses, notebook focus, and analytics to decide whether to open review, start practice, generate a focus drill, or open the library.',
+      'Do not default to Open Library, and do not label an action as Search plus the user\'s exact prompt. Use Open Library only when browsing the question bank is genuinely the best next move, and make query a concise historical topic or question-bank term.',
+      'For coaching requests, include 1 to 3 quick_actions when a sensible app move exists; order them as a practical next-step sequence. If no app action is useful, return an empty quick_actions array.',
+      'Action labels should be short commands, and action reasons should explain why that app move fits the current context.',
       `Recommend at most 3 quick actions and only use these action ids: ${Array.from(ALLOWED_ACTIONS).sort().join(', ')}.`,
       `If you use focus_key, it must exactly match one of these keys: ${validFocusKeys.length ? validFocusKeys.join(', ') : '(none available)'}.`,
       'Return strict JSON only with this shape:',
@@ -896,7 +914,11 @@ module.exports = async function handler(req, res) {
       message: stringValue(payload.message) || 'What should I practice next?',
       conversation,
       study_context: context,
-      fallback_plan: fallback
+      action_selection_context: {
+        valid_focus_keys: validFocusKeys,
+        allowed_action_ids: Array.from(ALLOWED_ACTIONS).sort(),
+        choose_actions_from_deepseek: true
+      }
     };
 
     const model = thinkingEnabled
