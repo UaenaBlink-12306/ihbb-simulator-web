@@ -983,8 +983,23 @@ document.addEventListener('DOMContentLoaded', async () => {
         dashboardChat.workspaceCards = cards;
     }
 
-    function renderDashboardChatMessages() {
+    function scrollDashboardChatToBottom() {
         const bodyEl = document.getElementById('coach-chat-body');
+        const messagesEl = document.getElementById('coach-chat-messages');
+        if (bodyEl) bodyEl.scrollTop = bodyEl.scrollHeight;
+        if (messagesEl) messagesEl.scrollTop = messagesEl.scrollHeight;
+    }
+
+    function queueDashboardChatScrollToBottom() {
+        scrollDashboardChatToBottom();
+        requestAnimationFrame(() => {
+            scrollDashboardChatToBottom();
+            requestAnimationFrame(scrollDashboardChatToBottom);
+        });
+        setTimeout(scrollDashboardChatToBottom, 80);
+    }
+
+    function renderDashboardChatMessages() {
         const el = document.getElementById('coach-chat-messages');
         if (!el) return;
         const messagesHtml = dashboardChat.messages.map((message, messageIndex) => `
@@ -1045,8 +1060,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 <div class="coach-chat-empty-title">Ask for knowledge or next steps.</div>
                 <p class="coach-chat-empty-text">Pick a prompt or type what you want to understand, what you should do next, or both.</p>
             </div>`;
-        if (bodyEl) bodyEl.scrollTop = bodyEl.scrollHeight;
-        el.scrollTop = el.scrollHeight;
+        scrollDashboardChatToBottom();
     }
 
     function setDashboardChatOpenState(open) {
@@ -1340,6 +1354,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         dashboardChat.busy = true;
         dashboardChat.source = 'ready';
         renderDashboardChatChrome();
+        queueDashboardChatScrollToBottom();
         let assistantMessage = null;
         try {
             const reply = await requestDashboardChatReply(message);

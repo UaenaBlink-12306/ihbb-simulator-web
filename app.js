@@ -1559,8 +1559,23 @@ function coachChatMessageHtml(message, index) {
   `;
 }
 
-function renderCoachChatMessages() {
+function scrollCoachChatToBottom() {
   const bodyEl = $('coach-chat-body');
+  const messagesEl = $('coach-chat-messages');
+  if (bodyEl) bodyEl.scrollTop = bodyEl.scrollHeight;
+  if (messagesEl) messagesEl.scrollTop = messagesEl.scrollHeight;
+}
+
+function queueCoachChatScrollToBottom() {
+  scrollCoachChatToBottom();
+  requestAnimationFrame(() => {
+    scrollCoachChatToBottom();
+    requestAnimationFrame(scrollCoachChatToBottom);
+  });
+  setTimeout(scrollCoachChatToBottom, 80);
+}
+
+function renderCoachChatMessages() {
   const messagesEl = $('coach-chat-messages');
   if (!messagesEl) return;
   const html = CoachChat.messages.map((message, index) => coachChatMessageHtml(message, index)).join('');
@@ -1582,8 +1597,7 @@ function renderCoachChatMessages() {
         <div class="coach-chat-empty-title">Ask for knowledge or next steps.</div>
         <p class="coach-chat-empty-text">Pick a prompt or type what you want to understand, what you should do next, or both.</p>
       </div>`;
-  if (bodyEl) bodyEl.scrollTop = bodyEl.scrollHeight;
-  messagesEl.scrollTop = messagesEl.scrollHeight;
+  scrollCoachChatToBottom();
 }
 
 function setCoachChatOpenState(open) {
@@ -2307,6 +2321,7 @@ async function sendCoachChatMessage(rawMessage, options = {}) {
   CoachChat.busy = true;
   CoachChat.source = 'ready';
   renderCoachChatChrome();
+  queueCoachChatScrollToBottom();
   let assistantMessage = null;
   try {
     const reply = await requestCoachChatReply(message);
