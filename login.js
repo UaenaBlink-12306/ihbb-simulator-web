@@ -48,7 +48,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (passwordHelp) passwordHelp.classList.remove('hidden');
             if (authTitle) authTitle.textContent = 'Create Your Account';
             if (authSubtitle) authSubtitle.textContent = 'Use email and password to create an account, then finish your role setup on the next screen.';
-            if (authModeNote) authModeNote.textContent = 'If email verification is required, you will confirm your inbox before signing in.';
+            if (authModeNote) authModeNote.textContent = 'New accounts use password-based access only in this build.';
             return;
         }
 
@@ -99,10 +99,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (currentMode === 'signup') {
                 const { data, error } = await window.supabaseClient.auth.signUp({
                     email,
-                    password,
-                    options: {
-                        emailRedirectTo: window.location.origin
-                    }
+                    password
                 });
 
                 if (error) throw error;
@@ -114,7 +111,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     setMode('login');
                     document.getElementById('email').value = email;
                     passwordInput.value = '';
-                    showAlert('Account created. Check your email to confirm it, then sign in here.', 'success');
+                    showAlert('Account created. Please sign in here once your account is ready.', 'success');
                 }
             } else {
                 const { error } = await window.supabaseClient.auth.signInWithPassword({
