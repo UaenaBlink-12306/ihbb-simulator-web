@@ -20,16 +20,23 @@ document.addEventListener('DOMContentLoaded', () => {
     tabs.forEach(tab => {
         tab.addEventListener('click', (event) => {
             event.preventDefault();
-            tabs.forEach(t => t.classList.remove('active'));
-            tab.classList.add('active');
             setMode(tab.dataset.tab);
         });
     });
+
+    function syncTabs() {
+        tabs.forEach(tab => {
+            const isActive = tab.dataset.tab === currentMode;
+            tab.classList.toggle('active', isActive);
+            tab.setAttribute('aria-selected', String(isActive));
+        });
+    }
 
     function setMode(mode) {
         currentMode = mode === 'signup' ? 'signup' : 'login';
         clearAlert();
         document.body.dataset.authMode = currentMode;
+        syncTabs();
 
         if (currentMode === 'signup') {
             submitBtn.textContent = 'Create Account';
