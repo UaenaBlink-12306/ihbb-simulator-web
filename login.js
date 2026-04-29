@@ -8,6 +8,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const authTitle = document.getElementById('auth-title');
     const authSubtitle = document.getElementById('auth-subtitle');
     const authModeNote = document.getElementById('auth-mode-note');
+    const passwordHelp = document.getElementById('password-help');
 
     let currentMode = 'login'; // 'login' | 'signup'
 
@@ -34,15 +35,23 @@ document.addEventListener('DOMContentLoaded', () => {
             submitBtn.textContent = 'Create Account';
             passwordGroup.classList.remove('hidden');
             passwordInput.required = true;
+            passwordInput.setAttribute('autocomplete', 'new-password');
+            passwordInput.setAttribute('minlength', '6');
+            passwordInput.placeholder = 'Create a password';
+            if (passwordHelp) passwordHelp.classList.remove('hidden');
             if (authTitle) authTitle.textContent = 'Create Your Account';
             if (authSubtitle) authSubtitle.textContent = 'Use email and password to create an account, then finish your role setup on the next screen.';
-            if (authModeNote) authModeNote.textContent = 'Password-based signup is the only supported account flow in this build.';
+            if (authModeNote) authModeNote.textContent = 'If email verification is required, you will confirm your inbox before signing in.';
             return;
         }
 
         submitBtn.textContent = 'Sign In';
         passwordGroup.classList.remove('hidden');
         passwordInput.required = true;
+        passwordInput.setAttribute('autocomplete', 'current-password');
+        passwordInput.removeAttribute('minlength');
+        passwordInput.placeholder = 'Enter your password';
+        if (passwordHelp) passwordHelp.classList.add('hidden');
         if (authTitle) authTitle.textContent = 'Welcome Back';
         if (authSubtitle) authSubtitle.textContent = 'Sign in with your email and password to access drills, assignments, analytics, and live rooms.';
         if (authModeNote) authModeNote.textContent = 'Password-based access is the only supported sign-in flow in this build.';
@@ -72,9 +81,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (!email) return showAlert('Email is required');
         if (!password) return showAlert('Password is required');
+        if (currentMode === 'signup' && password.length < 6) {
+            return showAlert('Use at least 6 characters for your new password.');
+        }
 
         submitBtn.disabled = true;
-        const originalText = submitBtn.textContent;
         submitBtn.textContent = 'Processing...';
 
         try {
@@ -90,8 +101,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (error) throw error;
                 if (data.user && data.user.identities && data.user.identities.length === 0) {
                     showAlert('Email already taken. Please sign in.', 'error');
-                } else {
+                } else if (data.session) {
                     window.location.href = 'index.html';
+                } else {
+                    setMode('login');
+                    document.getElementById('email').value = email;
+                    passwordInput.value = '';
+                    showAlert('Account created. Check your email to confirm it, then sign in here.', 'success');
                 }
             } else {
                 const { error } = await window.supabaseClient.auth.signInWithPassword({
@@ -105,7 +121,7 @@ document.addEventListener('DOMContentLoaded', () => {
             showAlert(error.message || 'An error occurred. Please try again.');
         } finally {
             submitBtn.disabled = false;
-            submitBtn.textContent = originalText;
+            submitBtn.textContent = currentMode === 'signup' ? 'Create Account' : 'Sign In';
         }
     });
 

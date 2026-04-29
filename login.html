@@ -52,7 +52,8 @@
                     <div class="input-group" id="password-group">
                         <label for="password">Password</label>
                         <input type="password" id="password" required autocomplete="current-password"
-                            placeholder="Enter your password">
+                            placeholder="Enter your password" aria-describedby="password-help">
+                        <p id="password-help" class="auth-footnote muted hidden">Use at least 6 characters for new accounts.</p>
                     </div>
 
                     <button type="submit" id="submit-btn" class="btn pri auth-option">Sign In</button>
