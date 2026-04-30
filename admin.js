@@ -61,6 +61,9 @@ document.addEventListener('DOMContentLoaded', () => {
     needs_more_info: 'Needs More Info',
     resolved: 'Resolved'
   };
+  const FEEDBACK_PHOTO_LIMIT = 3;
+  const FEEDBACK_PHOTO_MAX_DATA_URL_CHARS = Math.ceil(1536 * 1024 * 1.38) + 128;
+  const FEEDBACK_PHOTO_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
 
   const normalizeFeedbackStatus = (value) => {
     const status = String(value || '').trim().toLowerCase();
@@ -244,7 +247,8 @@ document.addEventListener('DOMContentLoaded', () => {
       return {
         role,
         message,
-        created_at: String(item?.created_at || '').trim()
+        created_at: String(item?.created_at || '').trim(),
+        attachments: parseFeedbackPhotoAttachments(item?.attachments || item?.photo_attachments)
       };
     }).filter(Boolean);
   }
@@ -257,7 +261,8 @@ document.addEventListener('DOMContentLoaded', () => {
         role: 'user',
         label: userLabel,
         message: original,
-        created_at: row?.created_at
+        created_at: row?.created_at,
+        attachments: parseFeedbackPhotoAttachments(row?.photo_attachments)
       });
     }
     const thread = parseThreadMessages(row?.thread_messages);
@@ -268,7 +273,8 @@ document.addEventListener('DOMContentLoaded', () => {
         role: 'admin',
         label: 'Admin',
         message: response,
-        created_at: row?.updated_at
+        created_at: row?.updated_at,
+        attachments: []
       });
     }
     thread.forEach((item) => {
@@ -292,7 +298,53 @@ document.addEventListener('DOMContentLoaded', () => {
               <span>${esc(formatDate(item.created_at))}</span>
             </div>
             <p>${esc(item.message)}</p>
+            ${feedbackPhotoGalleryHtml(item.attachments)}
           </div>
+        `).join('')}
+      </div>
+    `;
+  }
+
+  function parseFeedbackPhotoAttachments(value) {
+    let raw = value;
+    if (typeof raw === 'string') {
+      try {
+        raw = JSON.parse(raw);
+      } catch {
+        raw = [];
+      }
+    }
+    if (!Array.isArray(raw)) return [];
+    return raw
+      .map(normalizeFeedbackPhotoAttachment)
+      .filter(Boolean)
+      .slice(0, FEEDBACK_PHOTO_LIMIT);
+  }
+
+  function normalizeFeedbackPhotoAttachment(item) {
+    if (!item || typeof item !== 'object') return null;
+    const type = String(item.type || '').trim().toLowerCase();
+    const dataUrl = String(item.data_url || item.dataUrl || '').trim();
+    if (!FEEDBACK_PHOTO_TYPES.has(type)) return null;
+    if (!dataUrl.startsWith(`data:${type};base64,`)) return null;
+    if (dataUrl.length > FEEDBACK_PHOTO_MAX_DATA_URL_CHARS) return null;
+    return {
+      name: String(item.name || 'Photo').trim().slice(0, 100) || 'Photo',
+      type,
+      data_url: dataUrl
+    };
+  }
+
+  function feedbackPhotoGalleryHtml(attachments) {
+    const photos = parseFeedbackPhotoAttachments(attachments);
+    if (!photos.length) return '';
+    return `
+      <div class="feedback-photo-gallery admin-feedback-photo-gallery" aria-label="Attached photos">
+        ${photos.map((photo) => `
+          <a class="feedback-photo-thumb" href="${esc(photo.data_url)}" target="_blank" rel="noopener" title="${esc(photo.name)}">
+            <img src="${esc(photo.data_url)}" alt="${esc(photo.name)}">
+            <span>${esc(photo.name)}</span>
+          </a>
         `).join('')}
       </div>
     `;
@@ -304,6 +356,7 @@ document.addEventListener('DOMContentLoaded', () => {
       row?.category,
       row?.message,
       row?.admin_response,
+      ...parseFeedbackPhotoAttachments(row?.photo_attachments).map((photo) => photo.name),
       ...parseThreadMessages(row?.thread_messages).map((item) => item.message),
       row?.created_at,
       row?.updated_at,
@@ -356,6 +409,7 @@ document.addEventListener('DOMContentLoaded', () => {
           </div>
         </div>
         <p class="admin-generated-question">${esc(row?.message || '')}</p>
+        ${feedbackPhotoGalleryHtml(row?.photo_attachments)}
         <div class="admin-generated-meta">
           <span>${esc(senderLabel)}</span>
           <span>Submitted: ${esc(formatDate(row?.created_at))}</span>

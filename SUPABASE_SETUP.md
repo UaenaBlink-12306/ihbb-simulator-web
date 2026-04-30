@@ -308,6 +308,8 @@ CREATE TABLE IF NOT EXISTS public.app_feedback (
   category TEXT NOT NULL,
   message TEXT NOT NULL,
   is_anonymous BOOLEAN NOT NULL DEFAULT false,
+  photo_attachments JSONB NOT NULL DEFAULT '[]'::jsonb,
+  thread_messages JSONB NOT NULL DEFAULT '[]'::jsonb,
   status TEXT NOT NULL DEFAULT 'pending',
   admin_response TEXT,
   created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT TIMEZONE('utc', NOW()),
@@ -317,7 +319,11 @@ CREATE TABLE IF NOT EXISTS public.app_feedback (
   CONSTRAINT app_feedback_message_check
     CHECK (char_length(btrim(message)) BETWEEN 1 AND 4000),
   CONSTRAINT app_feedback_status_check
-    CHECK (status IN ('pending', 'in_review', 'resolved')),
+    CHECK (status IN ('pending', 'in_review', 'needs_more_info', 'resolved')),
+  CONSTRAINT app_feedback_photo_attachments_check
+    CHECK (jsonb_typeof(photo_attachments) = 'array' AND jsonb_array_length(photo_attachments) <= 3),
+  CONSTRAINT app_feedback_thread_messages_check
+    CHECK (jsonb_typeof(thread_messages) = 'array'),
   CONSTRAINT app_feedback_admin_response_check
     CHECK (admin_response IS NULL OR char_length(btrim(admin_response)) <= 4000)
 );
@@ -391,9 +397,15 @@ GRANT SELECT, INSERT, DELETE ON public.app_feedback TO authenticated;
 -- If app_feedback already exists from the first feedback migration, run this once:
 ALTER TABLE public.app_feedback
   ADD COLUMN IF NOT EXISTS is_anonymous BOOLEAN NOT NULL DEFAULT false;
+
+ALTER TABLE public.app_feedback
+  ADD COLUMN IF NOT EXISTS thread_messages JSONB NOT NULL DEFAULT '[]'::jsonb;
+
+ALTER TABLE public.app_feedback
+  ADD COLUMN IF NOT EXISTS photo_attachments JSONB NOT NULL DEFAULT '[]'::jsonb;
 ```
 
-Use Supabase Table Editor, SQL, or the service-role-backed admin console to update `status` and `admin_response`. Row Level Security keeps regular users limited to their own submissions. The `is_anonymous` flag hides sender identity in the app-facing admin inbox while preserving `user_id` for RLS ownership and account cleanup.
+Use Supabase Table Editor, SQL, or the service-role-backed admin console to update `status` and `admin_response`. Row Level Security keeps regular users limited to their own submissions. The `is_anonymous` flag hides sender identity in the app-facing admin inbox while preserving `user_id` for RLS ownership and account cleanup. `photo_attachments` stores up to three compressed image data URLs per complaint so admins can inspect screenshots or photos alongside the report.
 
 ## 2.9 Emergency Study-Data Reset
 

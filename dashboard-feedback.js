@@ -8,6 +8,12 @@
     resolved: 'Resolved'
   };
   const RESOLVED_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
+  const FEEDBACK_PHOTO_LIMIT = 3;
+  const FEEDBACK_PHOTO_MAX_SOURCE_BYTES = 8 * 1024 * 1024;
+  const FEEDBACK_PHOTO_MAX_STORED_BYTES = 1536 * 1024;
+  const FEEDBACK_PHOTO_MAX_DATA_URL_CHARS = Math.ceil(FEEDBACK_PHOTO_MAX_STORED_BYTES * 1.38) + 128;
+  const FEEDBACK_PHOTO_MAX_EDGE = 1600;
+  const FEEDBACK_PHOTO_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
 
   document.addEventListener('DOMContentLoaded', () => {
     const shell = document.querySelector('.dashboard-shell, .page-shell');
@@ -46,6 +52,12 @@
                 <label for="feedback-message">Message</label>
                 <textarea id="feedback-message" rows="4" maxlength="4000" placeholder="What is broken, confusing, or worth changing?" required></textarea>
               </div>
+              <div class="input-group feedback-photo-field">
+                <label for="feedback-photos">Photos (optional)</label>
+                <input id="feedback-photos" type="file" accept="image/jpeg,image/png,image/webp,image/gif" multiple>
+                <div class="feedback-photo-hint">Attach up to ${FEEDBACK_PHOTO_LIMIT} JPG, PNG, WebP, or GIF photos.</div>
+                <div id="feedback-photo-preview" class="feedback-photo-preview" aria-live="polite"></div>
+              </div>
               <label class="feedback-anonymous-option" for="feedback-anonymous">
                 <input id="feedback-anonymous" type="checkbox">
                 <span>
@@ -81,15 +93,19 @@
     const form = document.getElementById('feedback-form');
     const category = document.getElementById('feedback-category');
     const message = document.getElementById('feedback-message');
+    const photos = document.getElementById('feedback-photos');
+    const photoPreview = document.getElementById('feedback-photo-preview');
     const anonymous = document.getElementById('feedback-anonymous');
     const submit = document.getElementById('feedback-submit');
     const refresh = document.getElementById('feedback-refresh');
     const statusMessage = document.getElementById('feedback-status-message');
     const summary = document.getElementById('feedback-summary');
     const historyList = document.getElementById('feedback-history-list');
-    const state = { open: false, loaded: false, loading: false };
+    const state = { open: false, loaded: false, loading: false, submitting: false, photosProcessing: false };
+    let selectedPhotos = [];
+    let photoSelectionVersion = 0;
 
-    if (!toggle || !panel || !form || !category || !message || !anonymous || !submit || !refresh || !historyList) return;
+    if (!toggle || !panel || !form || !category || !message || !photos || !anonymous || !submit || !refresh || !historyList) return;
 
     toggle.addEventListener('click', () => {
       state.open = !state.open;
@@ -108,6 +124,22 @@
 
     refresh.addEventListener('click', () => {
       void loadFeedbackHistory({ quiet: false });
+    });
+
+    photos.addEventListener('change', () => {
+      const version = ++photoSelectionVersion;
+      void updateSelectedFeedbackPhotos(Array.from(photos.files || []), version);
+    });
+
+    photoPreview?.addEventListener('click', (event) => {
+      const button = event.target.closest('.feedback-photo-remove');
+      if (!button) return;
+      const index = Number(button.dataset.index);
+      if (!Number.isInteger(index) || index < 0 || index >= selectedPhotos.length) return;
+      selectedPhotos.splice(index, 1);
+      photos.value = '';
+      renderFeedbackPhotoPreview();
+      setStatus(selectedPhotos.length ? `${selectedPhotos.length} ${selectedPhotos.length === 1 ? 'photo' : 'photos'} ready to attach.` : '', selectedPhotos.length ? 'success' : '');
     });
 
     historyList.addEventListener('click', (event) => {
@@ -151,27 +183,46 @@
         message.focus();
         return;
       }
+      if (state.photosProcessing) {
+        setStatus('Photos are still being prepared. Try submitting again in a moment.', 'loading');
+        return;
+      }
 
       const submitAnonymously = anonymous.checked;
       setStatus('Submitting feedback...', 'loading');
       setSubmitting(true);
       try {
         await getActiveSession();
+        const payload = {
+          category: selectedCategory,
+          message: feedbackMessage,
+          is_anonymous: submitAnonymously
+        };
+        if (selectedPhotos.length) {
+          payload.photo_attachments = selectedPhotos.map((photo) => ({
+            name: photo.name,
+            type: photo.type,
+            size: photo.size,
+            width: photo.width,
+            height: photo.height,
+            data_url: photo.data_url
+          }));
+        }
         const { error } = await sb
           .from(FEEDBACK_TABLE)
-          .insert({
-            category: selectedCategory,
-            message: feedbackMessage,
-            is_anonymous: submitAnonymously
-          });
+          .insert(payload);
         if (error) throw error;
         form.reset();
         category.value = CATEGORIES[0];
+        selectedPhotos = [];
+        renderFeedbackPhotoPreview();
         setStatus(submitAnonymously ? 'Anonymous feedback submitted. Your history has been refreshed.' : 'Feedback submitted. Your history has been refreshed.', 'success');
         alert(submitAnonymously ? 'Anonymous feedback submitted. I will review it soon.' : 'Feedback submitted. I will review it soon.');
         await loadFeedbackHistory({ quiet: true });
       } catch (error) {
-        const text = error && error.message ? error.message : 'Feedback could not be submitted.';
+        const text = isMissingPhotoColumnError(error)
+          ? 'Photo uploads need the app feedback photo migration before they can be saved.'
+          : (error && error.message ? error.message : 'Feedback could not be submitted.');
         setStatus(text, 'error');
         alert(text);
       } finally {
@@ -356,12 +407,76 @@
       }).join('');
     }
 
+    async function updateSelectedFeedbackPhotos(files, version) {
+      if (!files.length) {
+        selectedPhotos = [];
+        renderFeedbackPhotoPreview();
+        setStatus('', '');
+        setPhotosProcessing(false);
+        return;
+      }
+
+      setPhotosProcessing(true);
+      setStatus('Preparing photos...', 'loading');
+      try {
+        const limitedFiles = files.slice(0, FEEDBACK_PHOTO_LIMIT);
+        const tooMany = files.length > FEEDBACK_PHOTO_LIMIT;
+        const prepared = [];
+        for (const file of limitedFiles) {
+          prepared.push(await prepareFeedbackPhoto(file));
+        }
+        if (version !== photoSelectionVersion) return;
+        selectedPhotos = prepared;
+        renderFeedbackPhotoPreview();
+        const readyText = `${prepared.length} ${prepared.length === 1 ? 'photo' : 'photos'} ready to attach.`;
+        setStatus(tooMany ? `${readyText} Only the first ${FEEDBACK_PHOTO_LIMIT} were kept.` : readyText, 'success');
+      } catch (error) {
+        if (version !== photoSelectionVersion) return;
+        selectedPhotos = [];
+        photos.value = '';
+        renderFeedbackPhotoPreview();
+        setStatus(error?.message || 'Photos could not be prepared.', 'error');
+      } finally {
+        if (version === photoSelectionVersion) setPhotosProcessing(false);
+      }
+    }
+
+    function renderFeedbackPhotoPreview() {
+      if (!photoPreview) return;
+      if (!selectedPhotos.length) {
+        photoPreview.innerHTML = '';
+        return;
+      }
+      photoPreview.innerHTML = selectedPhotos.map((photo, index) => `
+        <div class="feedback-photo-chip">
+          <img src="${escapeHtml(photo.data_url)}" alt="${escapeHtml(photo.name || 'Attached photo')} preview">
+          <span>
+            <strong>${escapeHtml(photo.name || 'Photo')}</strong>
+            <small>${escapeHtml(formatFileSize(photo.size))}${photo.width && photo.height ? ` • ${escapeHtml(String(photo.width))}x${escapeHtml(String(photo.height))}` : ''}</small>
+          </span>
+          <button class="feedback-photo-remove" type="button" data-index="${escapeHtml(String(index))}" aria-label="Remove ${escapeHtml(photo.name || 'photo')}">&times;</button>
+        </div>
+      `).join('');
+    }
+
     function setSubmitting(isSubmitting) {
-      submit.disabled = isSubmitting;
-      submit.textContent = isSubmitting ? 'Submitting...' : 'Submit';
-      category.disabled = isSubmitting;
-      message.disabled = isSubmitting;
-      anonymous.disabled = isSubmitting;
+      state.submitting = isSubmitting;
+      syncFeedbackControls();
+    }
+
+    function setPhotosProcessing(isProcessing) {
+      state.photosProcessing = isProcessing;
+      syncFeedbackControls();
+    }
+
+    function syncFeedbackControls() {
+      const busy = state.submitting || state.photosProcessing;
+      submit.disabled = busy;
+      submit.textContent = state.submitting ? 'Submitting...' : (state.photosProcessing ? 'Preparing photos...' : 'Submit');
+      category.disabled = state.submitting;
+      message.disabled = state.submitting;
+      photos.disabled = busy;
+      anonymous.disabled = state.submitting;
     }
 
     function setStatus(text, type) {
@@ -377,6 +492,7 @@
       refresh.disabled = true;
       category.disabled = true;
       message.disabled = true;
+      photos.disabled = true;
       anonymous.disabled = true;
     }
   }
@@ -398,7 +514,8 @@
       return {
         role,
         message,
-        created_at: String(item?.created_at || '').trim()
+        created_at: String(item?.created_at || '').trim(),
+        attachments: parseFeedbackPhotoAttachments(item?.attachments || item?.photo_attachments)
       };
     }).filter(Boolean);
   }
@@ -411,7 +528,8 @@
         role: 'user',
         label: userLabel,
         message: original,
-        created_at: row?.created_at
+        created_at: row?.created_at,
+        attachments: parseFeedbackPhotoAttachments(row?.photo_attachments)
       });
     }
     const thread = parseThreadMessages(row?.thread_messages);
@@ -422,7 +540,8 @@
         role: 'admin',
         label: 'Admin',
         message: response,
-        created_at: row?.updated_at
+        created_at: row?.updated_at,
+        attachments: []
       });
     }
     thread.forEach((item) => {
@@ -446,6 +565,7 @@
               <span>${escapeHtml(formatDate(item.created_at))}</span>
             </div>
             <p>${escapeHtml(item.message)}</p>
+            ${feedbackPhotoGalleryHtml(item.attachments)}
           </div>
         `).join('')}
       </div>
@@ -467,6 +587,175 @@
   function isMissingRpcError(error) {
     const text = `${error?.code || ''} ${error?.message || ''} ${error?.details || ''}`.toLowerCase();
     return text.includes('purge_resolved_app_feedback') || text.includes('could not find the function') || text.includes('pgrst202');
+  }
+
+  function isMissingPhotoColumnError(error) {
+    const text = `${error?.code || ''} ${error?.message || ''} ${error?.details || ''}`.toLowerCase();
+    return text.includes('photo_attachments') && (text.includes('column') || text.includes('schema cache'));
+  }
+
+  async function prepareFeedbackPhoto(file) {
+    if (!file || typeof file !== 'object') throw new Error('Choose a valid photo file.');
+    const type = String(file.type || '').toLowerCase();
+    if (!FEEDBACK_PHOTO_TYPES.has(type)) {
+      throw new Error(`"${file.name || 'Photo'}" must be a JPG, PNG, WebP, or GIF image.`);
+    }
+    if (file.size > FEEDBACK_PHOTO_MAX_SOURCE_BYTES) {
+      throw new Error(`"${file.name || 'Photo'}" is too large. Choose a photo under ${formatFileSize(FEEDBACK_PHOTO_MAX_SOURCE_BYTES)}.`);
+    }
+
+    const originalDataUrl = await blobToDataUrl(file);
+    const image = await loadFeedbackPhoto(originalDataUrl);
+    if (type === 'image/gif') {
+      if (file.size > FEEDBACK_PHOTO_MAX_STORED_BYTES) {
+        throw new Error(`"${file.name || 'Photo'}" is too large for GIF upload. Try a JPG or PNG instead.`);
+      }
+      const photo = normalizeFeedbackPhotoAttachment({
+        name: file.name || 'photo.gif',
+        type,
+        size: file.size,
+        width: image.width,
+        height: image.height,
+        data_url: originalDataUrl
+      });
+      if (!photo) throw new Error(`"${file.name || 'Photo'}" could not be prepared.`);
+      return photo;
+    }
+
+    let maxEdge = FEEDBACK_PHOTO_MAX_EDGE;
+    let quality = 0.82;
+    let bestBlob = null;
+    let bestDimensions = { width: image.width, height: image.height };
+    for (let attempt = 0; attempt < 9; attempt += 1) {
+      const dimensions = scaledPhotoDimensions(image.width, image.height, maxEdge);
+      const canvas = document.createElement('canvas');
+      canvas.width = dimensions.width;
+      canvas.height = dimensions.height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) throw new Error('This browser could not prepare the selected photo.');
+      ctx.drawImage(image, 0, 0, dimensions.width, dimensions.height);
+      const blob = await canvasToBlob(canvas, 'image/jpeg', quality);
+      if (!bestBlob || blob.size < bestBlob.size) {
+        bestBlob = blob;
+        bestDimensions = dimensions;
+      }
+      if (blob.size <= FEEDBACK_PHOTO_MAX_STORED_BYTES) break;
+      if (quality > 0.62) {
+        quality = Math.max(0.62, quality - 0.1);
+      } else {
+        maxEdge = Math.max(900, Math.floor(maxEdge * 0.8));
+        quality = 0.78;
+      }
+    }
+
+    if (!bestBlob || bestBlob.size > FEEDBACK_PHOTO_MAX_STORED_BYTES) {
+      throw new Error(`"${file.name || 'Photo'}" is still too large after compression. Try a smaller photo.`);
+    }
+    const photo = normalizeFeedbackPhotoAttachment({
+      name: feedbackPhotoOutputName(file.name || 'photo.jpg'),
+      type: 'image/jpeg',
+      size: bestBlob.size,
+      width: bestDimensions.width,
+      height: bestDimensions.height,
+      data_url: await blobToDataUrl(bestBlob)
+    });
+    if (!photo) throw new Error(`"${file.name || 'Photo'}" could not be prepared.`);
+    return photo;
+  }
+
+  function feedbackPhotoOutputName(name) {
+    const base = String(name || 'photo').replace(/\.[^.]+$/, '').replace(/[^\w .()-]/g, '_').trim().slice(0, 80) || 'photo';
+    return `${base}.jpg`;
+  }
+
+  function scaledPhotoDimensions(width, height, maxEdge) {
+    const safeWidth = Math.max(1, Number(width) || 1);
+    const safeHeight = Math.max(1, Number(height) || 1);
+    const edge = Math.max(1, Number(maxEdge) || FEEDBACK_PHOTO_MAX_EDGE);
+    const scale = Math.min(1, edge / Math.max(safeWidth, safeHeight));
+    return {
+      width: Math.max(1, Math.round(safeWidth * scale)),
+      height: Math.max(1, Math.round(safeHeight * scale))
+    };
+  }
+
+  function blobToDataUrl(blob) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || ''));
+      reader.onerror = () => reject(new Error('The selected photo could not be read.'));
+      reader.readAsDataURL(blob);
+    });
+  }
+
+  function loadFeedbackPhoto(dataUrl) {
+    return new Promise((resolve, reject) => {
+      const image = new Image();
+      image.onload = () => resolve(image);
+      image.onerror = () => reject(new Error('The selected photo could not be opened.'));
+      image.src = dataUrl;
+    });
+  }
+
+  function canvasToBlob(canvas, type, quality) {
+    return new Promise((resolve, reject) => {
+      canvas.toBlob((blob) => {
+        if (blob) resolve(blob);
+        else reject(new Error('The selected photo could not be compressed.'));
+      }, type, quality);
+    });
+  }
+
+  function parseFeedbackPhotoAttachments(value) {
+    let raw = value;
+    if (typeof raw === 'string') {
+      try {
+        raw = JSON.parse(raw);
+      } catch {
+        raw = [];
+      }
+    }
+    if (!Array.isArray(raw)) return [];
+    return raw
+      .map(normalizeFeedbackPhotoAttachment)
+      .filter(Boolean)
+      .slice(0, FEEDBACK_PHOTO_LIMIT);
+  }
+
+  function normalizeFeedbackPhotoAttachment(item) {
+    if (!item || typeof item !== 'object') return null;
+    const type = String(item.type || '').trim().toLowerCase();
+    const dataUrl = String(item.data_url || item.dataUrl || '').trim();
+    if (!FEEDBACK_PHOTO_TYPES.has(type)) return null;
+    if (!dataUrl.startsWith(`data:${type};base64,`)) return null;
+    if (dataUrl.length > FEEDBACK_PHOTO_MAX_DATA_URL_CHARS) return null;
+    const name = String(item.name || 'Photo').trim().slice(0, 100) || 'Photo';
+    const size = Math.max(0, Number(item.size) || 0);
+    const width = Math.max(0, Number(item.width) || 0);
+    const height = Math.max(0, Number(item.height) || 0);
+    return { name, type, size, width, height, data_url: dataUrl };
+  }
+
+  function feedbackPhotoGalleryHtml(attachments) {
+    const photos = parseFeedbackPhotoAttachments(attachments);
+    if (!photos.length) return '';
+    return `
+      <div class="feedback-photo-gallery" aria-label="Attached photos">
+        ${photos.map((photo) => `
+          <a class="feedback-photo-thumb" href="${escapeHtml(photo.data_url)}" target="_blank" rel="noopener" title="${escapeHtml(photo.name)}">
+            <img src="${escapeHtml(photo.data_url)}" alt="${escapeHtml(photo.name)}">
+            <span>${escapeHtml(photo.name)}</span>
+          </a>
+        `).join('')}
+      </div>
+    `;
+  }
+
+  function formatFileSize(bytes) {
+    const value = Math.max(0, Number(bytes) || 0);
+    if (value >= 1024 * 1024) return `${(value / (1024 * 1024)).toFixed(value >= 10 * 1024 * 1024 ? 0 : 1)} MB`;
+    if (value >= 1024) return `${Math.round(value / 1024)} KB`;
+    return `${Math.round(value)} B`;
   }
 
   function formatDate(value) {
