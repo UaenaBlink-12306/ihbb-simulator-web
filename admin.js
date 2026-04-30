@@ -457,6 +457,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const rows = allRows.filter((row) => {
       const status = normalizeFeedbackStatus(row?.status);
       if (status === 'resolved') return false;
+      if (filter === 'reply_needed' && hasAdminResponse(row)) return false;
+      if (filter === 'reply_needed') {
+        const user = usersById.get(String(row?.user_id || '')) || {};
+        return feedbackMatchesSearch(row, user, needle);
+      }
       if (filter !== 'open' && status !== filter) return false;
       const user = usersById.get(String(row?.user_id || '')) || {};
       return feedbackMatchesSearch(row, user, needle);
@@ -704,7 +709,7 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   $('admin-feedback-filter')?.addEventListener('change', (event) => {
-    state.feedbackFilter = String(event.target?.value || 'all');
+    state.feedbackFilter = String(event.target?.value || 'open');
     renderFeedbackInbox();
   });
 
