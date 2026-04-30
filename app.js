@@ -194,8 +194,10 @@ const ACCOUNT_SETTING_DEFAULTS = Object.freeze({
   practice_hub_auto_open: true,
   assistant_thinking_enabled: false,
   assistant_show_starters: true,
-  assistant_stream_responses: true
+  assistant_stream_responses: true,
+  assistant_response_detail: 'detailed'
 });
+const ASSISTANT_RESPONSE_DETAILS = new Set(['compact', 'detailed']);
 
 const App = {
   pool: [], order: [], i: 0, correct: 0, startTs: 0,
@@ -481,6 +483,13 @@ function readLegacyCoachChatUiPrefs() {
     return {};
   }
 }
+function normalizeAssistantResponseDetail(value) {
+  const normalized = String(value || '').trim().toLowerCase();
+  return ASSISTANT_RESPONSE_DETAILS.has(normalized) ? normalized : ACCOUNT_SETTING_DEFAULTS.assistant_response_detail;
+}
+function assistantResponseDetailLabel(value) {
+  return normalizeAssistantResponseDetail(value) === 'compact' ? 'Compact' : 'Detailed';
+}
 function normalizeAccountSettings(value, { includeLegacy = true, userId = StorageScopeUserId } = {}) {
   const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
   const legacyPracticeHubDisabled = includeLegacy ? readLegacyPracticeHubAutoOpenDisabled(userId) : null;
@@ -499,7 +508,8 @@ function normalizeAccountSettings(value, { includeLegacy = true, userId = Storag
       : ACCOUNT_SETTING_DEFAULTS.assistant_show_starters,
     assistant_stream_responses: typeof source.assistant_stream_responses === 'boolean'
       ? source.assistant_stream_responses
-      : ACCOUNT_SETTING_DEFAULTS.assistant_stream_responses
+      : ACCOUNT_SETTING_DEFAULTS.assistant_stream_responses,
+    assistant_response_detail: normalizeAssistantResponseDetail(source.assistant_response_detail || source.assistant_response_style)
   };
 }
 function getCurrentAccountSettings() {
@@ -1170,6 +1180,7 @@ function renderCoachChatStatus(snapshot) {
   if (pillsEl) {
     const pills = [];
     if (CoachChat.ui.thinkingEnabled) pills.push('Thinking model on');
+    pills.push(`${assistantResponseDetailLabel(getCurrentAccountSettings().assistant_response_detail)} responses`);
     if ((snapshot?.wrong_bank?.due_now || 0) > 0) pills.push(`Wrong-bank due ${snapshot.wrong_bank.due_now}`);
     if ((snapshot?.coach_notebook?.open_lessons || 0) > 0) pills.push(`Notebook open ${snapshot.coach_notebook.open_lessons}`);
     if ((snapshot?.session_history?.recent_accuracy || 0) > 0) pills.push(`Recent accuracy ${snapshot.session_history.recent_accuracy}%`);
@@ -2128,6 +2139,7 @@ async function requestCoachChatReply(message) {
     study_context: snapshot,
     assistant_mode: 'auto',
     thinking_enabled: !!CoachChat.ui.thinkingEnabled,
+    response_detail: normalizeAssistantResponseDetail(getCurrentAccountSettings().assistant_response_detail),
     user_role: await ensureCurrentProfileRole() || 'student'
   };
   const response = await fetch('/api/coach-chat', {

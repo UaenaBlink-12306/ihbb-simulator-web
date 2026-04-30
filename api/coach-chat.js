@@ -16,6 +16,7 @@ const NOTEBOOK_ACTIONS = new Set([
 ]);
 
 const ALLOWED_MODES = new Set(['auto', 'coach', 'knowledge']);
+const RESPONSE_DETAILS = new Set(['compact', 'detailed']);
 const COACH_INTENT_TERMS = [
   'wrong bank', 'srs', 'notebook', 'ai notebook', 'lesson', 'coach',
   'practice', 'train', 'drill', 'session', 'review', 'setup', 'focus',
@@ -266,6 +267,41 @@ function safeInt(value, fallback = 0) {
 function normalizeMode(value, fallback = 'auto') {
   const mode = stringValue(value).toLowerCase();
   return ALLOWED_MODES.has(mode) ? mode : fallback;
+}
+
+function normalizeResponseDetail(value) {
+  const detail = stringValue(value).toLowerCase();
+  return RESPONSE_DETAILS.has(detail) ? detail : 'detailed';
+}
+
+function compactText(value, maxWords = 46) {
+  const text = stringValue(value);
+  const words = text.split(/\s+/).filter(Boolean);
+  return words.length > maxWords ? `${words.slice(0, maxWords).join(' ')}...` : text;
+}
+
+function applyResponseDetail(reply, payload) {
+  const detail = normalizeResponseDetail(payload?.response_detail || payload?.assistant_response_detail || payload?.assistant_response_style);
+  if (detail !== 'compact' || !reply || typeof reply !== 'object' || Array.isArray(reply)) return reply;
+  return {
+    ...reply,
+    message: compactText(reply.message, 44),
+    highlights: Array.isArray(reply.highlights) ? reply.highlights.slice(0, 2) : [],
+    sections: Array.isArray(reply.sections)
+      ? reply.sections.slice(0, 2).map((section) => ({
+          ...section,
+          body: compactText(section?.body, 46)
+        }))
+      : [],
+    links: Array.isArray(reply.links) ? reply.links.slice(0, 2) : [],
+    follow_ups: Array.isArray(reply.follow_ups) ? reply.follow_ups.slice(0, 2) : [],
+    quick_actions: Array.isArray(reply.quick_actions)
+      ? reply.quick_actions.slice(0, 2).map((action) => ({
+          ...action,
+          reason: compactText(action?.reason, 18)
+        }))
+      : []
+  };
 }
 
 function looksLikeCoachIntent(message) {
@@ -748,9 +784,10 @@ function buildKnowledgeFallback(payload, context = normalizeContext(payload)) {
 function buildFallback(payload) {
   const context = normalizeContext(payload);
   const mode = resolveMode(payload, context);
-  return mode === 'knowledge'
+  const reply = mode === 'knowledge'
     ? buildKnowledgeFallback(payload, context)
     : buildCoachFallback(payload, context);
+  return applyResponseDetail(reply, payload);
 }
 
 function normalizeResponse(raw, payload) {
@@ -803,7 +840,7 @@ function normalizeResponse(raw, payload) {
     ? links
     : (topic ? [{ label: `Wikipedia: ${topic}`, url: wikiLinkForTopic(topic), kind: 'wikipedia' }].filter(item => item.url) : fallbackLinks);
 
-  return {
+  return applyResponseDetail({
     source: 'deepseek',
     mode,
     title: stringValue(obj.title) || fallback.title,
@@ -814,7 +851,7 @@ function normalizeResponse(raw, payload) {
     links: mergedLinks.slice(0, 4),
     follow_ups: rawFollowUps.length ? rawFollowUps : fallback.follow_ups,
     quick_actions: filteredRawActions
-  };
+  }, payload);
 }
 
 module.exports = async function handler(req, res) {
@@ -838,6 +875,7 @@ module.exports = async function handler(req, res) {
     const resolvedMode = resolveMode(payload, context);
     const intent = analyzeIntent(payload.message);
     const thinkingEnabled = !!payload.thinking_enabled;
+    const responseDetail = normalizeResponseDetail(payload.response_detail || payload.assistant_response_detail || payload.assistant_response_style);
     const conversation = Array.isArray(payload.conversation)
       ? payload.conversation.slice(-12).map((entry) => {
           if (!entry || typeof entry !== 'object') return null;
@@ -886,6 +924,10 @@ module.exports = async function handler(req, res) {
       'Coach mode should stay practical and tied to the user context.',
       'Knowledge mode should be more detailed and structured.',
       'Keep replies easy to scan: prefer a short message plus 2 or 3 sections instead of an over-complicated answer.',
+      `Response detail preference: ${responseDetail}.`,
+      responseDetail === 'compact'
+        ? 'Compact replies must keep the message to 1 or 2 short sentences, use at most 2 highlights, at most 2 short sections, at most 2 follow-up prompts, and at most 2 quick actions.'
+        : 'Detailed replies may use richer explanation with 2 or 3 sections, useful highlights, follow-up prompts, and quick actions when they help.',
       'You may use simple Markdown style inside message and section body strings, such as short bullet lists or **bold** labels.',
       'Do not append unrelated notebook topics, notebook links, or notebook actions at the end of an answer.',
       'For knowledge questions, do not suggest AI Notebook, Apply Top Focus, or Generate Focus Drill unless the user explicitly asked about notebook study workflow.',
@@ -912,6 +954,7 @@ module.exports = async function handler(req, res) {
         knowledge_score: intent.knowledgeScore
       },
       thinking_enabled: thinkingEnabled,
+      response_detail: responseDetail,
       context_brief: contextBrief,
       message: stringValue(payload.message) || 'What should I practice next?',
       conversation,
@@ -927,7 +970,9 @@ module.exports = async function handler(req, res) {
       ? (process.env.DEEPSEEK_REASONER_MODEL || 'deepseek-v4-flash')
       : (process.env.DEEPSEEK_MODEL || 'deepseek-v4-flash');
     const chatModel = process.env.DEEPSEEK_MODEL || 'deepseek-v4-flash';
-    const chatMaxTokens = resolvedMode === 'knowledge' ? 1400 : 900;
+    const chatMaxTokens = responseDetail === 'compact'
+      ? (resolvedMode === 'knowledge' ? 850 : 600)
+      : (resolvedMode === 'knowledge' ? 1400 : 900);
     const chatTemperature = resolvedMode === 'knowledge' ? 0.18 : 0.2;
     const reasonerMaxTokens = Math.max(
       chatMaxTokens,

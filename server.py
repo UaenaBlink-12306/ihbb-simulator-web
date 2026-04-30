@@ -968,6 +968,7 @@ COACH_CHAT_ALLOWED_ACTIONS = {
 }
 
 COACH_CHAT_ALLOWED_MODES = {"auto", "coach", "knowledge"}
+COACH_CHAT_RESPONSE_DETAILS = {"compact", "detailed"}
 COACH_CHAT_INTENT_TERMS = (
     "wrong bank", "srs", "notebook", "ai notebook", "lesson", "coach",
     "practice", "train", "drill", "session", "review", "setup", "focus",
@@ -1003,6 +1004,43 @@ def safe_int(value: Any, default: int = 0) -> int:
 def normalize_coach_chat_mode(value: Any, default: str = "auto") -> str:
     mode = string_value(value).lower()
     return mode if mode in COACH_CHAT_ALLOWED_MODES else default
+
+
+def normalize_coach_chat_response_detail(value: Any) -> str:
+    detail = string_value(value).lower()
+    return detail if detail in COACH_CHAT_RESPONSE_DETAILS else "detailed"
+
+
+def compact_coach_chat_text(value: Any, max_words: int = 46) -> str:
+    text = string_value(value)
+    words = text.split()
+    return text if len(words) <= max_words else " ".join(words[:max_words]) + "..."
+
+
+def apply_coach_chat_response_detail(reply: Dict[str, Any], payload: Dict[str, Any]) -> Dict[str, Any]:
+    detail = normalize_coach_chat_response_detail(
+        payload.get("response_detail")
+        or payload.get("assistant_response_detail")
+        or payload.get("assistant_response_style")
+    )
+    if detail != "compact" or not isinstance(reply, dict):
+        return reply
+    compact_reply = dict(reply)
+    compact_reply["message"] = compact_coach_chat_text(compact_reply.get("message"), 44)
+    compact_reply["highlights"] = list(compact_reply.get("highlights") or [])[:2]
+    compact_reply["links"] = list(compact_reply.get("links") or [])[:2]
+    compact_reply["follow_ups"] = list(compact_reply.get("follow_ups") or [])[:2]
+    compact_reply["sections"] = [
+        {**section, "body": compact_coach_chat_text(section.get("body"), 46)}
+        for section in list(compact_reply.get("sections") or [])[:2]
+        if isinstance(section, dict)
+    ]
+    compact_reply["quick_actions"] = [
+        {**action, "reason": compact_coach_chat_text(action.get("reason"), 18)}
+        for action in list(compact_reply.get("quick_actions") or [])[:2]
+        if isinstance(action, dict)
+    ]
+    return compact_reply
 
 
 def coach_chat_looks_like_coach_planning_intent(message: str) -> bool:
@@ -1303,7 +1341,7 @@ def fallback_coach_chat(payload: Dict[str, Any]) -> Dict[str, Any]:
             actions.append(coach_chat_action("open_library", f"Search {topic}", "Open the question library and search this topic.", query=topic))
         if focus_key and len(actions) < 3:
             actions.append(coach_chat_action("apply_top_focus", f"Apply {focus_title}", "Turn your top notebook focus into a targeted practice block.", focus_key))
-        return {
+        reply = {
             "source": "fallback",
             "mode": "knowledge",
             "title": f"Study brief: {topic}" if topic else "Study brief",
@@ -1346,6 +1384,7 @@ def fallback_coach_chat(payload: Dict[str, Any]) -> Dict[str, Any]:
             ],
             "quick_actions": dedupe_coach_chat_actions(actions),
         }
+        return apply_coach_chat_response_detail(reply, payload)
 
     if wrong_due > 0:
         highlights.append(f"{wrong_due} due in Wrong-bank")
@@ -1516,7 +1555,7 @@ def fallback_coach_chat(payload: Dict[str, Any]) -> Dict[str, Any]:
     if library_topic and len(actions) < 3:
         actions.append(coach_chat_action("open_library", f"Search {library_topic}", "Open the question library and search this topic.", query=library_topic))
 
-    return {
+    return apply_coach_chat_response_detail({
         "source": "fallback",
         "mode": "coach",
         "title": title,
@@ -1527,7 +1566,7 @@ def fallback_coach_chat(payload: Dict[str, Any]) -> Dict[str, Any]:
         "links": links,
         "follow_ups": follow_ups,
         "quick_actions": dedupe_coach_chat_actions(actions),
-    }
+    }, payload)
 
 
 def normalize_coach_chat_response(raw: Any, payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -1597,7 +1636,7 @@ def normalize_coach_chat_response(raw: Any, payload: Dict[str, Any]) -> Dict[str
             if mode == "knowledge"
             else "I mapped your DeepSeek study recommendation below."
         )
-    return {
+    return apply_coach_chat_response_detail({
         "source": "deepseek",
         "mode": mode,
         "title": title,
@@ -1608,7 +1647,7 @@ def normalize_coach_chat_response(raw: Any, payload: Dict[str, Any]) -> Dict[str
         "links": links[:4],
         "follow_ups": follow_ups,
         "quick_actions": quick_actions,
-    }
+    }, payload)
 
 
 def coach_chat_with_deepseek(payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -1623,6 +1662,11 @@ def coach_chat_with_deepseek(payload: Dict[str, Any]) -> Dict[str, Any]:
     context = normalize_coach_chat_context(payload)
     resolved_mode = resolve_coach_chat_mode(payload, context)
     thinking_enabled = bool(payload.get("thinking_enabled", False))
+    response_detail = normalize_coach_chat_response_detail(
+        payload.get("response_detail")
+        or payload.get("assistant_response_detail")
+        or payload.get("assistant_response_style")
+    )
     conversation = []
     raw_conversation = payload.get("conversation", [])
     if isinstance(raw_conversation, list):
@@ -1641,6 +1685,12 @@ def coach_chat_with_deepseek(payload: Dict[str, Any]) -> Dict[str, Any]:
     recent_focus = context.get("recent_incorrect", {})
     if recent_focus.get("key") and recent_focus["key"] not in top_focus_keys:
         top_focus_keys.append(recent_focus["key"])
+
+    detail_instruction = (
+        "Compact replies must keep the message to 1 or 2 short sentences, use at most 2 highlights, at most 2 short sections, at most 2 follow-up prompts, and at most 2 quick actions."
+        if response_detail == "compact"
+        else "Detailed replies may use richer explanation with 2 or 3 sections, useful highlights, follow-up prompts, and quick actions when they help."
+    )
 
     system = (
         "You are the DeepSeek personal study assistant inside an IHBB training app.\n"
@@ -1661,6 +1711,8 @@ def coach_chat_with_deepseek(payload: Dict[str, Any]) -> Dict[str, Any]:
         "If you are uncertain about a historical fact, say so instead of bluffing.\n"
         "Coach mode should stay practical and tied to the user context.\n"
         "Knowledge mode should be more detailed and structured.\n"
+        f"Response detail preference: {response_detail}.\n"
+        f"{detail_instruction}\n"
         "In coach mode, inspect the whole study_context and choose an agentic sequence of quick_actions that moves the learner through the app: clear due SRS, review misses, inspect notebook lessons, apply or generate a focus drill, adjust setup, start a session, or open review.\n"
         "When the user asks about questions, use the active set, recent misses, notebook focus, and analytics to decide whether to open review, start practice, generate a focus drill, or open the library.\n"
         "Do not default to Open Library, and do not label an action as Search plus the user's exact prompt. Use Open Library only when browsing the question bank is genuinely the best next move, and make query a concise historical topic or question-bank term.\n"
@@ -1678,6 +1730,7 @@ def coach_chat_with_deepseek(payload: Dict[str, Any]) -> Dict[str, Any]:
     user = {
         "assistant_mode": resolved_mode,
         "thinking_enabled": thinking_enabled,
+        "response_detail": response_detail,
         "message": string_value(payload.get("message")) or "What should I practice next?",
         "conversation": conversation,
         "study_context": context,
@@ -1691,7 +1744,11 @@ def coach_chat_with_deepseek(payload: Dict[str, Any]) -> Dict[str, Any]:
         {"role": "system", "content": system},
         {"role": "user", "content": json.dumps(user, ensure_ascii=False)},
     ]
-    chat_max_tokens = 1200 if resolved_mode == "knowledge" else 900
+    chat_max_tokens = (
+        850 if resolved_mode == "knowledge" else 600
+    ) if response_detail == "compact" else (
+        1200 if resolved_mode == "knowledge" else 900
+    )
     chat_temperature = 0.18 if resolved_mode == "knowledge" else 0.2
     default_timeout = max(15, env_int("DEEPSEEK_TIMEOUT_SECONDS", 30))
     reasoner_max_tokens = max(

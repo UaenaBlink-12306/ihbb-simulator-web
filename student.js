@@ -186,12 +186,19 @@ document.addEventListener('DOMContentLoaded', async () => {
         practice_hub_auto_open: true,
         assistant_thinking_enabled: false,
         assistant_show_starters: true,
-        assistant_stream_responses: true
+        assistant_stream_responses: true,
+        assistant_response_detail: 'detailed'
     });
+    const ASSISTANT_RESPONSE_DETAILS = new Set(['compact', 'detailed']);
     const normalizeStudentDashboardTab = (value) => {
         const normalized = String(value || '').trim().toLowerCase();
         return STUDENT_DASHBOARD_TABS.has(normalized) ? normalized : ACCOUNT_SETTING_DEFAULTS.student_dashboard_default_tab;
     };
+    const normalizeAssistantResponseDetail = (value) => {
+        const normalized = String(value || '').trim().toLowerCase();
+        return ASSISTANT_RESPONSE_DETAILS.has(normalized) ? normalized : ACCOUNT_SETTING_DEFAULTS.assistant_response_detail;
+    };
+    const assistantResponseDetailLabel = (value) => normalizeAssistantResponseDetail(value) === 'compact' ? 'Compact' : 'Detailed';
     const readDashboardChatUiPrefSource = () => {
         try {
             const raw = JSON.parse(localStorage.getItem(`ihbb_student_dashboard_chat_ui_${uid}`) || '{}');
@@ -210,7 +217,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             practice_hub_auto_open: typeof source.practice_hub_auto_open === 'boolean' ? source.practice_hub_auto_open : legacyPracticeHubAutoOpen,
             assistant_thinking_enabled: typeof source.assistant_thinking_enabled === 'boolean' ? source.assistant_thinking_enabled : !!legacyDashboardUi.thinkingEnabled,
             assistant_show_starters: typeof source.assistant_show_starters === 'boolean' ? source.assistant_show_starters : ACCOUNT_SETTING_DEFAULTS.assistant_show_starters,
-            assistant_stream_responses: typeof source.assistant_stream_responses === 'boolean' ? source.assistant_stream_responses : ACCOUNT_SETTING_DEFAULTS.assistant_stream_responses
+            assistant_stream_responses: typeof source.assistant_stream_responses === 'boolean' ? source.assistant_stream_responses : ACCOUNT_SETTING_DEFAULTS.assistant_stream_responses,
+            assistant_response_detail: normalizeAssistantResponseDetail(source.assistant_response_detail || source.assistant_response_style)
         };
     };
     let accountSettings = normalizeAccountSettings(profile.account_settings, { includeLegacy: true });
@@ -1212,6 +1220,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (pillsEl) {
             const pills = [];
             if (dashboardChat.ui.thinkingEnabled) pills.push('Thinking model on');
+            pills.push(`${assistantResponseDetailLabel(accountSettings.assistant_response_detail)} responses`);
             if ((snapshot?.wrong_bank?.due_now || 0) > 0) pills.push(`Wrong-bank due ${snapshot.wrong_bank.due_now}`);
             if ((snapshot?.coach_notebook?.open_lessons || 0) > 0) pills.push(`Notebook open ${snapshot.coach_notebook.open_lessons}`);
             if ((snapshot?.session_history?.recent_accuracy || 0) > 0) pills.push(`Recent accuracy ${snapshot.session_history.recent_accuracy}%`);
@@ -1397,6 +1406,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             study_context: buildDashboardChatContext(),
             assistant_mode: 'auto',
             thinking_enabled: !!dashboardChat.ui.thinkingEnabled,
+            response_detail: normalizeAssistantResponseDetail(accountSettings.assistant_response_detail),
             user_role: 'student'
         };
         const response = await fetch('/api/coach-chat', {
@@ -1760,6 +1770,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             practice_hub_auto_open: !!document.getElementById('acc-practice-hub-auto-open')?.checked,
             assistant_thinking_enabled: !!document.getElementById('acc-assistant-thinking')?.checked,
             assistant_show_starters: !!document.getElementById('acc-assistant-starters')?.checked,
+            assistant_response_detail: document.getElementById('acc-assistant-response-detail')?.value,
         }, { includeLegacy: false });
     }
 
@@ -1779,6 +1790,13 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     function syncAccountSettingsInputs() {
         setInput('acc-student-default-tab', normalizeStudentDashboardTab(accountSettings.student_dashboard_default_tab));
+        setInput('acc-assistant-response-detail', normalizeAssistantResponseDetail(accountSettings.assistant_response_detail));
+        const responseDetailHint = document.getElementById('acc-assistant-response-detail-hint');
+        if (responseDetailHint) {
+            responseDetailHint.textContent = normalizeAssistantResponseDetail(accountSettings.assistant_response_detail) === 'compact'
+                ? 'Compact responses keep DeepSeek answers shorter with fewer sections and quick actions.'
+                : 'Detailed responses include richer sections and follow-up prompts.';
+        }
         syncAccountToggle({
             wrapId: 'acc-setting-practice-hub-auto-open',
             inputId: 'acc-practice-hub-auto-open',
@@ -1838,7 +1856,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     renderAccountProfile();
 
-    ['acc-student-default-tab', 'acc-practice-hub-auto-open', 'acc-assistant-thinking', 'acc-assistant-starters'].forEach((id) => {
+    ['acc-student-default-tab', 'acc-practice-hub-auto-open', 'acc-assistant-thinking', 'acc-assistant-starters', 'acc-assistant-response-detail'].forEach((id) => {
         document.getElementById(id)?.addEventListener('change', () => {
             accountSettings = readAccountSettingsFromForm();
             syncAccountSettingsInputs();
