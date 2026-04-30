@@ -522,6 +522,13 @@
                     <div class="list-container">
                         <div class="list-item">
                             <div>
+                                <h3 style="margin:0 0 4px;">Expanded Teacher Walkthrough</h3>
+                                <div class="pill">April 30, 2026</div>
+                                <p class="muted" style="margin: 8px 0 0;">Expanded the teacher "Help / Tour" walkthrough to include detailed guidance on the AI Draft Builder, advanced analytics, workspace preferences, and the DeepSeek assistant.</p>
+                            </div>
+                        </div>
+                        <div class="list-item">
+                            <div>
                                 <h3 style="margin:0 0 4px;">Signup Messaging Cleanup</h3>
                                 <div class="pill">April 29, 2026</div>
                                 <p class="muted" style="margin: 8px 0 0;">Removed unfinished account-check guidance from signup and account settings so the auth flow stays focused on password-based access.</p>
@@ -793,29 +800,41 @@
     </div>
 
     <div id="walkthrough-modal" class="modal-overlay hidden">
-        <div class="modal-card card auth-modal-card" style="max-width: 500px;">
+        <div class="modal-card card auth-modal-card" style="max-width: 550px;">
             <div class="section-head" style="margin-bottom: 16px;">
                 <div>
                     <h2 style="margin: 0;">Welcome to the Teacher Workspace!</h2>
-                    <p class="section-subtitle">Here is a quick guide to help you manage your classroom.</p>
+                    <p class="section-subtitle">A comprehensive guide to managing your IHBB classroom tools.</p>
                 </div>
             </div>
-            <div class="stack" style="text-align: left;">
+            <div class="stack" style="text-align: left; max-height: 60vh; overflow-y: auto; padding-right: 8px;">
                 <div class="card-muted-box">
-                    <h4 style="margin: 0 0 4px;">Classes & Assignments</h4>
-                    <p class="muted" style="margin: 0;">Create classrooms, invite students using codes, and prepare custom assignments for them.</p>
+                    <h4 style="margin: 0 0 4px;">My Classes & Roster Management</h4>
+                    <p class="muted" style="margin: 0;">Create classrooms and generate unique join codes for your students. Monitor your roster and see who has joined your class at any time.</p>
                 </div>
                 <div class="card-muted-box">
-                    <h4 style="margin: 0 0 4px;">Assignment Builder</h4>
-                    <p class="muted" style="margin: 0;">Generate targeted quizzes automatically or hand-pick specific questions.</p>
+                    <h4 style="margin: 0 0 4px;">AI-Powered Draft Builder</h4>
+                    <p class="muted" style="margin: 0;">Use the <strong>Draft Builder</strong> to generate targeted quiz questions based on specific topics, regions, or eras. Perfect for creating unique study material in seconds.</p>
                 </div>
                 <div class="card-muted-box">
-                    <h4 style="margin: 0 0 4px;">Live Bee</h4>
-                    <p class="muted" style="margin: 0;">Host real-time, interactive quiz sessions to engage your entire class at once.</p>
+                    <h4 style="margin: 0 0 4px;">Custom Assignment Builder</h4>
+                    <p class="muted" style="margin: 0;">Beyond AI generation, you can hand-pick questions from our library or use filters to build the perfect quiz for your students' needs.</p>
                 </div>
                 <div class="card-muted-box">
-                    <h4 style="margin: 0 0 4px;">Class Analytics</h4>
-                    <p class="muted" style="margin: 0;">Monitor student performance to identify knowledge gaps.</p>
+                    <h4 style="margin: 0 0 4px;">Live Bee Sessions</h4>
+                    <p class="muted" style="margin: 0;">Host real-time, interactive quiz sessions to engage your entire class. Students join via your room code for a high-energy trivia experience.</p>
+                </div>
+                <div class="card-muted-box">
+                    <h4 style="margin: 0 0 4px;">Advanced Class Analytics</h4>
+                    <p class="muted" style="margin: 0;">Track average scores, completion rates, and practice frequency. Identify knowledge gaps across your entire class to focus your instruction.</p>
+                </div>
+                <div class="card-muted-box">
+                    <h4 style="margin: 0 0 4px;">Workspace Preferences</h4>
+                    <p class="muted" style="margin: 0;">In <strong>Account Settings</strong>, you can set default classes, builder modes, and question counts to streamline your daily workflow.</p>
+                </div>
+                <div class="card-muted-box">
+                    <h4 style="margin: 0 0 4px;">DeepSeek Assistant & Hub</h4>
+                    <p class="muted" style="margin: 0;">Access the <strong>Practice Hub</strong> to use the DeepSeek sidebar for AI-powered research, study aids, and session planning.</p>
                 </div>
             </div>
             <div class="form-actions" style="margin-top: 24px;">
