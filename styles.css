@@ -3009,6 +3009,41 @@ tr:hover td {
   scroll-behavior: smooth;
 }
 
+.coach-chat-jump-latest {
+  position: absolute;
+  bottom: 140px;
+  left: 50%;
+  transform: translateX(-50%) translateY(20px) scale(0.95);
+  opacity: 0;
+  pointer-events: none;
+  z-index: 100;
+  background: var(--glass-control-bg, #ffffff);
+  border: 1px solid var(--glass-control-border, rgba(0,0,0,0.1));
+  color: var(--ink, #122033);
+  border-radius: 50%;
+  width: 38px;
+  height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: var(--glass-control-shadow, 0 8px 16px -4px rgba(0, 0, 0, 0.2));
+  transition: opacity 0.22s ease, transform 0.22s ease, background 0.15s ease;
+  cursor: pointer;
+  backdrop-filter: blur(var(--glass-blur, 12px));
+  -webkit-backdrop-filter: blur(var(--glass-blur, 12px));
+}
+
+.coach-chat-jump-latest:hover {
+  background: var(--glass-control-bg-strong, rgba(255,255,255,0.8));
+  transform: translateX(-50%) translateY(0) scale(1.05);
+}
+
+.coach-chat-jump-latest.visible {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateX(-50%) translateY(0) scale(1);
+}
+
 .coach-chat-sidebar.open {
   pointer-events: auto;
   overflow: visible;

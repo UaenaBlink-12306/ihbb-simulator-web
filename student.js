@@ -1396,7 +1396,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                 .filter(entry => entry.content),
             study_context: buildDashboardChatContext(),
             assistant_mode: 'auto',
-            thinking_enabled: !!dashboardChat.ui.thinkingEnabled
+            thinking_enabled: !!dashboardChat.ui.thinkingEnabled,
+            user_role: 'student'
         };
         const response = await fetch('/api/coach-chat', {
             method: 'POST',

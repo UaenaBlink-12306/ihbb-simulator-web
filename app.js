@@ -2127,7 +2127,8 @@ async function requestCoachChatReply(message) {
       .filter(entry => entry.content),
     study_context: snapshot,
     assistant_mode: 'auto',
-    thinking_enabled: !!CoachChat.ui.thinkingEnabled
+    thinking_enabled: !!CoachChat.ui.thinkingEnabled,
+    user_role: await ensureCurrentProfileRole() || 'student'
   };
   const response = await fetch('/api/coach-chat', {
     method: 'POST',
@@ -5192,6 +5193,18 @@ $('coach-chat-launcher')?.addEventListener('click', () => {
 $('coach-chat-new')?.addEventListener('click', clearCoachChatConversation);
 $('coach-chat-fullscreen')?.addEventListener('click', toggleCoachChatFullscreen);
 $('coach-chat-thinking-toggle')?.addEventListener('click', toggleCoachChatThinking);
+$('coach-chat-body')?.addEventListener('scroll', (event) => {
+  const el = event.target;
+  const btn = $('coach-chat-jump-latest');
+  if (!el || !btn) return;
+  const isAtBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 60;
+  if (isAtBottom) {
+    btn.classList.remove('visible');
+  } else {
+    btn.classList.add('visible');
+  }
+});
+$('coach-chat-jump-latest')?.addEventListener('click', () => queueCoachChatScrollToBottom());
 $('coach-chat-size-presets')?.addEventListener('click', (e) => {
   const button = e.target.closest('.coach-chat-size-btn');
   if (!button) return;
