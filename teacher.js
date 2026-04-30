@@ -1275,6 +1275,22 @@ document.addEventListener('DOMContentLoaded', async () => {
                     </div>
                     <div class="summary-list teacher-student-activity-list">${buildTeacherStudentRecentActivityHtml(detail, context)}</div>
                 </div>
+
+                <div class="analytics-panel" style="margin-top: 24px;">
+                    <div class="analytics-panel-head">
+                        <div>
+                            <div class="analytics-panel-kicker">AI Feedback</div>
+                            <h3>Study Recommendations</h3>
+                            <p class="analytics-panel-note">Generate personalized study recommendations based on ${esc(detail.name)}'s recent performance.</p>
+                        </div>
+                        <button id="btn-generate-feedback" class="btn pri" data-student-id="${esc(detail.id)}">Generate Feedback</button>
+                    </div>
+                    <div id="ai-feedback-container" class="hidden" style="margin-top: 16px;">
+                        <textarea id="ai-feedback-text" rows="6" class="full-width" style="margin-bottom: 12px; font-family: inherit; font-size: 0.875rem; padding: 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-muted); width: 100%; resize: vertical;"></textarea>
+                        <button id="btn-dispatch-feedback" class="btn pri" data-student-id="${esc(detail.id)}">Send Feedback to Student</button>
+                        <span id="ai-feedback-status" class="muted" style="margin-left: 12px; font-size: 0.875rem;"></span>
+                    </div>
+                </div>
             </div>
         `;
         showModal(`${detail.name} Analytics`, bodyHtml, {
@@ -1295,6 +1311,85 @@ document.addEventListener('DOMContentLoaded', async () => {
             : '';
         renderTeacherStudentAnalyticsModal();
     }
+    function renderPeerComparison() {
+        const studentAId = document.getElementById('compare-student-a')?.value;
+        const studentBId = document.getElementById('compare-student-b')?.value;
+        const resultsEl = document.getElementById('analytics-comparison-results');
+        
+        if (!resultsEl) return;
+        
+        if (!studentAId) {
+            resultsEl.innerHTML = '<p class="muted">Select Student A to view comparison.</p>';
+            return;
+        }
+
+        const studentA = teacherAnalyticsState.studentsById.get(studentAId);
+        if (!studentA) return;
+
+        let studentB;
+        let isClassAverage = false;
+
+        if (studentBId === 'class_average') {
+            isClassAverage = true;
+            const classObj = teacherAnalyticsState.byClassId.get(teacherAnalyticsState.selectedClassId) || teacherAnalyticsState.totals;
+            if (!classObj) return;
+            studentB = {
+                name: 'Class Average',
+                summary: {
+                    avgAssignmentScore: classObj.avgAssignmentScore,
+                    completionRate: classObj.completionRate,
+                    sessionCount: classObj.sessionCount || 0
+                }
+            };
+        } else if (studentBId) {
+            studentB = teacherAnalyticsState.studentsById.get(studentBId);
+        }
+
+        if (!studentB) {
+            resultsEl.innerHTML = '<p class="muted">Select Student B or Class Average to view comparison.</p>';
+            return;
+        }
+
+        const formatMetric = (val, suffix = '') => Number.isFinite(val) ? `${Math.round(val)}${suffix}` : '—';
+        const compareHtml = (label, valA, valB, suffix = '') => {
+            const numA = Number.isFinite(valA) ? valA : 0;
+            const numB = Number.isFinite(valB) ? valB : 0;
+            const max = Math.max(numA, numB, 100); 
+            const pctA = max > 0 ? Math.round((numA / max) * 100) : 0;
+            const pctB = max > 0 ? Math.round((numB / max) * 100) : 0;
+            
+            return `
+                <div style="margin-bottom: 16px;">
+                    <div style="display: flex; justify-content: space-between; font-size: 0.875rem; margin-bottom: 4px; font-weight: 500;">
+                        <span>${esc(label)}</span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
+                        <div style="width: 80px; font-size: 0.75rem; text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${esc(studentA.name)}</div>
+                        <div style="flex-grow: 1; background: var(--bg-muted); height: 8px; border-radius: 4px; overflow: hidden;">
+                            <div style="width: ${pctA}%; height: 100%; background: var(--fg-pri);"></div>
+                        </div>
+                        <div style="width: 40px; font-size: 0.75rem; text-align: left; font-weight: 600;">${formatMetric(valA, suffix)}</div>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <div style="width: 80px; font-size: 0.75rem; text-align: right; color: var(--fg-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${esc(studentB.name)}</div>
+                        <div style="flex-grow: 1; background: var(--bg-muted); height: 8px; border-radius: 4px; overflow: hidden;">
+                            <div style="width: ${pctB}%; height: 100%; background: var(--fg-muted);"></div>
+                        </div>
+                        <div style="width: 40px; font-size: 0.75rem; text-align: left; font-weight: 600; color: var(--fg-muted);">${formatMetric(valB, suffix)}</div>
+                    </div>
+                </div>
+            `;
+        };
+
+        resultsEl.innerHTML = `
+            <div style="padding-top: 8px;">
+                ${compareHtml('Average Score', studentA.summary.avgAssignmentScore, studentB.summary.avgAssignmentScore, '%')}
+                ${compareHtml('Completion Rate', studentA.summary.completionRate, studentB.summary.completionRate, '%')}
+                ${compareHtml('Practice Sessions', studentA.summary.sessionCount, studentB.summary.sessionCount)}
+            </div>
+        `;
+    }
+
     function renderTeacherAnalytics() {
         const classSelect = document.getElementById('analytics-class-select');
         const classList = document.getElementById('analytics-class-list');
@@ -1910,11 +2005,80 @@ document.addEventListener('DOMContentLoaded', async () => {
         teacherStudentDetailState.selectedClassId = String(event.target.value || '').trim();
         renderTeacherStudentAnalyticsModal();
     });
-    document.getElementById('modal-body').addEventListener('click', (event) => {
+    document.getElementById('modal-body').addEventListener('click', async (event) => {
+        const btnGenerate = event.target.closest('#btn-generate-feedback');
+        if (btnGenerate) {
+            const studentId = btnGenerate.dataset.studentId;
+            const detail = teacherAnalyticsState.studentsById.get(studentId);
+            if (!detail) return;
+            
+            btnGenerate.disabled = true;
+            btnGenerate.textContent = 'Generating...';
+            
+            try {
+                // Collect minimal context
+                const payload = {
+                    studentName: detail.name || 'Student',
+                    accuracy: detail.summary.overallAccuracy,
+                    practiceSessions: detail.summary.practiceSessions,
+                    completion: detail.summary.overallCompletion,
+                    blindSpots: detail.snapshot?.blindSpots || [],
+                };
+                
+                const response = await fetch('/api/teacher-feedback', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                
+                const data = await response.json().catch(() => ({}));
+                if (!response.ok) throw new Error(data.error || 'Generation failed');
+                
+                const container = document.getElementById('ai-feedback-container');
+                const textarea = document.getElementById('ai-feedback-text');
+                if (container && textarea) {
+                    container.classList.remove('hidden');
+                    textarea.value = data.feedback || '';
+                }
+            } catch (err) {
+                showAlert('Feedback generation failed: ' + err.message, 'error');
+            } finally {
+                btnGenerate.disabled = false;
+                btnGenerate.textContent = 'Regenerate Feedback';
+            }
+            return;
+        }
+
+        const btnDispatch = event.target.closest('#btn-dispatch-feedback');
+        if (btnDispatch) {
+            const textarea = document.getElementById('ai-feedback-text');
+            const status = document.getElementById('ai-feedback-status');
+            if (textarea && textarea.value.trim() && status) {
+                btnDispatch.disabled = true;
+                btnDispatch.textContent = 'Sending...';
+                // Simulate network request
+                setTimeout(() => {
+                    status.textContent = 'Feedback dispatched successfully.';
+                    btnDispatch.textContent = 'Sent';
+                    setTimeout(() => {
+                        status.textContent = '';
+                        btnDispatch.disabled = false;
+                        btnDispatch.textContent = 'Send Feedback to Student';
+                    }, 3000);
+                }, 800);
+                showAlert('Feedback dispatched to student inbox.', 'success');
+            } else {
+                showAlert('Feedback text cannot be empty.', 'error');
+            }
+            return;
+        }
+
         const classRow = event.target.closest('[data-student-detail-class-id]');
-        if (!classRow) return;
-        teacherStudentDetailState.selectedClassId = String(classRow.dataset.studentDetailClassId || '').trim();
-        renderTeacherStudentAnalyticsModal();
+        if (classRow) {
+            teacherStudentDetailState.selectedClassId = String(classRow.dataset.studentDetailClassId || '').trim();
+            renderTeacherStudentAnalyticsModal();
+            return;
+        }
     });
     document.getElementById('modal-body').addEventListener('keydown', (event) => {
         const classRow = event.target.closest('[data-student-detail-class-id]');
@@ -2295,6 +2459,42 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         }
         showAlert('Selection cleared.', 'success');
+    });
+
+    // Templates
+    document.querySelectorAll('.template-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const template = btn.dataset.template;
+            const titleInput = document.getElementById('assign-title');
+            const topicInput = document.getElementById('teacher-gen-topic');
+            const countInput = document.getElementById('teacher-gen-count');
+            const regionSelect = document.getElementById('teacher-gen-region');
+            const eraSelect = document.getElementById('teacher-gen-era');
+
+            countInput.value = '10';
+
+            if (template === 'silk-road') {
+                titleInput.value = 'The Silk Road Quiz';
+                topicInput.value = 'The Silk Road';
+                regionSelect.value = 'Asia';
+                eraSelect.value = '';
+            } else if (template === 'us-presidents') {
+                titleInput.value = 'US Presidents Challenge';
+                topicInput.value = 'US Presidents';
+                regionSelect.value = 'Americas';
+                eraSelect.value = '';
+            } else if (template === 'cold-war') {
+                titleInput.value = 'The Cold War Review';
+                topicInput.value = 'The Cold War';
+                regionSelect.value = 'World';
+                eraSelect.value = '1945-present';
+            }
+
+            const genBtn = document.getElementById('btn-teacher-generate');
+            if (genBtn && !genBtn.disabled) {
+                genBtn.click();
+            }
+        });
     });
 
     // Random

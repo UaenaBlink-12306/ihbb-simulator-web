@@ -174,6 +174,18 @@
                         </div>
                     </div>
 
+                    <div class="card-muted-box" style="margin-bottom: 18px;">
+                        <div class="section-head" style="margin-bottom: 8px;">
+                            <h3 style="margin: 0;">Quick Templates</h3>
+                            <p class="section-subtitle" style="margin: 0;">Click a template to auto-fill the draft builder.</p>
+                        </div>
+                        <div class="chips" id="assignment-templates" style="margin-top: 8px;">
+                            <div class="chip template-btn" data-template="silk-road" title="Focus: The Silk Road, Region: Asia, Era: All">The Silk Road</div>
+                            <div class="chip template-btn" data-template="us-presidents" title="Focus: US Presidents, Region: Americas, Era: All">US Presidents</div>
+                            <div class="chip template-btn" data-template="cold-war" title="Focus: The Cold War, Region: World, Era: 1945-present">The Cold War</div>
+                        </div>
+                    </div>
+
                     <div class="form-grid">
                         <div class="input-group">
                             <label>Title</label>
@@ -386,6 +398,27 @@
                                 <p class="muted">Loading class analytics...</p>
                             </div>
                         </div>
+                        <div class="card-muted-box teacher-analytics-card" style="margin-top: 24px;">
+                            <div class="eyebrow">Peer-to-Peer Comparison</div>
+                            <p class="muted" style="margin: 0 0 12px 0; font-size: 0.875rem;">Compare two students or view a student against the class average.</p>
+                            <div class="form-grid" style="grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px;">
+                                <div class="input-group">
+                                    <label style="font-size: 0.75rem; margin-bottom: 4px;">Student A</label>
+                                    <select id="compare-student-a">
+                                        <option value="">Select a student...</option>
+                                    </select>
+                                </div>
+                                <div class="input-group">
+                                    <label style="font-size: 0.75rem; margin-bottom: 4px;">Student B</label>
+                                    <select id="compare-student-b">
+                                        <option value="class_average">Class Average</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div id="analytics-comparison-results" class="list-container teacher-analytics-list">
+                                <p class="muted">Select a student to begin comparison.</p>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -520,6 +553,13 @@
                 </div>
                 <div class="dashboard-split dashboard-split-solo">
                     <div class="list-container">
+                        <div class="list-item">
+                            <div>
+                                <h3 style="margin:0 0 4px;">Advanced Teacher Tools</h3>
+                                <div class="pill">April 30, 2026</div>
+                                <p class="muted" style="margin: 8px 0 0;">Introduced Quick Assignment Templates, Peer-to-Peer Progress Comparison in Analytics, and AI-Generated Student Feedback for personalized study recommendations.</p>
+                            </div>
+                        </div>
                         <div class="list-item">
                             <div>
                                 <h3 style="margin:0 0 4px;">DeepSeek Teacher Mode</h3>
