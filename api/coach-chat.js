@@ -280,6 +280,148 @@ function compactText(value, maxWords = 46) {
   return words.length > maxWords ? `${words.slice(0, maxWords).join(' ')}...` : text;
 }
 
+function normalizeAssignmentQuestionCandidate(raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const id = stringValue(raw.id || raw.question_id || raw.key).slice(0, 180);
+  const answer = compactText(raw.answer || raw.answer_text || raw.a, 18);
+  const questionText = compactText(raw.question_text || raw.question || raw.q, 74);
+  if (!id || !answer || !questionText) return null;
+  return {
+    id,
+    answer,
+    question_text: questionText,
+    category: stringValue(raw.category || raw.region).slice(0, 80),
+    era: stringValue(raw.era).slice(0, 24),
+    era_label: stringValue(raw.era_label).slice(0, 80),
+    topic: compactText(raw.topic, 14),
+    source: stringValue(raw.source).slice(0, 60),
+    match_score: safeInt(raw.match_score || raw.score, 0)
+  };
+}
+
+function normalizeAssignmentSelectionPayload(payload) {
+  const assignmentContext = payload?.assignment_context && typeof payload.assignment_context === 'object' && !Array.isArray(payload.assignment_context)
+    ? payload.assignment_context
+    : {};
+  const candidatesRaw = Array.isArray(payload?.question_candidates)
+    ? payload.question_candidates
+    : (Array.isArray(payload?.candidates) ? payload.candidates : []);
+  const seen = new Set();
+  const candidates = [];
+  candidatesRaw.slice(0, 180).forEach((raw) => {
+    const candidate = normalizeAssignmentQuestionCandidate(raw);
+    if (!candidate || seen.has(candidate.id)) return;
+    seen.add(candidate.id);
+    candidates.push(candidate);
+  });
+  const count = Math.max(1, Math.min(20, safeInt(payload?.count || assignmentContext.count, 10)));
+  return {
+    count,
+    assignment_context: {
+      title: stringValue(assignmentContext.title).slice(0, 140),
+      topic: stringValue(assignmentContext.topic).slice(0, 140),
+      categories: Array.isArray(assignmentContext.categories)
+        ? assignmentContext.categories.map(item => stringValue(item)).filter(Boolean).slice(0, 8)
+        : [],
+      eras: Array.isArray(assignmentContext.eras)
+        ? assignmentContext.eras.map(item => stringValue(item)).filter(Boolean).slice(0, 8)
+        : [],
+      terms: Array.isArray(assignmentContext.terms)
+        ? assignmentContext.terms.map(item => stringValue(item)).filter(Boolean).slice(0, 28)
+        : [],
+      instructions: compactText(assignmentContext.instructions, 46),
+      source_action: stringValue(assignmentContext.source_action).slice(0, 80),
+      source_message: compactText(assignmentContext.source_message, 80)
+    },
+    candidates
+  };
+}
+
+function normalizeAssignmentSelectedIds(raw, candidates, requestedCount) {
+  const validIds = new Set(candidates.map(candidate => candidate.id));
+  const selectedRaw = Array.isArray(raw?.selected_question_ids)
+    ? raw.selected_question_ids
+    : (Array.isArray(raw?.question_ids)
+      ? raw.question_ids
+      : (Array.isArray(raw?.questions)
+        ? raw.questions.map(item => (item && typeof item === 'object') ? item.id || item.question_id : item)
+        : []));
+  const seen = new Set();
+  const selected = [];
+  selectedRaw.forEach((value) => {
+    const id = stringValue(value);
+    if (!id || seen.has(id) || !validIds.has(id) || selected.length >= requestedCount) return;
+    seen.add(id);
+    selected.push(id);
+  });
+  return selected;
+}
+
+async function handleAssignmentQuestionSelection(payload, res) {
+  const normalized = normalizeAssignmentSelectionPayload(payload);
+  if (!normalized.candidates.length) {
+    return res.status(200).json({
+      source: 'fallback',
+      selected_question_ids: [],
+      candidate_count: 0,
+      rationale: 'No valid question-bank candidates were provided.'
+    });
+  }
+  if (!process.env.DEEPSEEK_API_KEY) {
+    return res.status(200).json({
+      source: 'fallback',
+      selected_question_ids: [],
+      candidate_count: normalized.candidates.length,
+      rationale: 'DeepSeek API key is not configured.'
+    });
+  }
+
+  const system = [
+    'You are DeepSeek selecting IHBB assignment questions from the app question bank.',
+    'Choose the strongest assignment set from only the provided candidates.',
+    'Return exactly the requested number of question IDs when enough candidates are available.',
+    'Use only IDs from the provided candidates. Do not invent, rewrite, or include questions that are not listed.',
+    'Prefer a balanced set that fits the requested topic, categories, eras, and teacher instructions.',
+    'Avoid near-duplicates, over-clustering on one answer type, and questions with weak relevance when stronger candidates exist.',
+    'Return strict JSON only: {"selected_question_ids":["candidate_id"],"rationale":"short reason"}'
+  ].join('\n');
+  const user = {
+    requested_count: normalized.count,
+    assignment_context: normalized.assignment_context,
+    candidates: normalized.candidates
+  };
+  const headers = {
+    'Content-Type': 'application/json',
+    Authorization: `Bearer ${process.env.DEEPSEEK_API_KEY}`
+  };
+  const completion = await requestDeepSeekChatCompletion(headers, {
+    model: process.env.DEEPSEEK_MODEL || 'deepseek-v4-flash',
+    messages: [
+      { role: 'system', content: system },
+      { role: 'user', content: JSON.stringify(user) }
+    ],
+    max_tokens: 900,
+    temperature: 0.12,
+    thinking: { type: 'disabled' },
+    response_format: { type: 'json_object' }
+  });
+  if (!completion.response.ok || !completion.raw) {
+    return res.status(200).json({
+      source: 'fallback',
+      selected_question_ids: [],
+      candidate_count: normalized.candidates.length,
+      rationale: 'DeepSeek did not return a usable question selection.'
+    });
+  }
+  const selectedIds = normalizeAssignmentSelectedIds(completion.raw, normalized.candidates, normalized.count);
+  return res.status(200).json({
+    source: selectedIds.length >= normalized.count ? 'deepseek' : 'fallback',
+    selected_question_ids: selectedIds,
+    candidate_count: normalized.candidates.length,
+    rationale: stringValue(completion.raw.rationale || completion.raw.reason).slice(0, 400)
+  });
+}
+
 function applyResponseDetail(reply, payload) {
   const detail = normalizeResponseDetail(payload?.response_detail || payload?.assistant_response_detail || payload?.assistant_response_style);
   if (detail !== 'compact' || !reply || typeof reply !== 'object' || Array.isArray(reply)) return reply;
@@ -864,6 +1006,9 @@ module.exports = async function handler(req, res) {
     payload = typeof req.body === 'string'
       ? JSON.parse(req.body || '{}')
       : (req.body || {});
+    if (stringValue(payload.request_type || payload.mode).toLowerCase() === 'assignment_question_selection') {
+      return handleAssignmentQuestionSelection(payload, res);
+    }
     const fallback = buildFallback(payload);
 
     if (!process.env.DEEPSEEK_API_KEY) {
@@ -1045,6 +1190,14 @@ module.exports = async function handler(req, res) {
 
     return res.status(200).json(normalizeResponse(completion.raw, payload));
   } catch (error) {
+    if (stringValue(payload?.request_type || payload?.mode).toLowerCase() === 'assignment_question_selection') {
+      return res.status(200).json({
+        source: 'fallback',
+        selected_question_ids: [],
+        candidate_count: 0,
+        rationale: 'Assignment question selection failed.'
+      });
+    }
     return res.status(200).json(buildFallback(payload));
   }
 };

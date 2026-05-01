@@ -1989,7 +1989,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         populateClassDropdown();
         syncAccountSettingsInputs();
         applyAccountSettingsLocally();
-        applyPendingAssistantClassGuidanceDraft({ notify: window.location.hash === '#assistant-class-draft' });
+        void applyPendingAssistantClassGuidanceDraft({ notify: window.location.hash === '#assistant-class-draft' });
         void loadTeacherAnalytics();
     }
 
@@ -2704,6 +2704,102 @@ document.addEventListener('DOMContentLoaded', async () => {
         return picked.slice(0, safeCount);
     }
 
+    function compactAssignmentSelectionText(value, maxChars = 420) {
+        const text = String(value || '').replace(/\s+/g, ' ').trim();
+        if (!text || text.length <= maxChars) return text;
+        return `${text.slice(0, Math.max(0, maxChars - 3)).trim()}...`;
+    }
+
+    function buildAssignmentSelectionCandidateRows(criteria, limit = 140) {
+        if (!allQuestions.length) return [];
+        const safeLimit = Math.min(Math.max(20, Number.parseInt(String(limit), 10) || 140), 180, allQuestions.length);
+        const salt = `${criteria?.topic || ''}|${(criteria?.categories || []).join(',')}|${(criteria?.eras || []).join(',')}`;
+        const scored = allQuestions.map(question => {
+            const key = questionKey(question);
+            const category = questionCategory(question);
+            const era = questionEra(question);
+            return {
+                key,
+                question,
+                category,
+                era,
+                score: scoreAssignmentSuggestionQuestion(question, criteria),
+                rank: stableAssignmentQuestionRank(question, salt)
+            };
+        }).sort((a, b) => b.score - a.score || a.rank - b.rank);
+        const chosen = [];
+        const seen = new Set();
+        const addRow = (row) => {
+            if (!row || !row.key || seen.has(row.key) || chosen.length >= safeLimit) return false;
+            seen.add(row.key);
+            chosen.push(row);
+            return true;
+        };
+        const categories = Array.isArray(criteria?.categories) ? criteria.categories : [];
+        categories.forEach(category => {
+            scored.filter(row => row.category === category && row.score > 0).slice(0, 12).forEach(addRow);
+        });
+        scored.forEach(row => {
+            if (row.score > 0) addRow(row);
+        });
+        scored.forEach(addRow);
+        return chosen.slice(0, safeLimit);
+    }
+
+    function assignmentSelectionCandidatePayload(row) {
+        const question = row?.question || {};
+        return {
+            id: row?.key || questionKey(question),
+            answer: compactAssignmentSelectionText(question.answer || question.a || '', 140),
+            question_text: compactAssignmentSelectionText(question.question || question.q || '', 460),
+            category: row?.category || questionCategory(question),
+            era: row?.era || questionEra(question),
+            era_label: getEraLabel(row?.era || questionEra(question)),
+            topic: compactAssignmentSelectionText(question.topic || '', 120),
+            source: String(question?.meta?.source || question?.source || '').trim(),
+            match_score: Math.round(Number(row?.score) || 0)
+        };
+    }
+
+    function assignmentSelectionContext(criteria, options = {}) {
+        const draftText = options.draft ? `${options.draft.title || ''} ${options.draft.body || ''}` : '';
+        const sourceMessageText = assignmentSuggestionMessageText(options.sourceMessage) || draftText;
+        return {
+            title: String(criteria?.title || '').trim(),
+            topic: String(criteria?.topic || '').trim(),
+            categories: uniqueAssignmentValues(criteria?.categories || [], cats),
+            eras: uniqueAssignmentValues(criteria?.eras || [], eras).map(era => `${era} ${getEraLabel(era)}`.trim()),
+            terms: uniqueAssignmentValues(criteria?.terms || []),
+            instructions: String(criteria?.instructions || '').trim(),
+            count: criteria?.count || 10,
+            source_action: String(options.action?.id || options.action?.label || '').trim(),
+            source_message: compactAssignmentSelectionText(sourceMessageText, 700)
+        };
+    }
+
+    function selectedAssignmentRowsFromDeepSeek(ids, rows, count) {
+        const rowById = new Map(rows.map(row => [row.key, row]));
+        const selected = [];
+        const seen = new Set();
+        (Array.isArray(ids) ? ids : []).forEach(value => {
+            const id = String(value || '').trim();
+            const row = rowById.get(id);
+            if (!row || seen.has(id) || selected.length >= count) return;
+            seen.add(id);
+            selected.push(row);
+        });
+        return selected;
+    }
+
+    function applyPickedAssignmentQuestions(picked, criteria, options = {}) {
+        if (!picked.length) return [];
+        const nextQuestions = options.append ? [...selectedQuestions, ...picked] : picked;
+        setSelectedQuestions(nextQuestions);
+        syncAssignmentSuggestionControls(criteria);
+        if (typeof setMode === 'function') setMode('pick');
+        return picked;
+    }
+
     function syncAssignmentSuggestionControls(criteria) {
         selectedFilterCategories = uniqueAssignmentValues(criteria?.categories || [], cats);
         selectedFilterEras = uniqueAssignmentValues(criteria?.eras || [], eras);
@@ -2758,10 +2854,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (!options.silent) showAlert('No matching questions were found.', 'error');
             return [];
         }
-        const nextQuestions = options.append ? [...selectedQuestions, ...picked] : picked;
-        setSelectedQuestions(nextQuestions);
-        syncAssignmentSuggestionControls(criteria);
-        if (typeof setMode === 'function') setMode('pick');
+        applyPickedAssignmentQuestions(picked, criteria, options);
         if (!options.silent) {
             const label = criteria?.categories?.length
                 ? ` across ${criteria.categories.slice(0, 3).join(', ')}${criteria.categories.length > 3 ? ' and more' : ''}`
@@ -2769,6 +2862,64 @@ document.addEventListener('DOMContentLoaded', async () => {
             showAlert(`Hand-picked ${picked.length} real question${picked.length === 1 ? '' : 's'}${label}.`, 'success');
         }
         return picked;
+    }
+
+    async function applyDeepSeekAssignmentQuestionSuggestions(criteria, options = {}) {
+        if (!allQuestions.length) {
+            if (!options.silent) showAlert('No questions loaded yet.', 'error');
+            return [];
+        }
+        if (options.onlyWhenEmpty && selectedQuestions.length) return [];
+        const count = Math.min(clampCount(criteria?.count || 10, 10), allQuestions.length);
+        const rows = buildAssignmentSelectionCandidateRows(criteria, Math.max(80, Math.min(160, allQuestions.length)));
+        if (!rows.length) {
+            return applyAssignmentQuestionSuggestions(criteria, { ...options, silent: true });
+        }
+        if (!options.silent) {
+            showAlert(`DeepSeek is hand-picking ${count} real question-bank item${count === 1 ? '' : 's'}...`, 'success');
+            updateGeneratorStatus(`DeepSeek is reviewing ${rows.length} real question-bank candidate${rows.length === 1 ? '' : 's'} for this assignment action...`, 'muted');
+        }
+        try {
+            const response = await fetch('/api/coach-chat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    request_type: 'assignment_question_selection',
+                    count,
+                    assignment_context: assignmentSelectionContext(criteria, options),
+                    question_candidates: rows.map(assignmentSelectionCandidatePayload),
+                    teacher_context: typeof buildDashboardChatContext === 'function' ? buildDashboardChatContext() : null
+                })
+            });
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok) throw new Error(data?.error || `DeepSeek selection failed (${response.status})`);
+            const ids = Array.isArray(data?.selected_question_ids) ? data.selected_question_ids : [];
+            const selectedRows = selectedAssignmentRowsFromDeepSeek(ids, rows, count);
+            if (selectedRows.length < count || String(data?.source || '').trim().toLowerCase() !== 'deepseek') {
+                throw new Error(data?.rationale || 'DeepSeek did not return valid question IDs.');
+            }
+            const picked = selectedRows.slice(0, count).map(row => row.question);
+            applyPickedAssignmentQuestions(picked, criteria, options);
+            if (!options.silent) {
+                const sourceNote = data?.candidate_count ? ` from ${data.candidate_count} reviewed candidate${data.candidate_count === 1 ? '' : 's'}` : '';
+                showAlert(`DeepSeek hand-picked ${picked.length} real question${picked.length === 1 ? '' : 's'}${sourceNote}.`, 'success');
+                updateGeneratorStatus(`DeepSeek selected ${picked.length} existing question${picked.length === 1 ? '' : 's'} from the question bank. Review the draft before publishing.`, 'muted');
+            }
+            return picked;
+        } catch (err) {
+            console.warn('[Assignment DeepSeek Selection] falling back to local picker', err);
+            const picked = applyAssignmentQuestionSuggestions(criteria, { ...options, silent: true });
+            if (!options.silent) {
+                if (picked.length) {
+                    showAlert(`DeepSeek selection was unavailable, so the local question-bank picker selected ${picked.length} real question${picked.length === 1 ? '' : 's'}.`, 'success');
+                    updateGeneratorStatus('DeepSeek question selection was unavailable; the assignment draft uses the local question-bank fallback.', 'muted');
+                } else {
+                    showAlert('DeepSeek could not pick matching questions yet.', 'error');
+                    updateGeneratorStatus('DeepSeek question selection did not find matching bank questions.', 'error');
+                }
+            }
+            return picked;
+        }
     }
 
     function togglePickedQuestion(item, shouldSelect, rowEl) {
@@ -3205,7 +3356,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         try { localStorage.removeItem(TEACHER_CLASS_GUIDANCE_DRAFT_KEY); } catch { /* noop */ }
     }
 
-    function applyAssistantClassGuidanceDraft(draft, { notify = true, removeStorage = false } = {}) {
+    async function applyAssistantClassGuidanceDraft(draft, { notify = true, removeStorage = false } = {}) {
         const body = String(draft?.body || '').trim();
         if (!body) return false;
         if (!myClasses.length) {
@@ -3231,7 +3382,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const guidanceBlock = `Assistant guidance from DeepSeek:\n\n${body}`;
         instructionsEl.value = existing ? `${existing}\n\n${guidanceBlock}` : guidanceBlock;
         const criteria = buildAssignmentSuggestionCriteria({ draft: { ...draft, body } });
-        const picked = applyAssignmentQuestionSuggestions(criteria, { onlyWhenEmpty: true, silent: true });
+        const picked = await applyDeepSeekAssignmentQuestionSuggestions(criteria, { onlyWhenEmpty: true, silent: true, draft: { ...draft, body } });
 
         activateDashboardTab('create');
         closeDashboardChat();
@@ -3249,13 +3400,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         return true;
     }
 
-    function applyPendingAssistantClassGuidanceDraft(options = {}) {
+    async function applyPendingAssistantClassGuidanceDraft(options = {}) {
         const draft = readPendingAssistantClassGuidanceDraft();
         if (!draft) return false;
         return applyAssistantClassGuidanceDraft(draft, { notify: !!options.notify, removeStorage: true });
     }
 
-    function sendDashboardChatGuidanceToClass(messageIndex) {
+    async function sendDashboardChatGuidanceToClass(messageIndex) {
         const message = dashboardChat.messages?.[messageIndex];
         if (!message || message.role !== 'assistant') {
             showAlert('There is no assistant guidance to send yet.', 'error');
@@ -3268,7 +3419,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
         const snapshot = buildDashboardChatContext();
         const preferredClass = snapshot?.selected_class || snapshot?.priority_classes?.[0] || null;
-        applyAssistantClassGuidanceDraft({
+        await applyAssistantClassGuidanceDraft({
             title: assistantGuidanceDraftTitle(message),
             body,
             classId: preferredClass?.id || ''
@@ -4317,7 +4468,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             activateDashboardTab('create');
             const criteria = buildAssignmentSuggestionCriteria({ action, sourceMessage });
             applyAssignmentSuggestionFields(criteria, { appendInstructions: true });
-            applyAssignmentQuestionSuggestions(criteria, { append: false });
+            await applyDeepSeekAssignmentQuestionSuggestions(criteria, { append: false, action, sourceMessage });
             return;
         }
         if (actionId === 'practice_due_now') {
@@ -4331,7 +4482,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             activateDashboardTab('create');
             const criteria = buildAssignmentSuggestionCriteria({ action, sourceMessage });
             applyAssignmentSuggestionFields(criteria, { appendInstructions: true });
-            applyAssignmentQuestionSuggestions(criteria, { append: false });
+            await applyDeepSeekAssignmentQuestionSuggestions(criteria, { append: false, action, sourceMessage });
             return;
         }
         closeDashboardChat();
@@ -4410,7 +4561,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 return;
             }
             if (tool === 'send-class') {
-                sendDashboardChatGuidanceToClass(messageIndex);
+                void sendDashboardChatGuidanceToClass(messageIndex);
                 return;
             }
             if (tool === 'copy' && message?.text) {
