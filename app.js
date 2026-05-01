@@ -1634,6 +1634,8 @@ function coachChatMessageHtml(message, index) {
   const toolsHtml = message.role === 'assistant' && !streaming ? `
     <div class="coach-chat-message-tools">
       <button class="coach-chat-tool" type="button" data-message-index="${index}" data-tool="copy">Copy markdown</button>
+      <button class="coach-chat-tool" type="button" data-message-index="${index}" data-tool="shorter" ${CoachChat.busy ? 'disabled' : ''}>Make this shorter</button>
+      <button class="coach-chat-tool" type="button" data-message-index="${index}" data-tool="expand" ${CoachChat.busy ? 'disabled' : ''}>Expand this</button>
     </div>
   ` : '';
   return `
@@ -2294,7 +2296,7 @@ function normalizeCoachChatReply(raw, payload, snapshot) {
   };
 }
 
-async function requestCoachChatReply(message) {
+async function requestCoachChatReply(message, options = {}) {
   const snapshot = buildCoachChatStudyContext();
   const payload = {
     message: String(message || '').trim(),
@@ -2306,7 +2308,7 @@ async function requestCoachChatReply(message) {
     study_context: snapshot,
     assistant_mode: 'auto',
     thinking_enabled: !!CoachChat.ui.thinkingEnabled,
-    response_detail: normalizeAssistantResponseDetail(getCurrentAccountSettings().assistant_response_detail),
+    response_detail: normalizeAssistantResponseDetail(options.responseDetail || getCurrentAccountSettings().assistant_response_detail),
     user_role: await ensureCurrentProfileRole() || 'student'
   };
   const response = await fetch('/api/coach-chat', {
@@ -2319,6 +2321,59 @@ async function requestCoachChatReply(message) {
     throw new Error(`Coach chat failed (${response.status})`);
   }
   return normalizeCoachChatReply(raw, payload, snapshot);
+}
+
+function coachChatRewriteIntentLabel(intent) {
+  return intent === 'expand' ? 'expanded' : 'shorter';
+}
+
+function buildCoachChatRewritePrompt(message, intent) {
+  const original = coachChatMessageMarkdownText(message);
+  const roleName = isCoachChatTeacherRole() ? 'teacher' : 'student';
+  if (intent === 'expand') {
+    return `Expand this assistant reply for a ${roleName}. Keep the same topic and meaning, but add clearer explanation, one concrete example, and practical next steps. Return a complete replacement answer.\n\nOriginal reply:\n${original}`;
+  }
+  return `Make this assistant reply shorter for a ${roleName}. Keep only the essential answer and the best next action. Return a complete replacement answer.\n\nOriginal reply:\n${original}`;
+}
+
+function coachChatSentences(text) {
+  return String(text || '').replace(/\s+/g, ' ').trim().match(/[^.!?]+[.!?]+|[^.!?]+$/g) || [];
+}
+
+function buildLocalCoachChatRewrite(message, intent) {
+  const originalText = String(message?.text || '').trim() || coachChatMessageMarkdownText(message);
+  const title = intent === 'expand' ? 'Expanded version' : 'Shorter version';
+  if (intent === 'expand') {
+    return {
+      source: 'fallback',
+      mode: String(message?.mode || '').trim() === 'knowledge' ? 'knowledge' : 'coach',
+      title,
+      topic: String(message?.topic || '').trim(),
+      message: `${originalText}\n\nA fuller way to use this: restate the core idea, test it against one example, and choose one follow-up move while the answer is fresh.`,
+      highlights: Array.isArray(message?.highlights) ? message.highlights.slice(0, 4) : [],
+      sections: [
+        ...(Array.isArray(message?.sections) ? message.sections.slice(0, 3) : []),
+        { heading: 'How to use it', body: 'Turn the answer into one small action: explain the key idea aloud, answer a related question, or save the weakest clue as a follow-up.' }
+      ],
+      links: Array.isArray(message?.links) ? message.links.slice(0, 2) : [],
+      follow_ups: Array.isArray(message?.followUps) ? message.followUps.slice(0, 3) : [],
+      quick_actions: Array.isArray(message?.actions) ? message.actions.slice(0, 3) : []
+    };
+  }
+  const firstSentences = coachChatSentences(originalText).slice(0, 2).join(' ').trim() || originalText.slice(0, 260);
+  const firstAction = Array.isArray(message?.actions) ? message.actions[0] : null;
+  return {
+    source: 'fallback',
+    mode: String(message?.mode || '').trim() === 'knowledge' ? 'knowledge' : 'coach',
+    title,
+    topic: String(message?.topic || '').trim(),
+    message: firstAction ? `${firstSentences}\n\nNext: ${firstAction.label || 'Use the suggested action'}${firstAction.reason ? ` - ${firstAction.reason}` : ''}` : firstSentences,
+    highlights: Array.isArray(message?.highlights) ? message.highlights.slice(0, 2) : [],
+    sections: [],
+    links: Array.isArray(message?.links) ? message.links.slice(0, 1) : [],
+    follow_ups: [],
+    quick_actions: Array.isArray(message?.actions) ? message.actions.slice(0, 2) : []
+  };
 }
 
 function clearCoachChatConversation() {
@@ -2509,7 +2564,10 @@ async function sendCoachChatMessage(rawMessage, options = {}) {
   queueCoachChatScrollToBottom();
   let assistantMessage = null;
   try {
-    const reply = await requestCoachChatReply(message);
+    let reply = await requestCoachChatReply(message, options);
+    if (options.rewriteIntent && options.originalMessage && reply.source !== 'deepseek') {
+      reply = buildLocalCoachChatRewrite(options.originalMessage, options.rewriteIntent);
+    }
     CoachChat.source = reply.source === 'deepseek' ? 'deepseek' : 'fallback';
     assistantMessage = {
       role: 'assistant',
@@ -2529,7 +2587,9 @@ async function sendCoachChatMessage(rawMessage, options = {}) {
     };
     pushCoachChatMessage(assistantMessage);
   } catch (err) {
-    const fallback = buildLocalCoachChatReply(message);
+    const fallback = options.rewriteIntent && options.originalMessage
+      ? buildLocalCoachChatRewrite(options.originalMessage, options.rewriteIntent)
+      : buildLocalCoachChatReply(message);
     CoachChat.source = 'fallback';
     assistantMessage = {
       role: 'assistant',
@@ -2554,6 +2614,20 @@ async function sendCoachChatMessage(rawMessage, options = {}) {
     if (assistantMessage?.role === 'assistant') startCoachChatMessageStream(assistantMessage);
   }
   return true;
+}
+
+function rewriteCoachChatMessage(messageIndex, intent) {
+  const originalMessage = CoachChat.messages?.[messageIndex];
+  if (!originalMessage || originalMessage.role !== 'assistant' || CoachChat.busy) return;
+  const rewriteIntent = intent === 'expand' ? 'expand' : 'shorter';
+  const prompt = buildCoachChatRewritePrompt(originalMessage, rewriteIntent);
+  toast(`Making that answer ${coachChatRewriteIntentLabel(rewriteIntent)}...`);
+  void sendCoachChatMessage(prompt, {
+    hiddenUserMessage: true,
+    responseDetail: rewriteIntent === 'expand' ? 'detailed' : 'compact',
+    rewriteIntent,
+    originalMessage
+  });
 }
 
 function coachFocusFromRecord(record) {
@@ -5433,8 +5507,13 @@ $('coach-chat-messages')?.addEventListener('click', (e) => {
   if (toolButton) {
     const messageIndex = Number(toolButton.dataset.messageIndex);
     const message = CoachChat.messages?.[messageIndex];
+    const tool = String(toolButton.dataset.tool || '').trim();
+    if (tool === 'shorter' || tool === 'expand') {
+      rewriteCoachChatMessage(messageIndex, tool);
+      return;
+    }
     const markdown = coachChatMessageMarkdownText(message);
-    if (markdown) {
+    if (tool === 'copy' && markdown) {
       if (navigator.clipboard?.writeText) {
         navigator.clipboard.writeText(markdown).then(() => toast('Assistant markdown copied')).catch(() => toast('Copy failed'));
       } else {

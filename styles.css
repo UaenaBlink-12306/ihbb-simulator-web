@@ -3463,6 +3463,12 @@ body.coach-chat-resizing {
     rgba(255, 255, 255, 0.76);
 }
 
+.coach-chat-tool:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none;
+}
+
 .coach-chat-actions {
   display: flex;
   flex-wrap: wrap;

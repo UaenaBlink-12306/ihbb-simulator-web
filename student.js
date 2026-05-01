@@ -1163,7 +1163,13 @@ document.addEventListener('DOMContentLoaded', async () => {
                         `).join('')}
                     </div>
                 ` : ''}
-                ${message.role === 'assistant' && !isDashboardChatMessageStreaming(message) ? `<div class="coach-chat-message-tools"><button class="coach-chat-tool" type="button" data-message-index="${messageIndex}" data-tool="copy">Copy answer</button></div>` : ''}
+                ${message.role === 'assistant' && !isDashboardChatMessageStreaming(message) ? `
+                    <div class="coach-chat-message-tools">
+                        <button class="coach-chat-tool" type="button" data-message-index="${messageIndex}" data-tool="copy">Copy answer</button>
+                        <button class="coach-chat-tool" type="button" data-message-index="${messageIndex}" data-tool="shorter" ${dashboardChat.busy ? 'disabled' : ''}>Make this shorter</button>
+                        <button class="coach-chat-tool" type="button" data-message-index="${messageIndex}" data-tool="expand" ${dashboardChat.busy ? 'disabled' : ''}>Expand this</button>
+                    </div>
+                ` : ''}
             </div>
         `).join('');
         const loadingHtml = dashboardChat.busy ? `
@@ -1395,7 +1401,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         );
     }
 
-    async function requestDashboardChatReply(message) {
+    async function requestDashboardChatReply(message, options = {}) {
         const payload = {
             message: String(message || '').trim(),
             conversation: dashboardChat.messages
@@ -1406,7 +1412,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             study_context: buildDashboardChatContext(),
             assistant_mode: 'auto',
             thinking_enabled: !!dashboardChat.ui.thinkingEnabled,
-            response_detail: normalizeAssistantResponseDetail(accountSettings.assistant_response_detail),
+            response_detail: normalizeAssistantResponseDetail(options.responseDetail || accountSettings.assistant_response_detail),
             user_role: 'student'
         };
         const response = await fetch('/api/coach-chat', {
@@ -1430,6 +1436,58 @@ document.addEventListener('DOMContentLoaded', async () => {
             links: normalizeDashboardChatLinks(raw?.links).length ? normalizeDashboardChatLinks(raw?.links) : fallback.links,
             follow_ups: normalizeDashboardChatFollowUps(raw?.follow_ups).length ? normalizeDashboardChatFollowUps(raw?.follow_ups) : fallback.follow_ups,
             quick_actions: sourceIsDeepSeek ? rawActions : (rawActions.length ? rawActions : normalizeDashboardChatActions(fallback.quick_actions))
+        };
+    }
+
+    function dashboardChatRewriteIntentLabel(intent) {
+        return intent === 'expand' ? 'expanded' : 'shorter';
+    }
+
+    function buildDashboardChatRewritePrompt(message, intent) {
+        const original = dashboardChatMessageMarkdownText(message);
+        if (intent === 'expand') {
+            return `Expand this assistant reply for a student. Keep the same topic and meaning, but add clearer explanation, one concrete example or study move, and practical next steps. Return a complete replacement answer.\n\nOriginal reply:\n${original}`;
+        }
+        return `Make this assistant reply shorter for a student. Keep only the essential answer and the best next action. Return a complete replacement answer.\n\nOriginal reply:\n${original}`;
+    }
+
+    function dashboardChatSentences(text) {
+        return String(text || '').replace(/\s+/g, ' ').trim().match(/[^.!?]+[.!?]+|[^.!?]+$/g) || [];
+    }
+
+    function buildLocalDashboardChatRewrite(message, intent) {
+        const originalText = String(message?.text || '').trim() || dashboardChatMessageMarkdownText(message);
+        const title = intent === 'expand' ? 'Expanded version' : 'Shorter version';
+        if (intent === 'expand') {
+            return {
+                source: 'fallback',
+                mode: String(message?.mode || '').trim() === 'knowledge' ? 'knowledge' : 'coach',
+                title,
+                topic: String(message?.topic || '').trim(),
+                message: `${originalText}\n\nA fuller way to use this: restate the core idea in your own words, test it against one example question, then choose one follow-up practice move while it is fresh.`,
+                highlights: Array.isArray(message?.highlights) ? message.highlights.slice(0, 4) : [],
+                sections: [
+                    ...(Array.isArray(message?.sections) ? message.sections.slice(0, 3) : []),
+                    { heading: 'How to use it', body: 'Turn the answer into one small action: explain the key idea aloud, answer a related tossup, or add the weakest clue to your notebook.' }
+                ],
+                links: Array.isArray(message?.links) ? message.links.slice(0, 2) : [],
+                follow_ups: Array.isArray(message?.followUps) ? message.followUps.slice(0, 3) : [],
+                quick_actions: normalizeDashboardChatActions(message?.actions)
+            };
+        }
+        const firstSentences = dashboardChatSentences(originalText).slice(0, 2).join(' ').trim() || originalText.slice(0, 260);
+        const firstAction = Array.isArray(message?.actions) ? message.actions[0] : null;
+        return {
+            source: 'fallback',
+            mode: String(message?.mode || '').trim() === 'knowledge' ? 'knowledge' : 'coach',
+            title,
+            topic: String(message?.topic || '').trim(),
+            message: firstAction ? `${firstSentences}\n\nNext: ${firstAction.label || 'Use the suggested action'}${firstAction.reason ? ` - ${firstAction.reason}` : ''}` : firstSentences,
+            highlights: Array.isArray(message?.highlights) ? message.highlights.slice(0, 2) : [],
+            sections: [],
+            links: Array.isArray(message?.links) ? message.links.slice(0, 1) : [],
+            follow_ups: [],
+            quick_actions: normalizeDashboardChatActions(message?.actions).slice(0, 2)
         };
     }
 
@@ -1476,17 +1534,22 @@ document.addEventListener('DOMContentLoaded', async () => {
         event.preventDefault();
     }
 
-    async function sendDashboardChatMessage(rawMessage) {
+    async function sendDashboardChatMessage(rawMessage, options = {}) {
         const message = String(rawMessage || '').trim();
         if (!message || dashboardChat.busy) return;
-        pushDashboardChatMessage({ role: 'user', text: message, source: 'user', actions: [], highlights: [], sections: [], links: [], followUps: [] });
+        if (!options.hiddenUserMessage) {
+            pushDashboardChatMessage({ role: 'user', text: message, source: 'user', actions: [], highlights: [], sections: [], links: [], followUps: [] });
+        }
         dashboardChat.busy = true;
         dashboardChat.source = 'ready';
         renderDashboardChatChrome();
         queueDashboardChatScrollToBottom();
         let assistantMessage = null;
         try {
-            const reply = await requestDashboardChatReply(message);
+            let reply = await requestDashboardChatReply(message, options);
+            if (options.rewriteIntent && options.originalMessage && reply.source !== 'deepseek') {
+                reply = buildLocalDashboardChatRewrite(options.originalMessage, options.rewriteIntent);
+            }
             dashboardChat.source = reply.source === 'deepseek' ? 'deepseek' : 'fallback';
             assistantMessage = {
                 role: 'assistant',
@@ -1506,7 +1569,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             };
             pushDashboardChatMessage(assistantMessage);
         } catch (err) {
-            const fallback = buildDashboardChatFallback(message);
+            const fallback = options.rewriteIntent && options.originalMessage
+                ? buildLocalDashboardChatRewrite(options.originalMessage, options.rewriteIntent)
+                : buildDashboardChatFallback(message);
             dashboardChat.source = 'fallback';
             assistantMessage = {
                 role: 'assistant',
@@ -1530,6 +1595,20 @@ document.addEventListener('DOMContentLoaded', async () => {
             renderDashboardChatChrome();
             if (assistantMessage?.role === 'assistant') startDashboardChatMessageStream(assistantMessage);
         }
+    }
+
+    function rewriteDashboardChatMessage(messageIndex, intent) {
+        const originalMessage = dashboardChat.messages?.[messageIndex];
+        if (!originalMessage || originalMessage.role !== 'assistant' || dashboardChat.busy) return;
+        const rewriteIntent = intent === 'expand' ? 'expand' : 'shorter';
+        const prompt = buildDashboardChatRewritePrompt(originalMessage, rewriteIntent);
+        showAlert(`Making that answer ${dashboardChatRewriteIntentLabel(rewriteIntent)}...`, 'success');
+        void sendDashboardChatMessage(prompt, {
+            hiddenUserMessage: true,
+            responseDetail: rewriteIntent === 'expand' ? 'detailed' : 'compact',
+            rewriteIntent,
+            originalMessage
+        });
     }
 
     function openDashboardChat() {
@@ -1680,7 +1759,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (toolButton) {
             const messageIndex = Number(toolButton.dataset.messageIndex);
             const message = dashboardChat.messages?.[messageIndex];
-            if (message?.text) {
+            const tool = String(toolButton.dataset.tool || '').trim();
+            if (tool === 'shorter' || tool === 'expand') {
+                rewriteDashboardChatMessage(messageIndex, tool);
+                return;
+            }
+            if (tool === 'copy' && message?.text) {
                 if (navigator.clipboard?.writeText) {
                     navigator.clipboard.writeText(dashboardChatMessageMarkdownText(message)).then(() => showAlert('Assistant answer copied', 'success')).catch(() => showAlert('Copy failed', 'error'));
                 } else {
