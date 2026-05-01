@@ -89,6 +89,7 @@ const BASE_KEY_COACH_DRILL = 'ihbb_student_coach_drill';
 const BASE_KEY_COACH_CHAT_ACTION = 'ihbb_v2_coach_chat_action';
 const BASE_COACH_CHAT_UI_KEY = 'ihbb_v2_coach_chat_ui';
 const BASE_COACH_CHAT_SUPPRESS_KEY = 'ihbb_v2_coach_chat_suppressed';
+const BASE_TEACHER_CLASS_GUIDANCE_DRAFT = 'ihbb_teacher_class_guidance_draft';
 const STUDY_DATA_RESET_CUTOFF_ISO = '2026-04-10T02:07:20Z';
 const STUDY_DATA_RESET_MARKER = 'ihbb_v2_study_data_reset_20260410_v1';
 const STUDY_DATA_RESET_PREFIXES = [
@@ -122,6 +123,10 @@ function normalizeStorageScopeUserId(userId) {
 function scopedStorageKey(baseKey, userId = StorageScopeUserId) {
   const scope = normalizeStorageScopeUserId(userId) || STORAGE_SCOPE_GUEST;
   return `${baseKey}_${scope}`;
+}
+function teacherClassGuidanceDraftKey(userId) {
+  const resolvedUserId = normalizeStorageScopeUserId(userId || StorageScopeUserId || CoachSync.userId || SessionSync.userId || WrongSync.userId);
+  return scopedStorageKey(BASE_TEACHER_CLASS_GUIDANCE_DRAFT, resolvedUserId);
 }
 function applyStorageScope(userId) {
   StorageScopeUserId = normalizeStorageScopeUserId(userId);
@@ -1618,6 +1623,130 @@ function coachChatMessageMarkdownText(message) {
   return lines.join('\n').trim();
 }
 
+function trimCoachAssistantText(value, max = 600) {
+  const text = String(value || '').trim();
+  if (!text || text.length <= max) return text;
+  return `${text.slice(0, Math.max(0, max - 3)).trim()}...`;
+}
+
+function coachChatNotebookTitle(message) {
+  const raw = String(message?.title || message?.topic || 'Assistant guidance').replace(/\s+/g, ' ').trim();
+  return trimCoachAssistantText(raw || 'Assistant guidance', 90);
+}
+
+function buildCoachChatNotebookRecord(message) {
+  if (!message || message.role !== 'assistant') return null;
+  const markdown = coachChatMessageMarkdownText(message);
+  if (!markdown) return null;
+  const title = coachChatNotebookTitle(message);
+  const text = String(message.text || '').trim();
+  const highlights = Array.isArray(message.highlights) ? message.highlights : [];
+  const sections = Array.isArray(message.sections) ? message.sections : [];
+  const bullets = [
+    ...highlights,
+    ...sections.map(section => `${String(section?.heading || '').trim()}: ${String(section?.body || '').trim()}`),
+    text
+  ].map(item => trimCoachAssistantText(item, 500)).filter(Boolean).slice(0, 5);
+  const summary = trimCoachAssistantText(text || title, 240);
+  const existingAttemptId = String(message.savedNotebookAttemptId || '').trim();
+  return normalizeCoachAttemptRecord({
+    client_attempt_id: existingAttemptId || `assistant_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    client_session_id: 'assistant-reply',
+    question_id: '',
+    question_text: `Saved assistant reply: ${title}`,
+    expected_answer: title,
+    user_answer: 'Saved from DeepSeek assistant reply',
+    correct: false,
+    reason: trimCoachAssistantText(markdown, 8000),
+    category: 'AI Notebook',
+    era: '',
+    source: 'assistant-reply',
+    focus_topic: title,
+    mastered: false,
+    mastered_at: null,
+    created_at: new Date().toISOString(),
+    coach: {
+      summary: summary ? `Saved assistant guidance: ${summary}` : 'Saved assistant guidance.',
+      error_diagnosis: 'Saved from the DeepSeek assistant for later review.',
+      overlap_explainer: 'Use this note as a study reference or as a starting point for a focused drill.',
+      explanation_bullets: bullets.length ? bullets : [trimCoachAssistantText(markdown, 500)],
+      key_clues: [
+        'Review the saved guidance before your next practice run.',
+        'Turn the guidance into one concrete study action.'
+      ],
+      related_facts: [],
+      study_tip: 'Mark this note mastered after you can explain the idea without rereading it.',
+      canonical_answer: title,
+      wiki_link: '',
+      study_focus: {
+        region: 'AI Notebook',
+        era: '',
+        topic: title,
+        icon: 'AI'
+      },
+      confidence: 'medium'
+    }
+  });
+}
+
+function saveCoachChatMessageToNotebook(messageIndex) {
+  const message = CoachChat.messages?.[messageIndex];
+  const record = buildCoachChatNotebookRecord(message);
+  if (!record) {
+    toast('There is no assistant answer to save yet');
+    return;
+  }
+  message.savedNotebookAttemptId = record.client_attempt_id;
+  upsertCoachLocal(record);
+  CoachNotebook.records = [
+    record,
+    ...CoachNotebook.records.filter(item => String(item?.client_attempt_id || '') !== record.client_attempt_id)
+  ].slice(0, 300);
+  CoachNotebook.loaded = true;
+  renderCoachNotebook();
+  syncCoachAttempt(record);
+  toast('Assistant reply saved to AI Notebook');
+}
+
+function coachChatTeacherGuidanceTitle(message) {
+  const raw = String(message?.title || message?.topic || 'Assistant guidance').replace(/\s+/g, ' ').trim();
+  return `Guidance: ${trimCoachAssistantText(raw || 'Assistant guidance', 78)}`;
+}
+
+function writeTeacherClassGuidanceDraftFromCoachMessage(message) {
+  const body = coachChatMessageMarkdownText(message);
+  if (!body) return false;
+  try {
+    localStorage.setItem(teacherClassGuidanceDraftKey(), JSON.stringify({
+      title: coachChatTeacherGuidanceTitle(message),
+      body,
+      classId: '',
+      source: 'practice-hub-assistant',
+      created_at: new Date().toISOString()
+    }));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function sendCoachChatGuidanceToClass(messageIndex) {
+  const message = CoachChat.messages?.[messageIndex];
+  if (!isCoachChatTeacherRole()) {
+    toast('Class sending is available for teacher accounts');
+    return;
+  }
+  if (!message || message.role !== 'assistant' || !writeTeacherClassGuidanceDraftFromCoachMessage(message)) {
+    toast('Could not prepare this guidance for class');
+    return;
+  }
+  closeCoachChat({ manual: false });
+  toast('Opening teacher dashboard with guidance draft');
+  setTimeout(() => {
+    window.location.href = 'teacher.html#assistant-class-draft';
+  }, 220);
+}
+
 function coachChatMessageHtml(message, index) {
   const metaLabel = message.role === 'user'
     ? 'You'
@@ -1631,9 +1760,14 @@ function coachChatMessageHtml(message, index) {
   const followUps = Array.isArray(message.followUps) ? message.followUps : [];
   const blockStyle = 'display:grid;gap:12px;padding:14px 15px;border-radius:20px;border:1px solid rgba(15, 23, 42, 0.08);background:linear-gradient(180deg, rgba(255,255,255,0.97), rgba(246,250,255,0.9));box-shadow:inset 0 1px 0 rgba(255,255,255,0.85), 0 18px 28px -24px rgba(15,23,42,0.14);';
   const markdownWrapStyle = 'display:grid;gap:10px;';
+  const teacherToolHtml = isCoachChatTeacherRole()
+    ? `<button class="coach-chat-tool" type="button" data-message-index="${index}" data-tool="send-class">Send this to class</button>`
+    : '';
   const toolsHtml = message.role === 'assistant' && !streaming ? `
     <div class="coach-chat-message-tools">
       <button class="coach-chat-tool" type="button" data-message-index="${index}" data-tool="copy">Copy markdown</button>
+      <button class="coach-chat-tool" type="button" data-message-index="${index}" data-tool="save-notebook">Save to AI Notebook</button>
+      ${teacherToolHtml}
       <button class="coach-chat-tool" type="button" data-message-index="${index}" data-tool="shorter" ${CoachChat.busy ? 'disabled' : ''}>Make this shorter</button>
       <button class="coach-chat-tool" type="button" data-message-index="${index}" data-tool="expand" ${CoachChat.busy ? 'disabled' : ''}>Expand this</button>
     </div>
@@ -4649,12 +4783,13 @@ function renderCoachNotebook() {
     const coach = normalizeCoach(r.coach, { question: r.question_text, meta: { category: r.category, era: r.era, source: r.source } }, r.correct, r.reason);
     const focus = coach.study_focus || {};
     const created = r.created_at ? new Date(r.created_at).toLocaleString() : '—';
+    const statusLabel = r.source === 'assistant-reply' ? 'Saved note' : (r.correct ? '✓ Correct' : '✗ Incorrect');
     return `
       <div class="coach-note ${r.mastered ? 'mastered' : ''}" data-attempt="${escHtml(r.client_attempt_id)}">
         <div class="coach-note-head">
           <div class="coach-note-icon">${escHtml(focus.icon || '📘')}</div>
           <div class="coach-note-meta">
-            <div><b>${r.correct ? '✓ Correct' : '✗ Incorrect'}</b> • ${escHtml(created)}</div>
+            <div><b>${escHtml(statusLabel)}</b> • ${escHtml(created)}</div>
             <div class="muted">${escHtml(focus.region || 'World')} ${focus.era ? '• ' + escHtml(focus.era) : ''} ${focus.topic ? '• ' + escHtml(focus.topic) : ''}</div>
           </div>
         </div>
@@ -5510,6 +5645,14 @@ $('coach-chat-messages')?.addEventListener('click', (e) => {
     const tool = String(toolButton.dataset.tool || '').trim();
     if (tool === 'shorter' || tool === 'expand') {
       rewriteCoachChatMessage(messageIndex, tool);
+      return;
+    }
+    if (tool === 'save-notebook') {
+      saveCoachChatMessageToNotebook(messageIndex);
+      return;
+    }
+    if (tool === 'send-class') {
+      sendCoachChatGuidanceToClass(messageIndex);
       return;
     }
     const markdown = coachChatMessageMarkdownText(message);

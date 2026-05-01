@@ -479,6 +479,120 @@ document.addEventListener('DOMContentLoaded', async () => {
         return lines.join('\n').trim();
     }
 
+    function trimNotebookText(value, max = 600) {
+        const text = String(value || '').trim();
+        if (!text || text.length <= max) return text;
+        return `${text.slice(0, Math.max(0, max - 3)).trim()}...`;
+    }
+
+    function dashboardChatNotebookTitle(message) {
+        const raw = String(message?.title || message?.topic || 'Assistant guidance').replace(/\s+/g, ' ').trim();
+        return trimNotebookText(raw || 'Assistant guidance', 90);
+    }
+
+    function buildDashboardChatNotebookRecord(message) {
+        if (!message || message.role !== 'assistant') return null;
+        const markdown = dashboardChatMessageMarkdownText(message);
+        if (!markdown) return null;
+        const title = dashboardChatNotebookTitle(message);
+        const text = String(message.text || '').trim();
+        const highlights = Array.isArray(message.highlights) ? message.highlights : [];
+        const sections = Array.isArray(message.sections) ? message.sections : [];
+        const bullets = [
+            ...highlights,
+            ...sections.map(section => `${String(section?.heading || '').trim()}: ${String(section?.body || '').trim()}`),
+            text
+        ].map(item => trimNotebookText(item, 500)).filter(Boolean).slice(0, 5);
+        const summary = trimNotebookText(text || title, 240);
+        const existingAttemptId = String(message.savedNotebookAttemptId || '').trim();
+        return normalizeCoachRecord({
+            client_attempt_id: existingAttemptId || `assistant_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+            client_session_id: 'assistant-reply',
+            question_id: '',
+            question_text: `Saved assistant reply: ${title}`,
+            expected_answer: title,
+            user_answer: 'Saved from DeepSeek assistant reply',
+            correct: false,
+            reason: trimNotebookText(markdown, 8000),
+            category: 'AI Notebook',
+            era: '',
+            source: 'assistant-reply',
+            focus_topic: title,
+            mastered: false,
+            mastered_at: null,
+            created_at: new Date().toISOString(),
+            coach: {
+                summary: summary ? `Saved assistant guidance: ${summary}` : 'Saved assistant guidance.',
+                error_diagnosis: 'Saved from the DeepSeek assistant for later review.',
+                overlap_explainer: 'Use this note as a study reference or as a starting point for a focused drill.',
+                explanation_bullets: bullets.length ? bullets : [trimNotebookText(markdown, 500)],
+                key_clues: [
+                    'Review the saved guidance before your next practice run.',
+                    'Turn the guidance into one concrete study action.'
+                ],
+                related_facts: [],
+                study_tip: 'Mark this note mastered after you can explain the idea without rereading it.',
+                canonical_answer: title,
+                wiki_link: '',
+                study_focus: {
+                    region: 'AI Notebook',
+                    era: '',
+                    topic: title,
+                    icon: 'AI'
+                }
+            }
+        });
+    }
+
+    async function saveDashboardChatMessageToNotebook(messageIndex) {
+        const message = dashboardChat.messages?.[messageIndex];
+        const record = buildDashboardChatNotebookRecord(message);
+        if (!record) {
+            showAlert('There is no assistant answer to save yet.', 'error');
+            return;
+        }
+        message.savedNotebookAttemptId = record.client_attempt_id;
+        coachRecordsCurrent = [
+            record,
+            ...coachRecordsCurrent.filter(item => String(item.client_attempt_id || '') !== record.client_attempt_id)
+        ].slice(0, 300);
+        writeCoachLocalRecords(coachRecordsCurrent);
+        renderCoachWorkspace();
+        showAlert('Assistant answer saved to AI Notebook.', 'success');
+
+        if (!coachCloudReady) return;
+        try {
+            const { error } = await sb
+                .from(COACH_SYNC_TABLE)
+                .upsert({
+                    user_id: uid,
+                    client_attempt_id: record.client_attempt_id,
+                    client_session_id: record.client_session_id || null,
+                    question_id: record.question_id || null,
+                    question_text: record.question_text,
+                    expected_answer: record.expected_answer,
+                    user_answer: record.user_answer,
+                    correct: record.correct,
+                    reason: record.reason,
+                    coach: record.coach,
+                    category: record.category,
+                    era: record.era,
+                    source: record.source,
+                    focus_topic: record.focus_topic,
+                    mastered: record.mastered,
+                    mastered_at: record.mastered_at
+                }, { onConflict: 'user_id,client_attempt_id' });
+            if (error) throw error;
+        } catch (err) {
+            console.warn('Assistant reply notebook sync failed, using local state:', err);
+            if (isCloudAnalyticsSetupIssue(err) && !coachCloudWarned) {
+                coachCloudReady = false;
+                coachCloudWarned = true;
+                showAlert('Saved locally. Cloud AI Notebook sync is not set up yet.', 'error');
+            }
+        }
+    }
+
     function trimDashboardChatMessages() {
         if (dashboardChat.messages.length > 18) {
             dashboardChat.messages.slice(0, dashboardChat.messages.length - 18).forEach(stopDashboardChatMessageStream);
@@ -1166,6 +1280,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 ${message.role === 'assistant' && !isDashboardChatMessageStreaming(message) ? `
                     <div class="coach-chat-message-tools">
                         <button class="coach-chat-tool" type="button" data-message-index="${messageIndex}" data-tool="copy">Copy answer</button>
+                        <button class="coach-chat-tool" type="button" data-message-index="${messageIndex}" data-tool="save-notebook">Save to AI Notebook</button>
                         <button class="coach-chat-tool" type="button" data-message-index="${messageIndex}" data-tool="shorter" ${dashboardChat.busy ? 'disabled' : ''}>Make this shorter</button>
                         <button class="coach-chat-tool" type="button" data-message-index="${messageIndex}" data-tool="expand" ${dashboardChat.busy ? 'disabled' : ''}>Expand this</button>
                     </div>
@@ -1762,6 +1877,10 @@ document.addEventListener('DOMContentLoaded', async () => {
             const tool = String(toolButton.dataset.tool || '').trim();
             if (tool === 'shorter' || tool === 'expand') {
                 rewriteDashboardChatMessage(messageIndex, tool);
+                return;
+            }
+            if (tool === 'save-notebook') {
+                void saveDashboardChatMessageToNotebook(messageIndex);
                 return;
             }
             if (tool === 'copy' && message?.text) {
@@ -2926,12 +3045,13 @@ document.addEventListener('DOMContentLoaded', async () => {
                     const focus = coachFocusFromRecord(record);
                     const coach = record.coach || {};
                     const created = record.created_at ? new Date(record.created_at).toLocaleString() : '—';
+                    const statusLabel = record.source === 'assistant-reply' ? 'Saved note' : (record.correct ? '✓ Correct' : '✗ Incorrect');
                     return `
                         <div class="coach-note ${record.mastered ? 'mastered' : ''}" data-attempt="${esc(record.client_attempt_id)}">
                             <div class="coach-note-head">
                                 <div class="coach-note-icon">${esc(focus.icon || '📘')}</div>
                                 <div class="coach-note-meta">
-                                    <div><b>${record.correct ? '✓ Correct' : '✗ Incorrect'}</b> • ${esc(created)}</div>
+                                    <div><b>${esc(statusLabel)}</b> • ${esc(created)}</div>
                                     <div class="muted">${esc(focus.region || 'World')}${focus.era ? ' • ' + esc(focus.era) : ''}${focus.topic ? ' • ' + esc(focus.topic) : ''}</div>
                                 </div>
                             </div>

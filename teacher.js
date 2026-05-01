@@ -1957,6 +1957,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         populateClassDropdown();
         syncAccountSettingsInputs();
         applyAccountSettingsLocally();
+        applyPendingAssistantClassGuidanceDraft({ notify: window.location.hash === '#assistant-class-draft' });
         void loadTeacherAnalytics();
     }
 
@@ -2663,6 +2664,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const DASHBOARD_CHAT_UI_KEY = `ihbb_teacher_dashboard_chat_ui_${uid}`;
     const DASHBOARD_CHAT_SESSION_KEY = `ihbb_teacher_dashboard_chat_session_${uid}`;
     const DASHBOARD_CHAT_SCROLL_KEY = `ihbb_teacher_dashboard_chat_scroll_${uid}`;
+    const TEACHER_CLASS_GUIDANCE_DRAFT_KEY = `ihbb_teacher_class_guidance_draft_${uid}`;
     const DASHBOARD_CHAT_SIZE_PRESETS = {
         standard: 820,
         wide: 980,
@@ -2871,6 +2873,102 @@ document.addEventListener('DOMContentLoaded', async () => {
             });
         }
         return lines.join('\n').trim();
+    }
+
+    function trimAssistantGuidanceText(value, max = 600) {
+        const text = String(value || '').replace(/\s+/g, ' ').trim();
+        if (!text || text.length <= max) return text;
+        return `${text.slice(0, Math.max(0, max - 3)).trim()}...`;
+    }
+
+    function assistantGuidanceDraftTitle(message) {
+        const raw = String(message?.title || message?.topic || 'Assistant guidance').trim();
+        const clean = trimAssistantGuidanceText(raw || 'Assistant guidance', 78);
+        return `Guidance: ${clean}`;
+    }
+
+    function readPendingAssistantClassGuidanceDraft() {
+        try {
+            const raw = JSON.parse(localStorage.getItem(TEACHER_CLASS_GUIDANCE_DRAFT_KEY) || 'null');
+            if (!raw || typeof raw !== 'object') return null;
+            const body = String(raw.body || '').trim();
+            if (!body) return null;
+            return {
+                title: String(raw.title || '').trim(),
+                body,
+                classId: normalizeTeacherClassId(raw.classId),
+                createdAt: String(raw.created_at || '').trim()
+            };
+        } catch {
+            return null;
+        }
+    }
+
+    function clearPendingAssistantClassGuidanceDraft() {
+        try { localStorage.removeItem(TEACHER_CLASS_GUIDANCE_DRAFT_KEY); } catch { /* noop */ }
+    }
+
+    function applyAssistantClassGuidanceDraft(draft, { notify = true, removeStorage = false } = {}) {
+        const body = String(draft?.body || '').trim();
+        if (!body) return false;
+        if (!myClasses.length) {
+            if (notify) showAlert('Create a class before sending assistant guidance.', 'error');
+            return false;
+        }
+        const titleEl = document.getElementById('assign-title');
+        const classEl = document.getElementById('assign-class');
+        const instructionsEl = document.getElementById('assign-instructions');
+        if (!titleEl || !classEl || !instructionsEl) return false;
+
+        populateClassDropdown();
+        const preferredClassId = normalizeTeacherClassId(draft?.classId);
+        if (preferredClassId && hasTeacherClassId(preferredClassId, myClasses)) {
+            classEl.value = preferredClassId;
+        } else if (!classEl.value) {
+            classEl.value = resolveTeacherClassOrFallback(accountSettings.teacher_builder_default_class_id, myClasses);
+        }
+
+        const nextTitle = String(draft?.title || 'Guidance: Assistant guidance').trim();
+        if (!String(titleEl.value || '').trim()) titleEl.value = trimAssistantGuidanceText(nextTitle, 90);
+        const existing = String(instructionsEl.value || '').trim();
+        const guidanceBlock = `Assistant guidance from DeepSeek:\n\n${body}`;
+        instructionsEl.value = existing ? `${existing}\n\n${guidanceBlock}` : guidanceBlock;
+
+        activateDashboardTab('create');
+        closeDashboardChat();
+        requestAnimationFrame(() => instructionsEl.focus());
+        if (removeStorage) clearPendingAssistantClassGuidanceDraft();
+        if (window.location.hash === '#assistant-class-draft') {
+            try { window.history.replaceState(null, '', window.location.pathname + window.location.search); } catch { /* noop */ }
+        }
+        if (notify) showAlert('Assistant guidance added to the assignment draft. Review it, choose questions, then create the assignment.', 'success');
+        return true;
+    }
+
+    function applyPendingAssistantClassGuidanceDraft(options = {}) {
+        const draft = readPendingAssistantClassGuidanceDraft();
+        if (!draft) return false;
+        return applyAssistantClassGuidanceDraft(draft, { notify: !!options.notify, removeStorage: true });
+    }
+
+    function sendDashboardChatGuidanceToClass(messageIndex) {
+        const message = dashboardChat.messages?.[messageIndex];
+        if (!message || message.role !== 'assistant') {
+            showAlert('There is no assistant guidance to send yet.', 'error');
+            return;
+        }
+        const body = dashboardChatMessageMarkdownText(message);
+        if (!body) {
+            showAlert('There is no assistant guidance to send yet.', 'error');
+            return;
+        }
+        const snapshot = buildDashboardChatContext();
+        const preferredClass = snapshot?.selected_class || snapshot?.priority_classes?.[0] || null;
+        applyAssistantClassGuidanceDraft({
+            title: assistantGuidanceDraftTitle(message),
+            body,
+            classId: preferredClass?.id || ''
+        }, { notify: true, removeStorage: false });
     }
 
     function trimDashboardChatMessages() {
@@ -3413,6 +3511,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 ${message.role === 'assistant' && !isDashboardChatMessageStreaming(message) ? `
                     <div class="coach-chat-message-tools">
                         <button class="coach-chat-tool" type="button" data-message-index="${messageIndex}" data-tool="copy">Copy answer</button>
+                        <button class="coach-chat-tool" type="button" data-message-index="${messageIndex}" data-tool="send-class">Send this to class</button>
                         <button class="coach-chat-tool" type="button" data-message-index="${messageIndex}" data-tool="shorter" ${dashboardChat.busy ? 'disabled' : ''}>Make this shorter</button>
                         <button class="coach-chat-tool" type="button" data-message-index="${messageIndex}" data-tool="expand" ${dashboardChat.busy ? 'disabled' : ''}>Expand this</button>
                     </div>
@@ -4000,6 +4099,10 @@ document.addEventListener('DOMContentLoaded', async () => {
             const tool = String(toolButton.dataset.tool || '').trim();
             if (tool === 'shorter' || tool === 'expand') {
                 rewriteDashboardChatMessage(messageIndex, tool);
+                return;
+            }
+            if (tool === 'send-class') {
+                sendDashboardChatGuidanceToClass(messageIndex);
                 return;
             }
             if (tool === 'copy' && message?.text) {
