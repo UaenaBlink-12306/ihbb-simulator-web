@@ -103,11 +103,12 @@
                     <div class="panel-stack">
                         <div class="card-muted-box">
                             <div class="inline-form">
-                                <input type="text" id="join-code" name="ihbb-class-invite-code" placeholder="Enter class code (e.g. ABC123)" autocomplete="off" autocapitalize="characters" spellcheck="false" inputmode="text" data-lpignore="true" data-1p-ignore="true" readonly>
-                                <button id="btn-join" class="btn pri">Join Class</button>
+                                <input type="text" id="join-code" name="ihbb-class-invite-code" placeholder="Enter class code (e.g. ABC123)" autocomplete="off" autocapitalize="characters" spellcheck="false" inputmode="text" data-lpignore="true" data-1p-ignore="true" aria-describedby="join-code-help" readonly>
+                                <button id="btn-join" class="btn pri" type="button">Preview Class</button>
                             </div>
-                            <p class="muted" style="margin: 10px 0 0;">Skip this any time and keep using independent
+                            <p id="join-code-help" class="muted" style="margin: 10px 0 0;">Skip this any time and keep using independent
                                 practice.</p>
+                            <div id="join-preview-card" class="hidden" style="margin-top: 12px; padding-top: 12px; border-top: 1px solid rgba(148, 163, 184, 0.28);" aria-live="polite"></div>
                         </div>
                         <div id="student-classes" class="list-container" style="margin-top: 18px;">
                             <p class="muted">Loading...</p>
@@ -614,6 +615,13 @@
                 </div>
                 <div class="dashboard-split dashboard-split-solo">
                     <div class="list-container">
+                        <div class="list-item">
+                            <div>
+                                <h3 style="margin:0 0 4px;">Class Invite Preview</h3>
+                                <div class="pill">May 1, 2026</div>
+                                <p class="muted" style="margin: 8px 0 0;">Students can now preview the class name tied to an invite code and confirm it before joining.</p>
+                            </div>
+                        </div>
                         <div class="list-item">
                             <div>
                                 <h3 style="margin:0 0 4px;">Role-Specific DeepSeek Sidebar</h3>

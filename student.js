@@ -2044,29 +2044,147 @@ document.addEventListener('DOMContentLoaded', async () => {
         }).join('');
     }
 
-    document.getElementById('btn-join').addEventListener('click', async () => {
-        const joinInput = document.getElementById('join-code');
-        const joinButton = document.getElementById('btn-join');
-        const code = joinInput.value.trim().toUpperCase();
+    let pendingJoinPreview = null;
+
+    function getJoinInviteElements() {
+        return {
+            input: document.getElementById('join-code'),
+            previewButton: document.getElementById('btn-join'),
+            previewCard: document.getElementById('join-preview-card')
+        };
+    }
+
+    function normalizeJoinInviteCode(value) {
+        return String(value || '').trim().toUpperCase();
+    }
+
+    function isMissingSupabaseFunction(error) {
+        const codeValue = String(error?.code || '').trim();
+        const message = String(error?.message || '').toLowerCase();
+        return codeValue === '42883'
+            || codeValue === 'PGRST202'
+            || (message.includes('function') && message.includes('not found'));
+    }
+
+    function isStudentAlreadyInClass(classId) {
+        const targetClassId = String(classId || '').trim();
+        if (!targetClassId) return false;
+        return currentMemberships.some((membership) => {
+            const membershipClassId = String(membership?.class_id || classDetailsForMembership(membership)?.id || '').trim();
+            return membershipClassId === targetClassId;
+        });
+    }
+
+    function setJoinInviteControlsDisabled(disabled) {
+        const { input, previewButton, previewCard } = getJoinInviteElements();
+        if (input) input.disabled = disabled;
+        if (previewButton) previewButton.disabled = disabled;
+        previewCard?.querySelectorAll('button').forEach((button) => {
+            button.disabled = disabled;
+        });
+    }
+
+    function clearJoinPreview({ focus = false } = {}) {
+        const { input, previewButton, previewCard } = getJoinInviteElements();
+        pendingJoinPreview = null;
+        if (previewCard) {
+            previewCard.classList.add('hidden');
+            previewCard.innerHTML = '';
+        }
+        if (previewButton) previewButton.textContent = 'Preview Class';
+        if (focus && input) {
+            input.removeAttribute('readonly');
+            input.focus();
+            input.select();
+        }
+    }
+
+    function renderJoinInvitePreview(classInfo, requestedCode) {
+        const normalized = normalizeJoinedClassRecord(classInfo);
+        const { previewCard } = getJoinInviteElements();
+        if (!normalized || !previewCard) return;
+        const inviteCode = normalizeJoinInviteCode(normalized.code || requestedCode);
+        const alreadyJoined = isStudentAlreadyInClass(normalized.id);
+        pendingJoinPreview = {
+            code: inviteCode,
+            classInfo: normalized
+        };
+        previewCard.classList.remove('hidden');
+        previewCard.innerHTML = `
+            <div id="join-preview-status" class="eyebrow">Class invite preview</div>
+            <h3 style="margin: 4px 0 6px;">${esc(normalized.name)}</h3>
+            <p class="muted" style="margin: 0;">${alreadyJoined ? 'You are already in this class.' : 'Confirm this is the class you want to join before continuing.'}</p>
+            <div style="margin-top: 10px;"><span class="pill">${esc(inviteCode)}</span></div>
+            <div class="form-actions" style="margin-top: 12px;">
+                ${alreadyJoined ? '' : '<button id="btn-confirm-join-preview" class="btn pri" type="button">Join Class</button>'}
+                <button id="btn-cancel-join-preview" class="btn ghost" type="button">${alreadyJoined ? 'Enter Another Code' : 'Use a Different Code'}</button>
+            </div>`;
+    }
+
+    async function fetchJoinInvitePreview(code) {
+        const result = await sb.rpc('preview_class_by_code', { p_code: code });
+        if (result.error) {
+            if (!isMissingSupabaseFunction(result.error)) throw result.error;
+            const fallback = await sb
+                .from('classes')
+                .select('id, name, code')
+                .eq('code', code)
+                .limit(1);
+            const fallbackPreview = Array.isArray(fallback.data) ? fallback.data[0] : fallback.data;
+            if (!fallback.error && fallbackPreview) {
+                const normalizedFallback = normalizeJoinedClassRecord(fallbackPreview);
+                if (normalizedFallback) return normalizedFallback;
+            }
+            throw result.error;
+        }
+        const preview = Array.isArray(result.data) ? result.data[0] : result.data;
+        const normalized = normalizeJoinedClassRecord(preview);
+        if (!normalized) throw new Error('Class not found');
+        return normalized;
+    }
+
+    async function previewJoinInvite() {
+        const { input, previewButton } = getJoinInviteElements();
+        if (!input || !previewButton) return;
+        const code = normalizeJoinInviteCode(input.value);
+        if (!code) return;
+        clearJoinPreview();
+        input.value = code;
+        previewButton.disabled = true;
+        input.disabled = true;
+        previewButton.textContent = 'Checking...';
+        try {
+            const classPreview = await fetchJoinInvitePreview(code);
+            renderJoinInvitePreview(classPreview, code);
+        } catch (error) {
+            console.warn('[Student Class Preview] failed:', error);
+            if (isMissingSupabaseFunction(error)) {
+                showAlert('Class invite preview is unavailable until the latest Supabase migration is applied.', 'error');
+            } else {
+                showAlert(error?.message || 'We could not find a class for that invite code.', 'error');
+            }
+        } finally {
+            previewButton.disabled = false;
+            input.disabled = false;
+            previewButton.textContent = 'Preview Class';
+        }
+    }
+
+    async function confirmJoinInvite() {
+        const { input, previewButton } = getJoinInviteElements();
+        const code = normalizeJoinInviteCode(pendingJoinPreview?.code || input?.value);
         if (!code) return;
         // Name is required before joining
         if (!profile.display_name || !profile.display_name.trim()) {
             document.getElementById('name-modal').classList.remove('hidden');
             return;
         }
-        joinButton.disabled = true;
-        joinInput.disabled = true;
-        const originalButtonText = joinButton.textContent;
-        joinButton.textContent = 'Joining...';
+        setJoinInviteControlsDisabled(true);
+        if (previewButton) previewButton.textContent = 'Joining...';
         try {
             const rpcJoin = await sb.rpc('join_class_by_code', { p_code: code });
             if (rpcJoin.error) {
-                const codeValue = String(rpcJoin.error?.code || '').trim();
-                const message = String(rpcJoin.error?.message || '').toLowerCase();
-                const missingRpc = codeValue === '42883'
-                    || codeValue === 'PGRST202'
-                    || (message.includes('function') && message.includes('not found'));
-                if (missingRpc) {
+                if (isMissingSupabaseFunction(rpcJoin.error)) {
                     showAlert('Class join is unavailable until the latest Supabase migration is applied.', 'error');
                     return;
                 }
@@ -2074,18 +2192,31 @@ document.addEventListener('DOMContentLoaded', async () => {
                 return;
             }
 
-            const joinedClass = Array.isArray(rpcJoin.data) ? rpcJoin.data[0] : rpcJoin.data;
+            const joinedClass = normalizeJoinedClassRecord(Array.isArray(rpcJoin.data) ? rpcJoin.data[0] : rpcJoin.data)
+                || pendingJoinPreview?.classInfo;
             applyJoinedClassLocally(joinedClass);
-            joinInput.value = '';
-            showAlert('Joined class!', 'success');
+            if (input) input.value = '';
+            clearJoinPreview();
+            showAlert(`Joined ${joinedClass?.name || 'class'}!`, 'success');
             await Promise.all([loadClasses(), loadAssignments()]);
         } catch (error) {
             console.warn('[Student Join Class] failed:', error);
             showAlert(error?.message || 'We could not join that class right now.', 'error');
         } finally {
-            joinButton.disabled = false;
-            joinInput.disabled = false;
-            joinButton.textContent = originalButtonText;
+            setJoinInviteControlsDisabled(false);
+            if (previewButton) previewButton.textContent = 'Preview Class';
+        }
+    }
+
+    document.getElementById('btn-join')?.addEventListener('click', previewJoinInvite);
+    document.getElementById('join-code')?.addEventListener('input', () => clearJoinPreview());
+    document.getElementById('join-preview-card')?.addEventListener('click', (event) => {
+        if (event.target.closest('#btn-cancel-join-preview')) {
+            clearJoinPreview({ focus: true });
+            return;
+        }
+        if (event.target.closest('#btn-confirm-join-preview')) {
+            confirmJoinInvite();
         }
     });
 
