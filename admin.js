@@ -7,6 +7,7 @@ document.addEventListener('DOMContentLoaded', () => {
     generatedSearch: '',
     feedbackFilter: 'open',
     feedbackSearch: '',
+    feedbackSort: 'newest',
     feedbackArchiveSearch: '',
     userSearch: '',
     localAdminOrigin: 'http://127.0.0.1:5057'
@@ -380,6 +381,26 @@ document.addEventListener('DOMContentLoaded', () => {
     return String(user?.display_name || '').trim();
   }
 
+  function feedbackDateMs(value, fallback = 0) {
+    const ms = new Date(String(value || '').trim()).getTime();
+    return Number.isFinite(ms) ? ms : fallback;
+  }
+
+  function sortFeedbackRows(rows) {
+    const sort = String(state.feedbackSort || 'newest').trim();
+    return [...rows].sort((a, b) => {
+      if (sort === 'oldest_unanswered') {
+        const aNeedsReply = !hasAdminResponse(a);
+        const bNeedsReply = !hasAdminResponse(b);
+        if (aNeedsReply !== bNeedsReply) return aNeedsReply ? -1 : 1;
+        if (aNeedsReply && bNeedsReply) {
+          return feedbackDateMs(a?.created_at, Number.MAX_SAFE_INTEGER) - feedbackDateMs(b?.created_at, Number.MAX_SAFE_INTEGER);
+        }
+      }
+      return feedbackDateMs(b?.created_at, 0) - feedbackDateMs(a?.created_at, 0);
+    });
+  }
+
   function feedbackCardHtml(row, usersById) {
     const id = String(row?.id || '');
     const status = normalizeFeedbackStatus(row?.status);
@@ -454,7 +475,7 @@ document.addEventListener('DOMContentLoaded', () => {
       ]);
     }
     const needle = state.feedbackSearch.trim().toLowerCase();
-    const rows = allRows.filter((row) => {
+    const rows = sortFeedbackRows(allRows.filter((row) => {
       const status = normalizeFeedbackStatus(row?.status);
       if (status === 'resolved') return false;
       if (filter === 'reply_needed' && hasAdminResponse(row)) return false;
@@ -465,7 +486,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (filter !== 'open' && status !== filter) return false;
       const user = usersById.get(String(row?.user_id || '')) || {};
       return feedbackMatchesSearch(row, user, needle);
-    });
+    }));
     if (!rows.length) {
       list.innerHTML = `<div class="card-muted-box">No feedback rows match the current filter. If this table is missing, run the app feedback migration in Supabase.</div>`;
       return;
@@ -710,6 +731,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
   $('admin-feedback-filter')?.addEventListener('change', (event) => {
     state.feedbackFilter = String(event.target?.value || 'open');
+    renderFeedbackInbox();
+  });
+
+  $('admin-feedback-sort')?.addEventListener('change', (event) => {
+    state.feedbackSort = String(event.target?.value || 'newest');
     renderFeedbackInbox();
   });
 
