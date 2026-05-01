@@ -151,6 +151,38 @@ document.addEventListener('DOMContentLoaded', async () => {
         assistant_response_detail: 'detailed'
     });
     const ASSISTANT_RESPONSE_DETAILS = new Set(['compact', 'detailed']);
+    const ASSIGNMENT_TEMPLATE_CONFIGS = Object.freeze({
+        'silk-road': {
+            title: 'The Silk Road Quiz',
+            topic: 'The Silk Road',
+            categories: ['Central Asia', 'East Asia', 'South Asia', 'Middle East'],
+            eras: ['02', '03', '04'],
+            terms: ['silk', 'road', 'trade', 'caravan', 'mongol', 'han', 'tang', 'persia'],
+            instructions: 'Review the trade routes, cultural exchange, empires, and cross-regional clues that point to the Silk Road.'
+        },
+        'us-presidents': {
+            title: 'US Presidents Challenge',
+            topic: 'US Presidents',
+            categories: ['North America'],
+            eras: ['05', '06', '07'],
+            terms: ['president', 'presidents', 'united', 'states', 'american', 'white', 'house', 'congress'],
+            instructions: 'Focus on U.S. presidents, administrations, elections, policies, and clue patterns from American political history.'
+        },
+        'cold-war': {
+            title: 'The Cold War Review',
+            topic: 'The Cold War',
+            categories: ['World', 'Europe', 'East Asia', 'Middle East', 'Latin America'],
+            eras: ['06'],
+            terms: ['cold', 'war', 'soviet', 'communist', 'nato', 'berlin', 'korea', 'vietnam', 'cuba'],
+            instructions: 'Practice Cold War conflicts, alliances, leaders, and global proxy-war clue patterns.'
+        }
+    });
+    const ASSIGNMENT_SUGGESTION_STOP_WORDS = new Set([
+        'about', 'after', 'again', 'assignment', 'assign', 'before', 'build', 'class', 'create', 'draft',
+        'from', 'give', 'guidance', 'homework', 'into', 'lesson', 'move', 'next', 'plan', 'practice',
+        'question', 'questions', 'review', 'should', 'student', 'students', 'teacher', 'this', 'turn',
+        'with', 'work', 'would', 'your'
+    ]);
     const normalizeTeacherClassId = (value) => String(value || '').trim();
     const normalizeTeacherBuilderMode = (value) => {
         const normalized = String(value || '').trim().toLowerCase();
@@ -2451,6 +2483,294 @@ document.addEventListener('DOMContentLoaded', async () => {
         selectedQuestions = dedupeQuestions(next);
         updatePreview();
     }
+
+    function normalizeAssignmentSuggestionText(value) {
+        return String(value || '')
+            .toLowerCase()
+            .replace(/&/g, ' and ')
+            .replace(/[^a-z0-9]+/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim();
+    }
+
+    function questionCategory(question) {
+        return String(question?.meta?.category || question?.category || '').trim();
+    }
+
+    function questionEra(question) {
+        return String(question?.meta?.era || question?.era || '').trim();
+    }
+
+    function uniqueAssignmentValues(values, allowed = null) {
+        const seen = new Set();
+        const out = [];
+        (Array.isArray(values) ? values : []).forEach(value => {
+            const text = String(value || '').trim();
+            if (!text || seen.has(text)) return;
+            if (allowed && !allowed.includes(text)) return;
+            seen.add(text);
+            out.push(text);
+        });
+        return out;
+    }
+
+    function assignmentSuggestionTerms(text, extra = []) {
+        const terms = normalizeAssignmentSuggestionText(text)
+            .split(/\s+/)
+            .map(term => term.trim())
+            .filter(term => term.length >= 3 && !ASSIGNMENT_SUGGESTION_STOP_WORDS.has(term));
+        return uniqueAssignmentValues([...(Array.isArray(extra) ? extra : []), ...terms]).slice(0, 28);
+    }
+
+    function assignmentSuggestionMessageText(message) {
+        if (!message || typeof message !== 'object') return '';
+        const highlights = Array.isArray(message.highlights) ? message.highlights.join(' ') : '';
+        const sections = Array.isArray(message.sections)
+            ? message.sections.map(section => `${section?.heading || ''} ${section?.body || ''}`).join(' ')
+            : '';
+        const followUps = Array.isArray(message.followUps)
+            ? message.followUps.map(item => `${item?.label || ''} ${item?.prompt || ''}`).join(' ')
+            : '';
+        return [
+            message.title,
+            message.topic,
+            message.text,
+            highlights,
+            sections,
+            followUps
+        ].map(value => String(value || '').trim()).filter(Boolean).join(' ');
+    }
+
+    function addAssignmentCategoryMatches(target, text, patterns, categoryList) {
+        if (patterns.some(pattern => pattern.test(text))) {
+            categoryList.forEach(category => target.push(category));
+        }
+    }
+
+    function inferAssignmentCategories(text) {
+        const normalized = normalizeAssignmentSuggestionText(text);
+        const detected = [];
+        cats.forEach(category => {
+            const categoryText = normalizeAssignmentSuggestionText(category);
+            if (categoryText && normalized.includes(categoryText)) detected.push(category);
+        });
+        addAssignmentCategoryMatches(detected, normalized, [/\basia\b/, /\basian\b/, /\bsilk road\b/, /\bhan\b/, /\btang\b/, /\bmongol\b/], ['Central Asia', 'East Asia', 'South Asia', 'Southeast Asia']);
+        addAssignmentCategoryMatches(detected, normalized, [/\bamerica\b/, /\bamericas\b/, /\bunited states\b/, /\bu s\b/, /\bpresident\b/, /\bpresidents\b/], ['North America']);
+        addAssignmentCategoryMatches(detected, normalized, [/\blatin america\b/, /\bcuba\b/, /\bbolivar\b/], ['Latin America']);
+        addAssignmentCategoryMatches(detected, normalized, [/\beurope\b/, /\beuropean\b/, /\bnato\b/, /\bberlin\b/, /\bsoviet\b/], ['Europe']);
+        addAssignmentCategoryMatches(detected, normalized, [/\bmiddle east\b/, /\bpersia\b/, /\bpersian\b/, /\barab\b/, /\bislam\b/, /\babbasid\b/, /\boman\b/, /\bottoman\b/], ['Middle East']);
+        addAssignmentCategoryMatches(detected, normalized, [/\bafrica\b/, /\bafrican\b/], ['Africa']);
+        addAssignmentCategoryMatches(detected, normalized, [/\boceania\b/, /\baustralia\b/, /\bpacific\b/], ['Oceania']);
+        addAssignmentCategoryMatches(detected, normalized, [/\bworld\b/, /\bglobal\b/, /\bcold war\b/, /\bworld war\b/], ['World']);
+        return uniqueAssignmentValues(detected, cats);
+    }
+
+    function inferAssignmentEras(text) {
+        const normalized = normalizeAssignmentSuggestionText(text);
+        const detected = [];
+        eras.forEach(era => {
+            const label = normalizeAssignmentSuggestionText(getEraLabel(era));
+            if (normalized.includes(` ${era} `) || (label && normalized.includes(label))) detected.push(era);
+        });
+        if (/\bcold war\b|\bworld war\b|\bwwii\b|\bww2\b|\bsoviet\b|\bcommunist\b|\bnato\b|\bdecolon|\bberlin\b|\bkorea\b|\bvietnam\b|\bcuba\b/.test(normalized)) detected.push('06');
+        if (/\b1991\b|\bpresent\b|\bcontemporary\b|\bpost cold war\b/.test(normalized)) detected.push('07');
+        if (/\bpresident\b|\bpresidents\b|\bcivil war\b|\breconstruction\b|\bindustrial\b|\bimperialism\b|\bconstitution\b|\blincoln\b|\broosevelt\b|\bjackson\b/.test(normalized)) detected.push('05', '06', '07');
+        if (/\bsilk road\b|\bmedieval\b|\bmongol\b|\bcrusade\b|\babbasid\b|\btang\b|\bsong\b/.test(normalized)) detected.push('03');
+        if (/\bancient\b|\broman\b|\bgreek\b|\bhan dynasty\b|\bpersian empire\b/.test(normalized)) detected.push('02');
+        if (/\brenaissance\b|\bearly modern\b|\bming\b|\bmughal\b|\bqing\b|\bottoman\b|\breformation\b/.test(normalized)) detected.push('04');
+        return uniqueAssignmentValues(detected, eras);
+    }
+
+    function resolveAssignmentTemplateIdFromText(text) {
+        const normalized = normalizeAssignmentSuggestionText(text);
+        if (/\bsilk road\b/.test(normalized)) return 'silk-road';
+        if (/\bcold war\b/.test(normalized)) return 'cold-war';
+        if (/\bus presidents\b|\bu s presidents\b|\bamerican presidents\b/.test(normalized)) return 'us-presidents';
+        return '';
+    }
+
+    function buildAssignmentSuggestionCriteria({ templateId = '', action = null, sourceMessage = null, draft = null } = {}) {
+        const actionText = [
+            action?.label,
+            action?.reason,
+            action?.query
+        ].map(value => String(value || '').trim()).filter(Boolean).join(' ');
+        const messageText = assignmentSuggestionMessageText(sourceMessage);
+        const draftText = draft ? `${draft.title || ''} ${draft.body || ''}` : '';
+        const combinedText = [actionText, messageText, draftText].filter(Boolean).join(' ');
+        const resolvedTemplateId = templateId || resolveAssignmentTemplateIdFromText(combinedText);
+        const template = resolvedTemplateId ? ASSIGNMENT_TEMPLATE_CONFIGS[resolvedTemplateId] : null;
+        const topic = String(
+            template?.topic ||
+            action?.query ||
+            sourceMessage?.topic ||
+            sourceMessage?.title ||
+            draft?.title ||
+            ''
+        ).replace(/^Guidance:\s*/i, '').trim();
+        const categories = uniqueAssignmentValues([
+            ...(template?.categories || []),
+            ...inferAssignmentCategories(combinedText)
+        ], cats);
+        const eraMatches = uniqueAssignmentValues([
+            ...(template?.eras || []),
+            ...inferAssignmentEras(combinedText)
+        ], eras);
+        return {
+            title: String(template?.title || (topic ? `Suggested Assignment: ${topic}` : 'Suggested Assignment')).trim(),
+            topic,
+            categories,
+            eras: eraMatches,
+            terms: assignmentSuggestionTerms(`${topic} ${combinedText}`, template?.terms || []),
+            instructions: String(template?.instructions || (topic
+                ? `Practice the most relevant IHBB clue patterns for ${topic}.`
+                : 'Practice the most relevant IHBB clue patterns for the class need.')).trim(),
+            count: 10
+        };
+    }
+
+    function assignmentQuestionHaystack(question) {
+        return normalizeAssignmentSuggestionText([
+            question?.answer,
+            question?.question,
+            Array.isArray(question?.aliases) ? question.aliases.join(' ') : '',
+            question?.topic,
+            questionCategory(question),
+            getEraLabel(questionEra(question))
+        ].map(value => String(value || '').trim()).filter(Boolean).join(' '));
+    }
+
+    function stableAssignmentQuestionRank(question, salt = '') {
+        const text = `${questionKey(question)}|${salt}`;
+        let hash = 2166136261;
+        for (let i = 0; i < text.length; i += 1) {
+            hash ^= text.charCodeAt(i);
+            hash = Math.imul(hash, 16777619);
+        }
+        return hash >>> 0;
+    }
+
+    function scoreAssignmentSuggestionQuestion(question, criteria) {
+        const haystack = assignmentQuestionHaystack(question);
+        const answerText = normalizeAssignmentSuggestionText(question?.answer || '');
+        const category = questionCategory(question);
+        const era = questionEra(question);
+        const categories = Array.isArray(criteria?.categories) ? criteria.categories : [];
+        const erasToUse = Array.isArray(criteria?.eras) ? criteria.eras : [];
+        const terms = Array.isArray(criteria?.terms) ? criteria.terms : [];
+        const topic = normalizeAssignmentSuggestionText(criteria?.topic || '');
+        let score = 0;
+
+        if (categories.length) score += categories.includes(category) ? 90 : -24;
+        if (erasToUse.length) score += erasToUse.includes(era) ? 64 : -16;
+        if (topic && haystack.includes(topic)) score += 150;
+        terms.forEach(term => {
+            const normalizedTerm = normalizeAssignmentSuggestionText(term);
+            if (!normalizedTerm) return;
+            if (answerText.includes(normalizedTerm)) score += 34;
+            if (haystack.includes(normalizedTerm)) score += 16;
+        });
+        if (!categories.length && !erasToUse.length && !terms.length && !topic) score = 1;
+        return score;
+    }
+
+    function pickAssignmentSuggestionQuestions(criteria, count = 10) {
+        const safeCount = Math.min(clampCount(count, 10), allQuestions.length);
+        const salt = `${criteria?.topic || ''}|${(criteria?.categories || []).join(',')}|${(criteria?.eras || []).join(',')}`;
+        const scored = allQuestions.map(question => ({
+            question,
+            key: questionKey(question),
+            category: questionCategory(question),
+            score: scoreAssignmentSuggestionQuestion(question, criteria),
+            rank: stableAssignmentQuestionRank(question, salt)
+        })).sort((a, b) => b.score - a.score || a.rank - b.rank);
+        const picked = [];
+        const seen = new Set();
+        const addRow = (row) => {
+            if (!row || !row.key || seen.has(row.key) || picked.length >= safeCount) return false;
+            seen.add(row.key);
+            picked.push(row.question);
+            return true;
+        };
+
+        const categories = Array.isArray(criteria?.categories) ? criteria.categories : [];
+        categories.forEach(category => {
+            addRow(scored.find(row => row.category === category && row.score > 0 && !seen.has(row.key)));
+        });
+        scored.forEach(row => {
+            if (row.score > 0) addRow(row);
+        });
+        scored.forEach(addRow);
+        return picked.slice(0, safeCount);
+    }
+
+    function syncAssignmentSuggestionControls(criteria) {
+        selectedFilterCategories = uniqueAssignmentValues(criteria?.categories || [], cats);
+        selectedFilterEras = uniqueAssignmentValues(criteria?.eras || [], eras);
+        renderCategoryFilterChips();
+        renderEraFilterChips();
+        const countValue = String(criteria?.count || 10);
+        setInput('random-count', countValue);
+        setInput('filter-count', countValue);
+        setInput('teacher-gen-topic', criteria?.topic || '');
+        setInput('teacher-gen-count', countValue);
+        const regionSelect = document.getElementById('teacher-gen-region');
+        if (regionSelect) {
+            const preferredCategory = selectedFilterCategories.find(category => Array.from(regionSelect.options).some(option => option.value === category));
+            regionSelect.value = preferredCategory || '';
+        }
+        const eraSelect = document.getElementById('teacher-gen-era');
+        if (eraSelect) {
+            const preferredEra = selectedFilterEras.find(era => Array.from(eraSelect.options).some(option => option.value === era));
+            eraSelect.value = preferredEra || '';
+        }
+        const search = document.getElementById('pick-search');
+        if (search && criteria?.topic) {
+            search.value = criteria.topic;
+            search.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+    }
+
+    function applyAssignmentSuggestionFields(criteria, { replaceTitle = false, appendInstructions = false } = {}) {
+        const titleEl = document.getElementById('assign-title');
+        const instructionsEl = document.getElementById('assign-instructions');
+        if (titleEl && (replaceTitle || !String(titleEl.value || '').trim())) {
+            titleEl.value = String(criteria?.title || 'Suggested Assignment').trim();
+        }
+        if (instructionsEl && criteria?.instructions) {
+            const current = String(instructionsEl.value || '').trim();
+            if (appendInstructions && current) {
+                if (!current.includes(criteria.instructions)) instructionsEl.value = `${current}\n\n${criteria.instructions}`;
+            } else if (!current || replaceTitle) {
+                instructionsEl.value = criteria.instructions;
+            }
+        }
+    }
+
+    function applyAssignmentQuestionSuggestions(criteria, options = {}) {
+        if (!allQuestions.length) {
+            if (!options.silent) showAlert('No questions loaded yet.', 'error');
+            return [];
+        }
+        if (options.onlyWhenEmpty && selectedQuestions.length) return [];
+        const picked = pickAssignmentSuggestionQuestions(criteria, criteria?.count || 10);
+        if (!picked.length) {
+            if (!options.silent) showAlert('No matching questions were found.', 'error');
+            return [];
+        }
+        const nextQuestions = options.append ? [...selectedQuestions, ...picked] : picked;
+        setSelectedQuestions(nextQuestions);
+        syncAssignmentSuggestionControls(criteria);
+        if (typeof setMode === 'function') setMode('pick');
+        if (!options.silent) {
+            const label = criteria?.categories?.length
+                ? ` across ${criteria.categories.slice(0, 3).join(', ')}${criteria.categories.length > 3 ? ' and more' : ''}`
+                : '';
+            showAlert(`Hand-picked ${picked.length} real question${picked.length === 1 ? '' : 's'}${label}.`, 'success');
+        }
+        return picked;
+    }
+
     function togglePickedQuestion(item, shouldSelect, rowEl) {
         const key = questionKey(item);
         const idx = selectedQuestions.findIndex(s => questionKey(s) === key);
@@ -2476,34 +2796,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.querySelectorAll('.template-btn').forEach(btn => {
         btn.addEventListener('click', () => {
             const template = btn.dataset.template;
-            const titleInput = document.getElementById('assign-title');
-            const topicInput = document.getElementById('teacher-gen-topic');
-            const countInput = document.getElementById('teacher-gen-count');
-            const regionSelect = document.getElementById('teacher-gen-region');
-            const eraSelect = document.getElementById('teacher-gen-era');
-
-            countInput.value = '10';
-
-            if (template === 'silk-road') {
-                titleInput.value = 'The Silk Road Quiz';
-                topicInput.value = 'The Silk Road';
-                regionSelect.value = 'Asia';
-                eraSelect.value = '';
-            } else if (template === 'us-presidents') {
-                titleInput.value = 'US Presidents Challenge';
-                topicInput.value = 'US Presidents';
-                regionSelect.value = 'Americas';
-                eraSelect.value = '';
-            } else if (template === 'cold-war') {
-                titleInput.value = 'The Cold War Review';
-                topicInput.value = 'The Cold War';
-                regionSelect.value = 'World';
-                eraSelect.value = '1945-present';
-            }
-
-            const genBtn = document.getElementById('btn-teacher-generate');
-            if (genBtn && !genBtn.disabled) {
-                genBtn.click();
+            const criteria = buildAssignmentSuggestionCriteria({ templateId: template });
+            applyAssignmentSuggestionFields(criteria, { replaceTitle: true });
+            const picked = applyAssignmentQuestionSuggestions(criteria, { append: false });
+            generatedDraftQuestions = [];
+            renderGeneratedDraftPreview();
+            if (picked.length) {
+                updateGeneratorStatus(`Template hand-picked ${picked.length} existing question${picked.length === 1 ? '' : 's'} from the question bank. Use Generate Draft only if you want new AI-created questions.`, 'muted');
             }
         });
     });
@@ -2520,18 +2819,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('btn-filter-preview').addEventListener('click', () => {
         if (!allQuestions.length) { showAlert('No questions loaded yet.', 'error'); return; }
         const n = clampCount(document.getElementById('filter-count').value, 10);
-        const catSet = new Set(selectedFilterCategories);
-        const eraSet = new Set(selectedFilterEras);
-        const pool = allQuestions.filter(q => {
-            const cat = (q.meta?.category || q.category || '');
-            const era = (q.meta?.era || q.era || '');
-            if (catSet.size && !catSet.has(cat)) return false;
-            if (eraSet.size && !eraSet.has(era)) return false;
-            return true;
-        });
-        if (!pool.length) { showAlert('No questions match the selected regions/eras.', 'error'); return; }
-        const shuffled = [...pool].sort(() => Math.random() - 0.5);
-        setSelectedQuestions(shuffled.slice(0, Math.min(n, pool.length)));
+        const criteria = {
+            title: 'Filtered Assignment Draft',
+            topic: '',
+            categories: uniqueAssignmentValues(selectedFilterCategories, cats),
+            eras: uniqueAssignmentValues(selectedFilterEras, eras),
+            terms: [],
+            instructions: 'Practice the selected region and era mix.',
+            count: n
+        };
+        applyAssignmentQuestionSuggestions(criteria, { append: false });
     });
     document.getElementById('btn-filter-reset')?.addEventListener('click', () => {
         selectedFilterCategories = [];
@@ -2933,6 +3230,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         const existing = String(instructionsEl.value || '').trim();
         const guidanceBlock = `Assistant guidance from DeepSeek:\n\n${body}`;
         instructionsEl.value = existing ? `${existing}\n\n${guidanceBlock}` : guidanceBlock;
+        const criteria = buildAssignmentSuggestionCriteria({ draft: { ...draft, body } });
+        const picked = applyAssignmentQuestionSuggestions(criteria, { onlyWhenEmpty: true, silent: true });
 
         activateDashboardTab('create');
         closeDashboardChat();
@@ -2941,7 +3240,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (window.location.hash === '#assistant-class-draft') {
             try { window.history.replaceState(null, '', window.location.pathname + window.location.search); } catch { /* noop */ }
         }
-        if (notify) showAlert('Assistant guidance added to the assignment draft. Review it, choose questions, then create the assignment.', 'success');
+        if (notify) {
+            const questionNote = picked.length
+                ? ` I also hand-picked ${picked.length} matching question${picked.length === 1 ? '' : 's'}.`
+                : (selectedQuestions.length ? ' Your existing selected questions were kept.' : '');
+            showAlert(`Assistant guidance added to the assignment draft.${questionNote} Review it, then create the assignment.`, 'success');
+        }
         return true;
     }
 
@@ -4000,7 +4304,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         return buildDashboardChatContext().selected_class || buildDashboardChatContext().priority_classes?.[0] || null;
     }
 
-    async function runDashboardChatAction(action) {
+    async function runDashboardChatAction(action, sourceMessage = null) {
         const actionId = String(action?.id || '').trim();
         if (!DASHBOARD_CHAT_ALLOWED_ACTIONS.has(actionId)) return;
         if (actionId === 'open_ai_notebook' || actionId === 'review_last_misses' || actionId === 'open_review') {
@@ -4011,7 +4315,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (actionId === 'apply_top_focus' || actionId === 'generate_focus_drill' || actionId === 'open_setup' || actionId === 'start_current_session') {
             closeDashboardChat();
             activateDashboardTab('create');
-            if (typeof setMode === 'function') setMode('filter');
+            const criteria = buildAssignmentSuggestionCriteria({ action, sourceMessage });
+            applyAssignmentSuggestionFields(criteria, { appendInstructions: true });
+            applyAssignmentQuestionSuggestions(criteria, { append: false });
             return;
         }
         if (actionId === 'practice_due_now') {
@@ -4023,7 +4329,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             writeDashboardCoachNavAction('open_library', { query: String(action?.query || '').trim() });
             closeDashboardChat();
             activateDashboardTab('create');
-            if (typeof setMode === 'function') setMode('pick');
+            const criteria = buildAssignmentSuggestionCriteria({ action, sourceMessage });
+            applyAssignmentSuggestionFields(criteria, { appendInstructions: true });
+            applyAssignmentQuestionSuggestions(criteria, { append: false });
             return;
         }
         closeDashboardChat();
@@ -4120,7 +4428,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const actionIndex = Number(button.dataset.actionIndex);
         const action = dashboardChat.messages?.[messageIndex]?.actions?.[actionIndex];
         if (!action) return;
-        void runDashboardChatAction(action);
+        void runDashboardChatAction(action, dashboardChat.messages?.[messageIndex] || null);
     });
     document.addEventListener('pointermove', (event) => {
         if (!dashboardChat.resizing) return;
