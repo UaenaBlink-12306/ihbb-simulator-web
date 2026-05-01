@@ -291,6 +291,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         studentId: '',
         selectedClassId: ''
     };
+    const peerComparisonState = {
+        classId: '',
+        studentAId: '',
+        studentBId: 'class_average'
+    };
     const DAY_MS = 24 * 60 * 60 * 1000;
     let teacherAnalyticsLoadVersion = 0;
     const toNum = (value, fallback = 0) => {
@@ -602,6 +607,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     const selectAnalyticsClass = (classId) => {
         const nextId = String(classId || '').trim();
         if (nextId) teacherAnalyticsState.selectedClassId = nextId;
+        peerComparisonState.classId = nextId;
+        peerComparisonState.studentAId = '';
+        peerComparisonState.studentBId = 'class_average';
         renderTeacherAnalytics();
     };
     window.selectAnalyticsClass = selectAnalyticsClass;
@@ -1358,83 +1366,273 @@ document.addEventListener('DOMContentLoaded', async () => {
             : '';
         renderTeacherStudentAnalyticsModal();
     }
-    function renderPeerComparison() {
-        const studentAId = document.getElementById('compare-student-a')?.value;
-        const studentBId = document.getElementById('compare-student-b')?.value;
-        const resultsEl = document.getElementById('analytics-comparison-results');
-        
-        if (!resultsEl) return;
-        
-        if (!studentAId) {
-            resultsEl.innerHTML = '<p class="muted">Select Student A to view comparison.</p>';
+    function getPeerComparisonClass() {
+        const classes = teacherAnalyticsState.classes || [];
+        const classId = resolveTeacherActiveClassId(
+            peerComparisonState.classId || teacherAnalyticsState.selectedClassId,
+            classes,
+            accountSettings.teacher_analytics_default_class_id
+        );
+        const selected = classId ? teacherAnalyticsState.byClassId.get(classId) : null;
+        if (selected?.id) peerComparisonState.classId = selected.id;
+        return selected || null;
+    }
+
+    function normalizePeerStudentId(value, classStats, fallback = '') {
+        const id = String(value || '').trim();
+        const students = Array.isArray(classStats?.students) ? classStats.students : [];
+        return id && students.some(row => String(row.id || '') === id) ? id : fallback;
+    }
+
+    function normalizePeerStudentBId(value, classStats, studentAId = '') {
+        const id = String(value || '').trim();
+        if (!id || id === 'class_average' || id === studentAId) return 'class_average';
+        return normalizePeerStudentId(id, classStats, 'class_average');
+    }
+
+    function buildPeerStudentOptions(classStats, { includeAverage = false, placeholder = '' } = {}) {
+        const students = Array.isArray(classStats?.students) ? classStats.students : [];
+        const options = [];
+        if (placeholder) options.push(`<option value="">${esc(placeholder)}</option>`);
+        if (includeAverage) options.push('<option value="class_average">Class Average</option>');
+        students.forEach(row => {
+            options.push(`<option value="${esc(row.id)}">${esc(row.name || 'Unnamed')}</option>`);
+        });
+        return options.join('');
+    }
+
+    function setPeerSelect(id, html, value, disabled = false) {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.innerHTML = html;
+        el.value = value;
+        el.disabled = !!disabled;
+    }
+
+    function renderPeerComparisonControls() {
+        const classes = teacherAnalyticsState.classes || [];
+        const selected = getPeerComparisonClass();
+        const classOptions = classes.length
+            ? classes.map(row => `<option value="${esc(row.id)}">${esc(row.name)}${row.code ? ` (${esc(row.code)})` : ''}</option>`).join('')
+            : '<option value="">No classes yet</option>';
+        setPeerSelect('peer-compare-class-select', classOptions, selected?.id || '', !classes.length);
+
+        if (!selected) {
+            setPeerSelect('compare-student-a', '<option value="">No students available</option>', '', true);
+            setPeerSelect('compare-student-b', '<option value="class_average">Class Average</option>', 'class_average', true);
+            setPeerSelect('peer-page-student-a', '<option value="">No students available</option>', '', true);
+            setPeerSelect('peer-page-student-b', '<option value="class_average">Class Average</option>', 'class_average', true);
+            const openBtn = document.getElementById('btn-open-peer-comparison');
+            if (openBtn) openBtn.disabled = true;
             return;
         }
 
-        const studentA = teacherAnalyticsState.studentsById.get(studentAId);
-        if (!studentA) return;
+        peerComparisonState.studentAId = normalizePeerStudentId(peerComparisonState.studentAId, selected, '');
+        peerComparisonState.studentBId = normalizePeerStudentBId(peerComparisonState.studentBId, selected, peerComparisonState.studentAId);
+        const disabled = !Array.isArray(selected.students) || !selected.students.length;
+        const studentAOptions = buildPeerStudentOptions(selected, { placeholder: disabled ? 'No students enrolled' : 'Select a student...' });
+        const studentBOptions = buildPeerStudentOptions(selected, { includeAverage: true });
+        setPeerSelect('compare-student-a', studentAOptions, peerComparisonState.studentAId, disabled);
+        setPeerSelect('compare-student-b', studentBOptions, peerComparisonState.studentBId, disabled);
+        setPeerSelect('peer-page-student-a', studentAOptions, peerComparisonState.studentAId, disabled);
+        setPeerSelect('peer-page-student-b', studentBOptions, peerComparisonState.studentBId, disabled);
+        const openBtn = document.getElementById('btn-open-peer-comparison');
+        if (openBtn) openBtn.disabled = disabled || !peerComparisonState.studentAId;
+    }
 
-        let studentB;
-        let isClassAverage = false;
-
-        if (studentBId === 'class_average') {
-            isClassAverage = true;
-            const classObj = teacherAnalyticsState.byClassId.get(teacherAnalyticsState.selectedClassId) || teacherAnalyticsState.totals;
-            if (!classObj) return;
-            studentB = {
-                name: 'Class Average',
-                summary: {
-                    avgAssignmentScore: classObj.avgAssignmentScore,
-                    completionRate: classObj.completionRate,
-                    sessionCount: classObj.sessionCount || 0
-                }
-            };
-        } else if (studentBId) {
-            studentB = teacherAnalyticsState.studentsById.get(studentBId);
-        }
-
-        if (!studentB) {
-            resultsEl.innerHTML = '<p class="muted">Select Student B or Class Average to view comparison.</p>';
-            return;
-        }
-
-        const formatMetric = (val, suffix = '') => Number.isFinite(val) ? `${Math.round(val)}${suffix}` : '—';
-        const compareHtml = (label, valA, valB, suffix = '') => {
-            const numA = Number.isFinite(valA) ? valA : 0;
-            const numB = Number.isFinite(valB) ? valB : 0;
-            const max = Math.max(numA, numB, 100); 
-            const pctA = max > 0 ? Math.round((numA / max) * 100) : 0;
-            const pctB = max > 0 ? Math.round((numB / max) * 100) : 0;
-            
-            return `
-                <div style="margin-bottom: 16px;">
-                    <div style="display: flex; justify-content: space-between; font-size: 0.875rem; margin-bottom: 4px; font-weight: 500;">
-                        <span>${esc(label)}</span>
-                    </div>
-                    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
-                        <div style="width: 80px; font-size: 0.75rem; text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${esc(studentA.name)}</div>
-                        <div style="flex-grow: 1; background: var(--bg-muted); height: 8px; border-radius: 4px; overflow: hidden;">
-                            <div style="width: ${pctA}%; height: 100%; background: var(--fg-pri);"></div>
-                        </div>
-                        <div style="width: 40px; font-size: 0.75rem; text-align: left; font-weight: 600;">${formatMetric(valA, suffix)}</div>
-                    </div>
-                    <div style="display: flex; align-items: center; gap: 8px;">
-                        <div style="width: 80px; font-size: 0.75rem; text-align: right; color: var(--fg-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${esc(studentB.name)}</div>
-                        <div style="flex-grow: 1; background: var(--bg-muted); height: 8px; border-radius: 4px; overflow: hidden;">
-                            <div style="width: ${pctB}%; height: 100%; background: var(--fg-muted);"></div>
-                        </div>
-                        <div style="width: 40px; font-size: 0.75rem; text-align: left; font-weight: 600; color: var(--fg-muted);">${formatMetric(valB, suffix)}</div>
-                    </div>
-                </div>
-            `;
+    function peerClassAverageEntity(classStats) {
+        const studentCount = Math.max(1, Number(classStats?.studentCount || 0));
+        const averageCount = (value) => {
+            const n = Number(value);
+            return Number.isFinite(n) ? n / studentCount : null;
         };
+        return {
+            id: 'class_average',
+            name: 'Class Average',
+            meta: `${classStats?.name || 'Selected class'} • ${formatCount(classStats?.studentCount || 0, 'student')}`,
+            metrics: {
+                assignmentScore: Number.isFinite(classStats?.avgAssignmentScore) ? classStats.avgAssignmentScore : null,
+                completionRate: Number.isFinite(classStats?.completionRate) ? classStats.completionRate : null,
+                sessionAccuracy: Number.isFinite(classStats?.avgSessionAccuracy) ? classStats.avgSessionAccuracy : null,
+                sessionCount: averageCount(classStats?.sessionCount),
+                submissions: averageCount(classStats?.submissionCount),
+                wrongCount: averageCount(classStats?.wrongCount),
+                coachCount: averageCount(classStats?.coachCount)
+            }
+        };
+    }
 
-        resultsEl.innerHTML = `
-            <div style="padding-top: 8px;">
-                ${compareHtml('Average Score', studentA.summary.avgAssignmentScore, studentB.summary.avgAssignmentScore, '%')}
-                ${compareHtml('Completion Rate', studentA.summary.completionRate, studentB.summary.completionRate, '%')}
-                ${compareHtml('Practice Sessions', studentA.summary.sessionCount, studentB.summary.sessionCount)}
+    function peerStudentEntity(studentId, classStats) {
+        const row = (classStats?.students || []).find(item => String(item.id || '') === String(studentId || ''));
+        if (!row) return null;
+        return {
+            id: row.id,
+            name: row.name || 'Unnamed',
+            meta: [
+                classStats?.name || 'Selected class',
+                row.submissionCount ? formatCount(row.submissionCount, 'submission') : 'No submissions',
+                row.sessionCount ? formatCount(row.sessionCount, 'practice session') : 'No practice sessions'
+            ].filter(Boolean).join(' • '),
+            metrics: {
+                assignmentScore: Number.isFinite(row.avgAssignmentScore) ? row.avgAssignmentScore : null,
+                completionRate: Number.isFinite(row.completionRate) ? row.completionRate : null,
+                sessionAccuracy: Number.isFinite(row.avgSessionAccuracy) ? row.avgSessionAccuracy : null,
+                sessionCount: row.sessionCount || 0,
+                submissions: row.submissionCount || 0,
+                wrongCount: row.wrongCount || 0,
+                coachCount: row.coachCount || 0
+            }
+        };
+    }
+
+    function getPeerComparisonEntities() {
+        const classStats = getPeerComparisonClass();
+        if (!classStats) return null;
+        const studentA = peerStudentEntity(peerComparisonState.studentAId, classStats);
+        const studentB = peerComparisonState.studentBId === 'class_average'
+            ? peerClassAverageEntity(classStats)
+            : peerStudentEntity(peerComparisonState.studentBId, classStats);
+        return { classStats, studentA, studentB };
+    }
+
+    function peerMetricValue(entity, key) {
+        const raw = entity?.metrics?.[key];
+        if (raw === null || raw === undefined || raw === '') return null;
+        const value = Number(raw);
+        return Number.isFinite(value) ? value : null;
+    }
+
+    function formatPeerMetric(value, suffix = '') {
+        if (!Number.isFinite(value)) return '—';
+        const rounded = Math.abs(value - Math.round(value)) < 0.05 ? String(Math.round(value)) : value.toFixed(1);
+        return `${rounded}${suffix}`;
+    }
+
+    function peerMetricDelta(label, valueA, valueB, suffix = '') {
+        if (!Number.isFinite(valueA) || !Number.isFinite(valueB)) return 'Needs more data';
+        const diff = valueA - valueB;
+        if (Math.abs(diff) < 0.05) return 'Even';
+        const unit = suffix === '%' ? ' pts' : '';
+        return `A ${diff > 0 ? '+' : ''}${formatPeerMetric(diff, suffix).replace('%', unit)}`;
+    }
+
+    function buildPeerMetricHtml(metric, studentA, studentB) {
+        const valueA = peerMetricValue(studentA, metric.key);
+        const valueB = peerMetricValue(studentB, metric.key);
+        const max = Number.isFinite(metric.max)
+            ? metric.max
+            : Math.max(1, valueA || 0, valueB || 0);
+        const pctA = Number.isFinite(valueA) && max > 0 ? Math.max(valueA > 0 ? 4 : 0, Math.min(100, (valueA / max) * 100)) : 0;
+        const pctB = Number.isFinite(valueB) && max > 0 ? Math.max(valueB > 0 ? 4 : 0, Math.min(100, (valueB / max) * 100)) : 0;
+        return `
+            <div class="peer-comparison-metric">
+                <div class="peer-comparison-metric-head">
+                    <span>${esc(metric.label)}</span>
+                    <span class="peer-comparison-delta">${esc(peerMetricDelta(metric.label, valueA, valueB, metric.suffix || ''))}</span>
+                </div>
+                <div class="peer-comparison-bar-row peer-a">
+                    <div class="peer-comparison-bar-label">${esc(studentA.name)}</div>
+                    <div class="peer-comparison-track"><span class="peer-comparison-fill" style="--peer-width:${pctA}%;"></span></div>
+                    <div class="peer-comparison-value">${esc(formatPeerMetric(valueA, metric.suffix || ''))}</div>
+                </div>
+                <div class="peer-comparison-bar-row peer-b">
+                    <div class="peer-comparison-bar-label">${esc(studentB.name)}</div>
+                    <div class="peer-comparison-track"><span class="peer-comparison-fill" style="--peer-width:${pctB}%;"></span></div>
+                    <div class="peer-comparison-value">${esc(formatPeerMetric(valueB, metric.suffix || ''))}</div>
+                </div>
             </div>
         `;
+    }
+
+    function buildPeerComparisonHtml({ compact = false } = {}) {
+        const data = getPeerComparisonEntities();
+        if (!data?.classStats) {
+            return `<p class="muted">${esc(teacherAnalyticsState.loading ? 'Loading comparison data...' : 'Create a class and add students before comparing peers.')}</p>`;
+        }
+        if (!data.studentA) {
+            return '<p class="muted">Select Student A to view comparison.</p>';
+        }
+        if (!data.studentB) {
+            return '<p class="muted">Select Student B or Class Average to view comparison.</p>';
+        }
+        const metrics = [
+            { label: 'Average Score', key: 'assignmentScore', suffix: '%', max: 100 },
+            { label: 'Completion Rate', key: 'completionRate', suffix: '%', max: 100 },
+            { label: 'Practice Accuracy', key: 'sessionAccuracy', suffix: '%', max: 100 },
+            { label: 'Practice Sessions', key: 'sessionCount' },
+            { label: 'Assignment Submissions', key: 'submissions' },
+            { label: 'Wrong-bank Rows', key: 'wrongCount' },
+            { label: 'Coach Attempts', key: 'coachCount' }
+        ];
+        const visibleMetrics = compact ? metrics.slice(0, 3) : metrics;
+        const aScore = peerMetricValue(data.studentA, 'assignmentScore');
+        const bScore = peerMetricValue(data.studentB, 'assignmentScore');
+        const insight = Number.isFinite(aScore) && Number.isFinite(bScore)
+            ? `${data.studentA.name} is ${Math.abs(aScore - bScore) < 1 ? 'even with' : (aScore > bScore ? 'ahead of' : 'behind')} ${data.studentB.name} on assignment score. Use the completion and practice rows to decide whether the gap is accuracy, volume, or missing submissions.`
+            : 'Some score data is still missing, so use completion, practice volume, and submissions to decide the next follow-up.';
+        return `
+            <div class="peer-comparison-card${compact ? ' peer-comparison-compact' : ''}">
+                <div class="peer-comparison-summary">
+                    <div class="peer-comparison-person">
+                        <div class="peer-comparison-person-label">Student A</div>
+                        <div class="peer-comparison-person-name">${esc(data.studentA.name)}</div>
+                        <div class="peer-comparison-person-meta">${esc(data.studentA.meta)}</div>
+                    </div>
+                    <div class="peer-comparison-person">
+                        <div class="peer-comparison-person-label">Comparison</div>
+                        <div class="peer-comparison-person-name">${esc(data.studentB.name)}</div>
+                        <div class="peer-comparison-person-meta">${esc(data.studentB.meta)}</div>
+                    </div>
+                </div>
+                <div class="peer-comparison-metrics">
+                    ${visibleMetrics.map(metric => buildPeerMetricHtml(metric, data.studentA, data.studentB)).join('')}
+                </div>
+                <div class="peer-comparison-insight">${esc(insight)}</div>
+            </div>
+        `;
+    }
+
+    function renderPeerComparison() {
+        renderPeerComparisonControls();
+        const resultsEl = document.getElementById('analytics-comparison-results');
+        if (resultsEl) resultsEl.innerHTML = buildPeerComparisonHtml({ compact: true });
+        const openBtn = document.getElementById('btn-open-peer-comparison');
+        if (openBtn) openBtn.disabled = !peerComparisonState.studentAId || !getPeerComparisonClass();
+    }
+
+    function renderPeerComparisonPage() {
+        renderPeerComparisonControls();
+        const resultsEl = document.getElementById('peer-comparison-page-results');
+        if (resultsEl) resultsEl.innerHTML = buildPeerComparisonHtml({ compact: false });
+    }
+
+    function updatePeerComparisonSelection(next = {}) {
+        if (Object.prototype.hasOwnProperty.call(next, 'classId')) {
+            peerComparisonState.classId = String(next.classId || '').trim();
+            teacherAnalyticsState.selectedClassId = peerComparisonState.classId;
+            peerComparisonState.studentAId = '';
+            peerComparisonState.studentBId = 'class_average';
+        }
+        if (Object.prototype.hasOwnProperty.call(next, 'studentAId')) {
+            peerComparisonState.studentAId = String(next.studentAId || '').trim();
+            if (peerComparisonState.studentBId === peerComparisonState.studentAId) {
+                peerComparisonState.studentBId = 'class_average';
+            }
+        }
+        if (Object.prototype.hasOwnProperty.call(next, 'studentBId')) {
+            peerComparisonState.studentBId = String(next.studentBId || 'class_average').trim() || 'class_average';
+        }
+        renderPeerComparison();
+        renderPeerComparisonPage();
+    }
+
+    function openPeerComparisonPage() {
+        if (!peerComparisonState.studentAId) {
+            showAlert('Select Student A before opening the full comparison.', 'error');
+            return;
+        }
+        activateDashboardTab('peer-comparison');
+        try { window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}#peer-comparison`); } catch { /* noop */ }
     }
 
     function renderTeacherAnalytics() {
@@ -1476,6 +1674,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (watchEl) watchEl.innerHTML = `<p class="muted">${esc(teacherAnalyticsState.loading ? 'Loading class analytics...' : 'No class analytics yet.')}</p>`;
             if (rosterEl) rosterEl.innerHTML = `<p class="muted">${esc(teacherAnalyticsState.loading ? 'Loading roster analytics...' : 'No students to inspect yet.')}</p>`;
             if (classList) classList.innerHTML = `<p class="muted">${esc(teacherAnalyticsState.loading ? 'Loading class analytics...' : 'Create a class to see the whole-class breakdown.')}</p>`;
+            renderPeerComparison();
+            renderPeerComparisonPage();
             return;
         }
 
@@ -1523,6 +1723,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                 `;
             }).join('');
         }
+        renderPeerComparison();
+        renderPeerComparisonPage();
     }
     async function loadTeacherAnalytics() {
         const version = ++teacherAnalyticsLoadVersion;
@@ -2169,6 +2371,26 @@ document.addEventListener('DOMContentLoaded', async () => {
         const button = event.target.closest('[data-analytics-class-id]');
         if (!button) return;
         selectAnalyticsClass(button.dataset.analyticsClassId);
+    });
+    document.getElementById('compare-student-a')?.addEventListener('change', (event) => {
+        updatePeerComparisonSelection({ studentAId: event.target.value });
+    });
+    document.getElementById('compare-student-b')?.addEventListener('change', (event) => {
+        updatePeerComparisonSelection({ studentBId: event.target.value });
+    });
+    document.getElementById('btn-open-peer-comparison')?.addEventListener('click', openPeerComparisonPage);
+    document.getElementById('btn-peer-comparison-back')?.addEventListener('click', () => {
+        activateDashboardTab('analytics');
+        try { window.history.replaceState(null, '', window.location.pathname + window.location.search); } catch { /* noop */ }
+    });
+    document.getElementById('peer-compare-class-select')?.addEventListener('change', (event) => {
+        updatePeerComparisonSelection({ classId: event.target.value });
+    });
+    document.getElementById('peer-page-student-a')?.addEventListener('change', (event) => {
+        updatePeerComparisonSelection({ studentAId: event.target.value });
+    });
+    document.getElementById('peer-page-student-b')?.addEventListener('change', (event) => {
+        updatePeerComparisonSelection({ studentBId: event.target.value });
     });
     const handleAnalyticsStudentOpen = (event) => {
         const trigger = event.target.closest('[data-analytics-student-id]');
@@ -3493,13 +3715,20 @@ document.addEventListener('DOMContentLoaded', async () => {
         const nextTab = String(tabName || 'classes').trim() || 'classes';
         const nextView = document.getElementById('tab-' + nextTab);
         if (!nextView) return;
-        document.querySelectorAll('.dash-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === nextTab));
+        const navTab = nextTab === 'peer-comparison' ? 'analytics' : nextTab;
+        document.querySelectorAll('.dash-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === navTab));
         document.querySelectorAll('.view').forEach(c => c.classList.remove('active'));
         nextView.classList.add('active');
         if (nextTab === 'create') setMode(currentMode);
         if (nextTab === 'analytics') {
             renderTeacherAnalytics();
             void loadTeacherAnalytics();
+        }
+        if (nextTab === 'peer-comparison') {
+            renderPeerComparisonPage();
+            if (!teacherAnalyticsState.loading && !(teacherAnalyticsState.classes || []).length) {
+                void loadTeacherAnalytics();
+            }
         }
         renderDashboardChatChrome();
     }
@@ -4599,4 +4828,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     loadClasses();
     loadAssignments();
     renderDashboardChatChrome();
+    if (window.location.hash === '#peer-comparison') {
+        activateDashboardTab('peer-comparison');
+    }
 });

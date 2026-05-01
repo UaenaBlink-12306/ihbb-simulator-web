@@ -407,28 +407,61 @@
                                 <p class="muted">Loading class analytics...</p>
                             </div>
                         </div>
-                        <div class="card-muted-box teacher-analytics-card" style="margin-top: 24px;">
+                        <div class="card-muted-box teacher-analytics-card peer-compare-card">
                             <div class="eyebrow">Peer-to-Peer Comparison</div>
-                            <p class="muted" style="margin: 0 0 12px 0; font-size: 0.875rem;">Compare two students or view a student against the class average.</p>
-                            <div class="form-grid" style="grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px;">
+                            <p class="muted peer-compare-copy">Choose students here, then open a focused comparison page without the dashboard card clipping the view.</p>
+                            <div class="peer-compare-controls">
                                 <div class="input-group">
-                                    <label style="font-size: 0.75rem; margin-bottom: 4px;">Student A</label>
+                                    <label for="compare-student-a">Student A</label>
                                     <select id="compare-student-a">
                                         <option value="">Select a student...</option>
                                     </select>
                                 </div>
                                 <div class="input-group">
-                                    <label style="font-size: 0.75rem; margin-bottom: 4px;">Student B</label>
+                                    <label for="compare-student-b">Student B</label>
                                     <select id="compare-student-b">
                                         <option value="class_average">Class Average</option>
                                     </select>
                                 </div>
                             </div>
-                            <div id="analytics-comparison-results" class="list-container teacher-analytics-list">
+                            <div id="analytics-comparison-results" class="peer-compare-preview">
                                 <p class="muted">Select a student to begin comparison.</p>
+                            </div>
+                            <div class="peer-compare-actions">
+                                <button id="btn-open-peer-comparison" class="btn pri" type="button" disabled>Open full comparison</button>
                             </div>
                         </div>
                     </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="tab-peer-comparison" class="view teacher-peer-comparison-view">
+            <div class="peer-comparison-page-shell">
+                <div class="peer-comparison-page-head">
+                    <div>
+                        <div class="eyebrow">Peer comparison</div>
+                        <h2 class="card-title">Student Progress Comparison</h2>
+                        <p class="section-subtitle">Compare assignment completion, scoring, practice volume, and engagement in a full-width view.</p>
+                    </div>
+                    <button id="btn-peer-comparison-back" class="btn ghost" type="button">Back to Analytics</button>
+                </div>
+                <div class="peer-comparison-page-controls">
+                    <div class="input-group">
+                        <label for="peer-compare-class-select">Class</label>
+                        <select id="peer-compare-class-select"></select>
+                    </div>
+                    <div class="input-group">
+                        <label for="peer-page-student-a">Student A</label>
+                        <select id="peer-page-student-a"></select>
+                    </div>
+                    <div class="input-group">
+                        <label for="peer-page-student-b">Student B</label>
+                        <select id="peer-page-student-b"></select>
+                    </div>
+                </div>
+                <div id="peer-comparison-page-results" class="peer-comparison-page-results">
+                    <p class="muted">Select a student from Analytics to open a comparison.</p>
                 </div>
             </div>
         </section>
@@ -562,6 +595,13 @@
                 </div>
                 <div class="dashboard-split dashboard-split-solo">
                     <div class="list-container">
+                        <div class="list-item">
+                            <div>
+                                <h3 style="margin:0 0 4px;">Full-Page Peer Comparison</h3>
+                                <div class="pill">May 1, 2026</div>
+                                <p class="muted" style="margin: 8px 0 0;">Teacher Analytics peer comparisons now populate correctly from the selected class roster and open in a full-width comparison page instead of being clipped inside the dashboard card.</p>
+                            </div>
+                        </div>
                         <div class="list-item">
                             <div>
                                 <h3 style="margin:0 0 4px;">DeepSeek Question-Bank Picks</h3>
