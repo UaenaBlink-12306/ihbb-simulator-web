@@ -81,6 +81,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     let allQuestions = [];
     let selectedQuestions = [];
     let myClasses = [];
+    let latestAssignments = [];
     let currentMode = 'random';
     let selectedFilterCategories = [];
     let selectedFilterEras = [];
@@ -143,14 +144,24 @@ document.addEventListener('DOMContentLoaded', async () => {
         teacher_builder_default_class_id: '',
         teacher_builder_default_mode: 'random',
         teacher_builder_default_question_count: 10,
-        teacher_analytics_default_class_id: ''
+        teacher_analytics_default_class_id: '',
+        assistant_thinking_enabled: false,
+        assistant_show_starters: true,
+        assistant_stream_responses: true,
+        assistant_response_detail: 'detailed'
     });
+    const ASSISTANT_RESPONSE_DETAILS = new Set(['compact', 'detailed']);
     const normalizeTeacherClassId = (value) => String(value || '').trim();
     const normalizeTeacherBuilderMode = (value) => {
         const normalized = String(value || '').trim().toLowerCase();
         return TEACHER_BUILDER_MODES.has(normalized) ? normalized : ACCOUNT_SETTING_DEFAULTS.teacher_builder_default_mode;
     };
     const normalizeTeacherQuestionCount = (value) => clampCount(value, ACCOUNT_SETTING_DEFAULTS.teacher_builder_default_question_count);
+    const normalizeAssistantResponseDetail = (value) => {
+        const normalized = String(value || '').trim().toLowerCase();
+        return ASSISTANT_RESPONSE_DETAILS.has(normalized) ? normalized : ACCOUNT_SETTING_DEFAULTS.assistant_response_detail;
+    };
+    const assistantResponseDetailLabel = (value) => normalizeAssistantResponseDetail(value) === 'compact' ? 'Compact' : 'Detailed';
     const normalizeQuestionRecord = (raw) => {
         if (!raw || typeof raw !== 'object') return null;
         const question = String(raw.question || raw.q || raw.question_text || '').trim();
@@ -176,7 +187,11 @@ document.addEventListener('DOMContentLoaded', async () => {
             teacher_builder_default_class_id: normalizeTeacherClassId(source.teacher_builder_default_class_id),
             teacher_builder_default_mode: normalizeTeacherBuilderMode(source.teacher_builder_default_mode),
             teacher_builder_default_question_count: normalizeTeacherQuestionCount(source.teacher_builder_default_question_count),
-            teacher_analytics_default_class_id: normalizeTeacherClassId(source.teacher_analytics_default_class_id)
+            teacher_analytics_default_class_id: normalizeTeacherClassId(source.teacher_analytics_default_class_id),
+            assistant_thinking_enabled: typeof source.assistant_thinking_enabled === 'boolean' ? source.assistant_thinking_enabled : ACCOUNT_SETTING_DEFAULTS.assistant_thinking_enabled,
+            assistant_show_starters: typeof source.assistant_show_starters === 'boolean' ? source.assistant_show_starters : ACCOUNT_SETTING_DEFAULTS.assistant_show_starters,
+            assistant_stream_responses: typeof source.assistant_stream_responses === 'boolean' ? source.assistant_stream_responses : ACCOUNT_SETTING_DEFAULTS.assistant_stream_responses,
+            assistant_response_detail: normalizeAssistantResponseDetail(source.assistant_response_detail || source.assistant_response_style)
         };
     };
     let accountSettings = normalizeAccountSettings(profile.account_settings);
@@ -1633,13 +1648,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Tab switching
     document.querySelectorAll('.dash-tab').forEach(tab => {
-        tab.addEventListener('click', () => {
-            document.querySelectorAll('.dash-tab').forEach(t => t.classList.remove('active'));
-            document.querySelectorAll('section.view').forEach(c => c.classList.remove('active'));
-            tab.classList.add('active');
-            document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
-            if (tab.dataset.tab === 'create') setMode(currentMode);
-        });
+        tab.addEventListener('click', () => activateDashboardTab(tab.dataset.tab));
     });
 
     // Mode switching (create assignment)
@@ -2179,7 +2188,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     // ========== ASSIGNMENTS ==========
     async function loadAssignments() {
         const { data } = await sb.from('assignments').select('*, classes(name, code)').eq('teacher_id', uid).order('created_at', { ascending: false });
-        renderAssignments(data || []);
+        latestAssignments = data || [];
+        renderAssignments(latestAssignments);
         void loadTeacherAnalytics();
     }
 
@@ -2634,8 +2644,1313 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     function esc(s) { const d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; }
 
+    const DASHBOARD_CHAT_STARTERS = [
+        { label: 'Class gaps', prompt: 'Which class gap should I address first, and what should I assign next?' },
+        { label: 'Build homework', prompt: 'Turn my current class data into a short IHBB homework assignment plan.' },
+        { label: 'Prep a lesson', prompt: 'Give me a teacher-ready mini lesson for the topic my class most needs.' }
+    ];
+    const DASHBOARD_CHAT_ALLOWED_ACTIONS = new Set([
+        'practice_due_now',
+        'review_last_misses',
+        'open_ai_notebook',
+        'apply_top_focus',
+        'generate_focus_drill',
+        'start_current_session',
+        'open_setup',
+        'open_review',
+        'open_library'
+    ]);
+    const DASHBOARD_CHAT_UI_KEY = `ihbb_teacher_dashboard_chat_ui_${uid}`;
+    const DASHBOARD_CHAT_SESSION_KEY = `ihbb_teacher_dashboard_chat_session_${uid}`;
+    const DASHBOARD_CHAT_SCROLL_KEY = `ihbb_teacher_dashboard_chat_scroll_${uid}`;
+    const DASHBOARD_CHAT_SIZE_PRESETS = {
+        standard: 820,
+        wide: 980,
+        focus: 1140
+    };
+    const dashboardChat = {
+        open: false,
+        busy: false,
+        source: 'ready',
+        messages: [],
+        currentStarters: [],
+        suggestedReason: 'manual',
+        workspaceCards: [],
+        ui: {
+            mode: 'auto',
+            thinkingEnabled: false,
+            size: 'standard',
+            width: DASHBOARD_CHAT_SIZE_PRESETS.standard,
+            fullscreen: false
+        },
+        resizing: null
+    };
+    const DASHBOARD_CHAT_STREAM_MIN_MS = 240;
+    const DASHBOARD_CHAT_STREAM_MAX_MS = 7000;
+    const DASHBOARD_CHAT_STREAM_MS_PER_WORD = 44;
+
+    function clampDashboardChatWidth(value) {
+        const min = 720;
+        const max = Math.max(min, window.innerWidth - 32);
+        const parsed = Number(value);
+        return Math.max(min, Math.min(max, Number.isFinite(parsed) ? parsed : DASHBOARD_CHAT_SIZE_PRESETS.standard));
+    }
+
+    function saveDashboardChatSession() {
+        try {
+            // Only save essential message data, excluding ephemeral stream state
+            const messagesToSave = dashboardChat.messages.map(m => ({
+                role: m.role,
+                text: m.text,
+                source: m.source,
+                mode: m.mode,
+                title: m.title,
+                topic: m.topic,
+                highlights: m.highlights,
+                sections: m.sections,
+                links: m.links,
+                followUps: m.followUps,
+                actions: m.actions
+            }));
+            sessionStorage.setItem(DASHBOARD_CHAT_SESSION_KEY, JSON.stringify(messagesToSave));
+        } catch { /* noop */ }
+    }
+
+    function loadDashboardChatSession() {
+        try {
+            const raw = JSON.parse(sessionStorage.getItem(DASHBOARD_CHAT_SESSION_KEY) || '[]');
+            if (Array.isArray(raw) && raw.length > 0) {
+                dashboardChat.messages = raw.map(m => ({
+                    ...m,
+                    displayText: m.text,
+                    streaming: false,
+                    streamFrame: 0
+                }));
+            }
+        } catch { /* noop */ }
+    }
+
+    function saveDashboardChatScroll() {
+        try {
+            const bodyEl = document.getElementById('coach-chat-body');
+            if (bodyEl && dashboardChat.open) {
+                sessionStorage.setItem(DASHBOARD_CHAT_SCROLL_KEY, String(bodyEl.scrollTop));
+            }
+        } catch { /* noop */ }
+    }
+
+    function restoreDashboardChatScroll() {
+        try {
+            const bodyEl = document.getElementById('coach-chat-body');
+            const saved = sessionStorage.getItem(DASHBOARD_CHAT_SCROLL_KEY);
+            if (bodyEl && saved !== null) {
+                bodyEl.scrollTop = Number(saved);
+            }
+        } catch { /* noop */ }
+    }
+
+    function loadDashboardChatUiPrefs() {
+        try {
+            const raw = JSON.parse(localStorage.getItem(DASHBOARD_CHAT_UI_KEY) || '{}');
+            const sizeRaw = String(raw.size || '').trim();
+            const size = sizeRaw === 'custom' || Object.prototype.hasOwnProperty.call(DASHBOARD_CHAT_SIZE_PRESETS, sizeRaw) ? sizeRaw : 'standard';
+            dashboardChat.ui = {
+                mode: 'auto',
+                thinkingEnabled: !!accountSettings.assistant_thinking_enabled,
+                size,
+                width: clampDashboardChatWidth(raw.width || DASHBOARD_CHAT_SIZE_PRESETS[size] || DASHBOARD_CHAT_SIZE_PRESETS.standard),
+                fullscreen: !!raw.fullscreen
+            };
+        } catch {
+            dashboardChat.ui = {
+                mode: 'auto',
+                thinkingEnabled: !!accountSettings.assistant_thinking_enabled,
+                size: 'standard',
+                width: DASHBOARD_CHAT_SIZE_PRESETS.standard,
+                fullscreen: false
+            };
+        }
+    }
+
+    function saveDashboardChatUiPrefs() {
+        try {
+            localStorage.setItem(DASHBOARD_CHAT_UI_KEY, JSON.stringify({
+                mode: 'auto',
+                thinkingEnabled: !!dashboardChat.ui.thinkingEnabled,
+                size: dashboardChat.ui.size,
+                width: dashboardChat.ui.width,
+                fullscreen: dashboardChat.ui.fullscreen
+            }));
+        } catch { /* noop */ }
+    }
+
+    function dashboardChatStreamDuration(text = '') {
+        const wordCount = dashboardChatStreamTokens(text).length;
+        return Math.max(
+            DASHBOARD_CHAT_STREAM_MIN_MS,
+            Math.min(DASHBOARD_CHAT_STREAM_MAX_MS, 180 + wordCount * DASHBOARD_CHAT_STREAM_MS_PER_WORD)
+        );
+    }
+
+    function dashboardChatStreamTokens(text = '') {
+        return String(text || '').match(/\S+\s*/g) || [];
+    }
+
+    function isDashboardChatMessageStreaming(message) {
+        return !!message && message.role === 'assistant' && !!message.streaming;
+    }
+
+    function dashboardChatVisibleText(message) {
+        if (!message || message.role !== 'assistant') return String(message?.text || '');
+        return isDashboardChatMessageStreaming(message) ? String(message.displayText || '') : String(message.text || '');
+    }
+
+    function dashboardChatStreamingCursorHtml() {
+        return '<span aria-hidden="true" style="display:inline-block;min-width:0.55ch;margin-left:2px;color:#1f6fff;font-weight:700;opacity:0.9;">▍</span>';
+    }
+
+    function stopDashboardChatMessageStream(message) {
+        if (!message || typeof message !== 'object') return;
+        if (message.streamFrame) cancelAnimationFrame(message.streamFrame);
+        message.streamFrame = 0;
+        message.streaming = false;
+        if (typeof message.displayText !== 'string') message.displayText = String(message.text || '');
+    }
+
+    function stopAllDashboardChatStreams() {
+        dashboardChat.messages.forEach(stopDashboardChatMessageStream);
+    }
+
+    function dashboardChatMessageMarkdownText(message) {
+        const lines = ['---'];
+        const title = String(message?.title || '').trim();
+        const text = String(message?.text || '').trim();
+        const highlights = Array.isArray(message?.highlights) ? message.highlights : [];
+        const sections = Array.isArray(message?.sections) ? message.sections : [];
+        const links = Array.isArray(message?.links) ? message.links : [];
+        const followUps = Array.isArray(message?.followUps) ? message.followUps : [];
+        const actions = Array.isArray(message?.actions) ? message.actions : [];
+
+        if (title) lines.push('', `### ${title}`);
+        if (text) lines.push('', text);
+        if (highlights.length) {
+            lines.push('', '### Highlights');
+            highlights.forEach(item => {
+                const value = String(item || '').trim();
+                if (value) lines.push(`- ${value}`);
+            });
+        }
+        sections.forEach(section => {
+            const heading = String(section?.heading || '').trim();
+            const body = String(section?.body || '').trim();
+            if (heading && body) lines.push('', `### ${heading}`, body);
+        });
+        if (links.length) {
+            lines.push('', '### References');
+            links.forEach(link => {
+                const label = String(link?.label || '').trim();
+                const url = String(link?.url || '').trim();
+                if (label && url) lines.push(`- [${label}](${url})`);
+            });
+        }
+        if (followUps.length) {
+            lines.push('', '### Follow-Up Prompts');
+            followUps.forEach(followUp => {
+                const label = String(followUp?.label || '').trim();
+                const prompt = String(followUp?.prompt || '').trim();
+                if (label && prompt) lines.push(`- ${label}: ${prompt}`);
+            });
+        }
+        lines.push('', '---');
+        if (actions.length) {
+            lines.push('', '### Suggested Actions');
+            actions.forEach((action, index) => {
+                const label = String(action?.label || 'Run action').trim();
+                const reason = String(action?.reason || 'Recommended from your current dashboard state.').trim();
+                lines.push(`${index + 1}. ${label}: ${reason}`);
+            });
+        }
+        return lines.join('\n').trim();
+    }
+
+    function trimDashboardChatMessages() {
+        if (dashboardChat.messages.length > 18) {
+            dashboardChat.messages.slice(0, dashboardChat.messages.length - 18).forEach(stopDashboardChatMessageStream);
+            dashboardChat.messages = dashboardChat.messages.slice(-18);
+        }
+    }
+
+    function pushDashboardChatMessage(message) {
+        if (!message || typeof message !== 'object') return;
+        dashboardChat.messages.push(message);
+        trimDashboardChatMessages();
+        saveDashboardChatSession();
+    }
+
+    function startDashboardChatMessageStream(message) {
+        if (!message || message.role !== 'assistant') return;
+        stopDashboardChatMessageStream(message);
+        const fullText = dashboardChatMessageMarkdownText(message);
+        const streamTokens = dashboardChatStreamTokens(fullText);
+        if (!fullText) {
+            message.displayText = '';
+            renderDashboardChatMessages();
+            return;
+        }
+        if (!accountSettings.assistant_stream_responses) {
+            message.displayText = fullText;
+            message.streaming = false;
+            renderDashboardChatMessages();
+            saveDashboardChatSession();
+            return;
+        }
+        message.streaming = true;
+        message.displayText = '';
+        const startedAt = performance.now();
+        const duration = dashboardChatStreamDuration(fullText);
+        const step = (now) => {
+            if (!dashboardChat.messages.includes(message)) {
+                stopDashboardChatMessageStream(message);
+                return;
+            }
+            const progress = Math.min(1, (now - startedAt) / duration);
+            const nextTokenCount = Math.max(1, Math.min(streamTokens.length, Math.ceil(streamTokens.length * progress)));
+            const nextText = streamTokens.slice(0, nextTokenCount).join('');
+            if (nextText !== String(message.displayText || '')) {
+                message.displayText = nextText;
+                renderDashboardChatMessages();
+            }
+            if (progress >= 1 || nextTokenCount >= streamTokens.length) {
+                message.displayText = fullText;
+                message.streaming = false;
+                message.streamFrame = 0;
+                renderDashboardChatMessages();
+                saveDashboardChatSession();
+                return;
+            }
+            message.streamFrame = requestAnimationFrame(step);
+        };
+        message.streamFrame = requestAnimationFrame(step);
+    }
+
+    loadDashboardChatUiPrefs();
+    loadDashboardChatSession();
+
+    function activateDashboardTab(tabName) {
+        const nextTab = String(tabName || 'classes').trim() || 'classes';
+        const nextView = document.getElementById('tab-' + nextTab);
+        if (!nextView) return;
+        document.querySelectorAll('.dash-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === nextTab));
+        document.querySelectorAll('.view').forEach(c => c.classList.remove('active'));
+        nextView.classList.add('active');
+        if (nextTab === 'create') setMode(currentMode);
+        if (nextTab === 'analytics') {
+            renderTeacherAnalytics();
+            void loadTeacherAnalytics();
+        }
+        renderDashboardChatChrome();
+    }
+
+    function activeTeacherTabName() {
+        return document.querySelector('.dash-tab.active')?.dataset?.tab || 'classes';
+    }
+
+    function compactTeacherClass(row) {
+        if (!row || typeof row !== 'object') return null;
+        return {
+            id: String(row.id || '').trim(),
+            name: String(row.name || 'Untitled class').trim(),
+            code: String(row.code || '').trim(),
+            students: Number(row.studentCount || row.member_count || 0),
+            assignments: Number(row.assignmentCount || 0),
+            avg_assignment_score: Number.isFinite(row.avgAssignmentScore) ? row.avgAssignmentScore : null,
+            completion_rate: Number.isFinite(row.completionRate) ? row.completionRate : null,
+            practice_sessions: Number(row.sessionCount || 0),
+            watch_students: Array.isArray(row.watchStudents) ? row.watchStudents.slice(0, 3).map(student => String(student?.name || '').trim()).filter(Boolean) : []
+        };
+    }
+
+    function buildDashboardChatContext() {
+        const activeTab = activeTeacherTabName();
+        const classRows = Array.isArray(teacherAnalyticsState.classes) ? teacherAnalyticsState.classes : [];
+        const selectedClassId = resolveTeacherActiveClassId(
+            teacherAnalyticsState.selectedClassId,
+            classRows,
+            accountSettings.teacher_analytics_default_class_id
+        );
+        const selectedClass = selectedClassId ? teacherAnalyticsState.byClassId.get(selectedClassId) : null;
+        const totals = teacherAnalyticsState.totals || {};
+        const priorityClasses = classRows
+            .filter(row => (
+                (Number.isFinite(row.avgAssignmentScore) && row.avgAssignmentScore < 70) ||
+                (Number.isFinite(row.completionRate) && row.completionRate < 75) ||
+                (Array.isArray(row.watchStudents) && row.watchStudents.length)
+            ))
+            .slice(0, 3)
+            .map(compactTeacherClass)
+            .filter(Boolean);
+        return {
+            role: 'teacher',
+            current_view: `teacher-${activeTab}`,
+            class_count: myClasses.length,
+            classes: myClasses.slice(0, 8).map(row => ({
+                id: String(row.id || '').trim(),
+                name: String(row.name || 'Untitled class').trim(),
+                code: String(row.code || '').trim()
+            })),
+            selected_class: compactTeacherClass(selectedClass),
+            priority_classes: priorityClasses,
+            analytics: {
+                students: Number(totals.studentCount || 0),
+                assignments: Number(totals.assignmentCount || 0),
+                avg_assignment_score: Number.isFinite(totals.avgAssignmentScore) ? totals.avgAssignmentScore : null,
+                completion_rate: Number.isFinite(totals.completionRate) ? totals.completionRate : null,
+                practice_sessions: Number(totals.sessionCount || 0),
+                active_students: Number(totals.activeStudentCount || 0)
+            },
+            assignments: latestAssignments.slice(0, 8).map(row => ({
+                title: String(row.title || 'Untitled assignment').trim(),
+                class_name: String(row.classes?.name || '').trim(),
+                due_date: String(row.due_date || '').trim(),
+                question_count: Number(row.question_count || row.questions?.length || 0)
+            })),
+            active_draft_count: selectedQuestions.length,
+            builder_mode: currentMode,
+            question_bank_size: allQuestions.length
+        };
+    }
+
+    function buildDashboardChatSummary(snapshot) {
+        const selected = snapshot?.selected_class;
+        const priority = snapshot?.priority_classes?.[0];
+        if (selected?.name) {
+            const score = Number.isFinite(selected.avg_assignment_score) ? `${selected.avg_assignment_score}% average` : 'no scored submissions yet';
+            const completion = Number.isFinite(selected.completion_rate) ? `${selected.completion_rate}% completion` : 'completion not started';
+            return `${selected.name}: ${score}, ${completion}.`;
+        }
+        if (priority?.name) return `${priority.name} needs the next teaching move.`;
+        if ((snapshot?.analytics?.students || 0) > 0) return `${snapshot.analytics.students} students across ${snapshot.class_count} classes.`;
+        return 'Plan assignments, lessons, and interventions from your class data.';
+    }
+
+    function updateDashboardChatSourceLabel() {
+        const el = document.getElementById('coach-chat-source');
+        if (!el) return;
+        let label = 'Ready';
+        if (dashboardChat.busy) label = 'Thinking';
+        else if (dashboardChat.source === 'deepseek') label = 'DeepSeek';
+        else if (dashboardChat.source === 'fallback') label = 'Local fallback';
+        el.textContent = `${label} • Teacher`;
+    }
+
+    function normalizeDashboardChatIntentText(value = '') {
+        return String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+    }
+
+    const DASHBOARD_CHAT_COACH_TERMS = [
+        'wrong bank', 'srs', 'notebook', 'ai notebook', 'lesson', 'coach',
+        'practice', 'drill', 'session', 'review', 'setup', 'focus',
+        'due card', 'due now', 'assignment', 'next step', 'next steps',
+        'next move', 'future step', 'future steps', 'study plan', 'practice plan'
+    ];
+    const DASHBOARD_CHAT_KNOWLEDGE_TERMS = [
+        'explain', 'define', 'describe', 'summarize', 'summary', 'timeline',
+        'compare', 'contrast', 'significance', 'importance', 'overview',
+        'background', 'concept', 'cause', 'causes', 'effect', 'effects',
+        'turning point', 'detail', 'details', 'in detail', 'teach me',
+        'help me understand', 'break down', 'elaborate', 'deeper', 'more context'
+    ];
+    const DASHBOARD_CHAT_COACH_PATTERNS = [
+        /\bwhat should i\b/,
+        /\bwhat do i do next\b/,
+        /\bwhat should i do next\b/,
+        /\bwhat should i practice next\b/,
+        /\bhow should i\b/,
+        /\bshould i use\b/,
+        /\bnext step\b/,
+        /\bnext steps\b/,
+        /\bnext move\b/,
+        /\bfuture step\b/,
+        /\bfuture steps\b/,
+        /\bbuild me\b.*\b(plan|drill|session)\b/,
+        /\bmake me\b.*\b(plan|drill|session)\b/,
+        /\bturn this into\b.*\b(plan|drill|session)\b/
+    ];
+    const DASHBOARD_CHAT_KNOWLEDGE_PATTERNS = [
+        /\bwho (is|was|were|are|did|do|does)\b/,
+        /\bwhat (is|was|were|are|did|do|does|happened|caused)\b/,
+        /\bwhen (did|was|were|is|are)\b/,
+        /\bwhere (is|was|were|did)\b/,
+        /\bwhy\b/,
+        /\bhow (did|do|does|was|were|is|are)\b/,
+        /\btell me about\b/,
+        /\bgive me (?:a )?timeline of\b/,
+        /\bwhat is the significance of\b/,
+        /\bwhat was the significance of\b/,
+        /\bwhat caused\b/,
+        /\bwhat were the causes of\b/,
+        /\bwhat happened in\b/
+    ];
+
+    function countDashboardChatIntentHits(message = '', patterns = []) {
+        return patterns.reduce((total, pattern) => total + (pattern.test(message) ? 1 : 0), 0);
+    }
+
+    function countDashboardChatTermHits(message = '', terms = []) {
+        return terms.reduce((total, term) => total + (message.includes(term) ? 1 : 0), 0);
+    }
+
+    function analyzeDashboardChatIntent(message = '') {
+        const normalized = normalizeDashboardChatIntentText(message);
+        const coachPatternHits = countDashboardChatIntentHits(normalized, DASHBOARD_CHAT_COACH_PATTERNS);
+        const knowledgePatternHits = countDashboardChatIntentHits(normalized, DASHBOARD_CHAT_KNOWLEDGE_PATTERNS);
+        const coachTermHits = countDashboardChatTermHits(normalized, DASHBOARD_CHAT_COACH_TERMS);
+        const knowledgeTermHits = countDashboardChatTermHits(normalized, DASHBOARD_CHAT_KNOWLEDGE_TERMS);
+        return {
+            normalized,
+            coachScore: coachPatternHits * 3 + coachTermHits,
+            knowledgeScore: knowledgePatternHits * 4 + knowledgeTermHits,
+            strongCoach: coachPatternHits > 0,
+            strongKnowledge: knowledgePatternHits > 0
+        };
+    }
+
+    function resolveDashboardChatMode(message = '', snapshot = buildDashboardChatContext()) {
+        if (dashboardChat.ui.mode === 'coach' || dashboardChat.ui.mode === 'knowledge') return dashboardChat.ui.mode;
+        const intent = analyzeDashboardChatIntent(message);
+        if (!intent.normalized) return 'coach';
+        if (intent.knowledgeScore > intent.coachScore) return 'knowledge';
+        if (intent.coachScore > intent.knowledgeScore) {
+            if (intent.strongKnowledge && intent.coachScore - intent.knowledgeScore <= 2) return 'knowledge';
+            return 'coach';
+        }
+        if (intent.strongKnowledge && !intent.strongCoach) return 'knowledge';
+        if (intent.strongCoach && !intent.strongKnowledge) return 'coach';
+        if (intent.knowledgeScore > 0) return 'knowledge';
+        if (snapshot?.role === 'teacher') return 'coach';
+        if (!(snapshot?.session_history?.total_sessions || 0) && !(snapshot?.coach_notebook?.total || 0)) return 'knowledge';
+        return 'coach';
+    }
+
+    function dashboardChatTopicFromMessage(message = '', snapshot = buildDashboardChatContext(), mode = resolveDashboardChatMode(message, snapshot)) {
+        const raw = String(message || '').trim();
+        if (snapshot?.role === 'teacher') {
+            const selectedName = String(snapshot?.selected_class?.name || '').trim();
+            const priorityName = String(snapshot?.priority_classes?.[0]?.name || '').trim();
+            const assignmentTitle = String(snapshot?.assignments?.[0]?.title || '').trim();
+            if (!raw) return selectedName || priorityName || assignmentTitle || 'class planning';
+        }
+        const intent = analyzeDashboardChatIntent(raw);
+        const recentTitle = String(snapshot?.recent_incorrect?.title || '').trim();
+        const topFocusTitle = String(snapshot?.coach_notebook?.top_focuses?.[0]?.title || '').trim();
+        if (!raw) return mode === 'knowledge' ? (recentTitle || topFocusTitle) : recentTitle;
+        if (mode !== 'knowledge' && intent.coachScore > 0 && intent.knowledgeScore === 0) return recentTitle || topFocusTitle;
+        const prompt = raw
+            .replace(/^[^a-zA-Z0-9]*(who|what|when|where|why|how)\s+(is|was|were|are|did|do|does)\s+/i, '')
+            .replace(/^(explain|define|describe|outline|summarize|compare|contrast|tell me about|give me (a )?timeline of|what is the significance of|what was the significance of|what caused|what were the causes of|what happened in)\s+/i, '')
+            .replace(/^(what should i (study|practice|review|learn|work on|do)( next)?( about| for)?\s*)/i, '')
+            .replace(/^(how should i (study|practice|train|review|use|approach|learn)\s+)/i, '')
+            .replace(/^(should i use\s+)/i, '')
+            .replace(/^(build me|make me|turn this into)\s+(a\s+)?(short\s+)?(study plan|practice plan|plan|drill|session)\s+(for|on)\s+/i, '')
+            .replace(/[?.!]+$/g, '')
+            .trim();
+        if (!prompt) return recentTitle || topFocusTitle;
+        const normalizedIntent = analyzeDashboardChatIntent(prompt);
+        if (mode !== 'knowledge' && normalizedIntent.coachScore > 0 && normalizedIntent.knowledgeScore === 0) {
+            return recentTitle || topFocusTitle;
+        }
+        return prompt || recentTitle || topFocusTitle;
+    }
+    function dashboardChatWikiLink(topic = '') {
+        const clean = String(topic || '').trim().replace(/[?.!]+$/g, '');
+        return clean ? `https://en.wikipedia.org/wiki/${encodeURIComponent(clean.replace(/\s+/g, '_'))}` : '';
+    }
+
+    function normalizeDashboardChatSections(raw) {
+        return Array.isArray(raw)
+            ? raw.map(section => {
+                const heading = String(section?.heading || section?.title || '').trim();
+                const body = String(section?.body || section?.text || section?.content || '').trim();
+                return heading && body ? { heading, body } : null;
+            }).filter(Boolean).slice(0, 4)
+            : [];
+    }
+
+    function normalizeDashboardChatLinks(raw) {
+        return Array.isArray(raw)
+            ? raw.map(link => {
+                const label = String(link?.label || link?.title || '').trim();
+                const url = String(link?.url || '').trim();
+                if (!label || !/^https:\/\//i.test(url)) return null;
+                return { label, url, kind: String(link?.kind || link?.type || 'reference').trim() || 'reference' };
+            }).filter(Boolean).slice(0, 4)
+            : [];
+    }
+
+    function normalizeDashboardChatFollowUps(raw) {
+        return Array.isArray(raw)
+            ? raw.map(item => {
+                const label = String(item?.label || item?.title || '').trim();
+                const prompt = String(item?.prompt || item?.message || '').trim();
+                return label && prompt ? { label, prompt } : null;
+            }).filter(Boolean).slice(0, 4)
+            : [];
+    }
+
+    function normalizeDashboardChatHighlights(raw) {
+        return Array.isArray(raw)
+            ? raw.map(item => String(item || '').trim()).filter(Boolean).slice(0, 4)
+            : [];
+    }
+    function isDashboardChatPristine() {
+        return !dashboardChat.busy && !dashboardChat.messages.length;
+    }
+
+    function dashboardChatInputHasDraft() {
+        return !!String(document.getElementById('coach-chat-input')?.value || '').trim();
+    }
+
+    function shouldShowDashboardChatStarters() {
+        return !!accountSettings.assistant_show_starters && isDashboardChatPristine() && !dashboardChatInputHasDraft();
+    }
+
+    function dashboardChatStarterBox() {
+        return document.getElementById('coach-chat-starter-box') || document.getElementById('coach-chat-starters')?.closest('.coach-chat-starter-block');
+    }
+
+    function syncDashboardChatStarterVisibility() {
+        const block = dashboardChatStarterBox();
+        if (!block) return;
+        block.hidden = false;
+        block.style.display = shouldShowDashboardChatStarters() ? '' : 'none';
+    }
+
+    function hideDashboardChatStarters() {
+        const block = dashboardChatStarterBox();
+        if (!block) return;
+        block.hidden = false;
+        block.style.display = 'none';
+    }
+
+    function limitDashboardChatStarters(list = []) {
+        return list.slice(0, isDashboardChatPristine() ? 2 : 3);
+    }
+
+    function buildDashboardChatStarters(snapshot = buildDashboardChatContext()) {
+        const selected = snapshot?.selected_class || null;
+        const priority = snapshot?.priority_classes?.[0] || null;
+        const assignment = snapshot?.assignments?.[0] || null;
+        const className = selected?.name || priority?.name || 'my class';
+        const knowledgeTopic = assignment?.title || className || 'this topic';
+        if (dashboardChat.ui.mode === 'knowledge') {
+            return limitDashboardChatStarters([
+                { label: 'Teach it', prompt: `Explain ${knowledgeTopic} as a teacher-ready mini lesson with key clues and likely misconceptions.` },
+                { label: 'Discussion plan', prompt: `Give me a short discussion plan for teaching ${knowledgeTopic}.` },
+                { label: 'Common confusions', prompt: `What confusions should I warn students about when teaching ${knowledgeTopic}?` }
+            ]);
+        }
+        if (selected?.name) {
+            return limitDashboardChatStarters([
+                { label: 'Class next step', prompt: `What should I do next for ${selected.name} based on completion, scores, and practice activity?` },
+                { label: 'Assignment plan', prompt: `Build a short assignment plan for ${selected.name} that targets the biggest class gap.` },
+                { label: 'Intervention list', prompt: `Which students or groups in ${selected.name} need follow-up first?` }
+            ]);
+        }
+        if (priority?.name) {
+            return limitDashboardChatStarters([
+                { label: 'Watch class', prompt: `Why is ${priority.name} a priority, and what lesson or assignment should I prepare?` },
+                { label: 'Close gaps', prompt: `Give me a class-gap action plan for ${priority.name}.` },
+                { label: 'Homework idea', prompt: `Draft a homework plan for ${priority.name} using IHBB-style practice.` }
+            ]);
+        }
+        if ((snapshot?.active_draft_count || 0) > 0) {
+            return limitDashboardChatStarters([
+                { label: 'Polish draft', prompt: `I have ${snapshot.active_draft_count} drafted questions. How should I shape them into a balanced assignment?` },
+                { label: 'Add directions', prompt: 'Write concise assignment instructions for the questions I have drafted.' },
+                { label: 'Difficulty check', prompt: 'Review my draft assignment plan for pacing, difficulty, and coverage balance.' }
+            ]);
+        }
+        return limitDashboardChatStarters(DASHBOARD_CHAT_STARTERS);
+    }
+
+    function renderDashboardChatStarters(snapshot) {
+        const el = document.getElementById('coach-chat-starters');
+        if (!el) return;
+        dashboardChat.currentStarters = buildDashboardChatStarters(snapshot);
+        el.innerHTML = dashboardChat.currentStarters.map((starter, index) => `
+            <button class="coach-chat-starter" type="button" data-starter-index="${index}">
+                <span class="coach-chat-starter-label">${esc(starter.label || 'Suggested question')}</span>
+                <span class="coach-chat-starter-text">${esc(starter.prompt || '')}</span>
+            </button>
+        `).join('');
+        syncDashboardChatStarterVisibility();
+    }
+
+    function renderDashboardChatWorkspace(snapshot) {
+        const el = document.getElementById('coach-chat-workspace');
+        if (!el) return;
+        const selected = snapshot?.selected_class || null;
+        const priority = snapshot?.priority_classes?.[0] || null;
+        const activeClass = selected || priority || null;
+        const lessonTopic = activeClass?.name || snapshot?.assignments?.[0]?.title || 'today\'s IHBB topic';
+        const lessonCard = {
+            kicker: 'Lesson prep',
+            title: 'Teacher brief',
+            copy: 'Frame content for class.',
+            action: {
+                kind: 'prompt',
+                label: 'Prep a lesson',
+                prompt: `Prepare a concise teacher lesson brief for ${lessonTopic}, including key facts, likely misconceptions, and one IHBB-style check for understanding.`
+            }
+        };
+        const primaryCard = activeClass
+            ? {
+                kicker: 'Class focus',
+                title: activeClass.name,
+                copy: Number.isFinite(activeClass.avg_assignment_score) ? `${activeClass.avg_assignment_score}% average` : 'Open class analytics',
+                action: { kind: 'action', id: 'open_review', label: 'Open Analytics' }
+            }
+            : {
+                kicker: 'Setup',
+                title: 'Create assignment',
+                copy: 'Build class practice.',
+                action: { kind: 'action', id: 'open_setup', label: 'Create Assignment' }
+            };
+        const assignmentCard = {
+            kicker: 'Assignment',
+            title: (snapshot?.active_draft_count || 0) > 0 ? `${snapshot.active_draft_count} drafted` : 'Build homework',
+            copy: (snapshot?.active_draft_count || 0) > 0 ? 'Polish current draft.' : 'Start from class needs.',
+            action: (snapshot?.active_draft_count || 0) > 0
+                ? { kind: 'prompt', label: 'Polish draft', prompt: `I have ${snapshot.active_draft_count} drafted questions. Help me turn them into a balanced assignment.` }
+                : { kind: 'action', id: 'open_setup', label: 'Create Assignment' }
+        };
+        const libraryCard = {
+            kicker: 'Question bank',
+            title: `${snapshot?.question_bank_size || 0} questions`,
+            copy: 'Find assignable material.',
+            action: { kind: 'action', id: 'open_library', label: 'Open Question Builder' }
+        };
+        const cards = isDashboardChatPristine()
+            ? [primaryCard, assignmentCard]
+            : [
+                primaryCard,
+                assignmentCard,
+                {
+                    kicker: 'Analytics',
+                    title: 'Class gaps',
+                    copy: `${snapshot?.analytics?.students || 0} students tracked`,
+                    action: { kind: 'action', id: 'open_review', label: 'Open Analytics' }
+                },
+                libraryCard,
+                lessonCard
+            ];
+        el.innerHTML = cards.map((card, index) => `
+            <button class="coach-chat-workspace-card" type="button" data-workspace-index="${index}">
+                <span class="coach-chat-workspace-kicker">${esc(card.kicker)}</span>
+                <span class="coach-chat-workspace-title">${esc(card.title)}</span>
+                <span class="coach-chat-workspace-copy">${esc(card.copy)}</span>
+            </button>
+        `).join('');
+        dashboardChat.workspaceCards = cards;
+    }
+
+    function scrollDashboardChatToBottom() {
+        const bodyEl = document.getElementById('coach-chat-body');
+        const messagesEl = document.getElementById('coach-chat-messages');
+        if (bodyEl) bodyEl.scrollTop = bodyEl.scrollHeight;
+        if (messagesEl) messagesEl.scrollTop = messagesEl.scrollHeight;
+    }
+
+    function queueDashboardChatScrollToBottom() {
+        scrollDashboardChatToBottom();
+        requestAnimationFrame(() => {
+            scrollDashboardChatToBottom();
+            requestAnimationFrame(scrollDashboardChatToBottom);
+        });
+        setTimeout(scrollDashboardChatToBottom, 80);
+    }
+
+    function renderDashboardChatMessages() {
+        const el = document.getElementById('coach-chat-messages');
+        if (!el) return;
+        const messagesHtml = dashboardChat.messages.map((message, messageIndex) => `
+            <div class="coach-chat-message ${message.role === 'user' ? 'user' : 'assistant'}">
+                <div class="coach-chat-message-meta">
+                    <span>${esc(message.role === 'user' ? 'You' : (message.source === 'deepseek' ? 'DeepSeek' : 'Local fallback'))}</span>
+                    <span>${esc(message.role === 'user' ? 'Prompt' : (message.mode === 'knowledge' ? 'Knowledge brief' : 'Coach advice'))}</span>
+                </div>
+                ${message.role === 'assistant' && !isDashboardChatMessageStreaming(message) && message.title ? `<h3 class="coach-chat-message-title">${esc(message.title)}</h3>` : ''}
+                ${(() => {
+                    const streaming = isDashboardChatMessageStreaming(message);
+                    const visibleText = dashboardChatVisibleText(message);
+                    return (visibleText || streaming)
+                        ? `<p class="coach-chat-message-text">${esc(visibleText || '')}${streaming ? dashboardChatStreamingCursorHtml() : ''}</p>`
+                        : '';
+                })()}
+                ${!isDashboardChatMessageStreaming(message) && Array.isArray(message.highlights) && message.highlights.length ? `<div class="coach-chat-highlights">${message.highlights.map(item => `<span class="coach-chat-highlight">${esc(item)}</span>`).join('')}</div>` : ''}
+                ${!isDashboardChatMessageStreaming(message) && Array.isArray(message.sections) && message.sections.length ? `<div class="coach-chat-sections">${message.sections.map(section => `
+                    <div class="coach-chat-section-card">
+                        <h4>${esc(section.heading)}</h4>
+                        <p>${esc(section.body)}</p>
+                    </div>
+                `).join('')}</div>` : ''}
+                ${!isDashboardChatMessageStreaming(message) && Array.isArray(message.links) && message.links.length ? `<div class="coach-chat-links">${message.links.map(link => `
+                    <a class="coach-chat-link-card" href="${esc(link.url)}" target="_blank" rel="noopener noreferrer">${esc(link.label)}</a>
+                `).join('')}</div>` : ''}
+                ${!isDashboardChatMessageStreaming(message) && Array.isArray(message.followUps) && message.followUps.length ? `<div class="coach-chat-followups">${message.followUps.map((followUp, followUpIndex) => `
+                    <button class="coach-chat-followup" type="button" data-message-index="${messageIndex}" data-followup-index="${followUpIndex}">${esc(followUp.label)}</button>
+                `).join('')}</div>` : ''}
+                ${!isDashboardChatMessageStreaming(message) && Array.isArray(message.actions) && message.actions.length ? `
+                    <div class="coach-chat-actions">
+                        ${message.actions.map((action, actionIndex) => `
+                            <button class="coach-chat-action" type="button" data-message-index="${messageIndex}" data-action-index="${actionIndex}">
+                                <span class="coach-chat-action-label">${esc(action.label || 'Run action')}</span>
+                                <span class="coach-chat-action-reason">${esc(action.reason || 'Recommended from your current dashboard state.')}</span>
+                            </button>
+                        `).join('')}
+                    </div>
+                ` : ''}
+                ${message.role === 'assistant' && !isDashboardChatMessageStreaming(message) ? `<div class="coach-chat-message-tools"><button class="coach-chat-tool" type="button" data-message-index="${messageIndex}" data-tool="copy">Copy answer</button></div>` : ''}
+            </div>
+        `).join('');
+        const loadingHtml = dashboardChat.busy ? `
+            <div class="coach-chat-message assistant coach-chat-thinking">
+                <div class="coach-chat-message-meta">
+                    <span>DeepSeek</span>
+                    <span>Thinking</span>
+                </div>
+                <div class="coach-chat-thinking-bubble">
+                    <div class="coach-chat-thinking-dots" aria-hidden="true"><span></span><span></span><span></span></div>
+                    <div class="coach-chat-loading">${dashboardChat.ui.thinkingEnabled ? 'DeepSeek reasoner is synthesizing class analytics, assignment drafts, and lesson planning context.' : 'DeepSeek is reviewing your classes, assignments, analytics, and question bank context.'}</div>
+                </div>
+            </div>
+        ` : '';
+        el.innerHTML = messagesHtml || loadingHtml
+            ? `${messagesHtml}${loadingHtml}`
+            : `<div class="coach-chat-empty">
+                <div class="coach-chat-empty-title">Plan a class move or lesson.</div>
+                <p class="coach-chat-empty-text">Pick a prompt or ask for assignment ideas, class-gap analysis, or a teacher-ready explanation.</p>
+            </div>`;
+        scrollDashboardChatToBottom();
+    }
+
+    function setDashboardChatOpenState(open) {
+        dashboardChat.open = !!open;
+        const launcher = document.getElementById('coach-chat-launcher');
+        const sidebar = document.getElementById('coach-chat-sidebar');
+        const backdrop = document.getElementById('coach-chat-backdrop');
+        if (launcher) launcher.setAttribute('aria-expanded', dashboardChat.open ? 'true' : 'false');
+        if (sidebar) {
+            sidebar.classList.toggle('open', dashboardChat.open);
+            sidebar.classList.toggle('fullscreen', !!dashboardChat.ui.fullscreen);
+            sidebar.setAttribute('aria-hidden', dashboardChat.open ? 'false' : 'true');
+            sidebar.dataset.chatPristine = isDashboardChatPristine() ? 'true' : 'false';
+            sidebar.style.setProperty('--coach-chat-width', `${clampDashboardChatWidth(dashboardChat.ui.width)}px`);
+        }
+        if (backdrop) backdrop.hidden = !dashboardChat.open;
+        document.body.classList.toggle('coach-chat-open', dashboardChat.open);
+    }
+
+    function renderDashboardChatChrome() {
+        const snapshot = buildDashboardChatContext();
+        const summaryEl = document.getElementById('coach-chat-context-summary');
+        const pillsEl = document.getElementById('coach-chat-status-pills');
+        const noteEl = document.getElementById('coach-chat-launcher-note');
+        const countEl = document.getElementById('coach-chat-launcher-count');
+        const hintEl = document.getElementById('coach-chat-hint');
+        const sendBtn = document.getElementById('coach-chat-send');
+        const sizeButtons = Array.from(document.querySelectorAll('#coach-chat-size-presets .coach-chat-size-btn'));
+        const fullBtn = document.getElementById('coach-chat-fullscreen');
+        const thinkingBtn = document.getElementById('coach-chat-thinking-toggle');
+
+        if (summaryEl) summaryEl.textContent = buildDashboardChatSummary(snapshot);
+        if (pillsEl) {
+            const pills = [];
+            if (dashboardChat.ui.thinkingEnabled) pills.push('Thinking model on');
+            pills.push(`${assistantResponseDetailLabel(accountSettings.assistant_response_detail)} responses`);
+            if ((snapshot?.class_count || 0) > 0) pills.push(`${snapshot.class_count} class${snapshot.class_count === 1 ? '' : 'es'}`);
+            if ((snapshot?.analytics?.students || 0) > 0) pills.push(`${snapshot.analytics.students} students`);
+            if (Number.isFinite(snapshot?.analytics?.completion_rate)) pills.push(`${snapshot.analytics.completion_rate}% completion`);
+            if ((snapshot?.active_draft_count || 0) > 0) pills.push(`${snapshot.active_draft_count} drafted`);
+            pillsEl.innerHTML = pills.length
+                ? pills.slice(0, 3).map(text => `<span class="coach-chat-status-pill">${esc(text)}</span>`).join('')
+                : '<span class="coach-chat-status-pill">Teacher planning ready.</span>';
+        }
+        if (noteEl) {
+            if (snapshot?.selected_class?.name) noteEl.textContent = `Plan for ${snapshot.selected_class.name}`;
+            else if (snapshot?.priority_classes?.[0]?.name) noteEl.textContent = `Review ${snapshot.priority_classes[0].name}`;
+            else if ((snapshot?.active_draft_count || 0) > 0) noteEl.textContent = `${snapshot.active_draft_count} draft question${snapshot.active_draft_count === 1 ? '' : 's'}`;
+            else noteEl.textContent = 'Plan lessons or assignments';
+        }
+        if (countEl) {
+            const count = Math.max(snapshot?.priority_classes?.length || 0, snapshot?.active_draft_count || 0);
+            countEl.textContent = String(count || 0);
+            countEl.classList.toggle('hidden', !count);
+        }
+        if (hintEl) {
+            hintEl.textContent = dashboardChat.ui.thinkingEnabled
+                ? 'Thinking model is on. Answers may take longer but should synthesize class analytics, assignment drafts, and lesson needs.'
+                : 'Teacher auto mode balances lesson explanation, class-gap diagnosis, and assignment planning.';
+        }
+        if (sendBtn) sendBtn.disabled = !!dashboardChat.busy;
+        sizeButtons.forEach(button => {
+            const active = String(button.dataset.size || '') === dashboardChat.ui.size && !dashboardChat.ui.fullscreen;
+            button.classList.toggle('active', active);
+            button.setAttribute('aria-pressed', active ? 'true' : 'false');
+        });
+        if (thinkingBtn) {
+            thinkingBtn.classList.toggle('active', !!dashboardChat.ui.thinkingEnabled);
+            thinkingBtn.setAttribute('aria-pressed', dashboardChat.ui.thinkingEnabled ? 'true' : 'false');
+            thinkingBtn.textContent = `Thinking Model: ${dashboardChat.ui.thinkingEnabled ? 'On' : 'Off'}`;
+        }
+        if (fullBtn) {
+            fullBtn.textContent = dashboardChat.ui.fullscreen ? 'Windowed' : 'Full Screen';
+            fullBtn.setAttribute('aria-pressed', dashboardChat.ui.fullscreen ? 'true' : 'false');
+        }
+
+        renderDashboardChatWorkspace(snapshot);
+        renderDashboardChatStarters(snapshot);
+        renderDashboardChatMessages();
+        updateDashboardChatSourceLabel();
+        setDashboardChatOpenState(dashboardChat.open);
+    }
+
+    function normalizeDashboardChatActions(actions) {
+        const out = [];
+        const seen = new Set();
+        for (const action of (Array.isArray(actions) ? actions : [])) {
+            const id = String(action?.id || '').trim();
+            const focusKey = String(action?.focus_key || '').trim();
+            const query = String(action?.query || '').trim();
+            if (!DASHBOARD_CHAT_ALLOWED_ACTIONS.has(id)) continue;
+            const key = `${id}|${focusKey}|${query}`;
+            if (seen.has(key)) continue;
+            seen.add(key);
+            out.push({
+                id,
+                label: String(action?.label || '').trim() || id.replace(/_/g, ' '),
+                reason: String(action?.reason || '').trim() || 'Recommended from your current dashboard state.',
+                focus_key: focusKey,
+                query
+            });
+        }
+        return out.slice(0, 3);
+    }
+
+    function buildDashboardChatFallback(message) {
+        const snapshot = buildDashboardChatContext();
+        const prompt = String(message || '').trim().toLowerCase();
+        const mode = resolveDashboardChatMode(message, snapshot);
+        const selected = snapshot?.selected_class || null;
+        const priority = snapshot?.priority_classes?.[0] || null;
+        const activeClass = selected || priority || null;
+        const topic = dashboardChatTopicFromMessage(message, snapshot, mode);
+        const actions = [];
+        let reply = '';
+        let title = 'Teacher planning plan';
+
+        if (mode === 'knowledge') {
+            const wiki = dashboardChatWikiLink(topic);
+            return {
+                source: 'fallback',
+                mode: 'knowledge',
+                title: topic ? `Teaching brief: ${topic}` : 'Teaching brief',
+                topic,
+                message: topic
+                    ? `This looks like a teaching-content question about ${topic}. DeepSeek did not return a usable response, so I am showing a teacher-ready fallback brief.`
+                    : 'This looks like a teaching-content question. DeepSeek did not return a usable response, so I am showing a teacher-ready fallback brief.',
+                highlights: ['Teacher brief', topic ? 'Reference ready' : 'Topic framing ready'].filter(Boolean),
+                sections: [
+                    { heading: 'Classroom framing', body: topic ? `Open with the timeframe, main actors, and why ${topic} matters before asking students to recall names or dates.` : 'Open with the timeframe, main actors, and why the topic matters before asking students to recall names or dates.' },
+                    { heading: 'IHBB clue value', body: 'Turn the concept into causes, turning points, significance, comparisons, and likely clue patterns.' },
+                    { heading: 'Quick check', body: 'End with one short retrieval question and one misconception check so you know whether the class can transfer the idea.' }
+                ],
+                links: wiki ? [{ label: `Wikipedia: ${topic}`, url: wiki, kind: 'wikipedia' }] : [],
+                follow_ups: [
+                    { label: 'Lesson outline', prompt: topic ? `Turn ${topic} into a 10-minute lesson outline.` : 'Turn this topic into a 10-minute lesson outline.' },
+                    { label: 'Exit ticket', prompt: topic ? `Write three exit-ticket questions for ${topic}.` : 'Write three exit-ticket questions for this topic.' },
+                    { label: 'Common confusions', prompt: topic ? `What misconceptions should I watch for when teaching ${topic}?` : 'What misconceptions should I watch for when teaching this topic?' }
+                ],
+                quick_actions: normalizeDashboardChatActions(topic ? [{ id: 'open_library', label: `Find ${topic}`, reason: 'Open the assignment builder to find usable question-bank material.', query: topic }] : [])
+            };
+        }
+
+        if (prompt.includes('assignment') || prompt.includes('homework') || prompt.includes('draft')) {
+            title = (snapshot?.active_draft_count || 0) > 0 ? 'Polish the current assignment draft' : 'Build the next assignment from class needs';
+            reply = (snapshot?.active_draft_count || 0) > 0
+                ? `You have ${snapshot.active_draft_count} drafted question${snapshot.active_draft_count === 1 ? '' : 's'}. Shape them into a short targeted assignment, then add one instruction that tells students what pattern to watch for.`
+                : `Start with ${activeClass?.name || 'the class that needs the most support'}, choose one focused topic, and keep the assignment short enough to finish before the next check-in.`;
+            actions.push({ id: 'open_setup', label: 'Create Assignment', reason: 'Open the assignment builder with this plan in mind.' });
+            actions.push({ id: 'open_review', label: 'Check Analytics', reason: 'Confirm the class gap before publishing.' });
+        } else if (prompt.includes('gap') || prompt.includes('analytics') || prompt.includes('student') || prompt.includes('class')) {
+            title = activeClass?.name ? `Next move for ${activeClass.name}` : 'Use analytics to choose the next class move';
+            reply = activeClass?.name
+                ? `${activeClass.name} is the right place to start. Use completion and score data to separate who needs a reminder, who needs reteaching, and who is ready for a harder extension.`
+                : 'Open analytics first, pick the class with the lowest completion or score signal, then create one targeted follow-up assignment.';
+            actions.push({ id: 'open_review', label: 'Open Analytics', reason: 'Review class completion, scores, and watch-list students.' });
+            actions.push({ id: 'open_setup', label: 'Create Follow-Up', reason: 'Build the targeted assignment after reviewing the gap.' });
+        } else if (prompt.includes('lesson') || prompt.includes('teach') || prompt.includes('explain')) {
+            title = `Prepare a lesson for ${topic || activeClass?.name || 'the next class need'}`;
+            reply = 'Use a short teach-check-practice rhythm: explain the core concept, ask one misconception check, then assign a few IHBB-style questions that make students use the clue pattern.';
+            actions.push({ id: 'open_library', label: 'Find Questions', reason: 'Use the question bank to collect examples for the lesson.' });
+        } else {
+            title = activeClass?.name ? `Plan around ${activeClass.name}` : 'Choose one class move';
+            reply = activeClass?.name
+                ? `For ${activeClass.name}, start by checking analytics, then publish one focused assignment or lesson check that addresses the clearest gap.`
+                : 'Start in Analytics if you need the gap, or Create Assignment if you already know the target topic.';
+            actions.push({ id: 'open_review', label: 'Open Analytics', reason: 'Find the highest-value class gap.' });
+            actions.push({ id: 'open_setup', label: 'Create Assignment', reason: 'Turn the class gap into practice.' });
+        }
+
+        return {
+            source: 'fallback',
+            mode: 'coach',
+            title,
+            topic: activeClass?.name || topic,
+            message: reply,
+            highlights: [
+                activeClass?.name ? `Class: ${activeClass.name}` : '',
+                Number.isFinite(activeClass?.avg_assignment_score) ? `${activeClass.avg_assignment_score}% average` : '',
+                Number.isFinite(activeClass?.completion_rate) ? `${activeClass.completion_rate}% completion` : '',
+                (snapshot?.active_draft_count || 0) > 0 ? `${snapshot.active_draft_count} drafted` : ''
+            ].filter(Boolean),
+            sections: [
+                { heading: 'Best next move', body: reply },
+                { heading: 'Why this fits teachers', body: 'The teacher assistant routes from class evidence into assignment building, lesson prep, or analytics instead of student self-study tools.' }
+            ],
+            links: dashboardChatWikiLink(topic) ? [{ label: `Wikipedia: ${topic}`, url: dashboardChatWikiLink(topic), kind: 'wikipedia' }] : [],
+            follow_ups: [
+                { label: 'Make a lesson', prompt: 'Turn this into a short teacher lesson plan.' },
+                { label: 'Draft homework', prompt: 'Turn this into a focused assignment plan with student-facing instructions.' }
+            ],
+            quick_actions: normalizeDashboardChatActions(actions)
+        };
+    }
+
+    function dashboardChatReplyHasDeepSeekContent(raw) {
+        if (!raw || typeof raw !== 'object') return false;
+        return !!(
+            String(raw.title || '').trim() ||
+            String(raw.topic || '').trim() ||
+            String(raw.message || '').trim() ||
+            normalizeDashboardChatHighlights(raw.highlights).length ||
+            normalizeDashboardChatSections(raw.sections).length ||
+            normalizeDashboardChatLinks(raw.links).length ||
+            normalizeDashboardChatFollowUps(raw.follow_ups).length ||
+            (Array.isArray(raw.quick_actions) && raw.quick_actions.length)
+        );
+    }
+
+    async function requestDashboardChatReply(message) {
+        const teacherContext = buildDashboardChatContext();
+        const payload = {
+            message: String(message || '').trim(),
+            conversation: dashboardChat.messages
+                .filter(entry => entry && ['user', 'assistant'].includes(entry.role))
+                .slice(-12)
+                .map(entry => ({ role: entry.role, content: String(entry.text || '').trim() }))
+                .filter(entry => entry.content),
+            study_context: {
+                current_view: teacherContext.current_view,
+                active_set: {
+                    name: teacherContext.selected_class?.name || 'Teacher workspace',
+                    item_count: teacherContext.assignments.length
+                },
+                analytics: {
+                    total_attempts: teacherContext.analytics.practice_sessions,
+                    total_accuracy: teacherContext.analytics.avg_assignment_score || 0,
+                    blind_spots: teacherContext.priority_classes.map(row => ({
+                        title: row.name,
+                        priority: (Number.isFinite(row.avg_assignment_score) && row.avg_assignment_score < 65) ? 'high' : 'medium'
+                    }))
+                },
+                setup: {
+                    mode: 'Teacher workspace',
+                    length: `${teacherContext.class_count} class${teacherContext.class_count === 1 ? '' : 'es'}`,
+                    filters: teacherContext.selected_class?.name || 'All classes'
+                }
+            },
+            teacher_context: teacherContext,
+            assistant_mode: 'auto',
+            thinking_enabled: !!dashboardChat.ui.thinkingEnabled,
+            response_detail: normalizeAssistantResponseDetail(accountSettings.assistant_response_detail),
+            user_role: 'teacher'
+        };
+        const response = await fetch('/api/coach-chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        const raw = await response.json().catch(() => ({}));
+        if (!response.ok && !raw?.message) throw new Error(`Coach chat failed (${response.status})`);
+        const fallback = buildDashboardChatFallback(payload.message);
+        const sourceIsDeepSeek = String(raw?.source || '').trim().toLowerCase() === 'deepseek' && dashboardChatReplyHasDeepSeekContent(raw);
+        const rawActions = normalizeDashboardChatActions(raw?.quick_actions);
+        return {
+            source: sourceIsDeepSeek ? 'deepseek' : fallback.source,
+            mode: sourceIsDeepSeek && String(raw?.mode || '').trim() === 'knowledge' ? 'knowledge' : fallback.mode,
+            title: sourceIsDeepSeek ? (String(raw?.title || '').trim() || fallback.title) : fallback.title,
+            topic: sourceIsDeepSeek ? (String(raw?.topic || '').trim() || fallback.topic) : fallback.topic,
+            message: sourceIsDeepSeek ? (String(raw?.message || '').trim() || fallback.message) : fallback.message,
+            highlights: sourceIsDeepSeek && normalizeDashboardChatHighlights(raw?.highlights).length ? normalizeDashboardChatHighlights(raw?.highlights) : fallback.highlights,
+            sections: sourceIsDeepSeek && normalizeDashboardChatSections(raw?.sections).length ? normalizeDashboardChatSections(raw?.sections) : fallback.sections,
+            links: sourceIsDeepSeek && normalizeDashboardChatLinks(raw?.links).length ? normalizeDashboardChatLinks(raw?.links) : fallback.links,
+            follow_ups: sourceIsDeepSeek && normalizeDashboardChatFollowUps(raw?.follow_ups).length ? normalizeDashboardChatFollowUps(raw?.follow_ups) : fallback.follow_ups,
+            quick_actions: sourceIsDeepSeek ? rawActions : normalizeDashboardChatActions(fallback.quick_actions)
+        };
+    }
+
+    function clearDashboardChatConversation() {
+        stopAllDashboardChatStreams();
+        dashboardChat.messages = [];
+        dashboardChat.source = 'ready';
+        sessionStorage.removeItem(DASHBOARD_CHAT_SESSION_KEY);
+        sessionStorage.removeItem(DASHBOARD_CHAT_SCROLL_KEY);
+        renderDashboardChatChrome();
+    }
+
+    function setDashboardChatMode(mode = 'auto') {
+        dashboardChat.ui.mode = 'auto';
+        saveDashboardChatUiPrefs();
+        renderDashboardChatChrome();
+    }
+
+    function toggleDashboardChatThinking() {
+        dashboardChat.ui.thinkingEnabled = !dashboardChat.ui.thinkingEnabled;
+        saveDashboardChatUiPrefs();
+        renderDashboardChatChrome();
+    }
+
+    function setDashboardChatSizePreset(size = 'standard') {
+        const next = Object.prototype.hasOwnProperty.call(DASHBOARD_CHAT_SIZE_PRESETS, String(size || '').trim()) ? String(size).trim() : 'standard';
+        dashboardChat.ui.size = next;
+        dashboardChat.ui.width = clampDashboardChatWidth(DASHBOARD_CHAT_SIZE_PRESETS[next]);
+        dashboardChat.ui.fullscreen = false;
+        saveDashboardChatUiPrefs();
+        renderDashboardChatChrome();
+    }
+
+    function toggleDashboardChatFullscreen() {
+        dashboardChat.ui.fullscreen = !dashboardChat.ui.fullscreen;
+        saveDashboardChatUiPrefs();
+        renderDashboardChatChrome();
+    }
+
+    function beginDashboardChatResize(event) {
+        if (window.innerWidth <= 900 || dashboardChat.ui.fullscreen) return;
+        dashboardChat.resizing = { startX: event.clientX };
+        document.body.classList.add('coach-chat-resizing');
+        event.preventDefault();
+    }
+
+    async function sendDashboardChatMessage(rawMessage) {
+        const message = String(rawMessage || '').trim();
+        if (!message || dashboardChat.busy) return;
+        pushDashboardChatMessage({ role: 'user', text: message, source: 'user', actions: [], highlights: [], sections: [], links: [], followUps: [] });
+        dashboardChat.busy = true;
+        dashboardChat.source = 'ready';
+        renderDashboardChatChrome();
+        queueDashboardChatScrollToBottom();
+        let assistantMessage = null;
+        try {
+            const reply = await requestDashboardChatReply(message);
+            dashboardChat.source = reply.source === 'deepseek' ? 'deepseek' : 'fallback';
+            assistantMessage = {
+                role: 'assistant',
+                text: String(reply.message || '').trim(),
+                source: dashboardChat.source,
+                mode: String(reply.mode || '').trim() === 'knowledge' ? 'knowledge' : 'coach',
+                title: String(reply.title || '').trim(),
+                topic: String(reply.topic || '').trim(),
+                highlights: Array.isArray(reply.highlights) ? reply.highlights : [],
+                sections: Array.isArray(reply.sections) ? reply.sections : [],
+                links: Array.isArray(reply.links) ? reply.links : [],
+                followUps: Array.isArray(reply.follow_ups) ? reply.follow_ups : [],
+                actions: normalizeDashboardChatActions(reply.quick_actions),
+                displayText: '',
+                streaming: true,
+                streamFrame: 0
+            };
+            pushDashboardChatMessage(assistantMessage);
+        } catch (err) {
+            const fallback = buildDashboardChatFallback(message);
+            dashboardChat.source = 'fallback';
+            assistantMessage = {
+                role: 'assistant',
+                text: String(fallback.message || '').trim(),
+                source: 'fallback',
+                mode: String(fallback.mode || '').trim() === 'knowledge' ? 'knowledge' : 'coach',
+                title: String(fallback.title || '').trim(),
+                topic: String(fallback.topic || '').trim(),
+                highlights: Array.isArray(fallback.highlights) ? fallback.highlights : [],
+                sections: Array.isArray(fallback.sections) ? fallback.sections : [],
+                links: Array.isArray(fallback.links) ? fallback.links : [],
+                followUps: Array.isArray(fallback.follow_ups) ? fallback.follow_ups : [],
+                actions: normalizeDashboardChatActions(fallback.quick_actions),
+                displayText: '',
+                streaming: true,
+                streamFrame: 0
+            };
+            pushDashboardChatMessage(assistantMessage);
+        } finally {
+            dashboardChat.busy = false;
+            renderDashboardChatChrome();
+            if (assistantMessage?.role === 'assistant') startDashboardChatMessageStream(assistantMessage);
+        }
+    }
+
+    function openDashboardChat() {
+        dashboardChat.suggestedReason = 'manual';
+        dashboardChat.open = true;
+        renderDashboardChatChrome();
+        restoreDashboardChatScroll();
+        setTimeout(() => document.getElementById('coach-chat-input')?.focus(), 60);
+    }
+
+    function closeDashboardChat() {
+        dashboardChat.open = false;
+        renderDashboardChatChrome();
+    }
+
+    function writeDashboardCoachNavAction(mode, extra = {}) {
+        try {
+            localStorage.setItem(`ihbb_teacher_dashboard_chat_nav_${uid}`, JSON.stringify({ mode: String(mode || '').trim(), ts: Date.now(), ...extra }));
+        } catch { /* noop */ }
+    }
+
+    function resolveDashboardChatFocus(action) {
+        return buildDashboardChatContext().selected_class || buildDashboardChatContext().priority_classes?.[0] || null;
+    }
+
+    async function runDashboardChatAction(action) {
+        const actionId = String(action?.id || '').trim();
+        if (!DASHBOARD_CHAT_ALLOWED_ACTIONS.has(actionId)) return;
+        if (actionId === 'open_ai_notebook' || actionId === 'review_last_misses' || actionId === 'open_review') {
+            closeDashboardChat();
+            activateDashboardTab('analytics');
+            return;
+        }
+        if (actionId === 'apply_top_focus' || actionId === 'generate_focus_drill' || actionId === 'open_setup' || actionId === 'start_current_session') {
+            closeDashboardChat();
+            activateDashboardTab('create');
+            if (typeof setMode === 'function') setMode('filter');
+            return;
+        }
+        if (actionId === 'practice_due_now') {
+            closeDashboardChat();
+            activateDashboardTab('assignments');
+            return;
+        }
+        if (actionId === 'open_library') {
+            writeDashboardCoachNavAction('open_library', { query: String(action?.query || '').trim() });
+            closeDashboardChat();
+            activateDashboardTab('create');
+            if (typeof setMode === 'function') setMode('pick');
+            return;
+        }
+        closeDashboardChat();
+        activateDashboardTab('create');
+    }
+
+    document.getElementById('coach-chat-launcher')?.addEventListener('click', () => openDashboardChat());
+    document.getElementById('coach-chat-new')?.addEventListener('click', clearDashboardChatConversation);
+    document.getElementById('coach-chat-fullscreen')?.addEventListener('click', toggleDashboardChatFullscreen);
+    document.getElementById('coach-chat-thinking-toggle')?.addEventListener('click', toggleDashboardChatThinking);
+    document.getElementById('coach-chat-body')?.addEventListener('scroll', (event) => {
+        const el = event.target;
+        const btn = document.getElementById('coach-chat-jump-latest');
+        if (!el || !btn) return;
+        const isAtBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 60;
+        if (isAtBottom) {
+            btn.classList.remove('visible');
+        } else {
+            btn.classList.add('visible');
+        }
+        saveDashboardChatScroll();
+    });
+    document.getElementById('coach-chat-jump-latest')?.addEventListener('click', () => queueDashboardChatScrollToBottom());
+    document.getElementById('coach-chat-size-presets')?.addEventListener('click', (event) => {
+        const button = event.target.closest('.coach-chat-size-btn');
+        if (!button) return;
+        setDashboardChatSizePreset(button.dataset.size || 'standard');
+    });
+    document.getElementById('coach-chat-close')?.addEventListener('click', () => closeDashboardChat());
+    document.getElementById('coach-chat-backdrop')?.addEventListener('click', () => closeDashboardChat());
+    document.getElementById('coach-chat-resize-handle')?.addEventListener('pointerdown', beginDashboardChatResize);
+    document.getElementById('coach-chat-form')?.addEventListener('submit', (event) => {
+        event.preventDefault();
+        const input = document.getElementById('coach-chat-input');
+        const message = String(input?.value || '').trim();
+        if (!message) return;
+        if (input) input.value = '';
+        void sendDashboardChatMessage(message);
+    });
+    document.getElementById('coach-chat-input')?.addEventListener('input', syncDashboardChatStarterVisibility);
+    document.getElementById('coach-chat-workspace')?.addEventListener('click', (event) => {
+        const button = event.target.closest('.coach-chat-workspace-card');
+        if (!button) return;
+        const card = dashboardChat.workspaceCards?.[Number(button.dataset.workspaceIndex) || 0];
+        if (!card?.action) return;
+        if (card.action.kind === 'prompt') {
+            void sendDashboardChatMessage(card.action.prompt || '');
+            return;
+        }
+        void runDashboardChatAction(card.action);
+    });
+    document.getElementById('coach-chat-starters')?.addEventListener('click', (event) => {
+        const button = event.target.closest('.coach-chat-starter');
+        if (!button) return;
+        const starter = dashboardChat.currentStarters?.[Number(button.dataset.starterIndex) || 0];
+        if (!starter?.prompt) return;
+        hideDashboardChatStarters();
+        void sendDashboardChatMessage(starter.prompt);
+    });
+    document.getElementById('coach-chat-messages')?.addEventListener('click', (event) => {
+        const followUpButton = event.target.closest('.coach-chat-followup');
+        if (followUpButton) {
+            const messageIndex = Number(followUpButton.dataset.messageIndex);
+            const followUpIndex = Number(followUpButton.dataset.followupIndex);
+            const followUp = dashboardChat.messages?.[messageIndex]?.followUps?.[followUpIndex];
+            if (followUp?.prompt) void sendDashboardChatMessage(followUp.prompt);
+            return;
+        }
+        const toolButton = event.target.closest('.coach-chat-tool');
+        if (toolButton) {
+            const messageIndex = Number(toolButton.dataset.messageIndex);
+            const message = dashboardChat.messages?.[messageIndex];
+            if (message?.text) {
+                if (navigator.clipboard?.writeText) {
+                    navigator.clipboard.writeText(dashboardChatMessageMarkdownText(message)).then(() => showAlert('Assistant answer copied', 'success')).catch(() => showAlert('Copy failed', 'error'));
+                } else {
+                    showAlert('Copy unavailable', 'error');
+                }
+            }
+            return;
+        }
+        const button = event.target.closest('.coach-chat-action');
+        if (!button) return;
+        const messageIndex = Number(button.dataset.messageIndex);
+        const actionIndex = Number(button.dataset.actionIndex);
+        const action = dashboardChat.messages?.[messageIndex]?.actions?.[actionIndex];
+        if (!action) return;
+        void runDashboardChatAction(action);
+    });
+    document.addEventListener('pointermove', (event) => {
+        if (!dashboardChat.resizing) return;
+        dashboardChat.ui.width = clampDashboardChatWidth(window.innerWidth - event.clientX - 16);
+        dashboardChat.ui.size = 'custom';
+        saveDashboardChatUiPrefs();
+        renderDashboardChatChrome();
+    });
+    document.addEventListener('pointerup', () => {
+        if (!dashboardChat.resizing) return;
+        dashboardChat.resizing = null;
+        document.body.classList.remove('coach-chat-resizing');
+    });
+
     // Init
     setMode(normalizeTeacherBuilderMode(accountSettings.teacher_builder_default_mode || modeButtons.find(b => b.classList.contains('active'))?.dataset.mode || 'random'));
     loadClasses();
     loadAssignments();
+    renderDashboardChatChrome();
 });

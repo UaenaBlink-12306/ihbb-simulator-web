@@ -628,8 +628,8 @@
     <div class="coach-chat-panel">
       <div class="coach-chat-head">
         <div class="coach-chat-head-copy">
-          <div class="eyebrow">DeepSeek assistant</div>
-          <h2 class="card-title">Training Assistant</h2>
+          <div class="eyebrow">DeepSeek student coach</div>
+          <h2 class="card-title">Study Assistant</h2>
           <p id="coach-chat-context-summary" class="coach-chat-context-summary">Scanning your practice state.</p>
         </div>
         <div class="coach-chat-head-actions">
@@ -642,12 +642,12 @@
       <div id="coach-chat-body" class="coach-chat-body">
         <div id="coach-chat-status-pills" class="coach-chat-status-pills"></div>
         <div class="coach-chat-section-block">
-          <div class="coach-chat-section-label">Quick access</div>
+          <div class="coach-chat-section-label">Practice shortcuts</div>
           <div id="coach-chat-workspace" class="coach-chat-workspace"></div>
         </div>
         <div id="coach-chat-messages" class="coach-chat-messages" aria-live="polite"></div>
         <div id="coach-chat-starter-box" class="coach-chat-starter-block">
-          <div class="coach-chat-section-label">Suggested prompts</div>
+          <div class="coach-chat-section-label">Study prompts</div>
           <div id="coach-chat-starters" class="coach-chat-starters"></div>
         </div>
       </div>
@@ -656,16 +656,16 @@
       </button>
 
       <form id="coach-chat-form" class="coach-chat-form">
-        <div class="coach-chat-section-label">Ask your own question</div>
+        <div class="coach-chat-section-label">Ask a study question</div>
         <label class="coach-chat-input-wrap" for="coach-chat-input">
           <textarea id="coach-chat-input" rows="2"
-            placeholder="Ask for background on a topic, a timeline, a comparison, or what you should practice next. Auto will detect knowledge vs coaching."></textarea>
+            placeholder="Ask what to practice, why you missed something, or for background on an IHBB topic."></textarea>
         </label>
         <div class="coach-chat-form-utility">
           <button id="coach-chat-thinking-toggle" class="coach-chat-thinking-toggle" type="button" aria-pressed="false">Thinking Model: Off</button>
         </div>
         <div class="coach-chat-form-actions">
-          <div id="coach-chat-hint" class="muted">Auto mode can switch between knowledge-heavy answers and coaching with future steps.</div>
+          <div id="coach-chat-hint" class="muted">Auto mode balances explanations with next practice steps.</div>
           <button id="coach-chat-send" class="btn pri" type="submit">Send</button>
         </div>
       </form>

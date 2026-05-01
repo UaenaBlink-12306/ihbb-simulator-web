@@ -616,6 +616,13 @@
                     <div class="list-container">
                         <div class="list-item">
                             <div>
+                                <h3 style="margin:0 0 4px;">Role-Specific DeepSeek Sidebar</h3>
+                                <div class="pill">May 1, 2026</div>
+                                <p class="muted" style="margin: 8px 0 0;">The student DeepSeek sidebar now uses study-focused labels, prompts, shortcuts, and loading states for practice, Wrong-bank, AI Notebook, and topic explanations.</p>
+                            </div>
+                        </div>
+                        <div class="list-item">
+                            <div>
                                 <h3 style="margin:0 0 4px;">DeepSeek Response Detail Setting</h3>
                                 <div class="pill">April 30, 2026</div>
                                 <p class="muted" style="margin: 8px 0 0;">Account Settings now lets you choose Compact or Detailed DeepSeek assistant responses, and the Practice Hub and dashboard assistant follow that preference.</p>
@@ -983,9 +990,9 @@
         <div class="coach-chat-panel">
             <div class="coach-chat-head">
                 <div class="coach-chat-head-copy">
-                    <div class="eyebrow">DeepSeek assistant</div>
-                    <h2 class="card-title">Training Assistant</h2>
-                    <p id="coach-chat-context-summary" class="coach-chat-context-summary">Reviewing your coach and analytics history.</p>
+                    <div class="eyebrow">DeepSeek student coach</div>
+                    <h2 class="card-title">Study Assistant</h2>
+                    <p id="coach-chat-context-summary" class="coach-chat-context-summary">Reviewing your practice history, Wrong-bank, and AI Notebook.</p>
                 </div>
                 <div class="coach-chat-head-actions">
                     <button id="coach-chat-new" class="btn ghost coach-chat-utility-btn" type="button">New Chat</button>
@@ -997,12 +1004,12 @@
             <div id="coach-chat-body" class="coach-chat-body">
                 <div id="coach-chat-status-pills" class="coach-chat-status-pills"></div>
                 <div class="coach-chat-section-block">
-                    <div class="coach-chat-section-label">Quick access</div>
+                    <div class="coach-chat-section-label">Practice shortcuts</div>
                     <div id="coach-chat-workspace" class="coach-chat-workspace"></div>
                 </div>
                 <div id="coach-chat-messages" class="coach-chat-messages" aria-live="polite"></div>
                 <div id="coach-chat-starter-box" class="coach-chat-starter-block">
-                    <div class="coach-chat-section-label">Suggested prompts</div>
+                    <div class="coach-chat-section-label">Study prompts</div>
                     <div id="coach-chat-starters" class="coach-chat-starters"></div>
                 </div>
             </div>
@@ -1011,16 +1018,16 @@
             </button>
 
             <form id="coach-chat-form" class="coach-chat-form">
-                <div class="coach-chat-section-label">Ask your own question</div>
+                <div class="coach-chat-section-label">Ask a study question</div>
                 <label class="coach-chat-input-wrap" for="coach-chat-input">
                     <textarea id="coach-chat-input" rows="2"
-                        placeholder="Ask for background on a topic, a timeline, a comparison, or what you should practice next. Auto will detect knowledge vs coaching."></textarea>
+                        placeholder="Ask what to practice, why you missed something, or for background on an IHBB topic."></textarea>
                 </label>
                 <div class="coach-chat-form-utility">
                     <button id="coach-chat-thinking-toggle" class="coach-chat-thinking-toggle" type="button" aria-pressed="false" title="Toggle DeepSeek Thinking Model: Enforces deeper AI reasoning for more detailed and structured explanations when turned ON.">Thinking Model: Off</button>
                 </div>
                 <div class="coach-chat-form-actions">
-                    <div id="coach-chat-hint" class="muted">Auto mode can switch between knowledge-heavy answers and coaching with future steps.</div>
+                    <div id="coach-chat-hint" class="muted">Auto mode balances explanations with next practice steps.</div>
                     <button id="coach-chat-send" class="btn pri" type="submit">Send</button>
                 </div>
             </form>

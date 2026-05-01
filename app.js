@@ -490,6 +490,56 @@ function normalizeAssistantResponseDetail(value) {
 function assistantResponseDetailLabel(value) {
   return normalizeAssistantResponseDetail(value) === 'compact' ? 'Compact' : 'Detailed';
 }
+function isCoachChatTeacherRole() {
+  return String(CurrentProfileRole || '').trim().toLowerCase() === 'teacher';
+}
+function coachChatRoleCopy() {
+  return isCoachChatTeacherRole()
+    ? {
+        eyebrow: 'DeepSeek teacher planner',
+        title: 'Class Planning Assistant',
+        summary: 'Plan assignments, lessons, and question-bank moves from this Practice Hub context.',
+        shortcutLabel: 'Teacher shortcuts',
+        starterLabel: 'Teacher prompts',
+        askLabel: 'Ask a teaching question',
+        placeholder: 'Ask for assignment ideas, lesson framing, class-gap checks, or teacher-ready topic explanations.',
+        thinkingHint: 'Thinking model is on. Answers may take longer but should synthesize question-bank context, class use cases, and lesson planning.',
+        autoHint: 'Teacher auto mode balances lesson prep, assignment planning, and class-gap diagnosis.',
+        emptyTitle: 'Plan a lesson or assignment.',
+        emptyText: 'Pick a prompt or ask how to turn the current practice context into teachable class work.',
+        loadingFast: 'DeepSeek is reviewing the question set, filters, and teacher planning context.',
+        loadingThinking: 'DeepSeek reasoner is synthesizing the question set, filters, and teacher planning context.'
+      }
+    : {
+        eyebrow: 'DeepSeek student coach',
+        title: 'Study Assistant',
+        summary: 'Ask for explanations, practice advice, Wrong-bank help, or AI Notebook next steps.',
+        shortcutLabel: 'Practice shortcuts',
+        starterLabel: 'Study prompts',
+        askLabel: 'Ask a study question',
+        placeholder: 'Ask what to practice, why you missed something, or for background on an IHBB topic.',
+        thinkingHint: 'Thinking model is on. Answers may take longer but should synthesize more of your study context.',
+        autoHint: 'Auto mode balances explanations with next practice steps.',
+        emptyTitle: 'Ask for knowledge or next steps.',
+        emptyText: 'Pick a prompt or type what you want to understand, what you should do next, or both.',
+        loadingFast: 'DeepSeek is reviewing your wrong-bank, notebook, setup, and recent study state.',
+        loadingThinking: 'DeepSeek reasoner is synthesizing your history, notebook, wrong-bank, and next steps.'
+      };
+}
+function syncCoachChatRoleChrome() {
+  const copy = coachChatRoleCopy();
+  const sidebar = $('coach-chat-sidebar');
+  const eyebrow = sidebar?.querySelector('.coach-chat-head-copy .eyebrow');
+  const title = sidebar?.querySelector('.coach-chat-head-copy .card-title');
+  const labels = Array.from(sidebar?.querySelectorAll('.coach-chat-section-label') || []);
+  const input = $('coach-chat-input');
+  if (eyebrow) eyebrow.textContent = copy.eyebrow;
+  if (title) title.textContent = copy.title;
+  if (labels[0]) labels[0].textContent = copy.shortcutLabel;
+  if (labels[1]) labels[1].textContent = copy.starterLabel;
+  if (labels[2]) labels[2].textContent = copy.askLabel;
+  if (input) input.placeholder = copy.placeholder;
+}
 function normalizeAccountSettings(value, { includeLegacy = true, userId = StorageScopeUserId } = {}) {
   const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
   const legacyPracticeHubDisabled = includeLegacy ? readLegacyPracticeHubAutoOpenDisabled(userId) : null;
@@ -812,6 +862,11 @@ const COACH_CHAT_STARTERS = [
   { label: 'What next?', prompt: 'What should I practice next in this practice hub?' },
   { label: 'Explain the weak spot', prompt: 'Explain my current weak spot in detail and tell me what I should do next.' },
   { label: 'Build a focused drill', prompt: 'Recommend a focused drill and launch the best next practice.' }
+];
+const COACH_CHAT_TEACHER_STARTERS = [
+  { label: 'Assign this set', prompt: 'How should I turn this question set into a focused assignment for my class?' },
+  { label: 'Lesson brief', prompt: 'Build a teacher-ready mini lesson from the current Practice Hub topic.' },
+  { label: 'Find gaps', prompt: 'What class skill gap would this practice set diagnose, and what should I assign after it?' }
 ];
 const COACH_CHAT_ALLOWED_ACTIONS = new Set([
   'practice_due_now',
@@ -1142,6 +1197,11 @@ function buildCoachChatStudyContext() {
 function buildCoachChatSummary(snapshot) {
   const recentIncorrect = snapshot?.recent_incorrect;
   const topFocus = snapshot?.coach_notebook?.top_focuses?.[0];
+  if (isCoachChatTeacherRole()) {
+    if (topFocus?.title) return `Teacher mode: turn ${topFocus.title} into class practice or a mini lesson.`;
+    if (snapshot?.active_set?.name) return `Teacher mode: build assignments or lesson checks from ${snapshot.active_set.name}.`;
+    return coachChatRoleCopy().summary;
+  }
   if (CoachChat.ui.mode === 'knowledge') {
     return 'Ask for explanations, timelines, comparisons, or background on any IHBB topic.';
   }
@@ -1251,6 +1311,23 @@ function buildCoachChatStarters(snapshot = buildCoachChatStudyContext()) {
   const topFocusTitle = topFocus?.title || coachChatFocusTitle(topFocus);
   const recentTitle = String(recent?.title || '').trim();
   const knowledgeTopic = recentTitle || topFocusTitle || snapshot?.active_set?.name || 'this topic';
+  if (isCoachChatTeacherRole()) {
+    if (CoachChat.ui.mode === 'knowledge') {
+      return limitCoachChatStarters([
+        { label: 'Teach it', prompt: `Explain ${knowledgeTopic} as a teacher-ready mini lesson with key clues and common misconceptions.` },
+        { label: 'Exit ticket', prompt: `Write three quick exit-ticket questions for ${knowledgeTopic}.` },
+        { label: 'Clue patterns', prompt: `What IHBB clue patterns should students know for ${knowledgeTopic}?` }
+      ]);
+    }
+    if (topFocusTitle) {
+      return limitCoachChatStarters([
+        { label: 'Assign focus', prompt: `Turn ${topFocusTitle} into a focused class assignment plan.` },
+        { label: 'Teach focus', prompt: `Build a 10-minute mini lesson for ${topFocusTitle}.` },
+        { label: 'Check mastery', prompt: `Write a quick mastery check for ${topFocusTitle}.` }
+      ]);
+    }
+    return limitCoachChatStarters(COACH_CHAT_TEACHER_STARTERS);
+  }
   if (CoachChat.ui.mode === 'knowledge') {
     return limitCoachChatStarters([
       { label: 'Explain it', prompt: `Explain ${knowledgeTopic} in detail and why it matters in IHBB.` },
@@ -1299,6 +1376,45 @@ function renderCoachChatWorkspace(snapshot) {
   const el = $('coach-chat-workspace');
   if (!el) return;
   const topFocus = snapshot?.coach_notebook?.top_focuses?.[0] || null;
+  if (isCoachChatTeacherRole()) {
+    const focusTitle = topFocus?.title || snapshot?.active_set?.name || 'current practice focus';
+    const assignmentCard = {
+      kicker: 'Assignment',
+      title: 'Build class work',
+      copy: 'Turn this set into homework.',
+      action: { kind: 'prompt', label: 'Build assignment', prompt: `Turn ${focusTitle} into a concise IHBB assignment plan for my class.` }
+    };
+    const lessonCard = {
+      kicker: 'Lesson prep',
+      title: 'Teacher brief',
+      copy: 'Explain and check mastery.',
+      action: { kind: 'prompt', label: 'Prep lesson', prompt: `Build a teacher-ready mini lesson for ${focusTitle}, with key facts, misconceptions, and an exit ticket.` }
+    };
+    const libraryCard = {
+      kicker: 'Question bank',
+      title: 'Find material',
+      copy: `${snapshot?.active_set?.item_count || 0} questions in set.`,
+      action: { kind: 'action', id: 'open_library', label: 'Open Library', query: focusTitle }
+    };
+    const setupCard = {
+      kicker: 'Builder',
+      title: 'Adjust filters',
+      copy: snapshot?.setup?.filters || 'Choose region and era.',
+      action: { kind: 'action', id: 'open_setup', label: 'Open Setup' }
+    };
+    const cards = isCoachChatPristine()
+      ? [assignmentCard, lessonCard]
+      : [assignmentCard, lessonCard, libraryCard, setupCard];
+    el.innerHTML = cards.map((card, index) => `
+      <button class="coach-chat-workspace-card" type="button" data-workspace-index="${index}">
+        <span class="coach-chat-workspace-kicker">${escHtml(card.kicker)}</span>
+        <span class="coach-chat-workspace-title">${escHtml(card.title)}</span>
+        <span class="coach-chat-workspace-copy">${escHtml(card.copy)}</span>
+      </button>
+    `).join('');
+    CoachChat.workspaceCards = cards;
+    return;
+  }
   const knowledgeCard = {
     kicker: 'Ask',
     title: 'Explain a topic',
@@ -1603,15 +1719,15 @@ function renderCoachChatMessages() {
       </div>
       <div class="coach-chat-thinking-bubble">
         <div class="coach-chat-thinking-dots" aria-hidden="true"><span></span><span></span><span></span></div>
-        <div class="coach-chat-loading">${CoachChat.ui.thinkingEnabled ? 'DeepSeek reasoner is synthesizing your history, notebook, wrong-bank, and next steps.' : 'DeepSeek is reviewing your wrong-bank, notebook, setup, and recent study state.'}</div>
+        <div class="coach-chat-loading">${CoachChat.ui.thinkingEnabled ? coachChatRoleCopy().loadingThinking : coachChatRoleCopy().loadingFast}</div>
       </div>
     </div>
   ` : '';
   messagesEl.innerHTML = html || busyHtml
     ? `${html}${busyHtml}`
     : `<div class="coach-chat-empty">
-        <div class="coach-chat-empty-title">Ask for knowledge or next steps.</div>
-        <p class="coach-chat-empty-text">Pick a prompt or type what you want to understand, what you should do next, or both.</p>
+        <div class="coach-chat-empty-title">${escHtml(coachChatRoleCopy().emptyTitle)}</div>
+        <p class="coach-chat-empty-text">${escHtml(coachChatRoleCopy().emptyText)}</p>
       </div>`;
   scrollCoachChatToBottom();
 }
@@ -1636,6 +1752,7 @@ function setCoachChatOpenState(open) {
 
 function renderCoachChatChrome() {
   const snapshot = buildCoachChatStudyContext();
+  syncCoachChatRoleChrome();
   renderCoachChatStatus(snapshot);
   renderCoachChatWorkspace(snapshot);
   renderCoachChatStarters(snapshot);
@@ -1650,8 +1767,8 @@ function renderCoachChatChrome() {
   if (sendBtn) sendBtn.disabled = !!CoachChat.busy;
   if (hintEl) {
     hintEl.textContent = CoachChat.ui.thinkingEnabled
-      ? 'Thinking model is on. Answers may take longer but should synthesize more of your study context.'
-      : 'Always-auto mode decides how much knowledge, coaching, and future-step guidance to give you.';
+      ? coachChatRoleCopy().thinkingHint
+      : coachChatRoleCopy().autoHint;
   }
   sizeButtons.forEach(button => {
     const active = String(button.dataset.size || '') === CoachChat.ui.size && !CoachChat.ui.fullscreen;
@@ -1969,6 +2086,56 @@ function buildLocalCoachChatReply(message, snapshot = buildCoachChatStudyContext
   let title = 'Practice plan';
   let sections = [];
   let followUps = [];
+
+  if (isCoachChatTeacherRole()) {
+    const teacherTopic = topic || topFocusTitle || snapshot?.active_set?.name || 'the current practice set';
+    const wiki = coachChatWikipediaLink(teacherTopic);
+    if (mode === 'knowledge') {
+      return {
+        source: 'fallback',
+        mode: 'knowledge',
+        title: `Teaching brief: ${teacherTopic}`,
+        topic: teacherTopic,
+        message: `DeepSeek did not return a usable teaching brief, so here is a teacher-ready fallback for ${teacherTopic}.`,
+        highlights: ['Teacher mode', 'Lesson framing', 'Question-bank ready'],
+        sections: [
+          { heading: 'Teach first', body: `Frame ${teacherTopic} by anchoring timeframe, place, main actors, and why students should care before drilling clues.` },
+          { heading: 'Check understanding', body: 'Use one retrieval question, one misconception check, and one IHBB-style clue transfer question.' }
+        ],
+        links: wiki ? [{ label: `Wikipedia: ${teacherTopic}`, url: wiki, kind: 'wikipedia' }] : [],
+        follow_ups: [
+          { label: 'Lesson outline', prompt: `Turn ${teacherTopic} into a 10-minute lesson outline.` },
+          { label: 'Exit ticket', prompt: `Write three exit-ticket questions for ${teacherTopic}.` }
+        ],
+        quick_actions: dedupeCoachChatActions([coachChatAction('open_library', `Find ${teacherTopic}`, 'Open the library to gather assignable examples.', { query: teacherTopic })])
+      };
+    }
+    return {
+      source: 'fallback',
+      mode: 'coach',
+      title: `Class plan for ${teacherTopic}`,
+      topic: teacherTopic,
+      message: `Use ${teacherTopic} as a focused teaching block: preview the key idea, assign a short set, then review misses for the next intervention.`,
+      highlights: [
+        snapshot?.active_set?.name ? `Set: ${snapshot.active_set.name}` : '',
+        snapshot?.active_set?.item_count ? `${snapshot.active_set.item_count} questions` : '',
+        topFocusTitle ? `Focus: ${topFocusTitle}` : ''
+      ].filter(Boolean),
+      sections: [
+        { heading: 'Best teacher move', body: 'Turn the current practice context into a small assignment or exit-ticket check instead of a long mixed review.' },
+        { heading: 'After students submit', body: 'Use missed clue patterns to decide whether the next class needs reteaching, more retrieval, or a harder extension.' }
+      ],
+      links: wiki ? [{ label: `Wikipedia: ${teacherTopic}`, url: wiki, kind: 'wikipedia' }] : [],
+      follow_ups: [
+        { label: 'Draft homework', prompt: `Draft homework instructions for ${teacherTopic}.` },
+        { label: 'Make a lesson', prompt: `Make a mini lesson for ${teacherTopic}.` }
+      ],
+      quick_actions: dedupeCoachChatActions([
+        coachChatAction('open_setup', 'Open Setup', 'Adjust filters or session settings for this teaching focus.'),
+        coachChatAction('open_library', `Find ${teacherTopic}`, 'Search the question library for assignable material.', { query: teacherTopic })
+      ])
+    };
+  }
 
   if (mode === 'knowledge') {
     const wiki = coachChatWikipediaLink(topic);

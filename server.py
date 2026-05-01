@@ -1662,6 +1662,8 @@ def coach_chat_with_deepseek(payload: Dict[str, Any]) -> Dict[str, Any]:
     context = normalize_coach_chat_context(payload)
     resolved_mode = resolve_coach_chat_mode(payload, context)
     thinking_enabled = bool(payload.get("thinking_enabled", False))
+    user_role = string_value(payload.get("user_role")).lower()
+    teacher_context = payload.get("teacher_context") if isinstance(payload.get("teacher_context"), dict) else None
     response_detail = normalize_coach_chat_response_detail(
         payload.get("response_detail")
         or payload.get("assistant_response_detail")
@@ -1691,6 +1693,11 @@ def coach_chat_with_deepseek(payload: Dict[str, Any]) -> Dict[str, Any]:
         if response_detail == "compact"
         else "Detailed replies may use richer explanation with 2 or 3 sections, useful highlights, follow-up prompts, and quick actions when they help."
     )
+    teacher_instruction = (
+        "When teacher_context is provided, prioritize class names, assignment drafts, completion, scores, priority classes, lesson prep, and question-bank context over student self-study advice.\n"
+        if user_role == "teacher"
+        else ""
+    )
 
     system = (
         "You are the DeepSeek personal study assistant inside an IHBB training app.\n"
@@ -1711,6 +1718,7 @@ def coach_chat_with_deepseek(payload: Dict[str, Any]) -> Dict[str, Any]:
         "If you are uncertain about a historical fact, say so instead of bluffing.\n"
         "Coach mode should stay practical and tied to the user context.\n"
         "Knowledge mode should be more detailed and structured.\n"
+        f"{teacher_instruction}"
         f"Response detail preference: {response_detail}.\n"
         f"{detail_instruction}\n"
         "In coach mode, inspect the whole study_context and choose an agentic sequence of quick_actions that moves the learner through the app: clear due SRS, review misses, inspect notebook lessons, apply or generate a focus drill, adjust setup, start a session, or open review.\n"
@@ -1729,11 +1737,13 @@ def coach_chat_with_deepseek(payload: Dict[str, Any]) -> Dict[str, Any]:
     )
     user = {
         "assistant_mode": resolved_mode,
+        "user_role": user_role or "student",
         "thinking_enabled": thinking_enabled,
         "response_detail": response_detail,
         "message": string_value(payload.get("message")) or "What should I practice next?",
         "conversation": conversation,
         "study_context": context,
+        "teacher_context": teacher_context,
         "action_selection_context": {
             "valid_focus_keys": top_focus_keys,
             "allowed_action_ids": sorted(COACH_CHAT_ALLOWED_ACTIONS),

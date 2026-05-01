@@ -1172,17 +1172,17 @@ document.addEventListener('DOMContentLoaded', async () => {
                     <span>DeepSeek</span>
                     <span>Thinking</span>
                 </div>
-                <div class="coach-chat-thinking-bubble">
-                    <div class="coach-chat-thinking-dots" aria-hidden="true"><span></span><span></span><span></span></div>
-                    <div class="coach-chat-loading">${dashboardChat.ui.thinkingEnabled ? 'DeepSeek reasoner is synthesizing your coach history, wrong-bank, analytics, and next steps.' : 'DeepSeek is reviewing your coach history, wrong-bank, analytics, and practice context.'}</div>
+                    <div class="coach-chat-thinking-bubble">
+                        <div class="coach-chat-thinking-dots" aria-hidden="true"><span></span><span></span><span></span></div>
+                        <div class="coach-chat-loading">${dashboardChat.ui.thinkingEnabled ? 'DeepSeek reasoner is synthesizing your practice history, Wrong-bank, AI Notebook, and next steps.' : 'DeepSeek is reviewing your practice history, Wrong-bank, AI Notebook, and dashboard context.'}</div>
+                    </div>
                 </div>
-            </div>
-        ` : '';
-        el.innerHTML = messagesHtml || loadingHtml
-            ? `${messagesHtml}${loadingHtml}`
-            : `<div class="coach-chat-empty">
-                <div class="coach-chat-empty-title">Ask for knowledge or next steps.</div>
-                <p class="coach-chat-empty-text">Pick a prompt or type what you want to understand, what you should do next, or both.</p>
+            ` : '';
+            el.innerHTML = messagesHtml || loadingHtml
+                ? `${messagesHtml}${loadingHtml}`
+                : `<div class="coach-chat-empty">
+                <div class="coach-chat-empty-title">Ask for study help or next steps.</div>
+                <p class="coach-chat-empty-text">Pick a prompt or ask what to practice, why you missed something, or how to understand a topic.</p>
             </div>`;
         scrollDashboardChatToBottom();
     }
@@ -1243,7 +1243,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (hintEl) {
             hintEl.textContent = dashboardChat.ui.thinkingEnabled
                 ? 'Thinking model is on. Answers may take longer but should synthesize more of your study context.'
-                : 'Always-auto mode decides how much knowledge, coaching, and future-step guidance to give you.';
+                : 'Student auto mode balances explanations with the next practice move.';
         }
         if (sendBtn) sendBtn.disabled = !!dashboardChat.busy;
         sizeButtons.forEach(button => {

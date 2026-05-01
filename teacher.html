@@ -110,6 +110,15 @@
                 <a href="index.html?drill=1" class="btn pri hub-nav-button">Practice Hub</a>
                 <a href="livebee.html" class="btn ghost">Host Live Bee</a>
                 <a href="#" id="btn-logout" class="btn bad">Logout</a>
+                <button id="coach-chat-launcher" class="coach-chat-launcher" type="button" aria-controls="coach-chat-sidebar"
+                    aria-expanded="false" aria-label="Open DeepSeek training assistant" title="Launch DeepSeek AI assistant for real-time explanations and guided practice">
+                    <span class="coach-chat-launcher-icon">DS</span>
+                    <span class="coach-chat-launcher-copy">
+                        <span class="coach-chat-launcher-title">DeepSeek</span>
+                        <span id="coach-chat-launcher-note" class="coach-chat-launcher-note">Open coach chat</span>
+                    </span>
+                    <span id="coach-chat-launcher-count" class="coach-chat-launcher-count hidden">0</span>
+                </button>
             </div>
         </header>
 
@@ -555,6 +564,13 @@
                     <div class="list-container">
                         <div class="list-item">
                             <div>
+                                <h3 style="margin:0 0 4px;">Role-Specific DeepSeek Sidebar</h3>
+                                <div class="pill">May 1, 2026</div>
+                                <p class="muted" style="margin: 8px 0 0;">The teacher DeepSeek sidebar now focuses on class-gap analysis, assignment planning, lesson prep, and question-bank workflows instead of student self-study prompts.</p>
+                            </div>
+                        </div>
+                        <div class="list-item">
+                            <div>
                                 <h3 style="margin:0 0 4px;">DeepSeek Response Detail Setting</h3>
                                 <div class="pill">April 30, 2026</div>
                                 <p class="muted" style="margin: 8px 0 0;">DeepSeek assistant responses can now follow a Compact or Detailed preference so users can choose shorter coaching or richer explanations.</p>
@@ -922,6 +938,56 @@
             <div id="modal-body" class="list-container"></div>
         </div>
     </div>
+
+    <div id="coach-chat-backdrop" class="coach-chat-backdrop" hidden></div>
+    <aside id="coach-chat-sidebar" class="coach-chat-sidebar" aria-hidden="true">
+        <div class="coach-chat-panel">
+            <div class="coach-chat-head">
+                <div class="coach-chat-head-copy">
+                    <div class="eyebrow">DeepSeek teacher planner</div>
+                    <h2 class="card-title">Class Planning Assistant</h2>
+                    <p id="coach-chat-context-summary" class="coach-chat-context-summary">Reviewing classes, assignments, analytics, and draft questions.</p>
+                </div>
+                <div class="coach-chat-head-actions">
+                    <button id="coach-chat-new" class="btn ghost coach-chat-utility-btn" type="button">New Chat</button>
+                    <button id="coach-chat-fullscreen" class="btn ghost coach-chat-utility-btn" type="button" aria-pressed="false">Full Screen</button>
+                    <button id="coach-chat-close" class="btn ghost coach-chat-close" type="button" aria-label="Close sidebar">×</button>
+                </div>
+            </div>
+
+            <div id="coach-chat-body" class="coach-chat-body">
+                <div id="coach-chat-status-pills" class="coach-chat-status-pills"></div>
+                <div class="coach-chat-section-block">
+                    <div class="coach-chat-section-label">Class planning shortcuts</div>
+                    <div id="coach-chat-workspace" class="coach-chat-workspace"></div>
+                </div>
+                <div id="coach-chat-messages" class="coach-chat-messages" aria-live="polite"></div>
+                <div id="coach-chat-starter-box" class="coach-chat-starter-block">
+                    <div class="coach-chat-section-label">Teacher prompts</div>
+                    <div id="coach-chat-starters" class="coach-chat-starters"></div>
+                </div>
+            </div>
+            <button id="coach-chat-jump-latest" class="coach-chat-jump-latest" type="button" aria-label="Jump to latest message" title="Jump to latest">
+                <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><polyline points="19 12 12 19 5 12"></polyline></svg>
+            </button>
+
+            <form id="coach-chat-form" class="coach-chat-form">
+                <div class="coach-chat-section-label">Ask a teaching question</div>
+                <label class="coach-chat-input-wrap" for="coach-chat-input">
+                    <textarea id="coach-chat-input" rows="2"
+                        placeholder="Ask for a class-gap plan, assignment idea, lesson brief, or teacher-ready topic explanation."></textarea>
+                </label>
+                <div class="coach-chat-form-utility">
+                    <button id="coach-chat-thinking-toggle" class="coach-chat-thinking-toggle" type="button" aria-pressed="false" title="Toggle DeepSeek Thinking Model: Enforces deeper AI reasoning for more detailed and structured explanations when turned ON.">Thinking Model: Off</button>
+                </div>
+                <div class="coach-chat-form-actions">
+                    <div id="coach-chat-hint" class="muted">Teacher auto mode balances class-gap diagnosis, lesson prep, and assignment planning.</div>
+                    <button id="coach-chat-send" class="btn pri" type="submit">Send</button>
+                </div>
+            </form>
+        </div>
+        <div id="coach-chat-resize-handle" class="coach-chat-resize-handle" aria-hidden="true"></div>
+    </aside>
 </body>
 
 </html>

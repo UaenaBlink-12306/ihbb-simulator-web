@@ -871,6 +871,9 @@ module.exports = async function handler(req, res) {
     }
 
     const context = normalizeContext(payload);
+    const teacherContext = payload.teacher_context && typeof payload.teacher_context === 'object' && !Array.isArray(payload.teacher_context)
+      ? payload.teacher_context
+      : null;
     const contextBrief = buildContextBrief(context);
     const resolvedMode = resolveMode(payload, context);
     const intent = analyzeIntent(payload.message);
@@ -908,6 +911,7 @@ module.exports = async function handler(req, res) {
       'In knowledge mode, let the sections carry the explanation. Do not let quick actions crowd out the historical content.',
       'In coach mode, prefer sections like Best Next Move, Why This Tool Fits, and What To Do After.',
       `Use the whole study_context, not just the user message. Synthesize recent misses, wrong-bank status, notebook patterns, session history, current setup, active set, and analytics when present. ${isTeacher ? 'If available, use class-level performance gaps to drive assignments.' : ''}`,
+      isTeacher ? 'When teacher_context is provided, prioritize class names, assignment drafts, completion, scores, priority classes, and question-bank context over student self-study advice.' : '',
       'When the user asks a broad question, take initiative: infer the most helpful framing from the context and give a satisfying answer without forcing the user to pick a mode.',
       'If the user seems to want both understanding and action, answer the knowledge need first and then give a concise next-step plan.',
       'If the user asks for study guidance, make the plan sequenced, concrete, and grounded in the app surfaces that actually exist.',
@@ -959,6 +963,7 @@ module.exports = async function handler(req, res) {
       message: stringValue(payload.message) || 'What should I practice next?',
       conversation,
       study_context: context,
+      teacher_context: teacherContext,
       action_selection_context: {
         valid_focus_keys: validFocusKeys,
         allowed_action_ids: Array.from(ALLOWED_ACTIONS).sort(),
