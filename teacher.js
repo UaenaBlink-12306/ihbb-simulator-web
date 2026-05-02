@@ -177,6 +177,44 @@ document.addEventListener('DOMContentLoaded', async () => {
             instructions: 'Practice Cold War conflicts, alliances, leaders, and global proxy-war clue patterns.'
         }
     });
+    const ASSIGNMENT_TEMPLATE_QUESTION_IDS = Object.freeze({
+        'silk-road': [
+            '1881372678511928903_77770',
+            '1971379655852653717_77802',
+            '8766216226849475283_77848',
+            '4297725986769166807_77823',
+            '642848760846735945_77888',
+            '2696058573435315930_77779',
+            '3443992772509199885_77915',
+            '6922195787855137564_77940',
+            '3358499226676889193_77807',
+            '3359753433781693601_77927'
+        ],
+        'us-presidents': [
+            '6078364924426569208_77890',
+            '3946796253196639753_77921',
+            '141238509891764754_77770',
+            '8602845428358697279_77885',
+            '2035871613086509054_77848',
+            '3906417038915863290_77943',
+            '2467440056061370086_77914',
+            '8385669338271513222_77833',
+            '6568352381190780265_77846',
+            '7524660140191433877_77828'
+        ],
+        'cold-war': [
+            '8448246673445855838_77899',
+            '3424946421024440985_77776',
+            '8438203487542030109_77895',
+            '6522322088229872458_77774',
+            '5070971539401451528_77832',
+            '9122708536068385160_77947',
+            '8067209574912212953_77850',
+            '7938212482670240776_77919',
+            '4039671356609509842_77887',
+            '3985333332264433858_77773'
+        ]
+    });
     const ASSIGNMENT_SUGGESTION_STOP_WORDS = new Set([
         'about', 'after', 'again', 'assignment', 'assign', 'before', 'build', 'class', 'create', 'draft',
         'from', 'give', 'guidance', 'homework', 'into', 'lesson', 'move', 'next', 'plan', 'practice',
@@ -3086,6 +3124,84 @@ document.addEventListener('DOMContentLoaded', async () => {
         return picked;
     }
 
+    function assignmentQuestionLookupById() {
+        const lookup = new Map();
+        allQuestions.forEach(question => {
+            [
+                question?.id,
+                question?.question_id,
+                questionKey(question)
+            ].map(value => String(value || '').trim()).filter(Boolean).forEach(id => {
+                if (!lookup.has(id)) lookup.set(id, question);
+            });
+        });
+        return lookup;
+    }
+
+    function curatedAssignmentTemplateQuestions(templateId, criteria, count = 10) {
+        const curatedIds = ASSIGNMENT_TEMPLATE_QUESTION_IDS[templateId] || [];
+        const safeCount = Math.min(clampCount(count, 10), allQuestions.length);
+        const lookup = assignmentQuestionLookupById();
+        const picked = [];
+        const missingIds = [];
+        const seen = new Set();
+        const addQuestion = (question) => {
+            if (!question) return false;
+            const key = questionKey(question);
+            if (!key || seen.has(key) || picked.length >= safeCount) return false;
+            seen.add(key);
+            picked.push(question);
+            return true;
+        };
+
+        curatedIds.forEach(id => {
+            const question = lookup.get(id);
+            if (!question) {
+                missingIds.push(id);
+                return;
+            }
+            addQuestion(question);
+        });
+
+        const curatedCount = picked.length;
+        if (picked.length < safeCount) {
+            pickAssignmentSuggestionQuestions(criteria, safeCount + curatedIds.length).forEach(question => {
+                if (picked.length < safeCount) addQuestion(question);
+            });
+        }
+
+        return {
+            picked,
+            curatedCount,
+            missingIds
+        };
+    }
+
+    function applyAssignmentTemplateQuestions(templateId, criteria, options = {}) {
+        if (!allQuestions.length) {
+            if (!options.silent) showAlert('No questions loaded yet.', 'error');
+            return [];
+        }
+        if (options.onlyWhenEmpty && selectedQuestions.length) return [];
+        const curatedIds = ASSIGNMENT_TEMPLATE_QUESTION_IDS[templateId] || [];
+        if (!curatedIds.length) return applyAssignmentQuestionSuggestions(criteria, options);
+        const result = curatedAssignmentTemplateQuestions(templateId, criteria, criteria?.count || 10);
+        const picked = result.picked;
+        if (!picked.length) {
+            if (!options.silent) showAlert('No curated template questions were found in the question bank.', 'error');
+            return [];
+        }
+        applyPickedAssignmentQuestions(picked, criteria, options);
+        if (!options.silent) {
+            const fallbackCount = Math.max(0, picked.length - result.curatedCount);
+            const fallbackText = fallbackCount
+                ? ` ${fallbackCount} replacement${fallbackCount === 1 ? '' : 's'} filled unavailable curated slots.`
+                : '';
+            showAlert(`Loaded ${picked.length} curator-picked template question${picked.length === 1 ? '' : 's'}.${fallbackText}`, 'success');
+        }
+        return picked;
+    }
+
     async function applyDeepSeekAssignmentQuestionSuggestions(criteria, options = {}) {
         if (!allQuestions.length) {
             if (!options.silent) showAlert('No questions loaded yet.', 'error');
@@ -3171,11 +3287,11 @@ document.addEventListener('DOMContentLoaded', async () => {
             const template = btn.dataset.template;
             const criteria = buildAssignmentSuggestionCriteria({ templateId: template });
             applyAssignmentSuggestionFields(criteria, { replaceTitle: true });
-            const picked = applyAssignmentQuestionSuggestions(criteria, { append: false });
+            const picked = applyAssignmentTemplateQuestions(template, criteria, { append: false });
             generatedDraftQuestions = [];
             renderGeneratedDraftPreview();
             if (picked.length) {
-                updateGeneratorStatus(`Template hand-picked ${picked.length} existing question${picked.length === 1 ? '' : 's'} from the question bank. Use Generate Draft only if you want new AI-created questions.`, 'muted');
+                updateGeneratorStatus(`Template loaded ${picked.length} curated question-bank pick${picked.length === 1 ? '' : 's'}. Use Generate Draft only if you want new AI-created questions.`, 'muted');
             }
         });
     });
