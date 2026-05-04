@@ -6088,6 +6088,11 @@ input[type=datetime-local]:focus {
   gap: 18px;
 }
 
+.dashboard-split > .panel-stack,
+.teacher-builder-shell > .panel-stack {
+  align-self: stretch;
+}
+
 .sticky-card {
   align-self: start;
 }
