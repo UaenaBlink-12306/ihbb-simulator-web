@@ -226,10 +226,12 @@
                     <div class="card-muted-box generator-card" style="margin-bottom: 18px;">
                         <div class="section-head" style="margin-bottom: 12px;">
                             <div>
-                                <h3 style="margin: 0;">Draft Builder</h3>
+                                <h3 style="margin: 0;">DeepSeek Draft Builder</h3>
+                                <p id="teacher-gen-status" class="section-subtitle" style="margin: 0;">AI Generation</p>
                             </div>
                             <div class="inline-actions">
                                 <button id="btn-teacher-generate" class="btn pri" type="button">Generate Draft</button>
+                                <button id="btn-teacher-clear-draft" class="btn bad" type="button" style="display: none;">Clear Draft</button>
                                 <button id="btn-teacher-add-draft" class="btn ghost" type="button" disabled>Add Draft to Assignment</button>
                             </div>
                         </div>
@@ -254,55 +256,63 @@
                         <div id="teacher-gen-preview" class="generator-preview hidden"></div>
                     </div>
 
-                    <div class="chips">
-                        <div class="chip active mode-btn" data-mode="random">Random</div>
-                        <div class="chip mode-btn" data-mode="filter">By Topic / Era</div>
-                        <div class="chip mode-btn" data-mode="pick">Hand Pick</div>
-                    </div>
-
-                    <div id="mode-random" class="mode-panel view active" style="margin-top: 18px;">
-                        <div class="card-muted-box">
-                            <div class="inline-form">
-                                <div class="input-group count-control" style="margin: 0;">
-                                    <label>Number of questions</label>
-                                    <input type="number" id="random-count" class="compact-number-input" value="10" min="1" max="200">
-                                </div>
-                                <button id="btn-random-preview" class="btn ghost">Preview Selection</button>
+                    <div class="card-muted-box" style="margin-bottom: 18px; border: 1px solid var(--line);">
+                        <div class="section-head" style="margin-bottom: 12px;">
+                            <div>
+                                <h3 style="margin: 0;">Original Question Bank</h3>
+                                <p class="section-subtitle" style="margin: 0;">Find and select real questions from the library.</p>
                             </div>
                         </div>
-                    </div>
+                        <div class="chips">
+                            <div class="chip active mode-btn" data-mode="random">Random</div>
+                            <div class="chip mode-btn" data-mode="filter">By Topic / Era</div>
+                            <div class="chip mode-btn" data-mode="pick">Hand Pick</div>
+                        </div>
 
-                    <div id="mode-filter" class="mode-panel view hidden" style="margin-top: 18px;">
-                        <div class="stack">
+                        <div id="mode-random" class="mode-panel view active" style="margin-top: 18px;">
                             <div class="card-muted-box">
-                                <div class="setup-grid">
-                                    <div class="input-group" style="margin: 0;">
-                                        <label>Regions</label>
-                                        <div id="filter-category-chips" class="chips"></div>
+                                <div class="inline-form">
+                                    <div class="input-group count-control" style="margin: 0;">
+                                        <label>Number of questions</label>
+                                        <input type="number" id="random-count" class="compact-number-input" value="10" min="1" max="200">
                                     </div>
-                                    <div class="input-group" style="margin: 0;">
-                                        <label>Eras</label>
-                                        <div id="filter-era-chips" class="chips"></div>
-                                    </div>
+                                    <button id="btn-random-preview" class="btn ghost">Preview Selection</button>
                                 </div>
-                            </div>
-                            <div class="inline-form">
-                                <div class="input-group count-control" style="margin: 0;">
-                                    <label>Count</label>
-                                    <input type="number" id="filter-count" class="compact-number-input" value="10" min="1" max="200">
-                                </div>
-                                <button id="btn-filter-preview" class="btn ghost">Preview</button>
-                                <button id="btn-filter-reset" class="btn ghost">Clear Filters</button>
                             </div>
                         </div>
-                    </div>
 
-                    <div id="mode-pick" class="mode-panel view hidden" style="margin-top: 18px;">
-                        <div class="input-group" style="margin: 0;">
-                            <label for="pick-search">Search the question bank</label>
-                            <input type="text" id="pick-search" placeholder="Search questions by answer or text...">
+                        <div id="mode-filter" class="mode-panel view hidden" style="margin-top: 18px;">
+                            <div class="stack">
+                                <div class="card-muted-box">
+                                    <div class="setup-grid">
+                                        <div class="input-group" style="margin: 0;">
+                                            <label>Regions</label>
+                                            <div id="filter-category-chips" class="chips"></div>
+                                        </div>
+                                        <div class="input-group" style="margin: 0;">
+                                            <label>Eras</label>
+                                            <div id="filter-era-chips" class="chips"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="inline-form">
+                                    <div class="input-group count-control" style="margin: 0;">
+                                        <label>Count</label>
+                                        <input type="number" id="filter-count" class="compact-number-input" value="10" min="1" max="200">
+                                    </div>
+                                    <button id="btn-filter-preview" class="btn ghost">Preview</button>
+                                    <button id="btn-filter-reset" class="btn ghost">Clear Filters</button>
+                                </div>
+                            </div>
                         </div>
-                        <div id="pick-results" class="pick-list"></div>
+
+                        <div id="mode-pick" class="mode-panel view hidden" style="margin-top: 18px;">
+                            <div class="input-group" style="margin: 0;">
+                                <label for="pick-search">Search the question bank</label>
+                                <input type="text" id="pick-search" placeholder="Search questions by answer or text...">
+                            </div>
+                            <div id="pick-results" class="pick-list"></div>
+                        </div>
                     </div>
                 </div>
 
@@ -595,6 +605,13 @@
                 </div>
                 <div class="dashboard-split dashboard-split-solo">
                     <div class="list-container">
+                        <div class="list-item">
+                            <div>
+                                <h3 style="margin:0 0 4px;">Draft Builder Improvements</h3>
+                                <div class="pill">May 4, 2026</div>
+                                <p class="muted" style="margin: 8px 0 0;">You can now delete individual questions from generated drafts or clear the entire draft. The AI-generated nature of the Draft Builder is now more explicitly labeled, and the original question bank tools are clearly separated with distinct borders.</p>
+                            </div>
+                        </div>
                         <div class="list-item">
                             <div>
                                 <h3 style="margin:0 0 4px;">Sticky Assignment Summary</h3>

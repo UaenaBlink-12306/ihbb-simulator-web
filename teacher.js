@@ -274,8 +274,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     const renderGeneratedDraftPreview = () => {
         const wrap = document.getElementById('teacher-gen-preview');
         const addBtn = document.getElementById('btn-teacher-add-draft');
+        const clearBtn = document.getElementById('btn-teacher-clear-draft');
         if (!wrap || !addBtn) return;
         addBtn.disabled = !generatedDraftQuestions.length;
+        if (clearBtn) clearBtn.style.display = generatedDraftQuestions.length ? 'inline-flex' : 'none';
         if (!generatedDraftQuestions.length) {
             wrap.classList.add('hidden');
             wrap.innerHTML = '';
@@ -286,12 +288,25 @@ document.addEventListener('DOMContentLoaded', async () => {
             <div class="generator-item">
                 <div class="generator-item-head">
                     <strong>${esc(q.answer || '')}</strong>
-                    <span class="pill">${esc(q.meta?.category || 'World')}${q.meta?.era ? ` • ${esc(getEraLabel(q.meta.era))}` : ''}${q.meta?.source ? ` • ${esc(q.meta.source)}` : ''}</span>
+                    <div style="display: flex; gap: 8px; align-items: center;">
+                        <span class="pill">${esc(q.meta?.category || 'World')}${q.meta?.era ? ` • ${esc(getEraLabel(q.meta.era))}` : ''}${q.meta?.source ? ` • ${esc(q.meta.source)}` : ''}</span>
+                        <button class="btn ghost btn-delete-draft-q" data-index="${index}" style="padding: 2px 6px; min-height: 24px; font-size: 12px; height: 24px; line-height: 1;">Delete</button>
+                    </div>
                 </div>
                 <p>${esc(q.question || '')}</p>
                 <div class="generator-item-meta">Draft ${index + 1}${q.topic ? ` • ${esc(q.topic)}` : ''}</div>
             </div>
         `).join('');
+        wrap.querySelectorAll('.btn-delete-draft-q').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const idx = parseInt(e.currentTarget.dataset.index, 10);
+                if (!isNaN(idx)) {
+                    generatedDraftQuestions.splice(idx, 1);
+                    renderGeneratedDraftPreview();
+                    updateGeneratorStatus(`Removed question. ${generatedDraftQuestions.length} draft question${generatedDraftQuestions.length === 1 ? '' : 's'} remaining.`, 'muted');
+                }
+            });
+        });
     };
     const populateGeneratorControls = () => {
         const regionSel = document.getElementById('teacher-gen-region');
