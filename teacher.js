@@ -2777,22 +2777,185 @@ document.addEventListener('DOMContentLoaded', async () => {
         showAlert(`${generatedDraftQuestions.length} generated question${generatedDraftQuestions.length === 1 ? '' : 's'} added to the assignment draft.`, 'success');
     });
 
+    function normalizeAssignmentAnswerForWarning(value) {
+        return String(value || '')
+            .toLowerCase()
+            .replace(/&/g, ' and ')
+            .replace(/[^a-z0-9]+/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim();
+    }
+
+    function assignmentDuplicateAnswerGroups() {
+        const groups = new Map();
+        selectedQuestions.forEach((question, index) => {
+            const answer = String(question.answer || question.a || '').trim();
+            const key = normalizeAssignmentAnswerForWarning(answer);
+            if (!key) return;
+            if (!groups.has(key)) groups.set(key, { answer, indices: [] });
+            const group = groups.get(key);
+            if (!group.answer && answer) group.answer = answer;
+            group.indices.push(index);
+        });
+        return Array.from(groups.values()).filter(group => group.indices.length > 1);
+    }
+
+    function renderAssignmentDuplicateWarnings() {
+        const wrap = document.getElementById('assignment-builder-alerts');
+        if (!wrap) return;
+        const duplicateGroups = assignmentDuplicateAnswerGroups();
+        if (!selectedQuestions.length) {
+            wrap.innerHTML = '';
+            return;
+        }
+        if (!duplicateGroups.length) {
+            wrap.innerHTML = `
+                <div class="assignment-builder-alert assignment-builder-alert-ok">
+                    <strong>No duplicate answers detected.</strong>
+                    <span>Selected answers are unique across this draft.</span>
+                </div>
+            `;
+            return;
+        }
+        const rows = duplicateGroups.slice(0, 4).map(group => {
+            const spots = group.indices.map(index => `#${index + 1}`).join(', ');
+            return `<li><strong>${esc(group.answer || 'Duplicate answer')}</strong> appears in ${spots}</li>`;
+        }).join('');
+        const more = duplicateGroups.length > 4
+            ? `<li>${duplicateGroups.length - 4} more duplicate answer group${duplicateGroups.length - 4 === 1 ? '' : 's'}.</li>`
+            : '';
+        wrap.innerHTML = `
+            <div class="assignment-builder-alert assignment-builder-alert-warning">
+                <strong>Duplicate-answer warning</strong>
+                <span>These answers repeat in the selected draft. You can keep them, reorder them, or remove one before publishing.</span>
+                <ul>${rows}${more}</ul>
+            </div>
+        `;
+    }
+
+    function groupedAssignmentCoverage(getValue, fallbackLabel, labelValue = value => value) {
+        const counts = new Map();
+        selectedQuestions.forEach(question => {
+            const raw = String(getValue(question) || '').trim();
+            const key = raw || fallbackLabel;
+            const label = raw ? labelValue(raw) : fallbackLabel;
+            const current = counts.get(key) || { label, count: 0 };
+            current.count += 1;
+            counts.set(key, current);
+        });
+        const rows = Array.from(counts.values()).sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
+        if (rows.length <= 5) return rows;
+        const visible = rows.slice(0, 4);
+        const otherCount = rows.slice(4).reduce((sum, row) => sum + row.count, 0);
+        visible.push({ label: 'Other', count: otherCount });
+        return visible;
+    }
+
+    function renderAssignmentCoverageGroup(title, rows, total) {
+        const safeTotal = Math.max(1, total);
+        const body = rows.map(row => {
+            const pct = Math.round((row.count / safeTotal) * 100);
+            return `
+                <div class="assignment-coverage-row">
+                    <div class="assignment-coverage-row-head">
+                        <span>${esc(row.label)}</span>
+                        <strong>${row.count} (${pct}%)</strong>
+                    </div>
+                    <div class="assignment-coverage-track"><span style="width:${pct}%"></span></div>
+                </div>
+            `;
+        }).join('');
+        return `
+            <div class="assignment-coverage-card">
+                <div class="assignment-coverage-title">${esc(title)}</div>
+                ${body || '<p class="muted" style="margin:0;">No coverage data yet.</p>'}
+            </div>
+        `;
+    }
+
+    function renderAssignmentCoverage() {
+        const wrap = document.getElementById('assignment-coverage');
+        if (!wrap) return;
+        if (!selectedQuestions.length) {
+            wrap.innerHTML = '';
+            return;
+        }
+        const total = selectedQuestions.length;
+        const regions = groupedAssignmentCoverage(questionCategory, 'Uncategorized');
+        const eraRows = groupedAssignmentCoverage(questionEra, 'Unspecified era', value => getEraLabel(value) || value);
+        wrap.innerHTML = `
+            <div class="assignment-coverage-head">
+                <div>
+                    <div class="empty-kicker">Coverage meter</div>
+                    <p class="muted">Region and era balance across ${total} selected question${total === 1 ? '' : 's'}.</p>
+                </div>
+            </div>
+            <div class="assignment-coverage-grid">
+                ${renderAssignmentCoverageGroup('Regions', regions, total)}
+                ${renderAssignmentCoverageGroup('Eras', eraRows, total)}
+            </div>
+        `;
+    }
+
+    function syncPickResultSelectionState() {
+        const selectedKeys = new Set(selectedQuestions.map(question => questionKey(question)));
+        document.querySelectorAll('#pick-results .pick-item').forEach(el => {
+            const key = String(el.dataset.qkey || '');
+            const selected = selectedKeys.has(key);
+            el.classList.toggle('selected', selected);
+            const cb = el.querySelector('input[type=checkbox]');
+            if (cb) cb.checked = selected;
+        });
+    }
+
+    function moveSelectedQuestion(index, direction) {
+        const nextIndex = index + direction;
+        if (index < 0 || nextIndex < 0 || index >= selectedQuestions.length || nextIndex >= selectedQuestions.length) return;
+        const [item] = selectedQuestions.splice(index, 1);
+        selectedQuestions.splice(nextIndex, 0, item);
+        updatePreview();
+    }
+
+    function removeSelectedQuestion(index) {
+        if (index < 0 || index >= selectedQuestions.length) return;
+        selectedQuestions.splice(index, 1);
+        updatePreview();
+        syncPickResultSelectionState();
+        showAlert('Question removed from the assignment draft.', 'success');
+    }
+
     function updatePreview() {
         const area = document.getElementById('preview-area');
         const count = document.getElementById('preview-count');
         const list = document.getElementById('preview-list');
         setMetric('teacher-hero-selected', selectedQuestions.length);
-        if (!selectedQuestions.length) { area.classList.add('hidden'); return; }
+        if (!selectedQuestions.length) {
+            area.classList.add('hidden');
+            if (list) list.innerHTML = '';
+            renderAssignmentDuplicateWarnings();
+            renderAssignmentCoverage();
+            return;
+        }
         area.classList.remove('hidden');
         count.textContent = selectedQuestions.length;
-        list.innerHTML = selectedQuestions.slice(0, 50).map((q, index) => {
+        renderAssignmentDuplicateWarnings();
+        renderAssignmentCoverage();
+        list.innerHTML = selectedQuestions.map((q, index) => {
             const answer = String(q.answer || q.a || 'Answer').trim() || 'Answer';
             const question = String(q.question || q.q || '').trim();
             const snippet = question.length > 100 ? `${question.substring(0, 100)}...` : question;
             return `<div class="p-item assignment-preview-item">
                 <div class="assignment-preview-head">
-                    <button class="library-answer-button assignment-question-view-btn" type="button" data-selected-index="${index}">${esc(answer)}</button>
-                    <button class="btn ghost assignment-question-view-small" type="button" data-selected-index="${index}">View question</button>
+                    <div class="assignment-preview-title-wrap">
+                        <span class="assignment-preview-index">#${index + 1}</span>
+                        <button class="library-answer-button assignment-question-view-btn" type="button" data-selected-index="${index}">${esc(answer)}</button>
+                    </div>
+                    <div class="assignment-preview-controls" aria-label="Question ${index + 1} controls">
+                        <button class="btn ghost assignment-question-control" type="button" data-assignment-action="up" data-selected-index="${index}" ${index === 0 ? 'disabled' : ''}>Up</button>
+                        <button class="btn ghost assignment-question-control" type="button" data-assignment-action="down" data-selected-index="${index}" ${index === selectedQuestions.length - 1 ? 'disabled' : ''}>Down</button>
+                        <button class="btn ghost assignment-question-view-small" type="button" data-assignment-action="view" data-selected-index="${index}">View</button>
+                        <button class="btn ghost assignment-question-control assignment-question-remove" type="button" data-assignment-action="remove" data-selected-index="${index}">Remove</button>
+                    </div>
                 </div>
                 <span class="muted assignment-question-snippet">${esc(snippet || 'No question text available.')}</span>
             </div>`;
@@ -2800,13 +2963,19 @@ document.addEventListener('DOMContentLoaded', async () => {
         list.querySelectorAll('[data-selected-index]').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 const idx = parseInt(e.currentTarget.dataset.selectedIndex, 10);
-                if (!isNaN(idx)) showAssignmentQuestionDetails(selectedQuestions[idx], `Selected question ${idx + 1}`);
+                if (isNaN(idx)) return;
+                const action = String(e.currentTarget.dataset.assignmentAction || 'view');
+                if (action === 'up') moveSelectedQuestion(idx, -1);
+                else if (action === 'down') moveSelectedQuestion(idx, 1);
+                else if (action === 'remove') removeSelectedQuestion(idx);
+                else showAssignmentQuestionDetails(selectedQuestions[idx], `Selected question ${idx + 1}`);
             });
         });
     }
     function setSelectedQuestions(next) {
         selectedQuestions = dedupeQuestions(next);
         updatePreview();
+        syncPickResultSelectionState();
     }
 
     function normalizeAssignmentSuggestionText(value) {
@@ -3450,6 +3619,16 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (!title) return showAlert('Title is required.', 'error');
         if (!classId) return showAlert('Select a class.', 'error');
         if (!selectedQuestions.length) return showAlert('Select some questions first.', 'error');
+        const duplicateGroups = assignmentDuplicateAnswerGroups();
+        if (duplicateGroups.length) {
+            const duplicateSummary = duplicateGroups.slice(0, 5).map(group => {
+                const spots = group.indices.map(index => `#${index + 1}`).join(', ');
+                return `${group.answer || 'Duplicate answer'} (${spots})`;
+            }).join('\n');
+            const more = duplicateGroups.length > 5 ? `\n...and ${duplicateGroups.length - 5} more duplicate answer group${duplicateGroups.length - 5 === 1 ? '' : 's'}.` : '';
+            const proceed = confirm(`This assignment includes duplicate answers:\n\n${duplicateSummary}${more}\n\nPublish anyway?`);
+            if (!proceed) return;
+        }
 
         const btn = document.getElementById('btn-create-assignment');
         btn.disabled = true; btn.textContent = 'Creating...';
