@@ -1253,6 +1253,34 @@ tr:hover td {
   cursor: pointer;
 }
 
+.pick-question-copy {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.pick-question-copy .library-answer-button {
+  width: fit-content;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.pick-question-snippet,
+.assignment-question-snippet {
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.pick-question-snippet {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  line-clamp: 2;
+}
+
 .preview-area {
   margin-top: 24px;
   padding: 20px;
@@ -1277,6 +1305,31 @@ tr:hover td {
   background: rgba(255, 255, 255, 0.03);
   border: 1px solid var(--line);
   border-radius: 8px;
+}
+
+.assignment-preview-item {
+  display: grid;
+  gap: 6px;
+}
+
+.assignment-preview-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.assignment-preview-head .library-answer-button {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.assignment-question-view-small {
+  flex: 0 0 auto;
+  min-height: 28px;
+  height: auto;
+  padding: 4px 8px;
+  font-size: 12px;
 }
 
 /* Mobile Optimizations */

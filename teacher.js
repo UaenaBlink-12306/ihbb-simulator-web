@@ -287,7 +287,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         wrap.innerHTML = generatedDraftQuestions.map((q, index) => `
             <div class="generator-item">
                 <div class="generator-item-head">
-                    <strong>${esc(q.answer || '')}</strong>
+                    <button class="library-answer-button assignment-question-view-btn" type="button" data-generated-index="${index}">${esc(q.answer || 'Answer')}</button>
                     <div style="display: flex; gap: 8px; align-items: center;">
                         <span class="pill">${esc(q.meta?.category || 'World')}${q.meta?.era ? ` • ${esc(getEraLabel(q.meta.era))}` : ''}${q.meta?.source ? ` • ${esc(q.meta.source)}` : ''}</span>
                         <button class="btn ghost btn-delete-draft-q" data-index="${index}" style="padding: 2px 6px; min-height: 24px; font-size: 12px; height: 24px; line-height: 1;">Delete</button>
@@ -297,6 +297,13 @@ document.addEventListener('DOMContentLoaded', async () => {
                 <div class="generator-item-meta">Draft ${index + 1}${q.topic ? ` • ${esc(q.topic)}` : ''}</div>
             </div>
         `).join('');
+        wrap.querySelectorAll('.assignment-question-view-btn[data-generated-index]').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const idx = parseInt(e.currentTarget.dataset.generatedIndex, 10);
+                if (!isNaN(idx)) showAssignmentQuestionDetails(generatedDraftQuestions[idx], `Draft ${idx + 1}`);
+            });
+        });
         wrap.querySelectorAll('.btn-delete-draft-q').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 const idx = parseInt(e.currentTarget.dataset.index, 10);
@@ -2288,6 +2295,34 @@ document.addEventListener('DOMContentLoaded', async () => {
         hydrateAvatarImages(body);
         modal.classList.remove('hidden');
     }
+    function showAssignmentQuestionDetails(item, detailLabel = 'Question detail') {
+        if (!item) return;
+        const answer = String(item.answer || item.a || 'Answer').trim() || 'Answer';
+        const question = String(item.question || item.q || '').trim();
+        const aliases = Array.isArray(item.aliases)
+            ? item.aliases.map(alias => String(alias || '').trim()).filter(Boolean)
+            : [];
+        const meta = item.meta || {};
+        const region = String(meta.category || item.category || '').trim();
+        const era = String(meta.era || item.era || '').trim();
+        const source = String(meta.source || item.source || '').trim();
+        showModal(answer, `
+            <div>
+                <div class="empty-kicker">${esc(detailLabel)}</div>
+                <p class="library-question-text">${esc(question || 'No question text available.')}</p>
+            </div>
+            <div class="library-question-meta-grid">
+                <div class="pill">Region: ${esc(region || '—')}</div>
+                <div class="pill">Era: ${esc(era ? getEraLabel(era) : '—')}</div>
+                <div class="pill">Source: ${esc(source || '—')}</div>
+            </div>
+            ${aliases.length ? `<div><div class="empty-kicker">Aliases</div><p class="muted">${esc(aliases.join(', '))}</p></div>` : ''}
+        `, {
+            wide: true,
+            cardClass: 'library-question-modal-card',
+            bodyClass: 'library-question-modal-body'
+        });
+    }
     const closeTeacherModal = () => {
         document.getElementById('teacher-modal').classList.add('hidden');
     };
@@ -2750,9 +2785,24 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (!selectedQuestions.length) { area.classList.add('hidden'); return; }
         area.classList.remove('hidden');
         count.textContent = selectedQuestions.length;
-        list.innerHTML = selectedQuestions.slice(0, 50).map(q =>
-            `<div class="p-item"><strong>${esc(q.answer || q.a || '')}</strong> — ${esc((q.question || q.q || '').substring(0, 80))}…</div>`
-        ).join('');
+        list.innerHTML = selectedQuestions.slice(0, 50).map((q, index) => {
+            const answer = String(q.answer || q.a || 'Answer').trim() || 'Answer';
+            const question = String(q.question || q.q || '').trim();
+            const snippet = question.length > 100 ? `${question.substring(0, 100)}...` : question;
+            return `<div class="p-item assignment-preview-item">
+                <div class="assignment-preview-head">
+                    <button class="library-answer-button assignment-question-view-btn" type="button" data-selected-index="${index}">${esc(answer)}</button>
+                    <button class="btn ghost assignment-question-view-small" type="button" data-selected-index="${index}">View question</button>
+                </div>
+                <span class="muted assignment-question-snippet">${esc(snippet || 'No question text available.')}</span>
+            </div>`;
+        }).join('');
+        list.querySelectorAll('[data-selected-index]').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const idx = parseInt(e.currentTarget.dataset.selectedIndex, 10);
+                if (!isNaN(idx)) showAssignmentQuestionDetails(selectedQuestions[idx], `Selected question ${idx + 1}`);
+            });
+        });
     }
     function setSelectedQuestions(next) {
         selectedQuestions = dedupeQuestions(next);
@@ -3357,16 +3407,26 @@ document.addEventListener('DOMContentLoaded', async () => {
             document.getElementById('pick-results').innerHTML = matches.map((item, i) => {
                 const key = questionKey(item);
                 const checked = selectedQuestions.some(s => questionKey(s) === key) ? 'checked' : '';
+                const answer = String(item.answer || item.a || 'Answer').trim() || 'Answer';
+                const question = String(item.question || item.q || '').trim();
+                const snippet = question.length > 120 ? `${question.substring(0, 120)}...` : question;
                 return `<div class="pick-item ${checked ? 'selected' : ''}" data-idx="${i}" data-qkey="${esc(key)}">
                     <input type="checkbox" ${checked} data-qkey="${esc(key)}">
-                    <strong>${esc(item.answer || item.a || '')}</strong>
-                    <span class="muted" style="flex:1">${esc((item.question || item.q || '').substring(0, 60))}…</span>
+                    <div class="pick-question-copy">
+                        <button class="library-answer-button assignment-question-view-btn" type="button" data-pick-index="${i}">${esc(answer)}</button>
+                        <span class="muted pick-question-snippet">${esc(snippet || 'No question text available.')}</span>
+                    </div>
                 </div>`;
             }).join('');
             document.querySelectorAll('.pick-item').forEach(el => {
                 const idx = parseInt(el.dataset.idx, 10);
                 const item = matches[idx];
                 const cb = el.querySelector('input[type=checkbox]');
+                const viewBtn = el.querySelector('.assignment-question-view-btn');
+                viewBtn?.addEventListener('click', (evt) => {
+                    evt.stopPropagation();
+                    showAssignmentQuestionDetails(item, `Search result ${idx + 1}`);
+                });
                 cb.addEventListener('change', () => {
                     togglePickedQuestion(item, cb.checked, el);
                 });
