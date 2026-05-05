@@ -1507,6 +1507,7 @@ tr:hover td {
 }
 
 .assignment-review-item {
+  position: relative;
   display: grid;
   gap: 12px;
   padding: 16px;
@@ -1515,11 +1516,59 @@ tr:hover td {
   background: rgba(255, 255, 255, 0.03);
 }
 
+.assignment-review-item[draggable="true"] {
+  cursor: grab;
+}
+
+.assignment-review-item.dragging {
+  cursor: grabbing;
+  opacity: 0.58;
+  transform: scale(0.995);
+}
+
+.assignment-review-item.drag-over-before::before,
+.assignment-review-item.drag-over-after::after {
+  content: "";
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  height: 3px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(96, 165, 250, 0.95), rgba(45, 212, 191, 0.9));
+  box-shadow: 0 0 0 4px rgba(96, 165, 250, 0.12);
+}
+
+.assignment-review-item.drag-over-before::before {
+  top: -2px;
+}
+
+.assignment-review-item.drag-over-after::after {
+  bottom: -2px;
+}
+
 .assignment-review-item-head {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 14px;
+}
+
+.assignment-drag-handle {
+  flex: 0 0 auto;
+  padding: 5px 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.035);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  cursor: grab;
+  user-select: none;
+}
+
+.assignment-review-item.dragging .assignment-drag-handle {
+  cursor: grabbing;
 }
 
 .assignment-review-title-copy {
@@ -1628,6 +1677,10 @@ tr:hover td {
 
   .assignment-review-item-head {
     flex-direction: column;
+  }
+
+  .assignment-drag-handle {
+    align-self: flex-start;
   }
 
   .assignment-review-controls {

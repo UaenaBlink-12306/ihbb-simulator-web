@@ -86,6 +86,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     let selectedFilterCategories = [];
     let selectedFilterEras = [];
     let generatedDraftQuestions = [];
+    let assignmentReviewDragIndex = null;
     const GENERATED_QUESTIONS_TABLE = 'generated_questions';
 
     const ERA_LABELS = {
@@ -2332,10 +2333,55 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('teacher-modal').addEventListener('click', (e) => {
         if (e.target === e.currentTarget) closeTeacherModal();
     });
+    const clearAssignmentReviewDropState = () => {
+        document.querySelectorAll('.assignment-review-item.dragging, .assignment-review-item.drag-over-before, .assignment-review-item.drag-over-after').forEach((item) => {
+            item.classList.remove('dragging', 'drag-over-before', 'drag-over-after');
+        });
+    };
     document.getElementById('modal-body').addEventListener('change', (event) => {
         if (event.target?.id !== 'student-analytics-class-select') return;
         teacherStudentDetailState.selectedClassId = String(event.target.value || '').trim();
         renderTeacherStudentAnalyticsModal();
+    });
+    document.getElementById('modal-body').addEventListener('dragstart', (event) => {
+        const item = event.target.closest('.assignment-review-item[draggable="true"]');
+        if (!item) return;
+        const idx = parseInt(item.dataset.selectedIndex, 10);
+        if (isNaN(idx)) return;
+        assignmentReviewDragIndex = idx;
+        item.classList.add('dragging');
+        if (event.dataTransfer) {
+            event.dataTransfer.effectAllowed = 'move';
+            event.dataTransfer.setData('text/plain', String(idx));
+        }
+    });
+    document.getElementById('modal-body').addEventListener('dragover', (event) => {
+        const item = event.target.closest('.assignment-review-item[draggable="true"]');
+        if (!item || assignmentReviewDragIndex === null) return;
+        event.preventDefault();
+        const idx = parseInt(item.dataset.selectedIndex, 10);
+        if (isNaN(idx) || idx === assignmentReviewDragIndex) return;
+        const rect = item.getBoundingClientRect();
+        const dropAfter = event.clientY > rect.top + rect.height / 2;
+        clearAssignmentReviewDropState();
+        item.classList.add(dropAfter ? 'drag-over-after' : 'drag-over-before');
+        if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+    });
+    document.getElementById('modal-body').addEventListener('drop', (event) => {
+        const item = event.target.closest('.assignment-review-item[draggable="true"]');
+        if (!item || assignmentReviewDragIndex === null) return;
+        event.preventDefault();
+        const targetIndex = parseInt(item.dataset.selectedIndex, 10);
+        if (isNaN(targetIndex)) return;
+        const rect = item.getBoundingClientRect();
+        const dropAfter = event.clientY > rect.top + rect.height / 2;
+        moveSelectedQuestionToIndex(assignmentReviewDragIndex, targetIndex, dropAfter);
+        assignmentReviewDragIndex = null;
+        clearAssignmentReviewDropState();
+    });
+    document.getElementById('modal-body').addEventListener('dragend', () => {
+        assignmentReviewDragIndex = null;
+        clearAssignmentReviewDropState();
     });
     document.getElementById('modal-body').addEventListener('click', async (event) => {
         const reviewAction = event.target.closest('[data-assignment-review-action]');
@@ -2343,9 +2389,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             const idx = parseInt(reviewAction.dataset.selectedIndex, 10);
             if (isNaN(idx)) return;
             const action = String(reviewAction.dataset.assignmentReviewAction || '');
-            if (action === 'up') moveSelectedQuestion(idx, -1);
-            else if (action === 'down') moveSelectedQuestion(idx, 1);
-            else if (action === 'remove') removeSelectedQuestion(idx);
+            if (action === 'remove') removeSelectedQuestion(idx);
             return;
         }
 
@@ -2920,13 +2964,15 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     }
 
-    function moveSelectedQuestion(index, direction) {
-        const nextIndex = index + direction;
-        if (index < 0 || nextIndex < 0 || index >= selectedQuestions.length || nextIndex >= selectedQuestions.length) return;
-        const [item] = selectedQuestions.splice(index, 1);
-        selectedQuestions.splice(nextIndex, 0, item);
+    function moveSelectedQuestionToIndex(fromIndex, targetIndex, dropAfter = false) {
+        if (fromIndex < 0 || targetIndex < 0 || fromIndex >= selectedQuestions.length || targetIndex >= selectedQuestions.length) return;
+        let insertIndex = targetIndex + (dropAfter ? 1 : 0);
+        if (fromIndex < insertIndex) insertIndex -= 1;
+        insertIndex = Math.max(0, Math.min(insertIndex, selectedQuestions.length - 1));
+        if (fromIndex === insertIndex) return;
+        const [item] = selectedQuestions.splice(fromIndex, 1);
+        selectedQuestions.splice(insertIndex, 0, item);
         updatePreview();
-        refreshSelectedQuestionsReviewIfOpen();
     }
 
     function removeSelectedQuestion(index) {
@@ -2967,15 +3013,14 @@ document.addEventListener('DOMContentLoaded', async () => {
             const answer = String(q.answer || q.a || 'Answer').trim() || 'Answer';
             const question = String(q.question || q.q || '').trim();
             return `
-                <div class="assignment-review-item">
+                <div class="assignment-review-item" draggable="true" data-selected-index="${index}">
                     <div class="assignment-review-item-head">
+                        <div class="assignment-drag-handle" title="Drag to reorder" aria-label="Drag question ${index + 1} to reorder">Drag</div>
                         <div class="assignment-review-title-copy">
                             <div class="empty-kicker">Question ${index + 1}</div>
                             <h3>${esc(answer)}</h3>
                         </div>
                         <div class="assignment-preview-controls assignment-review-controls" aria-label="Question ${index + 1} controls">
-                            <button class="btn ghost assignment-question-control" type="button" data-assignment-review-action="up" data-selected-index="${index}" ${index === 0 ? 'disabled' : ''}>Up</button>
-                            <button class="btn ghost assignment-question-control" type="button" data-assignment-review-action="down" data-selected-index="${index}" ${index === selectedQuestions.length - 1 ? 'disabled' : ''}>Down</button>
                             <button class="btn ghost assignment-question-control assignment-question-remove" type="button" data-assignment-review-action="remove" data-selected-index="${index}">Remove</button>
                         </div>
                     </div>
