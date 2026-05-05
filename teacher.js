@@ -2338,6 +2338,17 @@ document.addEventListener('DOMContentLoaded', async () => {
         renderTeacherStudentAnalyticsModal();
     });
     document.getElementById('modal-body').addEventListener('click', async (event) => {
+        const reviewAction = event.target.closest('[data-assignment-review-action]');
+        if (reviewAction) {
+            const idx = parseInt(reviewAction.dataset.selectedIndex, 10);
+            if (isNaN(idx)) return;
+            const action = String(reviewAction.dataset.assignmentReviewAction || '');
+            if (action === 'up') moveSelectedQuestion(idx, -1);
+            else if (action === 'down') moveSelectedQuestion(idx, 1);
+            else if (action === 'remove') removeSelectedQuestion(idx);
+            return;
+        }
+
         const btnGenerate = event.target.closest('#btn-generate-feedback');
         if (btnGenerate) {
             const studentId = btnGenerate.dataset.studentId;
@@ -2800,22 +2811,16 @@ document.addEventListener('DOMContentLoaded', async () => {
         return Array.from(groups.values()).filter(group => group.indices.length > 1);
     }
 
-    function renderAssignmentDuplicateWarnings() {
-        const wrap = document.getElementById('assignment-builder-alerts');
-        if (!wrap) return;
+    function assignmentDuplicateWarningsHtml() {
         const duplicateGroups = assignmentDuplicateAnswerGroups();
-        if (!selectedQuestions.length) {
-            wrap.innerHTML = '';
-            return;
-        }
+        if (!selectedQuestions.length) return '';
         if (!duplicateGroups.length) {
-            wrap.innerHTML = `
+            return `
                 <div class="assignment-builder-alert assignment-builder-alert-ok">
                     <strong>No duplicate answers detected.</strong>
                     <span>Selected answers are unique across this draft.</span>
                 </div>
             `;
-            return;
         }
         const rows = duplicateGroups.slice(0, 4).map(group => {
             const spots = group.indices.map(index => `#${index + 1}`).join(', ');
@@ -2824,13 +2829,19 @@ document.addEventListener('DOMContentLoaded', async () => {
         const more = duplicateGroups.length > 4
             ? `<li>${duplicateGroups.length - 4} more duplicate answer group${duplicateGroups.length - 4 === 1 ? '' : 's'}.</li>`
             : '';
-        wrap.innerHTML = `
+        return `
             <div class="assignment-builder-alert assignment-builder-alert-warning">
                 <strong>Duplicate-answer warning</strong>
                 <span>These answers repeat in the selected draft. You can keep them, reorder them, or remove one before publishing.</span>
                 <ul>${rows}${more}</ul>
             </div>
         `;
+    }
+
+    function renderAssignmentDuplicateWarnings() {
+        const wrap = document.getElementById('assignment-builder-alerts');
+        if (!wrap) return;
+        wrap.innerHTML = assignmentDuplicateWarningsHtml();
     }
 
     function groupedAssignmentCoverage(getValue, fallbackLabel, labelValue = value => value) {
@@ -2873,17 +2884,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         `;
     }
 
-    function renderAssignmentCoverage() {
-        const wrap = document.getElementById('assignment-coverage');
-        if (!wrap) return;
-        if (!selectedQuestions.length) {
-            wrap.innerHTML = '';
-            return;
-        }
+    function assignmentCoverageHtml() {
+        if (!selectedQuestions.length) return '';
         const total = selectedQuestions.length;
         const regions = groupedAssignmentCoverage(questionCategory, 'Uncategorized');
         const eraRows = groupedAssignmentCoverage(questionEra, 'Unspecified era', value => getEraLabel(value) || value);
-        wrap.innerHTML = `
+        return `
             <div class="assignment-coverage-head">
                 <div>
                     <div class="empty-kicker">Coverage meter</div>
@@ -2895,6 +2901,12 @@ document.addEventListener('DOMContentLoaded', async () => {
                 ${renderAssignmentCoverageGroup('Eras', eraRows, total)}
             </div>
         `;
+    }
+
+    function renderAssignmentCoverage() {
+        const wrap = document.getElementById('assignment-coverage');
+        if (!wrap) return;
+        wrap.innerHTML = assignmentCoverageHtml();
     }
 
     function syncPickResultSelectionState() {
@@ -2914,6 +2926,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const [item] = selectedQuestions.splice(index, 1);
         selectedQuestions.splice(nextIndex, 0, item);
         updatePreview();
+        refreshSelectedQuestionsReviewIfOpen();
     }
 
     function removeSelectedQuestion(index) {
@@ -2921,56 +2934,103 @@ document.addEventListener('DOMContentLoaded', async () => {
         selectedQuestions.splice(index, 1);
         updatePreview();
         syncPickResultSelectionState();
+        refreshSelectedQuestionsReviewIfOpen();
         showAlert('Question removed from the assignment draft.', 'success');
+    }
+
+    function assignmentQuestionMetaHtml(question) {
+        const region = questionCategory(question) || '—';
+        const era = questionEra(question);
+        const source = String(question?.meta?.source || question?.source || '').trim() || '—';
+        const aliases = Array.isArray(question?.aliases)
+            ? question.aliases.map(alias => String(alias || '').trim()).filter(Boolean)
+            : [];
+        return `
+            <div class="library-question-meta-grid assignment-review-meta">
+                <div class="pill">Region: ${esc(region)}</div>
+                <div class="pill">Era: ${esc(era ? getEraLabel(era) : '—')}</div>
+                <div class="pill">Source: ${esc(source)}</div>
+                ${aliases.length ? `<div class="pill">Aliases: ${esc(aliases.slice(0, 4).join(', '))}${aliases.length > 4 ? '...' : ''}</div>` : ''}
+            </div>
+        `;
+    }
+
+    function selectedQuestionsReviewHtml() {
+        if (!selectedQuestions.length) {
+            return `
+                <div id="assignment-review-modal-content" class="assignment-review-modal-content">
+                    ${emptyStateHtml('Selected questions', 'No questions selected', 'Choose a random, filtered, template, generated, or hand-picked set first.')}
+                </div>
+            `;
+        }
+        const rows = selectedQuestions.map((q, index) => {
+            const answer = String(q.answer || q.a || 'Answer').trim() || 'Answer';
+            const question = String(q.question || q.q || '').trim();
+            return `
+                <div class="assignment-review-item">
+                    <div class="assignment-review-item-head">
+                        <div class="assignment-review-title-copy">
+                            <div class="empty-kicker">Question ${index + 1}</div>
+                            <h3>${esc(answer)}</h3>
+                        </div>
+                        <div class="assignment-preview-controls assignment-review-controls" aria-label="Question ${index + 1} controls">
+                            <button class="btn ghost assignment-question-control" type="button" data-assignment-review-action="up" data-selected-index="${index}" ${index === 0 ? 'disabled' : ''}>Up</button>
+                            <button class="btn ghost assignment-question-control" type="button" data-assignment-review-action="down" data-selected-index="${index}" ${index === selectedQuestions.length - 1 ? 'disabled' : ''}>Down</button>
+                            <button class="btn ghost assignment-question-control assignment-question-remove" type="button" data-assignment-review-action="remove" data-selected-index="${index}">Remove</button>
+                        </div>
+                    </div>
+                    <p class="assignment-review-question-text">${esc(question || 'No question text available.')}</p>
+                    ${assignmentQuestionMetaHtml(q)}
+                </div>
+            `;
+        }).join('');
+        return `
+            <div id="assignment-review-modal-content" class="assignment-review-modal-content">
+                <div class="assignment-review-summary-grid">
+                    <div class="assignment-builder-alerts">${assignmentDuplicateWarningsHtml()}</div>
+                    <div class="assignment-coverage">${assignmentCoverageHtml()}</div>
+                </div>
+                <div class="assignment-review-list">${rows}</div>
+            </div>
+        `;
+    }
+
+    function openSelectedQuestionsReview() {
+        showModal(`Review Selected Questions (${selectedQuestions.length})`, selectedQuestionsReviewHtml(), {
+            wide: true,
+            cardClass: 'assignment-review-modal-card',
+            bodyClass: 'assignment-review-modal-body'
+        });
+    }
+
+    function refreshSelectedQuestionsReviewIfOpen() {
+        const content = document.getElementById('assignment-review-modal-content');
+        if (!content) return;
+        const title = document.getElementById('modal-title');
+        const body = document.getElementById('modal-body');
+        if (title) title.textContent = `Review Selected Questions (${selectedQuestions.length})`;
+        if (body) body.innerHTML = selectedQuestionsReviewHtml();
     }
 
     function updatePreview() {
         const area = document.getElementById('preview-area');
         const count = document.getElementById('preview-count');
-        const list = document.getElementById('preview-list');
+        const note = document.getElementById('preview-summary-note');
         setMetric('teacher-hero-selected', selectedQuestions.length);
         if (!selectedQuestions.length) {
             area.classList.add('hidden');
-            if (list) list.innerHTML = '';
+            if (note) note.textContent = 'Open the large review window to inspect, reorder, or remove selected questions.';
             renderAssignmentDuplicateWarnings();
             renderAssignmentCoverage();
+            refreshSelectedQuestionsReviewIfOpen();
             return;
         }
         area.classList.remove('hidden');
         count.textContent = selectedQuestions.length;
         renderAssignmentDuplicateWarnings();
         renderAssignmentCoverage();
-        list.innerHTML = selectedQuestions.map((q, index) => {
-            const answer = String(q.answer || q.a || 'Answer').trim() || 'Answer';
-            const question = String(q.question || q.q || '').trim();
-            const snippet = question.length > 100 ? `${question.substring(0, 100)}...` : question;
-            return `<div class="p-item assignment-preview-item">
-                <div class="assignment-preview-head">
-                    <div class="assignment-preview-title-wrap">
-                        <span class="assignment-preview-index">#${index + 1}</span>
-                        <button class="library-answer-button assignment-question-view-btn" type="button" data-selected-index="${index}">${esc(answer)}</button>
-                    </div>
-                    <div class="assignment-preview-controls" aria-label="Question ${index + 1} controls">
-                        <button class="btn ghost assignment-question-control" type="button" data-assignment-action="up" data-selected-index="${index}" ${index === 0 ? 'disabled' : ''}>Up</button>
-                        <button class="btn ghost assignment-question-control" type="button" data-assignment-action="down" data-selected-index="${index}" ${index === selectedQuestions.length - 1 ? 'disabled' : ''}>Down</button>
-                        <button class="btn ghost assignment-question-view-small" type="button" data-assignment-action="view" data-selected-index="${index}">View</button>
-                        <button class="btn ghost assignment-question-control assignment-question-remove" type="button" data-assignment-action="remove" data-selected-index="${index}">Remove</button>
-                    </div>
-                </div>
-                <span class="muted assignment-question-snippet">${esc(snippet || 'No question text available.')}</span>
-            </div>`;
-        }).join('');
-        list.querySelectorAll('[data-selected-index]').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                const idx = parseInt(e.currentTarget.dataset.selectedIndex, 10);
-                if (isNaN(idx)) return;
-                const action = String(e.currentTarget.dataset.assignmentAction || 'view');
-                if (action === 'up') moveSelectedQuestion(idx, -1);
-                else if (action === 'down') moveSelectedQuestion(idx, 1);
-                else if (action === 'remove') removeSelectedQuestion(idx);
-                else showAssignmentQuestionDetails(selectedQuestions[idx], `Selected question ${idx + 1}`);
-            });
-        });
+        if (note) note.textContent = 'Use Review Questions for a full-size list with complete question text and ordering controls.';
+        refreshSelectedQuestionsReviewIfOpen();
     }
     function setSelectedQuestions(next) {
         selectedQuestions = dedupeQuestions(next);
@@ -3514,6 +3574,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
         showAlert('Selection cleared.', 'success');
     });
+    document.getElementById('btn-open-selection-review')?.addEventListener('click', () => {
+        if (!selectedQuestions.length) {
+            showAlert('Select questions first.', 'error');
+            return;
+        }
+        openSelectedQuestionsReview();
+    });
 
     // Templates
     document.querySelectorAll('.template-btn').forEach(btn => {
@@ -3536,6 +3603,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const n = clampCount(document.getElementById('random-count').value, 10);
         const shuffled = [...allQuestions].sort(() => Math.random() - 0.5);
         setSelectedQuestions(shuffled.slice(0, Math.min(n, allQuestions.length)));
+        openSelectedQuestionsReview();
     });
 
     // Filter
@@ -3551,7 +3619,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             instructions: 'Practice the selected region and era mix.',
             count: n
         };
-        applyAssignmentQuestionSuggestions(criteria, { append: false });
+        const picked = applyAssignmentQuestionSuggestions(criteria, { append: false });
+        if (picked.length) openSelectedQuestionsReview();
     });
     document.getElementById('btn-filter-reset')?.addEventListener('click', () => {
         selectedFilterCategories = [];

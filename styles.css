@@ -1366,6 +1366,16 @@ tr:hover td {
   border-color: rgba(248, 113, 113, 0.28);
 }
 
+.assignment-review-launch-note {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px dashed var(--line);
+  border-radius: 10px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 .assignment-builder-alerts,
 .assignment-coverage {
   display: grid;
@@ -1471,6 +1481,75 @@ tr:hover td {
   background: linear-gradient(90deg, rgba(96, 165, 250, 0.9), rgba(45, 212, 191, 0.85));
 }
 
+.assignment-review-modal-card {
+  width: min(1180px, 100%);
+  max-height: 90vh;
+}
+
+.assignment-review-modal-body {
+  display: block;
+}
+
+.assignment-review-modal-content {
+  display: grid;
+  gap: 18px;
+}
+
+.assignment-review-summary-grid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.35fr);
+}
+
+.assignment-review-list {
+  display: grid;
+  gap: 14px;
+}
+
+.assignment-review-item {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.assignment-review-item-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.assignment-review-title-copy {
+  min-width: 0;
+}
+
+.assignment-review-title-copy h3 {
+  margin: 4px 0 0;
+  color: var(--ink);
+  font-size: 18px;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.assignment-review-controls {
+  max-width: 340px;
+}
+
+.assignment-review-question-text {
+  margin: 0;
+  color: var(--ink);
+  font-size: 15px;
+  line-height: 1.65;
+  white-space: pre-wrap;
+}
+
+.assignment-review-meta {
+  gap: 8px;
+}
+
 .whatsnew-groups {
   display: grid;
   gap: 16px;
@@ -1543,6 +1622,19 @@ tr:hover td {
 
 /* Mobile Optimizations */
 @media (max-width: 768px) {
+  .assignment-review-summary-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .assignment-review-item-head {
+    flex-direction: column;
+  }
+
+  .assignment-review-controls {
+    justify-content: flex-start;
+    max-width: 100%;
+  }
+
   .shell {
     padding: 20px 16px 80px;
   }
