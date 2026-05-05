@@ -1471,6 +1471,76 @@ tr:hover td {
   background: linear-gradient(90deg, rgba(96, 165, 250, 0.9), rgba(45, 212, 191, 0.85));
 }
 
+.whatsnew-groups {
+  display: grid;
+  gap: 16px;
+  width: 100%;
+}
+
+.whatsnew-group {
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background:
+    var(--glass-highlight-soft),
+    var(--glass-overlay-soft),
+    var(--surface-glass);
+}
+
+.whatsnew-group-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.whatsnew-group-summary::-webkit-details-marker {
+  display: none;
+}
+
+.whatsnew-group-summary::after {
+  content: "+";
+  display: inline-grid;
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--ink);
+  font-weight: 800;
+}
+
+.whatsnew-group[open] .whatsnew-group-summary::after {
+  content: "-";
+}
+
+.whatsnew-group-title {
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.whatsnew-group-meta {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.whatsnew-group-list {
+  display: grid;
+  gap: 14px;
+  padding: 0 16px 16px;
+}
+
+.whatsnew-group-list .list-item {
+  margin: 0;
+}
+
 /* Mobile Optimizations */
 @media (max-width: 768px) {
   .shell {

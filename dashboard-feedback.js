@@ -16,11 +16,118 @@
   const FEEDBACK_PHOTO_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
 
   document.addEventListener('DOMContentLoaded', () => {
+    organizeWhatsNewList();
     const shell = document.querySelector('.dashboard-shell, .page-shell');
     if (!shell || document.getElementById('app-feedback-dock')) return;
     shell.insertAdjacentHTML('beforeend', feedbackDockHtml());
     initFeedbackDock();
   });
+
+  function parseWhatsNewDate(text) {
+    const raw = String(text || '').trim();
+    const match = raw.match(/^([A-Za-z]+)\s+(\d{1,2}),\s+(\d{4})$/);
+    const monthIndex = {
+      january: 0,
+      february: 1,
+      march: 2,
+      april: 3,
+      may: 4,
+      june: 5,
+      july: 6,
+      august: 7,
+      september: 8,
+      october: 9,
+      november: 10,
+      december: 11
+    }[String(match?.[1] || '').toLowerCase()];
+    const day = Number.parseInt(match?.[2] || '', 10);
+    const year = Number.parseInt(match?.[3] || '', 10);
+    if (Number.isInteger(monthIndex) && Number.isFinite(day) && Number.isFinite(year)) {
+      return new Date(year, monthIndex, day);
+    }
+    const fallback = new Date(raw);
+    return Number.isNaN(fallback.getTime()) ? null : fallback;
+  }
+
+  function whatsNewMonthKey(date) {
+    return date ? `${date.getFullYear()}-${date.getMonth()}` : '';
+  }
+
+  function whatsNewMonthLabel(date) {
+    return date
+      ? date.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })
+      : 'Latest month';
+  }
+
+  function createWhatsNewGroup({ title, meta, open, rows }) {
+    const details = document.createElement('details');
+    details.className = 'whatsnew-group';
+    details.open = !!open;
+
+    const summary = document.createElement('summary');
+    summary.className = 'whatsnew-group-summary';
+
+    const titleEl = document.createElement('span');
+    titleEl.className = 'whatsnew-group-title';
+    titleEl.textContent = title;
+
+    const metaEl = document.createElement('span');
+    metaEl.className = 'whatsnew-group-meta';
+    metaEl.textContent = meta;
+
+    summary.append(titleEl, metaEl);
+    details.appendChild(summary);
+
+    const list = document.createElement('div');
+    list.className = 'whatsnew-group-list';
+    rows.forEach((row) => list.appendChild(row.item));
+    details.appendChild(list);
+    return details;
+  }
+
+  function organizeWhatsNewList() {
+    const container = document.querySelector('#tab-whatsnew .list-container');
+    if (!container || container.dataset.whatsnewGrouped === 'true') return;
+    const items = Array.from(container.children).filter((child) => child.classList?.contains('list-item'));
+    if (!items.length) return;
+
+    const rows = items.map((item, index) => {
+      const date = parseWhatsNewDate(item.querySelector('.pill')?.textContent);
+      return { item, index, date };
+    });
+    const datedRows = rows.filter((row) => row.date);
+    if (!datedRows.length) return;
+
+    const latestDate = datedRows.reduce((latest, row) => (row.date > latest ? row.date : latest), datedRows[0].date);
+    const latestMonth = whatsNewMonthKey(latestDate);
+    const sortNewestFirst = (a, b) => {
+      const aTime = a.date ? a.date.getTime() : 0;
+      const bTime = b.date ? b.date.getTime() : 0;
+      return bTime - aTime || a.index - b.index;
+    };
+    const latestRows = rows.filter((row) => row.date && whatsNewMonthKey(row.date) === latestMonth).sort(sortNewestFirst);
+    const previousRows = rows.filter((row) => !row.date || whatsNewMonthKey(row.date) !== latestMonth).sort(sortNewestFirst);
+
+    const groups = document.createElement('div');
+    groups.className = 'whatsnew-groups';
+    groups.appendChild(createWhatsNewGroup({
+      title: 'Changes in the Latest Month',
+      meta: `${whatsNewMonthLabel(latestDate)} • ${latestRows.length} update${latestRows.length === 1 ? '' : 's'}`,
+      open: true,
+      rows: latestRows
+    }));
+    if (previousRows.length) {
+      groups.appendChild(createWhatsNewGroup({
+        title: 'All Previous Changes',
+        meta: `${previousRows.length} older update${previousRows.length === 1 ? '' : 's'}`,
+        open: false,
+        rows: previousRows
+      }));
+    }
+
+    container.dataset.whatsnewGrouped = 'true';
+    container.replaceChildren(groups);
+  }
 
   function feedbackDockHtml() {
     return `
