@@ -87,6 +87,31 @@ document.addEventListener('DOMContentLoaded', async () => {
     let selectedFilterEras = [];
     let generatedDraftQuestions = [];
     let assignmentReviewDragIndex = null;
+    let originalReviewOrder = [];
+
+    const updateLiveQuestionNumbers = (dragIndex, dropIndex, dropAfter) => {
+        const items = Array.from(document.querySelectorAll('.assignment-review-item[draggable="true"]'));
+        if (!items.length) return;
+        
+        let temp = [];
+        for (let i = 0; i < items.length; i++) temp.push(i);
+        
+        if (dragIndex !== null && dropIndex !== null && dragIndex !== dropIndex) {
+            const [moved] = temp.splice(dragIndex, 1);
+            let insertAt = dropIndex;
+            if (dragIndex < dropIndex && !dropAfter) insertAt--;
+            else if (dragIndex > dropIndex && dropAfter) insertAt++;
+            temp.splice(insertAt, 0, moved);
+        }
+        
+        const positions = new Array(items.length);
+        for (let i = 0; i < temp.length; i++) positions[temp[i]] = i;
+        
+        items.forEach((item, originalIdx) => {
+            const numEl = item.querySelector('.question-number');
+            if (numEl) numEl.textContent = positions[originalIdx] + 1;
+        });
+    };
     const GENERATED_QUESTIONS_TABLE = 'generated_questions';
 
     const ERA_LABELS = {
@@ -2334,9 +2359,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (e.target === e.currentTarget) closeTeacherModal();
     });
     const clearAssignmentReviewDropState = () => {
-        document.querySelectorAll('.assignment-review-item.dragging, .assignment-review-item.drag-over-before, .assignment-review-item.drag-over-after').forEach((item) => {
-            item.classList.remove('dragging', 'drag-over-before', 'drag-over-after');
+        document.querySelectorAll('.assignment-review-item.drag-over-before, .assignment-review-item.drag-over-after').forEach((item) => {
+            item.classList.remove('drag-over-before', 'drag-over-after');
         });
+        if (assignmentReviewDragIndex === null) {
+            document.querySelectorAll('.assignment-review-item.dragging').forEach((item) => {
+                item.classList.remove('dragging');
+            });
+        }
     };
     document.getElementById('modal-body').addEventListener('change', (event) => {
         if (event.target?.id !== 'student-analytics-class-select') return;
@@ -2360,12 +2390,15 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (!item || assignmentReviewDragIndex === null) return;
         event.preventDefault();
         const idx = parseInt(item.dataset.selectedIndex, 10);
-        if (isNaN(idx) || idx === assignmentReviewDragIndex) return;
+        if (isNaN(idx)) return;
         const rect = item.getBoundingClientRect();
         const dropAfter = event.clientY > rect.top + rect.height / 2;
         clearAssignmentReviewDropState();
-        item.classList.add(dropAfter ? 'drag-over-after' : 'drag-over-before');
+        if (idx !== assignmentReviewDragIndex) {
+            item.classList.add(dropAfter ? 'drag-over-after' : 'drag-over-before');
+        }
         if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+        updateLiveQuestionNumbers(assignmentReviewDragIndex, idx, dropAfter);
     });
     document.getElementById('modal-body').addEventListener('drop', (event) => {
         const item = event.target.closest('.assignment-review-item[draggable="true"]');
@@ -2378,12 +2411,31 @@ document.addEventListener('DOMContentLoaded', async () => {
         moveSelectedQuestionToIndex(assignmentReviewDragIndex, targetIndex, dropAfter);
         assignmentReviewDragIndex = null;
         clearAssignmentReviewDropState();
+        updateLiveQuestionNumbers(null, null, false);
     });
     document.getElementById('modal-body').addEventListener('dragend', () => {
         assignmentReviewDragIndex = null;
         clearAssignmentReviewDropState();
+        updateLiveQuestionNumbers(null, null, false);
     });
     document.getElementById('modal-body').addEventListener('click', async (event) => {
+        if (event.target.id === 'btn-review-reset-order') {
+            selectedQuestions = [...originalReviewOrder];
+            refreshSelectedQuestionsReviewIfOpen();
+            updatePreview();
+            return;
+        }
+        if (event.target.id === 'btn-review-randomize-order') {
+            const shuffled = [...selectedQuestions];
+            for (let i = shuffled.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+            }
+            selectedQuestions = shuffled;
+            refreshSelectedQuestionsReviewIfOpen();
+            updatePreview();
+            return;
+        }
         const reviewAction = event.target.closest('[data-assignment-review-action]');
         if (reviewAction) {
             const idx = parseInt(reviewAction.dataset.selectedIndex, 10);
@@ -3017,7 +3069,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     <div class="assignment-review-item-head">
                         <div class="assignment-drag-handle" title="Drag to reorder" aria-label="Drag question ${index + 1} to reorder">Drag</div>
                         <div class="assignment-review-title-copy">
-                            <div class="empty-kicker">Question ${index + 1}</div>
+                            <div class="empty-kicker">Question <span class="question-number">${index + 1}</span></div>
                             <h3>${esc(answer)}</h3>
                         </div>
                         <div class="assignment-preview-controls assignment-review-controls" aria-label="Question ${index + 1} controls">
@@ -3035,12 +3087,17 @@ document.addEventListener('DOMContentLoaded', async () => {
                     <div class="assignment-builder-alerts">${assignmentDuplicateWarningsHtml()}</div>
                     <div class="assignment-coverage">${assignmentCoverageHtml()}</div>
                 </div>
+                <div class="assignment-review-actions" style="margin-bottom: 16px; display: flex; gap: 8px;">
+                    <button class="btn ghost" type="button" id="btn-review-reset-order">Reset to Original Order</button>
+                    <button class="btn ghost" type="button" id="btn-review-randomize-order">Randomize Order</button>
+                </div>
                 <div class="assignment-review-list">${rows}</div>
             </div>
         `;
     }
 
     function openSelectedQuestionsReview() {
+        originalReviewOrder = [...selectedQuestions];
         showModal(`Review Selected Questions (${selectedQuestions.length})`, selectedQuestionsReviewHtml(), {
             wide: true,
             cardClass: 'assignment-review-modal-card',
