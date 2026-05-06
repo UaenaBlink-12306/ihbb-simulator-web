@@ -965,6 +965,7 @@ COACH_CHAT_ALLOWED_ACTIONS = {
     "open_setup",
     "open_review",
     "open_library",
+    "open_analytics",
 }
 
 COACH_CHAT_ALLOWED_MODES = {"auto", "coach", "knowledge"}
@@ -1110,8 +1111,39 @@ def normalize_coach_chat_context(payload: Dict[str, Any]) -> Dict[str, Any]:
     top_focuses = [normalize_coach_chat_focus(x) for x in (notebook.get("top_focuses") if isinstance(notebook.get("top_focuses"), list) else [])]
     top_focuses = [x for x in top_focuses if x.get("key") or x.get("title")]
     recent_focus = normalize_coach_chat_focus(recent_incorrect)
+    practice_recommendations = []
+    raw_recommendations = raw.get("practice_recommendations") if isinstance(raw.get("practice_recommendations"), list) else []
+    for rec in raw_recommendations:
+        if not isinstance(rec, dict):
+            continue
+        title = string_value(rec.get("title"))
+        reason = string_value(rec.get("reason"))
+        if not title or not reason:
+            continue
+        priority = string_value(rec.get("priority")).lower()
+        if priority not in ("high", "medium", "low"):
+            priority = "medium"
+        action = rec.get("action") if isinstance(rec.get("action"), dict) else {}
+        action_id = string_value(action.get("id"))
+        if action_id not in COACH_CHAT_ALLOWED_ACTIONS:
+            action_id = ""
+        practice_recommendations.append({
+            "id": string_value(rec.get("id")) or title,
+            "title": title,
+            "priority": priority,
+            "reason": reason,
+            "evidence": string_value(rec.get("evidence")),
+            "action_label": string_value(rec.get("action_label")),
+            "action": {
+                "id": action_id,
+                "label": string_value(action.get("label")),
+                "focus_key": string_value(action.get("focus_key")),
+                "query": string_value(action.get("query")),
+            } if action_id else {},
+        })
     return {
         "current_view": string_value(raw.get("current_view")),
+        "practice_recommendations": practice_recommendations[:4],
         "wrong_bank": {
             "due_now": max(0, safe_int(wrong.get("due_now"), 0)),
             "total": max(0, safe_int(wrong.get("total"), 0)),
@@ -1320,6 +1352,7 @@ def fallback_coach_chat(payload: Dict[str, Any]) -> Dict[str, Any]:
     notebook_open = context["coach_notebook"]["open_lessons"]
     top_focuses = context["coach_notebook"]["top_focuses"]
     top_focus = top_focuses[0] if top_focuses else {}
+    top_recommendation = (context.get("practice_recommendations") or [{}])[0] if context.get("practice_recommendations") else {}
     recent_incorrect = context["recent_incorrect"] if isinstance(context.get("recent_incorrect"), dict) else {}
     recent_accuracy = context["session_history"]["recent_accuracy"]
     total_sessions = context["session_history"]["total_sessions"]
@@ -1445,6 +1478,36 @@ def fallback_coach_chat(payload: Dict[str, Any]) -> Dict[str, Any]:
             {"label": "Turn a lesson into practice", "prompt": f"How should I turn {focus_title} from AI Notebook into actual practice?" if focus_key else "How should I turn an AI Notebook lesson into actual practice?"},
             {"label": "Notebook or Wrong-bank?", "prompt": "When is AI Notebook better than Wrong-bank?"},
             {"label": "Best focus next", "prompt": "Which notebook focus should I train next?"},
+        ]
+    elif top_recommendation and "recommend" in user_message:
+        title = string_value(top_recommendation.get("title")) or "Use the top practice recommendation"
+        message = (
+            string_value(top_recommendation.get("reason"))
+            + (" " + string_value(top_recommendation.get("evidence")) if string_value(top_recommendation.get("evidence")) else "")
+        ).strip()
+        if not message:
+            message = "This is the strongest next step from the current dashboard, notebook, wrong-bank, and session context."
+        rec_action = top_recommendation.get("action") if isinstance(top_recommendation.get("action"), dict) else {}
+        rec_action_id = string_value(rec_action.get("id"))
+        if rec_action_id:
+            actions.append(coach_chat_action(
+                rec_action_id,
+                string_value(rec_action.get("label")) or string_value(top_recommendation.get("action_label")) or "Use recommendation",
+                string_value(top_recommendation.get("reason")) or "Recommended from your current study context.",
+                string_value(rec_action.get("focus_key")),
+                string_value(rec_action.get("query")),
+            ))
+        if focus_key:
+            actions.append(coach_chat_action("generate_focus_drill", f"Generate {focus_title}", "Create fresh questions in the same lane.", focus_key))
+        sections = [
+            {"heading": "Why this recommendation", "body": string_value(top_recommendation.get("reason")) or "It is the strongest signal from the current study context."},
+            {"heading": "Evidence", "body": string_value(top_recommendation.get("evidence")) or "The assistant weighed wrong-bank, notebook, analytics, and session history."},
+            {"heading": "Best next move", "body": string_value(top_recommendation.get("action_label")) or "Use the suggested action, then review the result after your next session."},
+        ]
+        follow_ups = [
+            {"label": "Make this concrete", "prompt": f"Turn {title} into a short practice plan I can follow now."},
+            {"label": "Compare options", "prompt": "Compare my top recommendation with Wrong-bank, AI Notebook, and a mixed drill."},
+            {"label": "Why this first?", "prompt": f"Why should I do {title} before other practice options?"},
         ]
     elif recent_focus_key:
         title = f"Recover from {recent_focus_title}"
@@ -1722,6 +1785,7 @@ def coach_chat_with_deepseek(payload: Dict[str, Any]) -> Dict[str, Any]:
         f"Response detail preference: {response_detail}.\n"
         f"{detail_instruction}\n"
         "In coach mode, inspect the whole study_context and choose an agentic sequence of quick_actions that moves the learner through the app: clear due SRS, review misses, inspect notebook lessons, apply or generate a focus drill, adjust setup, start a session, or open review.\n"
+        "The study_context may include practice_recommendations: ranked app-generated candidates with title, priority, reason, evidence, and suggested action. Treat these as strong signals, but you may override them when the user request or other context clearly points elsewhere.\n"
         "When the user asks about questions, use the active set, recent misses, notebook focus, and analytics to decide whether to open review, start practice, generate a focus drill, or open the library.\n"
         "Do not default to Open Library, and do not label an action as Search plus the user's exact prompt. Use Open Library only when browsing the question bank is genuinely the best next move, and make query a concise historical topic or question-bank term.\n"
         "For coaching requests, include 1 to 3 quick_actions when a sensible app move exists; order them as a practical next-step sequence. If no app action is useful, return an empty quick_actions array.\n"

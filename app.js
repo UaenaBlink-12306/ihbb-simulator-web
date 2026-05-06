@@ -1129,6 +1129,95 @@ function buildCoachChatSetupFilterText() {
   return `${filterCats} • ${filterEras} • ${filterSrc}`;
 }
 
+function buildCoachChatPracticeRecommendations(options = {}) {
+  const topFocuses = Array.isArray(options.topFocuses) ? options.topFocuses : [];
+  const topFocus = topFocuses[0] || null;
+  const recent = options.recentIncorrect || null;
+  const wrongDue = srsDueList().length;
+  const wrongTotal = wrongRecords().length;
+  const recentAccuracy = Number(options.recentAccuracy || 0);
+  const totalSessions = Number(options.totalSessions || 0);
+  const daysSinceLastSession = Number(options.daysSinceLastSession || 0);
+  const currentLength = String(options.lengthLabel || '').trim() || 'current length';
+  const currentFilters = buildCoachChatSetupFilterText();
+  const out = [];
+  const pushRecommendation = (rec) => {
+    if (!rec?.id || out.some(item => item.id === rec.id)) return;
+    out.push({
+      id: String(rec.id).trim(),
+      title: String(rec.title || '').trim(),
+      priority: ['high', 'medium', 'low'].includes(String(rec.priority || '').trim()) ? String(rec.priority).trim() : 'medium',
+      reason: String(rec.reason || '').trim(),
+      evidence: String(rec.evidence || '').trim(),
+      action_label: String(rec.action_label || '').trim(),
+      action: rec.action || null
+    });
+  };
+
+  if (recent?.title) {
+    pushRecommendation({
+      id: 'recover-last-miss',
+      title: `Recover from ${recent.title}`,
+      priority: 'high',
+      reason: 'Your freshest miss is the most useful signal to fix before it becomes a repeating pattern.',
+      evidence: recent.reason || `${recent.region || 'Current'} ${recent.era || ''}`.trim(),
+      action_label: 'Build corrective drill',
+      action: { kind: 'action', id: 'generate_focus_drill', focus_key: recent.key, label: `Generate ${recent.title}` }
+    });
+  }
+
+  if (wrongDue > 0) {
+    pushRecommendation({
+      id: 'clear-due-wrong-bank',
+      title: `Clear ${wrongDue} due Wrong-bank card${wrongDue === 1 ? '' : 's'}`,
+      priority: wrongDue >= 3 ? 'high' : 'medium',
+      reason: 'Due SRS cards are already scheduled for reinforcement, so they should come before adding more misses.',
+      evidence: `${wrongDue} due now out of ${wrongTotal} tracked.`,
+      action_label: 'Start due review',
+      action: { kind: 'action', id: 'practice_due_now', label: 'Start due review' }
+    });
+  }
+
+  if (topFocus?.key || topFocus?.title) {
+    const title = topFocus.title || coachChatFocusTitle(topFocus);
+    pushRecommendation({
+      id: `train-focus-${topFocus.key || title}`,
+      title: `Train ${title}`,
+      priority: topFocus.priority || (recentAccuracy && recentAccuracy < 70 ? 'high' : 'medium'),
+      reason: topFocus.reason || 'This is the clearest recurring focus from the AI Notebook and recent review context.',
+      evidence: topFocus.action || `${currentLength} • ${currentFilters}`,
+      action_label: topFocus.key ? 'Apply focus' : 'Ask for plan',
+      action: topFocus.key
+        ? { kind: 'action', id: 'apply_top_focus', focus_key: topFocus.key, label: `Apply ${title}` }
+        : { kind: 'prompt', label: 'Build plan', prompt: `Build a targeted practice plan for ${title}.` }
+    });
+  }
+
+  if (totalSessions <= 0) {
+    pushRecommendation({
+      id: 'baseline-session',
+      title: 'Run one baseline mixed drill',
+      priority: 'medium',
+      reason: 'The coach needs one clean session before it can make stronger personal recommendations.',
+      evidence: `${currentLength} • ${currentFilters}`,
+      action_label: 'Start session',
+      action: { kind: 'action', id: 'start_current_session', label: 'Start session' }
+    });
+  } else {
+    pushRecommendation({
+      id: 'mixed-transfer-check',
+      title: daysSinceLastSession >= 2 ? 'Restart with a short mixed drill' : 'Finish with a mixed transfer check',
+      priority: 'low',
+      reason: 'A mixed block checks whether focused study is transferring under broader clue pressure.',
+      evidence: recentAccuracy ? `Recent accuracy ${recentAccuracy}%.` : `${currentLength} • ${currentFilters}`,
+      action_label: 'Start current session',
+      action: { kind: 'action', id: 'start_current_session', label: 'Start session' }
+    });
+  }
+
+  return out.filter(rec => rec.title && rec.reason).slice(0, 4);
+}
+
 function buildCoachChatStudyContext() {
   const sessions = readCoachChatSessions();
   const lastSession = sessions[0] || null;
@@ -1153,9 +1242,19 @@ function buildCoachChatStudyContext() {
   const availableCount = isWrongBankPracticeEnabled()
     ? (srsDueList().length || wrongRecords().length)
     : buildFilteredPoolFromSet(set).length;
+  const lengthLabel = sessionLengthLabel(App.size, { availableCount });
+  const practiceRecommendations = buildCoachChatPracticeRecommendations({
+    topFocuses,
+    recentIncorrect,
+    recentAccuracy,
+    daysSinceLastSession,
+    totalSessions: sessions.length,
+    lengthLabel
+  });
   const activeView = document.querySelector('.view.active');
   return {
     current_view: String(activeView?.id || 'view-setup').trim(),
+    practice_recommendations: practiceRecommendations,
     wrong_bank: {
       due_now: srsDueList().length,
       total: wrongRecords().length
@@ -1180,7 +1279,7 @@ function buildCoachChatStudyContext() {
     setup: {
       question_order: 'Random',
       wrong_bank: practiceWrongBankLabel(),
-      length: sessionLengthLabel(App.size, { availableCount }),
+      length: lengthLabel,
       filters: buildCoachChatSetupFilterText()
     },
     active_set: {
@@ -1202,6 +1301,7 @@ function buildCoachChatStudyContext() {
 function buildCoachChatSummary(snapshot) {
   const recentIncorrect = snapshot?.recent_incorrect;
   const topFocus = snapshot?.coach_notebook?.top_focuses?.[0];
+  const topRecommendation = snapshot?.practice_recommendations?.[0] || null;
   if (isCoachChatTeacherRole()) {
     if (topFocus?.title) return `Teacher mode: turn ${topFocus.title} into class practice or a mini lesson.`;
     if (snapshot?.active_set?.name) return `Teacher mode: build assignments or lesson checks from ${snapshot.active_set.name}.`;
@@ -1218,6 +1318,9 @@ function buildCoachChatSummary(snapshot) {
   }
   if (topFocus?.title) {
     return `Top notebook focus: ${topFocus.title}.`;
+  }
+  if (topRecommendation?.title) {
+    return `Recommended: ${topRecommendation.title}.`;
   }
   if ((snapshot?.session_history?.total_sessions || 0) <= 0) {
     return 'No recent practice history yet.';
@@ -1249,6 +1352,7 @@ function renderCoachChatStatus(snapshot) {
     if ((snapshot?.wrong_bank?.due_now || 0) > 0) pills.push(`Wrong-bank due ${snapshot.wrong_bank.due_now}`);
     if ((snapshot?.coach_notebook?.open_lessons || 0) > 0) pills.push(`Notebook open ${snapshot.coach_notebook.open_lessons}`);
     if ((snapshot?.session_history?.recent_accuracy || 0) > 0) pills.push(`Recent accuracy ${snapshot.session_history.recent_accuracy}%`);
+    if (snapshot?.practice_recommendations?.[0]?.priority) pills.push(`Recommendation ${snapshot.practice_recommendations[0].priority}`);
     if (!pills.length && snapshot?.active_set?.name) pills.push(snapshot.active_set.name);
     pillsEl.innerHTML = pills.length
       ? pills.slice(0, 3).map(text => `<span class="coach-chat-status-pill">${escHtml(text)}</span>`).join('')
@@ -1314,6 +1418,7 @@ function buildCoachChatStarters(snapshot = buildCoachChatStudyContext()) {
   const notebookOpen = snapshot?.coach_notebook?.open_lessons || 0;
   const topFocus = snapshot?.coach_notebook?.top_focuses?.[0] || null;
   const topFocusTitle = topFocus?.title || coachChatFocusTitle(topFocus);
+  const topRecommendation = snapshot?.practice_recommendations?.[0] || null;
   const recentTitle = String(recent?.title || '').trim();
   const knowledgeTopic = recentTitle || topFocusTitle || snapshot?.active_set?.name || 'this topic';
   if (isCoachChatTeacherRole()) {
@@ -1359,6 +1464,13 @@ function buildCoachChatStarters(snapshot = buildCoachChatStudyContext()) {
       { label: 'Notebook focus', prompt: `Which AI Notebook focus should I train next if ${topFocusTitle} keeps showing up?` },
       { label: 'From lesson to drill', prompt: `How should I turn ${topFocusTitle} from AI Notebook into actual practice?` },
       { label: 'Best next move', prompt: `Is ${topFocusTitle} better for Wrong-bank, AI Notebook review, or a fresh generated drill right now?` }
+    ]);
+  }
+  if (topRecommendation?.title) {
+    return limitCoachChatStarters([
+      { label: 'Use recommendation', prompt: `Why is "${topRecommendation.title}" the best next practice step for me right now?` },
+      { label: 'Make it concrete', prompt: `Turn "${topRecommendation.title}" into a short practice plan I can follow now.` },
+      { label: 'Compare options', prompt: 'Compare my top practice recommendation with Wrong-bank, AI Notebook, and a mixed drill.' }
     ]);
   }
   return limitCoachChatStarters(COACH_CHAT_STARTERS);
@@ -1432,7 +1544,20 @@ function renderCoachChatWorkspace(snapshot) {
         : 'Explain the most important historical background I should understand right now and tell me what to do next.'
     }
   };
-  const primaryCard = (snapshot?.wrong_bank?.due_now || 0) > 0
+  const topRecommendation = snapshot?.practice_recommendations?.[0] || null;
+  const recommendationCard = topRecommendation
+    ? {
+      kicker: topRecommendation.priority === 'high' ? 'Top recommendation' : 'Recommended',
+      title: topRecommendation.title,
+      copy: topRecommendation.reason,
+      action: topRecommendation.action || {
+        kind: 'prompt',
+        label: 'Ask why',
+        prompt: `Explain why ${topRecommendation.title} is the best next practice step for me.`
+      }
+    }
+    : null;
+  const primaryCard = recommendationCard || ((snapshot?.wrong_bank?.due_now || 0) > 0
     ? {
       kicker: 'Next step',
       title: `Review ${snapshot.wrong_bank.due_now} due`,
@@ -1451,10 +1576,11 @@ function renderCoachChatWorkspace(snapshot) {
         title: 'Start practice',
         copy: `${snapshot?.setup?.mode || 'Practice'} • ${snapshot?.setup?.length || 'Flexible'}`,
         action: { kind: 'action', id: 'start_current_session', label: 'Start session' }
-      };
+      });
   const cards = isCoachChatPristine()
     ? [primaryCard, knowledgeCard]
     : [
+      ...(recommendationCard ? [recommendationCard] : []),
       {
         kicker: 'Wrong-bank',
         title: (snapshot?.wrong_bank?.due_now || 0) > 0 ? `Review ${snapshot.wrong_bank.due_now} due` : 'Wrong-bank',
@@ -2216,6 +2342,7 @@ function buildLocalCoachChatReply(message, snapshot = buildCoachChatStudyContext
   const totalSessions = snapshot?.session_history?.total_sessions || 0;
   const daysSinceLastSession = snapshot?.session_history?.days_since_last_session || 0;
   const topic = coachChatTopicFromMessage(message, snapshot, mode);
+  const topRecommendation = Array.isArray(snapshot?.practice_recommendations) ? snapshot.practice_recommendations[0] : null;
   const actions = [];
   const highlights = [];
   let reply = '';
@@ -2355,6 +2482,27 @@ function buildLocalCoachChatReply(message, snapshot = buildCoachChatStudyContext
     reply = 'Start with one normal mixed drill to create enough evidence for stronger recommendations. Once you miss a few questions, Wrong-bank and AI Notebook become much more useful.';
     actions.push(coachChatAction('start_current_session', 'Start current session', 'Begin the drill you have configured now.'));
     actions.push(coachChatAction('open_setup', 'Open setup', 'Tune region, era, and mode before starting.'));
+  } else if (topRecommendation?.title && prompt.includes('recommend')) {
+    title = topRecommendation.title;
+    reply = `${topRecommendation.reason} ${topRecommendation.evidence || ''}`.trim();
+    if (topRecommendation.action?.id) {
+      actions.push(coachChatAction(
+        topRecommendation.action.id,
+        topRecommendation.action.label || topRecommendation.action_label || 'Use recommendation',
+        topRecommendation.reason || 'Recommended from your current practice context.',
+        {
+          focus_key: topRecommendation.action.focus_key || '',
+          query: topRecommendation.action.query || ''
+        }
+      ));
+    }
+    if (topFocusKey) actions.push(coachChatAction('generate_focus_drill', `Generate ${topFocusTitle}`, 'Create fresh questions in the same lane.', { focus_key: topFocusKey }));
+    actions.push(coachChatAction('start_current_session', 'Start current session', 'Run practice once the recommended setup is ready.'));
+    sections = [
+      { heading: 'Why this recommendation', body: topRecommendation.reason || 'It is the strongest signal from your current study state.' },
+      { heading: 'Evidence', body: topRecommendation.evidence || 'The recommendation is based on wrong-bank, notebook, session, and setup context.' },
+      { heading: 'Best next move', body: topRecommendation.action_label || 'Use the suggested action, then check review data after the session.' }
+    ];
   } else {
     const freshness = daysSinceLastSession > 0
       ? `Your last session was about ${daysSinceLastSession} day${daysSinceLastSession === 1 ? '' : 's'} ago. `

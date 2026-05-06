@@ -283,7 +283,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         'start_current_session',
         'open_setup',
         'open_review',
-        'open_library'
+        'open_library',
+        'open_analytics'
     ]);
     const DASHBOARD_CHAT_UI_KEY = `ihbb_student_dashboard_chat_ui_${uid}`;
     const DASHBOARD_CHAT_SESSION_KEY = `ihbb_student_dashboard_chat_session_${uid}`;
@@ -831,6 +832,105 @@ document.addEventListener('DOMContentLoaded', async () => {
         return [focus?.region, focus?.era, focus?.topic].filter(Boolean).join(' • ') || String(focus?.title || '').trim() || 'Top focus';
     }
 
+    function buildDashboardPracticeRecommendations(options = {}) {
+        const wrongBank = options.wrongBank || readWrongBankState();
+        const topFocuses = Array.isArray(options.topFocuses) ? options.topFocuses : [];
+        const topFocus = topFocuses[0] || null;
+        const recent = options.recentIncorrect || null;
+        const analyticsSpots = Array.isArray(options.analyticsBlindSpots) ? options.analyticsBlindSpots : [];
+        const recentAccuracy = Number(options.recentAccuracy || 0);
+        const totalSessions = Number(options.totalSessions || 0);
+        const out = [];
+        const pushRecommendation = (rec) => {
+            if (!rec?.id || out.some(item => item.id === rec.id)) return;
+            out.push({
+                id: String(rec.id).trim(),
+                title: String(rec.title || '').trim(),
+                priority: ['high', 'medium', 'low'].includes(String(rec.priority || '').trim()) ? String(rec.priority).trim() : 'medium',
+                reason: String(rec.reason || '').trim(),
+                evidence: String(rec.evidence || '').trim(),
+                action_label: String(rec.action_label || '').trim(),
+                action: rec.action || null
+            });
+        };
+
+        if (recent?.title) {
+            pushRecommendation({
+                id: 'recover-last-miss',
+                title: `Recover from ${recent.title}`,
+                priority: 'high',
+                reason: 'Your latest AI Notebook miss is the clearest thing to fix before starting more mixed work.',
+                evidence: recent.reason || [recent.region, recent.era, recent.topic].filter(Boolean).join(' • '),
+                action_label: 'Build corrective drill',
+                action: { kind: 'action', id: 'generate_focus_drill', focus_key: recent.key, label: `Generate ${recent.title}` }
+            });
+        }
+
+        if (wrongBank.dueNow > 0) {
+            pushRecommendation({
+                id: 'clear-due-wrong-bank',
+                title: `Clear ${wrongBank.dueNow} due Wrong-bank card${wrongBank.dueNow === 1 ? '' : 's'}`,
+                priority: wrongBank.dueNow >= 3 ? 'high' : 'medium',
+                reason: 'Due SRS cards are already scheduled for reinforcement and should come before new volume.',
+                evidence: `${wrongBank.dueNow} due now out of ${wrongBank.total} tracked.`,
+                action_label: 'Start due review',
+                action: { kind: 'action', id: 'practice_due_now', label: 'Start due review' }
+            });
+        }
+
+        if (topFocus?.key || topFocus?.title) {
+            const title = coachChatFocusTitle(topFocus);
+            pushRecommendation({
+                id: `train-focus-${topFocus.key || title}`,
+                title: `Train ${title}`,
+                priority: topFocus.priority || (recentAccuracy && recentAccuracy < 70 ? 'high' : 'medium'),
+                reason: topFocus.reason || 'This is the clearest recurring focus from your AI Notebook.',
+                evidence: topFocus.action || 'Dashboard coach, notebook, and review signals point here.',
+                action_label: topFocus.key ? 'Apply focus' : 'Ask for plan',
+                action: topFocus.key
+                    ? { kind: 'action', id: 'apply_top_focus', focus_key: topFocus.key, label: `Apply ${title}` }
+                    : { kind: 'prompt', label: 'Build plan', prompt: `Build a targeted practice plan for ${title}.` }
+            });
+        }
+
+        const blindSpot = analyticsSpots[0] || null;
+        if (blindSpot?.title) {
+            pushRecommendation({
+                id: `analytics-${blindSpot.title}`,
+                title: `Target ${blindSpot.title}`,
+                priority: blindSpot.priority || 'medium',
+                reason: 'Your 30-day analytics show this slice is holding back your overall performance.',
+                evidence: blindSpot.evidence || 'Blind Spot Analytics ranked this as a current weak area.',
+                action_label: 'Open analytics',
+                action: { kind: 'action', id: 'open_analytics', label: 'Open analytics' }
+            });
+        }
+
+        if (totalSessions <= 0) {
+            pushRecommendation({
+                id: 'baseline-session',
+                title: 'Run one baseline Practice Hub drill',
+                priority: 'medium',
+                reason: 'DeepSeek needs one clean session before it can make sharper personal recommendations.',
+                evidence: 'No recent practice history is available yet.',
+                action_label: 'Open Practice Hub',
+                action: { kind: 'action', id: 'start_current_session', label: 'Open Practice Hub' }
+            });
+        } else {
+            pushRecommendation({
+                id: 'mixed-transfer-check',
+                title: 'Finish with a mixed transfer check',
+                priority: 'low',
+                reason: 'A short mixed drill checks whether focused review transfers under broader clue pressure.',
+                evidence: recentAccuracy ? `Recent accuracy ${recentAccuracy}%.` : 'Use after one targeted block.',
+                action_label: 'Open Practice Hub',
+                action: { kind: 'action', id: 'start_current_session', label: 'Open Practice Hub' }
+            });
+        }
+
+        return out.filter(rec => rec.title && rec.reason).slice(0, 4);
+    }
+
     function buildDashboardChatContext() {
         const sessions = safeReadJson(KEY_SESS, []);
         const recentSessions = Array.isArray(sessions) ? sessions.slice(0, 5) : [];
@@ -855,8 +955,35 @@ document.addEventListener('DOMContentLoaded', async () => {
         const recentRecord = Array.isArray(coachRecordsCurrent) && coachRecordsCurrent.length ? coachRecordsCurrent[0] : null;
         const recentFocus = recentRecord ? coachFocusFromRecord(recentRecord) : {};
         const activeTab = document.querySelector('.dash-tab.active')?.dataset?.tab || 'classes';
+        const analyticsBlindSpots = analyticsSnapshotCurrent && Array.isArray(analyticsSnapshotCurrent.blindSpots)
+            ? analyticsSnapshotCurrent.blindSpots.slice(0, 3).map(spot => ({
+                title: String(spot?.title || (spot?.dim && spot?.name ? `${spot.dim}: ${spot.name}` : spot?.name || '')).trim(),
+                priority: spot?.accuracy < 50 ? 'high' : (spot?.accuracy < 70 ? 'medium' : 'low'),
+                evidence: spot?.attempts ? `${spot.accuracy}% accuracy over ${spot.attempts} attempts.` : ''
+            })).filter(spot => spot.title)
+            : [];
+        const recentIncorrect = recentRecord ? {
+            key: [recentFocus.region, recentFocus.era, recentFocus.topic].filter(Boolean).join('|'),
+            title: coachChatFocusTitle({
+                title: [recentFocus.region, recentFocus.era, recentFocus.topic].filter(Boolean).join(' • ')
+            }),
+            region: String(recentFocus.region || '').trim(),
+            era: String(recentFocus.era || '').trim(),
+            topic: String(recentFocus.topic || '').trim(),
+            reason: String(recentRecord?.coach?.summary || recentRecord?.reason || '').trim(),
+            attempt_id: String(recentRecord?.client_attempt_id || '').trim()
+        } : null;
+        const practiceRecommendations = buildDashboardPracticeRecommendations({
+            wrongBank,
+            topFocuses,
+            recentIncorrect,
+            analyticsBlindSpots,
+            recentAccuracy,
+            totalSessions: Array.isArray(sessions) ? sessions.length : 0
+        });
         return {
             current_view: `dashboard-${activeTab}`,
+            practice_recommendations: practiceRecommendations,
             wrong_bank: {
                 due_now: wrongBank.dueNow,
                 total: wrongBank.total
@@ -887,26 +1014,11 @@ document.addEventListener('DOMContentLoaded', async () => {
                 name: 'Practice Hub',
                 item_count: 0
             },
-            recent_incorrect: recentRecord ? {
-                key: [recentFocus.region, recentFocus.era, recentFocus.topic].filter(Boolean).join('|'),
-                title: coachChatFocusTitle({
-                    title: [recentFocus.region, recentFocus.era, recentFocus.topic].filter(Boolean).join(' • ')
-                }),
-                region: String(recentFocus.region || '').trim(),
-                era: String(recentFocus.era || '').trim(),
-                topic: String(recentFocus.topic || '').trim(),
-                reason: String(recentRecord?.coach?.summary || recentRecord?.reason || '').trim(),
-                attempt_id: String(recentRecord?.client_attempt_id || '').trim()
-            } : null,
+            recent_incorrect: recentIncorrect,
             analytics: analyticsSnapshotCurrent ? {
                 total_attempts: Number(analyticsSnapshotCurrent.totalAttempts || 0),
                 total_accuracy: Number(analyticsSnapshotCurrent.totalAccuracy || 0),
-                blind_spots: Array.isArray(analyticsSnapshotCurrent.blindSpots)
-                    ? analyticsSnapshotCurrent.blindSpots.slice(0, 3).map(spot => ({
-                        title: String(spot?.title || '').trim(),
-                        priority: String(spot?.priority || 'medium').trim()
-                    }))
-                    : []
+                blind_spots: analyticsBlindSpots
             } : null
         };
     }
@@ -914,9 +1026,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     function buildDashboardChatSummary(snapshot) {
         const recent = snapshot?.recent_incorrect;
         const topFocus = snapshot?.coach_notebook?.top_focuses?.[0];
+        const topRecommendation = snapshot?.practice_recommendations?.[0] || null;
         if (recent?.title) return `Last miss: ${recent.title}.`;
         if ((snapshot?.wrong_bank?.due_now || 0) > 0) return `${snapshot.wrong_bank.due_now} wrong-bank card${snapshot.wrong_bank.due_now === 1 ? '' : 's'} due now.`;
         if (topFocus?.title) return `Top coach focus: ${topFocus.title}.`;
+        if (topRecommendation?.title) return `Recommended: ${topRecommendation.title}.`;
         if ((snapshot?.session_history?.total_sessions || 0) <= 0) return 'No recent practice history yet.';
         return 'Ask for background on a topic or what to study next. Auto will detect the better answer style.';
     }
@@ -1123,6 +1237,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const notebookOpen = snapshot?.coach_notebook?.open_lessons || 0;
         const topFocus = snapshot?.coach_notebook?.top_focuses?.[0] || null;
         const topFocusTitle = coachChatFocusTitle(topFocus);
+        const topRecommendation = snapshot?.practice_recommendations?.[0] || null;
         const recentTitle = String(recent?.title || '').trim();
         const knowledgeTopic = recentTitle || topFocusTitle || 'this topic';
         if (dashboardChat.ui.mode === 'knowledge') {
@@ -1153,6 +1268,13 @@ document.addEventListener('DOMContentLoaded', async () => {
                 { label: 'Before assignment', prompt: `Before my next assignment, is ${topFocusTitle} better for notebook review or a targeted drill?` }
             ]);
         }
+        if (topRecommendation?.title) {
+            return limitDashboardChatStarters([
+                { label: 'Use recommendation', prompt: `Why is "${topRecommendation.title}" the best next practice step for me right now?` },
+                { label: 'Make it concrete', prompt: `Turn "${topRecommendation.title}" into a short practice plan I can follow now.` },
+                { label: 'Compare options', prompt: 'Compare my top practice recommendation with Wrong-bank, AI Notebook, and a mixed drill.' }
+            ]);
+        }
         return limitDashboardChatStarters(DASHBOARD_CHAT_STARTERS);
     }
 
@@ -1173,6 +1295,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const el = document.getElementById('coach-chat-workspace');
         if (!el) return;
         const topFocus = snapshot?.coach_notebook?.top_focuses?.[0] || null;
+        const topRecommendation = snapshot?.practice_recommendations?.[0] || null;
         const knowledgeCard = {
             kicker: 'Ask',
             title: 'Explain a topic',
@@ -1185,7 +1308,19 @@ document.addEventListener('DOMContentLoaded', async () => {
                     : 'Explain the most important historical background I should understand right now and tell me what to do next.'
             }
         };
-        const primaryCard = (snapshot?.wrong_bank?.due_now || 0) > 0
+        const recommendationCard = topRecommendation
+            ? {
+                kicker: topRecommendation.priority === 'high' ? 'Top recommendation' : 'Recommended',
+                title: topRecommendation.title,
+                copy: topRecommendation.reason,
+                action: topRecommendation.action || {
+                    kind: 'prompt',
+                    label: 'Ask why',
+                    prompt: `Explain why ${topRecommendation.title} is the best next practice step for me.`
+                }
+            }
+            : null;
+        const primaryCard = recommendationCard || ((snapshot?.wrong_bank?.due_now || 0) > 0
             ? {
                 kicker: 'Next step',
                 title: `Review ${snapshot.wrong_bank.due_now} due`,
@@ -1204,10 +1339,11 @@ document.addEventListener('DOMContentLoaded', async () => {
                     title: 'Open Practice Hub',
                     copy: 'Start a drill or search the library.',
                     action: { kind: 'action', id: 'start_current_session', label: 'Open Practice Hub' }
-                };
+                });
         const cards = isDashboardChatPristine()
             ? [primaryCard, knowledgeCard]
             : [
+                ...(recommendationCard ? [recommendationCard] : []),
                 {
                     kicker: 'Wrong-bank',
                     title: (snapshot?.wrong_bank?.due_now || 0) > 0 ? `Review ${snapshot.wrong_bank.due_now} due` : 'Wrong-bank',
@@ -1366,6 +1502,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             if ((snapshot?.wrong_bank?.due_now || 0) > 0) pills.push(`Wrong-bank due ${snapshot.wrong_bank.due_now}`);
             if ((snapshot?.coach_notebook?.open_lessons || 0) > 0) pills.push(`Notebook open ${snapshot.coach_notebook.open_lessons}`);
             if ((snapshot?.session_history?.recent_accuracy || 0) > 0) pills.push(`Recent accuracy ${snapshot.session_history.recent_accuracy}%`);
+            if (snapshot?.practice_recommendations?.[0]?.priority) pills.push(`Recommendation ${snapshot.practice_recommendations[0].priority}`);
             if (!pills.length && snapshot?.coach_notebook?.top_focuses?.[0]?.title) pills.push(snapshot.coach_notebook.top_focuses[0].title);
             pillsEl.innerHTML = pills.length
                 ? pills.slice(0, 3).map(text => `<span class="coach-chat-status-pill">${esc(text)}</span>`).join('')
@@ -1443,6 +1580,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const topFocusKey = String(topFocus?.key || '').trim();
         const recent = snapshot?.recent_incorrect || null;
         const topic = dashboardChatTopicFromMessage(message, snapshot, mode);
+        const topRecommendation = Array.isArray(snapshot?.practice_recommendations) ? snapshot.practice_recommendations[0] : null;
         const actions = [];
         let reply = '';
         let title = 'Dashboard plan';
@@ -1492,6 +1630,19 @@ document.addEventListener('DOMContentLoaded', async () => {
             reply = `Your latest miss was ${recent.title}. Review that lesson once, then run a short guided drill before returning to mixed practice.`;
             actions.push({ id: 'open_ai_notebook', label: 'Open Coach Workspace', reason: 'Reopen the saved lesson on this dashboard.' });
             if (topFocusKey) actions.push({ id: 'apply_top_focus', label: `Guided Drill: ${topFocusTitle}`, reason: 'Launch a guided drill from the dashboard coach focus.', focus_key: topFocusKey });
+        } else if (topRecommendation?.title && prompt.includes('recommend')) {
+            title = topRecommendation.title;
+            reply = `${topRecommendation.reason} ${topRecommendation.evidence || ''}`.trim();
+            if (topRecommendation.action?.id) {
+                actions.push({
+                    id: topRecommendation.action.id,
+                    label: topRecommendation.action.label || topRecommendation.action_label || 'Use recommendation',
+                    reason: topRecommendation.reason || 'Recommended from your current dashboard state.',
+                    focus_key: topRecommendation.action.focus_key || '',
+                    query: topRecommendation.action.query || ''
+                });
+            }
+            if (topFocusKey) actions.push({ id: 'generate_focus_drill', label: `Generate ${topFocusTitle}`, reason: 'Create fresh questions in the same lane.', focus_key: topFocusKey });
         } else if (topFocusKey) {
             title = `Use ${topFocusTitle} as the next block`;
             reply = `The clearest next move is ${topFocusTitle}. Use a targeted drill first, then go back to assignments or mixed practice.`;
@@ -1512,6 +1663,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             highlights: [wrongDue > 0 ? `${wrongDue} due in Wrong-bank` : '', notebookOpen > 0 ? `${notebookOpen} lesson${notebookOpen === 1 ? '' : 's'} open` : ''].filter(Boolean),
             sections: [
                 { heading: 'Best next move', body: reply },
+                ...(topRecommendation?.title ? [{ heading: 'Recommendation signal', body: `${topRecommendation.title}: ${topRecommendation.reason}` }] : []),
                 { heading: 'Why this from the dashboard', body: 'The dashboard assistant routes you into the Practice Hub, coach workspace, and review surfaces without making you rebuild context.' }
             ],
             links: dashboardChatWikiLink(recent?.title || topFocusTitle || topic) ? [{ label: `Wikipedia: ${recent?.title || topFocusTitle || topic}`, url: dashboardChatWikiLink(recent?.title || topFocusTitle || topic), kind: 'wikipedia' }] : [],
@@ -1807,6 +1959,11 @@ document.addEventListener('DOMContentLoaded', async () => {
             writeDashboardCoachNavAction('open_library', { query: String(action?.query || '').trim() });
             closeDashboardChat();
             window.location.href = 'index.html?drill=1';
+            return;
+        }
+        if (actionId === 'open_analytics') {
+            activateDashboardTab('analytics');
+            await loadAnalytics();
             return;
         }
         closeDashboardChat();

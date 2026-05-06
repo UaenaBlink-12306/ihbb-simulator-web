@@ -114,6 +114,112 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     function genCode() { return Math.random().toString(36).substring(2, 8).toUpperCase(); }
 
+    function resetRoundReviews() {
+        roundReviews = [];
+    }
+
+    function ensureRoundReview(index = questionIndex) {
+        const safeIndex = Number(index);
+        if (!Number.isFinite(safeIndex) || safeIndex < 0) return null;
+        const q = gameQuestions[safeIndex] || {};
+        if (!roundReviews[safeIndex]) {
+            roundReviews[safeIndex] = {
+                index: safeIndex,
+                number: safeIndex + 1,
+                question: q.question || q.q || '',
+                answer: q.answer || q.a || '',
+                meta: q.meta || {},
+                attempts: [],
+                solvedBy: null,
+                revealed: false,
+                unanswered: false
+            };
+        } else {
+            roundReviews[safeIndex].question = roundReviews[safeIndex].question || q.question || q.q || '';
+            roundReviews[safeIndex].answer = roundReviews[safeIndex].answer || q.answer || q.a || '';
+            roundReviews[safeIndex].meta = roundReviews[safeIndex].meta || q.meta || {};
+        }
+        return roundReviews[safeIndex];
+    }
+
+    function recordRoundAttempt(attempt = {}) {
+        const review = ensureRoundReview(questionIndex);
+        if (!review || !attempt.userId) return;
+        const text = String(attempt.text || '').trim();
+        const existing = [...review.attempts].reverse().find(item =>
+            item.userId === attempt.userId &&
+            (!text || !item.text || item.text === text) &&
+            typeof item.correct !== 'boolean'
+        );
+        const next = existing || {
+            userId: attempt.userId,
+            name: String(attempt.name || players[attempt.userId]?.name || 'Player').trim() || 'Player',
+            avatarId: normalizeAvatarId(attempt.avatarId || players[attempt.userId]?.avatarId),
+            text,
+            correct: null,
+            reason: '',
+            roundId: String(attempt.roundId || activeRoundId || '').trim()
+        };
+        if (text) next.text = text;
+        if (typeof attempt.correct === 'boolean') next.correct = attempt.correct;
+        if (attempt.reason) next.reason = String(attempt.reason || '').trim();
+        if (!existing) review.attempts.push(next);
+        if (next.correct) {
+            review.solvedBy = {
+                userId: next.userId,
+                name: next.name,
+                avatarId: next.avatarId
+            };
+        }
+        review.unanswered = false;
+    }
+
+    function markRoundSolved(userId) {
+        const review = ensureRoundReview(questionIndex);
+        const player = players[userId] || {};
+        if (review && userId) {
+            review.solvedBy = {
+                userId,
+                name: player.name || 'Player',
+                avatarId: normalizeAvatarId(player.avatarId)
+            };
+        }
+    }
+
+    function markRoundReveal(answer = '') {
+        const review = ensureRoundReview(questionIndex);
+        if (!review) return;
+        review.answer = String(answer || review.answer || '').trim();
+        review.revealed = true;
+    }
+
+    function normalizeRoundReviews(raw) {
+        const list = Array.isArray(raw) ? raw : [];
+        return list.map((item, idx) => ({
+            index: Number.isFinite(Number(item?.index)) ? Number(item.index) : idx,
+            number: Number.isFinite(Number(item?.number)) ? Number(item.number) : idx + 1,
+            question: String(item?.question || '').trim(),
+            answer: String(item?.answer || '').trim(),
+            meta: item?.meta && typeof item.meta === 'object' ? item.meta : {},
+            attempts: Array.isArray(item?.attempts) ? item.attempts.map(attempt => ({
+                userId: String(attempt?.userId || '').trim(),
+                name: String(attempt?.name || 'Player').trim() || 'Player',
+                avatarId: normalizeAvatarId(attempt?.avatarId),
+                text: String(attempt?.text || '').trim(),
+                correct: typeof attempt?.correct === 'boolean' ? attempt.correct : null,
+                reason: String(attempt?.reason || '').trim()
+            })).filter(attempt => attempt.userId || attempt.text) : [],
+            solvedBy: item?.solvedBy && typeof item.solvedBy === 'object' ? item.solvedBy : null,
+            revealed: !!item?.revealed,
+            unanswered: !!item?.unanswered
+        }));
+    }
+
+    function buildPostGameReviewPayload() {
+        for (let i = 0; i < gameQuestions.length; i++) ensureRoundReview(i);
+        return normalizeRoundReviews(roundReviews).filter(item => item.question || item.answer);
+    }
+
     // ==================== SOUND EFFECTS ====================
     const beePrefs = (() => {
         try { return JSON.parse(localStorage.getItem(KEY_SETTINGS) || '{}') || {}; } catch { return {}; }
@@ -387,6 +493,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     let isReading = false;
     let activeRoundId = null;
     let confettiCleanupTimer = null;
+    let roundReviews = [];
 
     // ==================== LOBBY ====================
     $('lobby-host').classList.remove('hidden');
@@ -489,6 +596,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         channel.on('broadcast', { event: 'game_start' }, ({ payload }) => {
             gameQuestions = payload.questions || [];
             questionIndex = -1;
+            resetRoundReviews();
             playBeeCue('start');
             showView('view-game');
             updateGameProgress();
@@ -831,6 +939,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         showView('view-game');
         questionIndex = -1;
+        resetRoundReviews();
         updateGameProgress();
         renderScoreboard();
         setTimeout(() => hostNextQuestion(), 500);
@@ -842,6 +951,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (questionIndex >= gameQuestions.length) { endBee(); return; }
 
         const q = gameQuestions[questionIndex];
+        ensureRoundReview(questionIndex);
         buzzQueue = [];
         currentBuzzer = null;
         ttsAborted = false;
@@ -882,6 +992,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         currentBuzzer = null;
         ttsAborted = false;
         activeRoundId = payload.roundId || `${payload.index}:fallback`;
+        ensureRoundReview(questionIndex);
 
         // Reset UI
         $('game-qi').textContent = payload.index + 1;
@@ -973,6 +1084,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     function handleAnswerShow(payload) {
         // Show the answer a player typed to everyone
         playBeeCue('grading', { haptic: false });
+        recordRoundAttempt({
+            userId: payload.userId,
+            name: payload.name || players[payload.userId]?.name || 'Player',
+            avatarId: payload.avatarId || players[payload.userId]?.avatarId,
+            text: payload.text,
+            roundId: payload.roundId
+        });
         const display = $('answer-display');
         display.classList.remove('hidden', 'answer-correct', 'answer-incorrect', 'answer-grading');
         display.classList.add('answer-grading');
@@ -993,12 +1111,22 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     function handleResult(payload) {
         // payload: { userId, correct, reason, answer }
+        recordRoundAttempt({
+            userId: payload.userId,
+            name: players[payload.userId]?.name || 'Player',
+            avatarId: players[payload.userId]?.avatarId,
+            text: payload.answer || payload.text || '',
+            correct: !!payload.correct,
+            reason: payload.reason || '',
+            roundId: payload.roundId
+        });
         const display = $('answer-display');
         display.classList.remove('answer-grading', 'answer-correct', 'answer-incorrect');
         clearInterval(answerTimerInterval);
         $('answer-timer').textContent = '';
 
         if (payload.correct) {
+            markRoundSolved(payload.userId);
             display.classList.add('answer-correct');
             $('answer-verdict').textContent = '✅ Correct!';
             $('game-status').textContent = 'Correct answer!';
@@ -1035,6 +1163,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     function handleResultUpdate(payload) {
         // DeepSeek overrode the quick-match verdict to correct
         if (payload.correct) {
+            recordRoundAttempt({
+                userId: payload.userId,
+                name: players[payload.userId]?.name || 'Player',
+                avatarId: players[payload.userId]?.avatarId,
+                correct: true,
+                reason: payload.reason || 'Confirmed by AI',
+                roundId: payload.roundId
+            });
+            markRoundSolved(payload.userId);
             const display = $('answer-display');
             display.classList.remove('answer-incorrect');
             display.classList.add('answer-correct');
@@ -1050,6 +1187,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     function handleReveal(payload) {
+        markRoundReveal(payload.answer);
         const el = $('correct-answer-reveal');
         el.classList.remove('hidden');
         el.textContent = '📖 Answer: ' + payload.answer;
@@ -1061,8 +1199,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (isHost) stopHostMusic();
         showView('view-results');
         const standings = getFinalStandings();
+        roundReviews = normalizeRoundReviews(payload?.review || roundReviews);
         renderResultsPodium(standings);
         renderFinalScoreboard(standings);
+        renderPostGameReview(roundReviews);
         launchResultsConfetti();
     }
 
@@ -1126,7 +1266,14 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (isHost) {
                 channel.send({
                     type: 'broadcast', event: 'result',
-                    payload: { userId: currentBuzzer, correct: false, reason: 'Time ran out' }
+                    payload: {
+                        userId: currentBuzzer,
+                        correct: false,
+                        reason: 'Time ran out',
+                        answer: '',
+                        expected: gameQuestions[questionIndex]?.answer || '',
+                        roundId: activeRoundId
+                    }
                 });
                 // advance queue handled by result handler
             }
@@ -1172,7 +1319,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                 userId: payload.userId,
                 name: payload.name || players[payload.userId]?.name || 'Player',
                 avatarId: payload.avatarId || players[payload.userId]?.avatarId,
-                text
+                text,
+                roundId: activeRoundId
             }
         });
 
@@ -1181,7 +1329,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (quickCorrect) {
             channel.send({
                 type: 'broadcast', event: 'result',
-                payload: { userId: payload.userId, correct: true, reason: 'Exact match' }
+                payload: {
+                    userId: payload.userId,
+                    correct: true,
+                    reason: 'Exact match',
+                    answer: text,
+                    expected: q.answer,
+                    roundId: activeRoundId
+                }
             });
             return;
         }
@@ -1193,7 +1348,10 @@ document.addEventListener('DOMContentLoaded', async () => {
                 payload: {
                     userId: payload.userId,
                     correct: false,
-                    reason: 'No attempt submitted'
+                    reason: 'No attempt submitted',
+                    answer: text,
+                    expected: q.answer,
+                    roundId: activeRoundId
                 }
             });
             return;
@@ -1223,7 +1381,10 @@ document.addEventListener('DOMContentLoaded', async () => {
             payload: {
                 userId: payload.userId,
                 correct: deepseekResult,
-                reason: deepseekResult ? 'Confirmed by AI' : 'Incorrect'
+                reason: deepseekResult ? 'Confirmed by AI' : 'Incorrect',
+                answer: text,
+                expected: q.answer,
+                roundId: activeRoundId
             }
         });
     }
@@ -1258,6 +1419,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     function revealAnswer() {
         const q = gameQuestions[questionIndex];
         if (!q) return;
+        const review = ensureRoundReview(questionIndex);
+        if (review && !review.attempts.length) review.unanswered = true;
+        markRoundReveal(q.answer);
         channel.send({ type: 'broadcast', event: 'reveal', payload: { answer: q.answer } });
     }
 
@@ -1288,7 +1452,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
         await sb.from('bee_rooms').update({ status: 'finished' }).eq('id', room.id);
 
-        channel.send({ type: 'broadcast', event: 'game_end', payload: {} });
+        channel.send({ type: 'broadcast', event: 'game_end', payload: { review: buildPostGameReviewPayload() } });
     }
 
     function broadcastScores() {
@@ -1405,6 +1569,68 @@ document.addEventListener('DOMContentLoaded', async () => {
                 <span class="score-points">${p.score} pts</span>
             </div>`;
         }).join('');
+        hydrateAvatarImages(el);
+    }
+
+    function renderPostGameReview(reviews) {
+        const el = $('post-game-review');
+        if (!el) return;
+        const list = normalizeRoundReviews(reviews).filter(item => item.question || item.answer);
+        if (!list.length) {
+            el.innerHTML = `
+                <div class="post-game-review-head">
+                    <div>
+                        <h3 class="card-title">Post-game review</h3>
+                        <p class="section-subtitle">No round details were captured for this room.</p>
+                    </div>
+                </div>
+            `;
+            return;
+        }
+        const solved = list.filter(item => item.solvedBy).length;
+        const missed = list.length - solved;
+        const attempts = list.reduce((sum, item) => sum + item.attempts.length, 0);
+        const reviewItems = list.map(item => {
+            const status = item.solvedBy
+                ? `Solved by ${item.solvedBy.name || 'Player'}`
+                : (item.unanswered || !item.attempts.length ? 'No correct buzz' : 'Missed after buzzes');
+            const meta = [item.meta?.category, item.meta?.era ? ERA_LABELS[item.meta.era] || item.meta.era : ''].filter(Boolean).join(' • ');
+            const attemptsHtml = item.attempts.length
+                ? item.attempts.map(attempt => `
+                    <div class="post-game-attempt ${attempt.correct ? 'is-correct' : 'is-missed'}">
+                        ${userAvatarHtml(attempt.avatarId, attempt.name, 'user-avatar-tiny')}
+                        <span class="post-game-attempt-name">${esc(attempt.name)}${attempt.userId === uid ? ' (You)' : ''}</span>
+                        <span class="post-game-attempt-answer">${esc(attempt.text || 'No answer')}</span>
+                        <span class="post-game-attempt-result">${attempt.correct ? 'Correct' : esc(attempt.reason || 'Incorrect')}</span>
+                    </div>
+                `).join('')
+                : '<p class="muted post-game-empty">No one buzzed before the reveal.</p>';
+            return `
+                <details class="post-game-round" ${item.solvedBy ? '' : 'open'}>
+                    <summary>
+                        <span class="post-game-round-number">Q${item.number}</span>
+                        <span class="post-game-round-status">${esc(status)}</span>
+                        <span class="post-game-round-answer">${esc(item.answer || 'Answer unavailable')}</span>
+                    </summary>
+                    <div class="post-game-round-body">
+                        ${meta ? `<div class="post-game-meta">${esc(meta)}</div>` : ''}
+                        <p class="post-game-question">${esc(item.question || 'Question unavailable')}</p>
+                        <div class="post-game-answer"><strong>Answer:</strong> ${esc(item.answer || 'Answer unavailable')}</div>
+                        <div class="post-game-attempts">${attemptsHtml}</div>
+                    </div>
+                </details>
+            `;
+        }).join('');
+
+        el.innerHTML = `
+            <div class="post-game-review-head">
+                <div>
+                    <h3 class="card-title">Post-game review</h3>
+                    <p class="section-subtitle">${list.length} questions • ${solved} solved • ${missed} missed • ${attempts} buzz attempt${attempts === 1 ? '' : 's'}</p>
+                </div>
+            </div>
+            <div class="post-game-review-list">${reviewItems}</div>
+        `;
         hydrateAvatarImages(el);
     }
 
