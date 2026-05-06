@@ -628,7 +628,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     let myQuestionSets = [];
 
     async function loadBeeSavedSets() {
-        const { data, error } = await sb.from('question_sets').select('*').eq('creator_id', uid).order('created_at', { ascending: false });
+        const { data, error } = await sb.from('question_sets').select('*').order('created_at', { ascending: false });
         if (!error && data) {
             myQuestionSets = data;
             const el = $('bee-saved-sets-list');
@@ -639,10 +639,12 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
             el.innerHTML = data.map(set => {
                 const count = Array.isArray(set.questions) ? set.questions.length : 0;
+                const isMine = set.creator_id === uid;
+                const visibilityLabel = set.visibility === 'public' ? 'Public' : (set.visibility === 'school' ? 'School' : 'Private');
                 return `<div class="list-item" style="cursor:pointer;" onclick="loadSetIntoBee('${set.id}')">
                     <div class="item-copy">
                         <span class="item-title">${esc(set.title)}</span>
-                        <span class="item-meta">${count} questions</span>
+                        <span class="item-meta">${count} questions • ${visibilityLabel} • By ${isMine ? 'Me' : (set.creator_role === 'teacher' ? 'Teacher' : 'Student')}</span>
                     </div>
                     <span class="item-badge">Load</span>
                 </div>`;
@@ -654,7 +656,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const set = myQuestionSets.find(s => s.id === setId);
         if (!set) return;
         selectedQuestions = [...(set.questions || [])];
-        showAlert('Loaded questions from saved set.', 'success');
+        showAlert('Loaded questions from "' + set.title + '".', 'success');
         updatePreview();
     };
 

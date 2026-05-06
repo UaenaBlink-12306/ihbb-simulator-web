@@ -56,6 +56,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     let currentEditSetId = null;
     let myQuestionSets = [];
     let draftQuestions = [];
+    let setVisibilityFilter = 'my';
+    let mySchoolName = null;
+
+    // Load school name
+    (async () => {
+        const { data: profData } = await sb.from('profiles').select('school_name').eq('id', uid).single();
+        if (profData) mySchoolName = profData.school_name;
+    })();
 
     try {
         const resp = await fetch('questions.json');
@@ -4505,7 +4513,23 @@ document.addEventListener('DOMContentLoaded', async () => {
     async function loadQuestionSets() {
         const el = document.getElementById('question-sets-list');
         if (!el) return;
-        const { data, error } = await sb.from('question_sets').select('*').eq('creator_id', uid).order('created_at', { ascending: false });
+        el.innerHTML = '<p class="muted">Loading question sets...</p>';
+
+        let query = sb.from('question_sets').select('*').order('created_at', { ascending: false });
+        
+        if (setVisibilityFilter === 'my') {
+            query = query.eq('creator_id', uid);
+        } else if (setVisibilityFilter === 'school') {
+            if (!mySchoolName) {
+                el.innerHTML = emptyStateHtml('School Sets', 'No school set', 'Set your school name in your profile to see sets from your classmates.');
+                return;
+            }
+            query = query.eq('visibility', 'school').eq('creator_school', mySchoolName);
+        } else if (setVisibilityFilter === 'community') {
+            query = query.eq('visibility', 'public');
+        }
+
+        const { data, error } = await query;
         if (error) {
             el.innerHTML = '<p class="muted">Failed to load question sets.</p>';
             return;
@@ -4518,26 +4542,62 @@ document.addEventListener('DOMContentLoaded', async () => {
         const el = document.getElementById('question-sets-list');
         if (!el) return;
         if (!myQuestionSets.length) {
-            el.innerHTML = emptyStateHtml('Question Sets', 'No sets saved yet', 'Create your first question set to reuse it across assignments and Live Bee games.');
+            const kicker = setVisibilityFilter === 'my' ? 'Question Sets' : (setVisibilityFilter === 'school' ? 'School Sets' : 'Community Sets');
+            const title = 'No sets found';
+            const copy = setVisibilityFilter === 'my' ? 'Create your first question set to reuse it across assignments and Live Bee games.' : 'Try a different filter or create your own set.';
+            el.innerHTML = emptyStateHtml(kicker, title, copy);
             return;
         }
         el.innerHTML = myQuestionSets.map(set => {
             const count = Array.isArray(set.questions) ? set.questions.length : 0;
+            const isMine = set.creator_id === uid;
+            const visibilityLabel = set.visibility === 'public' ? 'Public' : (set.visibility === 'school' ? 'School' : 'Private');
+            
             return `
                 <div class="list-item">
                     <div class="list-item-main">
                         <div class="list-item-title">${esc(set.title)}</div>
-                        <div class="list-item-meta">${count} questions • Created ${new Date(set.created_at).toLocaleDateString()}</div>
+                        <div class="list-item-meta">${count} questions • ${visibilityLabel} • By ${isMine ? 'Me' : 'Peer'}</div>
                     </div>
                     <div class="list-item-actions">
                         <button class="btn ghost" onclick="hostLiveBeeWithSet('${set.id}')">Host Live Bee</button>
-                        <button class="btn ghost" onclick="editQuestionSet('${set.id}')">Edit</button>
-                        <button class="btn bad ghost" onclick="deleteQuestionSet('${set.id}')">Delete</button>
+                        ${isMine ? `
+                            <button class="btn ghost" onclick="editQuestionSet('${set.id}')">Edit</button>
+                            <button class="btn bad ghost" onclick="deleteQuestionSet('${set.id}')">Delete</button>
+                        ` : `
+                            <button class="btn ghost" onclick="copyQuestionSet('${set.id}')">Copy to My Sets</button>
+                        `}
                     </div>
                 </div>
             `;
         }).join('');
     }
+
+    window.copyQuestionSet = async (setId) => {
+        const set = myQuestionSets.find(s => s.id === setId);
+        if (!set) return;
+        const { error } = await sb.from('question_sets').insert({
+            creator_id: uid,
+            title: `${set.title} (Copy)`,
+            questions: set.questions,
+            visibility: 'private',
+            creator_school: mySchoolName
+        });
+        if (error) { showAlert('Failed to copy: ' + error.message); return; }
+        showAlert('Set copied to your personal collection!', 'success');
+        setVisibilityFilter = 'my';
+        document.querySelectorAll('#set-visibility-filters .chip').forEach(c => c.classList.toggle('active', c.dataset.filter === 'my'));
+        loadQuestionSets();
+    };
+
+    document.querySelectorAll('#set-visibility-filters .chip').forEach(chip => {
+        chip.addEventListener('click', () => {
+            document.querySelectorAll('#set-visibility-filters .chip').forEach(c => c.classList.remove('active'));
+            chip.classList.add('active');
+            setVisibilityFilter = chip.dataset.filter;
+            loadQuestionSets();
+        });
+    });
 
     window.hostLiveBeeWithSet = (setId) => {
         window.location.href = `livebee.html?setId=${setId}`;
@@ -4761,6 +4821,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Save/Cancel
     document.getElementById('btn-create-assignment')?.addEventListener('click', async () => {
         const title = document.getElementById('assign-title').value.trim();
+        const visibility = document.getElementById('assign-visibility')?.value || 'private';
         if (!title) { showAlert('Please provide a title.'); return; }
         if (!selectedQuestions.length) { showAlert('Please select at least one question.'); return; }
 
@@ -4772,18 +4833,22 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (currentEditSetId) {
                 const { error } = await sb.from('question_sets').update({
                     title,
-                    questions: selectedQuestions
+                    questions: selectedQuestions,
+                    visibility,
+                    creator_school: mySchoolName
                 }).eq('id', currentEditSetId);
                 if (error) throw error;
-                showAlert('Question set updated!');
+                showAlert('Question set updated!', 'success');
             } else {
                 const { error } = await sb.from('question_sets').insert({
                     creator_id: uid,
                     title,
-                    questions: selectedQuestions
+                    questions: selectedQuestions,
+                    visibility,
+                    creator_school: mySchoolName
                 });
                 if (error) throw error;
-                showAlert('Question set created!');
+                showAlert('Question set created!', 'success');
             }
             activateDashboardTab('question-sets');
         } catch (e) {

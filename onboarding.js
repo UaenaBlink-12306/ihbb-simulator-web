@@ -102,16 +102,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Student Flow
     async function saveStudentProfile() {
         try {
-            // Note: Since we don't have the table created yet in the DB, 
-            // this is an optimistic update/insert.
+            const schoolName = document.getElementById('student-school-name')?.value.trim();
             await upsertProfileRecord({
                 id: currentUser.id,
                 role: 'student',
-                class_code: null
+                class_code: null,
+                school_name: schoolName || null
             });
-
-            // Even if it fails (table not created), we let them into the app for now
-            // since we are just doing frontend setup.
             window.location.href = 'student.html';
         } catch (err) {
             console.error(err);
@@ -130,9 +127,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     async function saveTeacherProfile(className, inviteCode) {
         try {
+            const schoolName = document.getElementById('teacher-school-name')?.value.trim();
             await upsertProfileRecord({
                 id: currentUser.id,
-                role: 'teacher'
+                role: 'teacher',
+                school_name: schoolName || null
             });
 
             if (inviteCode) {

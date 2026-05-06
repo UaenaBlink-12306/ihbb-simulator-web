@@ -235,6 +235,15 @@
                     </div>
                     <button id="btn-create-question-set" class="btn pri">Create New Set</button>
                 </div>
+
+                <div class="filter-bar" style="margin-bottom: 18px;">
+                    <div class="chips" id="set-visibility-filters">
+                        <div class="chip active" data-filter="my">My Sets</div>
+                        <div class="chip" data-filter="school">My School</div>
+                        <div class="chip" data-filter="community">Community</div>
+                    </div>
+                </div>
+
                 <div class="dashboard-split dashboard-split-solo">
                     <div id="question-sets-list" class="list-container">
                         <p class="muted">Loading question sets...</p>
@@ -264,9 +273,17 @@
                 </div>
 
                 <div class="form-grid">
-                    <div class="input-group full-width">
+                    <div class="input-group">
                         <label>Set Title</label>
                         <input type="text" id="assign-title" placeholder="e.g. My Favorite History Questions">
+                    </div>
+                    <div class="input-group">
+                        <label>Visibility</label>
+                        <select id="assign-visibility">
+                            <option value="private">Private (Only me)</option>
+                            <option value="school">My School</option>
+                            <option value="public">Public (Community)</option>
+                        </select>
                     </div>
                 </div>
 
@@ -744,6 +761,13 @@
                 </div>
                 <div class="dashboard-split dashboard-split-solo">
                     <div class="list-container">
+                        <div class="list-item">
+                            <div>
+                                <h3 style="margin:0 0 4px;">Community Question Sets! 🌍</h3>
+                                <div class="pill">May 6, 2026</div>
+                                <p class="muted" style="margin: 8px 0 0;">You can now share your custom question sets with your school or the entire IHBB community! Discover sets curated by peers and teachers in the new "Community" and "School" tabs.</p>
+                            </div>
+                        </div>
                         <div class="list-item">
                             <div>
                                 <h3 style="margin:0 0 4px;">Host Your Own Live Bees! 🐝</h3>

@@ -184,6 +184,15 @@
                     </div>
                     <button id="btn-create-question-set" class="btn pri">Create New Set</button>
                 </div>
+
+                <div class="filter-bar" style="margin-bottom: 18px;">
+                    <div class="chips" id="set-visibility-filters">
+                        <div class="chip active" data-filter="my">My Sets</div>
+                        <div class="chip" data-filter="school">My School</div>
+                        <div class="chip" data-filter="community">Community</div>
+                    </div>
+                </div>
+
                 <div class="dashboard-split dashboard-split-solo">
                     <div id="question-sets-list" class="list-container">
                         <p class="muted">Loading question sets...</p>
@@ -217,6 +226,14 @@
                         <div class="input-group">
                             <label>Title</label>
                             <input type="text" id="assign-title" placeholder="e.g. Week 3 Quiz">
+                        </div>
+                        <div class="input-group">
+                            <label>Visibility</label>
+                            <select id="assign-visibility">
+                                <option value="private">Private (Only me)</option>
+                                <option value="school">My School</option>
+                                <option value="public">Public (Community)</option>
+                            </select>
                         </div>
                         <div class="input-group">
                             <label>Assign to Class</label>
@@ -643,6 +660,13 @@
                 </div>
                 <div class="dashboard-split dashboard-split-solo">
                     <div class="list-container">
+                        <div class="list-item">
+                            <div>
+                                <h3 style="margin:0 0 4px;">Shared Study Materials</h3>
+                                <div class="pill">May 6, 2026</div>
+                                <p class="muted" style="margin: 8px 0 0;">Question sets can now be shared school-wide or publicly. Leverage the community's curated materials to diversify your Live Bees and assignments.</p>
+                            </div>
+                        </div>
                         <div class="list-item">
                             <div>
                                 <h3 style="margin:0 0 4px;">Student Hosting & Question Sets</h3>
