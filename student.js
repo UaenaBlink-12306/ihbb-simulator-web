@@ -48,6 +48,23 @@ document.addEventListener('DOMContentLoaded', async () => {
     const avatarOptions = Array.isArray(avatarCatalog.AVATAR_OPTIONS) && avatarCatalog.AVATAR_OPTIONS.length
         ? avatarCatalog.AVATAR_OPTIONS
         : [{ id: 'penguin', label: 'Penguin' }];
+
+    // Builder & Set State
+    let allQuestions = [];
+    let selectedQuestions = [];
+    let isCreatingSet = false;
+    let currentEditSetId = null;
+    let myQuestionSets = [];
+    let draftQuestions = [];
+
+    try {
+        const resp = await fetch('questions.json');
+        const json = await resp.json();
+        allQuestions = (Array.isArray(json) ? json : (json.items || json.questions || json.sets?.[0]?.items || []))
+            .filter(q => q && q.question && q.answer);
+    } catch (e) {
+        console.error('Failed to load question bank:', e);
+    }
     const normalizeAvatarId = (value) => {
         if (typeof avatarCatalog.normalizeAvatarId === 'function') return avatarCatalog.normalizeAvatarId(value);
         return 'penguin';
@@ -701,6 +718,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (tabName === 'analytics') loadAnalytics();
         if (tabName === 'coach') loadCoachWorkspace(false);
         if (tabName === 'leaderboard') activateLeaderboardSubtab('global');
+        if (tabName === 'question-sets') loadQuestionSets();
+        if (tabName === 'create') setupBuilder();
         renderDashboardChatChrome();
     }
 
@@ -4440,6 +4459,378 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
         renderLeaderboardNodes('leaderboard-list-class', data, 'pts');
     }
+
+    const ERA_LABELS = {
+        '01': 'Prehistory to 600 BCE',
+        '02': '600 BCE to 600 CE',
+        '03': '600 to 1450',
+        '04': '1450 to 1750',
+        '05': '1750 to 1914',
+        '06': '1914 to Present',
+        '07': 'US History'
+    };
+    const CATEGORIES = ['World', 'Europe', 'North America', 'South Asia', 'East Asia', 'Central Asia', 'Southeast Asia', 'Middle East', 'Africa', 'Latin America', 'Oceania', 'US History'];
+
+    const getEraLabel = (era) => ERA_LABELS[era] || era;
+    const questionKey = (q) => {
+        if (!q) return '';
+        const raw = (q.question || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+        const ans = (q.answer || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+        return `${raw.slice(0, 30)}|${ans.slice(0, 20)}`;
+    };
+    const questionEra = (q) => {
+        const era = q.meta?.era || q.era;
+        return era && ERA_LABELS[era] ? era : null;
+    };
+    const dedupeQuestions = (list) => {
+        const seen = new Set();
+        return list.filter(q => {
+            const key = questionKey(q);
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
+        });
+    };
+    const sortEraCodes = (a, b) => {
+        const numA = parseInt(a, 10) || 99;
+        const numB = parseInt(b, 10) || 99;
+        return numA - numB;
+    };
+    const clampCount = (val, def) => {
+        const n = parseInt(val, 10);
+        return isNaN(n) ? def : Math.max(1, Math.min(100, n));
+    };
+
+    // ========== QUESTION SETS ==========
+    async function loadQuestionSets() {
+        const el = document.getElementById('question-sets-list');
+        if (!el) return;
+        const { data, error } = await sb.from('question_sets').select('*').eq('creator_id', uid).order('created_at', { ascending: false });
+        if (error) {
+            el.innerHTML = '<p class="muted">Failed to load question sets.</p>';
+            return;
+        }
+        myQuestionSets = data || [];
+        renderQuestionSets();
+    }
+
+    function renderQuestionSets() {
+        const el = document.getElementById('question-sets-list');
+        if (!el) return;
+        if (!myQuestionSets.length) {
+            el.innerHTML = emptyStateHtml('Question Sets', 'No sets saved yet', 'Create your first question set to reuse it across assignments and Live Bee games.');
+            return;
+        }
+        el.innerHTML = myQuestionSets.map(set => {
+            const count = Array.isArray(set.questions) ? set.questions.length : 0;
+            return `
+                <div class="list-item">
+                    <div class="list-item-main">
+                        <div class="list-item-title">${esc(set.title)}</div>
+                        <div class="list-item-meta">${count} questions • Created ${new Date(set.created_at).toLocaleDateString()}</div>
+                    </div>
+                    <div class="list-item-actions">
+                        <button class="btn ghost" onclick="hostLiveBeeWithSet('${set.id}')">Host Live Bee</button>
+                        <button class="btn ghost" onclick="editQuestionSet('${set.id}')">Edit</button>
+                        <button class="btn bad ghost" onclick="deleteQuestionSet('${set.id}')">Delete</button>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    window.hostLiveBeeWithSet = (setId) => {
+        window.location.href = `livebee.html?setId=${setId}`;
+    };
+
+    window.editQuestionSet = (setId) => {
+        const set = myQuestionSets.find(s => s.id === setId);
+        if (!set) return;
+        isCreatingSet = true;
+        currentEditSetId = setId;
+        selectedQuestions = Array.isArray(set.questions) ? [...set.questions] : [];
+        activateDashboardTab('create');
+        
+        document.getElementById('builder-title').textContent = 'Edit Question Set';
+        document.getElementById('assign-title').value = set.title;
+        updatePreview();
+    };
+
+    window.deleteQuestionSet = async (setId) => {
+        if (!confirm('Are you sure you want to delete this question set?')) return;
+        const { error } = await sb.from('question_sets').delete().eq('id', setId);
+        if (error) { showAlert('Failed to delete: ' + error.message); return; }
+        loadQuestionSets();
+    };
+
+    document.getElementById('btn-create-question-set')?.addEventListener('click', () => {
+        isCreatingSet = true;
+        currentEditSetId = null;
+        selectedQuestions = [];
+        activateDashboardTab('create');
+        
+        document.getElementById('builder-title').textContent = 'Create Question Set';
+        document.getElementById('assign-title').value = '';
+        updatePreview();
+    });
+
+    const esc = (str) => String(str || '').replace(/[&<>"']/g, m => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[m]));
+
+    // ========== SET BUILDER ==========
+    function setupBuilder() {
+        renderBuilderFilters();
+        renderQuestionBank();
+        updatePreview();
+    }
+
+    function renderBuilderFilters() {
+        const catSelect = document.getElementById('bank-category');
+        const eraSelect = document.getElementById('bank-era');
+        const genRegion = document.getElementById('teacher-gen-region');
+        const genEra = document.getElementById('teacher-gen-era');
+
+        if (catSelect) {
+            catSelect.innerHTML = '<option value="">All Categories</option>' + CATEGORIES.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join('');
+        }
+        if (eraSelect) {
+            eraSelect.innerHTML = '<option value="">All Eras</option>' + Object.entries(ERA_LABELS).sort((a,b)=>sortEraCodes(a[0],b[0])).map(([id, label]) => `<option value="${esc(id)}">${esc(label)}</option>`).join('');
+        }
+        if (genRegion) {
+            genRegion.innerHTML = '<option value="">Any Region</option>' + CATEGORIES.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join('');
+        }
+        if (genEra) {
+            genEra.innerHTML = '<option value="">Any Era</option>' + Object.entries(ERA_LABELS).sort((a,b)=>sortEraCodes(a[0],b[0])).map(([id, label]) => `<option value="${esc(id)}">${esc(label)}</option>`).join('');
+        }
+    }
+
+    function renderQuestionBank() {
+        const el = document.getElementById('bank-list');
+        if (!el) return;
+
+        const search = document.getElementById('bank-search')?.value.toLowerCase().trim();
+        const cat = document.getElementById('bank-category')?.value;
+        const era = document.getElementById('bank-era')?.value;
+
+        if (!search && !cat && !era) {
+            el.innerHTML = '<p class="muted">Search or filter to see questions...</p>';
+            return;
+        }
+
+        const matches = allQuestions.filter(q => {
+            if (cat && (q.meta?.category || q.category) !== cat) return false;
+            if (era && (q.meta?.era || q.era) !== era) return false;
+            if (search) {
+                const text = `${q.question} ${q.answer}`.toLowerCase();
+                if (!text.includes(search)) return false;
+            }
+            return true;
+        }).slice(0, 50);
+
+        if (!matches.length) {
+            el.innerHTML = '<p class="muted">No matches found.</p>';
+            return;
+        }
+
+        el.innerHTML = matches.map(q => {
+            const key = questionKey(q);
+            const selected = selectedQuestions.some(s => questionKey(s) === key);
+            return `
+                <div class="list-item ${selected ? 'selected' : ''}" onclick="toggleBankQuestion('${esc(key)}')">
+                    <div class="list-item-main">
+                        <div class="list-item-title">${esc(q.answer)}</div>
+                        <div class="list-item-meta">${esc(q.question.substring(0, 100))}...</div>
+                    </div>
+                    <div class="list-item-actions">
+                        <input type="checkbox" ${selected ? 'checked' : ''} style="pointer-events: none;">
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    window.toggleBankQuestion = (key) => {
+        const q = allQuestions.find(aq => questionKey(aq) === key);
+        if (!q) return;
+        const idx = selectedQuestions.findIndex(s => questionKey(s) === key);
+        if (idx >= 0) selectedQuestions.splice(idx, 1);
+        else selectedQuestions.push(q);
+        renderQuestionBank();
+        updatePreview();
+    };
+
+    function updatePreview() {
+        const el = document.getElementById('selected-list');
+        const countEl = document.getElementById('selected-count');
+        if (countEl) countEl.textContent = selectedQuestions.length;
+        if (!el) return;
+
+        if (!selectedQuestions.length) {
+            el.innerHTML = '<p class="muted">No questions selected yet.</p>';
+            return;
+        }
+
+        el.innerHTML = selectedQuestions.map((q, i) => `
+            <div class="list-item">
+                <div class="list-item-main">
+                    <div class="list-item-title">${esc(q.answer)}</div>
+                    <div class="list-item-meta">${esc(q.question.substring(0, 100))}...</div>
+                </div>
+                <div class="list-item-actions">
+                    <button class="btn bad ghost" onclick="removeSelectedQuestion(${i})">Remove</button>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    window.removeSelectedQuestion = (i) => {
+        selectedQuestions.splice(i, 1);
+        renderQuestionBank();
+        updatePreview();
+    };
+
+    // AI Generator
+    document.getElementById('btn-teacher-generate')?.addEventListener('click', async () => {
+        const topic = document.getElementById('teacher-gen-topic').value.trim();
+        const count = parseInt(document.getElementById('teacher-gen-count').value) || 5;
+        const region = document.getElementById('teacher-gen-region').value;
+        const era = document.getElementById('teacher-gen-era').value;
+
+        const btn = document.getElementById('btn-teacher-generate');
+        const status = document.getElementById('teacher-gen-status');
+        const preview = document.getElementById('teacher-gen-preview');
+
+        if (!topic && !region && !era) {
+            showAlert('Please provide a topic, region, or era.');
+            return;
+        }
+
+        btn.disabled = true;
+        btn.textContent = 'Generating...';
+        status.textContent = 'Drafting questions...';
+        preview.classList.remove('hidden');
+        preview.innerHTML = '<p class="muted">AI is drafting questions tailored to your focus...</p>';
+
+        try {
+            const resp = await fetch('/api/generate-questions', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ topic, count, region, era })
+            });
+            const data = await resp.json();
+            if (data.error) throw new Error(data.error);
+            draftQuestions = data.questions || [];
+            
+            preview.innerHTML = draftQuestions.map((q, i) => `
+                <div class="preview-item" style="margin-bottom: 8px; padding-bottom: 8px; border-bottom: 1px solid var(--line-light);">
+                    <strong>${i+1}. ${esc(q.answer)}</strong><br>
+                    <span class="muted">${esc(q.question)}</span>
+                </div>
+            `).join('');
+
+            document.getElementById('btn-teacher-add-draft').disabled = false;
+            document.getElementById('btn-teacher-clear-draft').style.display = 'inline-block';
+            status.textContent = `Generated ${draftQuestions.length} draft questions.`;
+        } catch (e) {
+            status.textContent = 'Generation failed.';
+            preview.innerHTML = `<p class="bad">Error: ${e.message}</p>`;
+        } finally {
+            btn.disabled = false;
+            btn.textContent = 'Generate Draft';
+        }
+    });
+
+    document.getElementById('btn-teacher-clear-draft')?.addEventListener('click', () => {
+        draftQuestions = [];
+        document.getElementById('teacher-gen-preview').innerHTML = '';
+        document.getElementById('teacher-gen-preview').classList.add('hidden');
+        document.getElementById('btn-teacher-add-draft').disabled = true;
+        document.getElementById('btn-teacher-clear-draft').style.display = 'none';
+        document.getElementById('teacher-gen-status').textContent = 'AI Generation';
+    });
+
+    document.getElementById('btn-teacher-add-draft')?.addEventListener('click', () => {
+        selectedQuestions = [...selectedQuestions, ...draftQuestions];
+        updatePreview();
+        renderQuestionBank();
+        showAlert(`Added ${draftQuestions.length} questions to your set.`);
+        document.getElementById('btn-teacher-clear-draft').click();
+    });
+
+    // Save/Cancel
+    document.getElementById('btn-create-assignment')?.addEventListener('click', async () => {
+        const title = document.getElementById('assign-title').value.trim();
+        if (!title) { showAlert('Please provide a title.'); return; }
+        if (!selectedQuestions.length) { showAlert('Please select at least one question.'); return; }
+
+        const btn = document.getElementById('btn-create-assignment');
+        btn.disabled = true;
+        btn.textContent = 'Saving...';
+
+        try {
+            if (currentEditSetId) {
+                const { error } = await sb.from('question_sets').update({
+                    title,
+                    questions: selectedQuestions
+                }).eq('id', currentEditSetId);
+                if (error) throw error;
+                showAlert('Question set updated!');
+            } else {
+                const { error } = await sb.from('question_sets').insert({
+                    creator_id: uid,
+                    title,
+                    questions: selectedQuestions
+                });
+                if (error) throw error;
+                showAlert('Question set created!');
+            }
+            activateDashboardTab('question-sets');
+        } catch (e) {
+            showAlert('Failed to save: ' + e.message);
+        } finally {
+            btn.disabled = false;
+            btn.textContent = 'Save Question Set';
+        }
+    });
+
+    document.getElementById('btn-cancel-create')?.addEventListener('click', () => {
+        activateDashboardTab('question-sets');
+    });
+
+    // Templates (Simplified for Students)
+    document.querySelectorAll('.template-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const template = btn.dataset.template;
+            let topic = '', region = '', era = '';
+            if (template === 'silk-road') { topic = 'The Silk Road'; region = 'Central Asia'; }
+            if (template === 'us-presidents') { topic = 'US Presidents'; era = '05'; }
+            if (template === 'cold-war') { topic = 'The Cold War'; era = '06'; }
+            
+            document.getElementById('teacher-gen-topic').value = topic;
+            document.getElementById('teacher-gen-region').value = region;
+            document.getElementById('teacher-gen-era').value = era;
+            document.getElementById('assign-title').value = topic ? `${topic} Set` : 'New Question Set';
+            
+            // Auto-pick from bank
+            const picked = allQuestions.filter(q => {
+                if (region && (q.meta?.category || q.category) !== region) return false;
+                if (era && (q.meta?.era || q.era) !== era) return false;
+                if (topic && `${q.question} ${q.answer}`.toLowerCase().includes(topic.toLowerCase())) return false;
+                return true;
+            }).slice(0, 10);
+            
+            selectedQuestions = picked;
+            updatePreview();
+            renderQuestionBank();
+            showAlert(`Template loaded with ${picked.length} questions from the bank.`);
+        });
+    });
+
+    // Search/Filter events
+    document.getElementById('bank-search')?.addEventListener('input', renderQuestionBank);
+    document.getElementById('bank-category')?.addEventListener('change', renderQuestionBank);
+    document.getElementById('bank-era')?.addEventListener('change', renderQuestionBank);
 
     // ========== HELPERS ==========
     function showAlert(msg, type = 'error') {

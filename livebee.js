@@ -33,13 +33,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (!profile || !profile.role) { window.location.replace('onboarding.html'); return; }
     if (guard) guard.remove();
 
-    const isHost = profile.role === 'teacher';
-    const myName = profile.display_name || (isHost ? 'Teacher' : 'Student');
+    let isHost = profile.role === 'teacher';
+    const myRole = profile.role;
+    const myName = profile.display_name || (myRole === 'teacher' ? 'Teacher' : 'Student');
     const myAvatarId = normalizeAvatarId(profile.avatar_id);
 
-    // Back button
-    document.getElementById('btn-back').href = isHost ? 'teacher.html' : 'student.html';
-    document.getElementById('btn-back-dashboard').href = isHost ? 'teacher.html' : 'student.html';
+    // Back button - always point to the user's actual role dashboard
+    const dashboardUrl = myRole === 'teacher' ? 'teacher.html' : 'student.html';
+    document.getElementById('btn-back').href = dashboardUrl;
+    document.getElementById('btn-back-dashboard').href = dashboardUrl;
 
     // ==================== HELPERS ====================
     const $ = id => document.getElementById(id);
@@ -387,12 +389,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     let confettiCleanupTimer = null;
 
     // ==================== LOBBY ====================
-    if (isHost) {
-        $('lobby-host').classList.remove('hidden');
-        updateHostMusicButton();
-    } else {
-        $('lobby-join').classList.remove('hidden');
-    }
+    $('lobby-host').classList.remove('hidden');
+    $('lobby-join').classList.remove('hidden');
+    if (isHost) updateHostMusicButton();
 
     ['btn-host-music', 'btn-host-music-game'].forEach((id) => {
         $(id)?.addEventListener('click', () => {
@@ -402,12 +401,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
     window.addEventListener('pagehide', stopHostMusic);
 
-    // Teacher: Create Room
+    // Host: Create Room (Accessible to all now)
     $('btn-create-room')?.addEventListener('click', async () => {
         const code = genCode();
         const { data, error } = await sb.from('bee_rooms').insert({ code, host_id: uid, status: 'waiting' }).select().single();
         if (error) { showAlert('Failed to create room: ' + error.message); return; }
         room = data;
+        isHost = true; // User who creates the room is the host
+        BeeHostMusic.enabled = isHost && beePrefs.liveBeeHostMusic !== false;
+        
         upsertPlayer(uid, { name: myName, score: 0, avatarId: myAvatarId });
         await sb.from('bee_participants').insert({ room_id: room.id, user_id: uid, display_name: myName, score: 0 });
         playBeeCue('join');
@@ -433,6 +435,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                 host_id: joined.host_id,
                 status: joined.status
             };
+            isHost = (uid === room.host_id);
+            BeeHostMusic.enabled = isHost && beePrefs.liveBeeHostMusic !== false;
+
             playBeeCue('join');
             enterWaitingRoom();
             return;
@@ -623,7 +628,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     let myQuestionSets = [];
 
     async function loadBeeSavedSets() {
-        const { data, error } = await sb.from('question_sets').select('*').eq('teacher_id', uid).order('created_at', { ascending: false });
+        const { data, error } = await sb.from('question_sets').select('*').eq('creator_id', uid).order('created_at', { ascending: false });
         if (!error && data) {
             myQuestionSets = data;
             const el = $('bee-saved-sets-list');

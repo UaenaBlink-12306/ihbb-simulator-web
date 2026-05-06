@@ -2732,7 +2732,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // ========== QUESTION SETS ==========
     async function loadQuestionSets() {
-        const { data, error } = await sb.from('question_sets').select('*').eq('teacher_id', uid).order('created_at', { ascending: false });
+        const { data, error } = await sb.from('question_sets').select('*').eq('creator_id', uid).order('created_at', { ascending: false });
         if (!error && data) {
             myQuestionSets = data;
             renderQuestionSets(myQuestionSets);
@@ -3897,7 +3897,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         try {
             if (isCreatingSet) {
                 const { error } = await sb.from('question_sets').insert({
-                    teacher_id: uid,
+                    creator_id: uid,
                     title,
                     questions: selectedQuestions
                 });
