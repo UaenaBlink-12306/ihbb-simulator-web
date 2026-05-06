@@ -152,6 +152,19 @@
                                 <div class="chip active bee-mode-btn" data-mode="random">Random</div>
                                 <div class="chip bee-mode-btn" data-mode="filter">By Topic / Era</div>
                                 <div class="chip bee-mode-btn" data-mode="pick">Hand Pick</div>
+                                <div class="chip bee-mode-btn" data-mode="saved-sets">Saved Sets</div>
+                            </div>
+
+                            <div id="bee-mode-saved-sets" class="bee-mode-panel hidden" style="margin-top: 18px;">
+                                <div class="card-muted-box">
+                                    <div class="section-head" style="margin-bottom: 8px;">
+                                        <h3 style="margin: 0;">Your Saved Sets</h3>
+                                        <p class="section-subtitle" style="margin: 0;">Click a set to replace your current draft with its questions.</p>
+                                    </div>
+                                    <div id="bee-saved-sets-list" class="list-container" style="margin-top: 8px; max-height: 200px; overflow-y: auto;">
+                                        <p class="muted" style="margin:0;">Loading sets...</p>
+                                    </div>
+                                </div>
                             </div>
 
                             <div id="bee-mode-random" class="bee-mode-panel" style="margin-top: 18px;">

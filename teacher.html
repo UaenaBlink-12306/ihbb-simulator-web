@@ -127,6 +127,7 @@
         <nav class="tab-strip dashboard-tabs">
             <button class="dash-tab active" data-tab="classes">My Classes</button>
             <button class="dash-tab" data-tab="assignments">Assignments</button>
+            <button class="dash-tab" data-tab="question-sets">Question Sets</button>
             <button class="dash-tab" data-tab="create">Create Assignment</button>
             <button class="dash-tab" data-tab="livebee">Live Bee</button>
             <button class="dash-tab" data-tab="analytics">Analytics</button>
@@ -169,6 +170,23 @@
                 <div class="dashboard-split dashboard-split-solo">
                     <div id="assignments-list" class="list-container">
                         <p class="muted">Loading assignments...</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="tab-question-sets" class="view">
+            <div class="card section-card">
+                <div class="section-head">
+                    <div>
+                        <h2 class="card-title">Question Sets</h2>
+                        <p class="section-subtitle">Curated lists of questions that can be assigned directly or used in a Live Bee.</p>
+                    </div>
+                    <button id="btn-create-question-set" class="btn pri">Create New Set</button>
+                </div>
+                <div class="dashboard-split dashboard-split-solo">
+                    <div id="question-sets-list" class="list-container">
+                        <p class="muted">Loading question sets...</p>
                     </div>
                 </div>
             </div>
@@ -267,6 +285,19 @@
                             <div class="chip active mode-btn" data-mode="random">Random</div>
                             <div class="chip mode-btn" data-mode="filter">By Topic / Era</div>
                             <div class="chip mode-btn" data-mode="pick">Hand Pick</div>
+                            <div class="chip mode-btn" data-mode="saved-sets">Saved Sets</div>
+                        </div>
+
+                        <div id="mode-saved-sets" class="mode-panel view hidden" style="margin-top: 18px;">
+                            <div class="card-muted-box">
+                                <div class="section-head" style="margin-bottom: 8px;">
+                                    <h3 style="margin: 0;">Your Saved Sets</h3>
+                                    <p class="section-subtitle" style="margin: 0;">Click a set to replace your current draft with its questions.</p>
+                                </div>
+                                <div id="builder-saved-sets-list" class="list-container" style="margin-top: 8px; max-height: 200px; overflow-y: auto;">
+                                    <p class="muted" style="margin:0;">Loading sets...</p>
+                                </div>
+                            </div>
                         </div>
 
                         <div id="mode-random" class="mode-panel view active" style="margin-top: 18px;">
@@ -612,6 +643,14 @@
                 </div>
                 <div class="dashboard-split dashboard-split-solo">
                     <div class="list-container">
+                        <div class="list-item">
+                            <div>
+                                <h3 style="margin:0 0 4px;">Account Settings Overhaul</h3>
+                                <div class="pill">April 21, 2026</div>
+                                <p class="muted" style="margin: 8px 0 0;">The Account page has been redesigned so that saving profile basics (DisplayName, Email, Password) and workspace preferences are decoupled and immediately accessible without excessive scrolling. You can also now update your account password directly from this tab.</p>
+                            </div>
+                        </div>
+
                         <div class="list-item">
                             <div>
                                 <h3 style="margin:0 0 4px;">Account Settings Overhaul</h3>

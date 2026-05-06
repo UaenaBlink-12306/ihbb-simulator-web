@@ -620,6 +620,38 @@ document.addEventListener('DOMContentLoaded', async () => {
     // ==================== HOST: QUESTION SELECTION ====================
     let hostFilterCats = [];
     let hostFilterEras = [];
+    let myQuestionSets = [];
+
+    async function loadBeeSavedSets() {
+        const { data, error } = await sb.from('question_sets').select('*').eq('teacher_id', uid).order('created_at', { ascending: false });
+        if (!error && data) {
+            myQuestionSets = data;
+            const el = $('bee-saved-sets-list');
+            if (!el) return;
+            if (!data.length) {
+                el.innerHTML = '<p class="muted" style="margin:0;">No saved question sets available.</p>';
+                return;
+            }
+            el.innerHTML = data.map(set => {
+                const count = Array.isArray(set.questions) ? set.questions.length : 0;
+                return `<div class="list-item" style="cursor:pointer;" onclick="loadSetIntoBee('${set.id}')">
+                    <div class="item-copy">
+                        <span class="item-title">${esc(set.title)}</span>
+                        <span class="item-meta">${count} questions</span>
+                    </div>
+                    <span class="item-badge">Load</span>
+                </div>`;
+            }).join('');
+        }
+    }
+
+    window.loadSetIntoBee = (setId) => {
+        const set = myQuestionSets.find(s => s.id === setId);
+        if (!set) return;
+        selectedQuestions = [...(set.questions || [])];
+        showAlert('Loaded questions from saved set.', 'success');
+        updatePreview();
+    };
 
     function setupHostQuestionUI() {
         // Mode switching
@@ -630,8 +662,28 @@ document.addEventListener('DOMContentLoaded', async () => {
                 document.querySelectorAll('.bee-mode-panel').forEach(p => p.classList.add('hidden'));
                 const panel = $('bee-mode-' + btn.dataset.mode);
                 if (panel) panel.classList.remove('hidden');
+                
+                if (btn.dataset.mode === 'saved-sets' && !myQuestionSets.length) {
+                    loadBeeSavedSets();
+                }
             });
         });
+
+        // Preload set from URL if present
+        const urlParams = new URLSearchParams(window.location.search);
+        const presetId = urlParams.get('set');
+        if (presetId) {
+            (async () => {
+                await loadBeeSavedSets();
+                const set = myQuestionSets.find(s => s.id === presetId);
+                if (set) {
+                    const btn = document.querySelector('.bee-mode-btn[data-mode="saved-sets"]');
+                    if (btn) btn.click();
+                    loadSetIntoBee(presetId);
+                    window.history.replaceState({}, document.title, window.location.pathname);
+                }
+            })();
+        }
 
         // Random
         $('btn-bee-random')?.addEventListener('click', () => {

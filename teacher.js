@@ -82,6 +82,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     let selectedQuestions = [];
     let myClasses = [];
     let latestAssignments = [];
+    let myQuestionSets = [];
+    let isCreatingSet = false;
     let currentMode = 'random';
     let selectedFilterCategories = [];
     let selectedFilterEras = [];
@@ -2728,6 +2730,94 @@ document.addEventListener('DOMContentLoaded', async () => {
         loadAssignments();
     };
 
+    // ========== QUESTION SETS ==========
+    async function loadQuestionSets() {
+        const { data, error } = await sb.from('question_sets').select('*').eq('teacher_id', uid).order('created_at', { ascending: false });
+        if (!error && data) {
+            myQuestionSets = data;
+            renderQuestionSets(myQuestionSets);
+            renderBuilderSavedSets(myQuestionSets);
+        }
+    }
+
+    function renderQuestionSets(list) {
+        const el = document.getElementById('question-sets-list');
+        if (!el) return;
+        if (!list.length) {
+            el.innerHTML = emptyStateHtml('Question Sets', 'No sets saved yet', 'Create your first question set to reuse it across assignments and Live Bee games.');
+            return;
+        }
+        el.innerHTML = list.map(set => {
+            const count = Array.isArray(set.questions) ? set.questions.length : 0;
+            const date = new Date(set.created_at).toLocaleDateString();
+            return `<div class="list-item">
+                <div class="item-copy">
+                    <span class="item-title">${esc(set.title)}</span>
+                    <span class="item-meta">${count} questions • Created ${date}</span>
+                </div>
+                <div class="item-actions">
+                    <button class="btn ghost" onclick="assignQuestionSet('${set.id}')">Assign to Class</button>
+                    <button class="btn ghost" onclick="hostLiveBeeWithSet('${set.id}')">Host Live Bee</button>
+                    <button class="btn bad" onclick="deleteQuestionSet('${set.id}')">Delete</button>
+                </div>
+            </div>`;
+        }).join('');
+    }
+
+    function renderBuilderSavedSets(list) {
+        const el = document.getElementById('builder-saved-sets-list');
+        if (!el) return;
+        if (!list.length) {
+            el.innerHTML = '<p class="muted" style="margin:0;">No saved question sets available.</p>';
+            return;
+        }
+        el.innerHTML = list.map(set => {
+            const count = Array.isArray(set.questions) ? set.questions.length : 0;
+            return `<div class="list-item" style="cursor:pointer;" onclick="loadSavedSetIntoBuilder('${set.id}')">
+                <div class="item-copy">
+                    <span class="item-title">${esc(set.title)}</span>
+                    <span class="item-meta">${count} questions</span>
+                </div>
+                <span class="item-badge">Load</span>
+            </div>`;
+        }).join('');
+    }
+
+    window.assignQuestionSet = (setId) => {
+        const set = myQuestionSets.find(s => s.id === setId);
+        if (!set) return;
+        isCreatingSet = false;
+        setSelectedQuestions(set.questions || []);
+        document.getElementById('assign-title').value = set.title;
+        activateDashboardTab('create');
+    };
+
+    window.hostLiveBeeWithSet = (setId) => {
+        window.open(`livebee.html?set=${setId}`, '_blank');
+    };
+
+    window.deleteQuestionSet = async (id) => {
+        if (!confirm('Delete this question set?')) return;
+        await sb.from('question_sets').delete().eq('id', id);
+        loadQuestionSets();
+    };
+
+    window.loadSavedSetIntoBuilder = (setId) => {
+        const set = myQuestionSets.find(s => s.id === setId);
+        if (!set) return;
+        setSelectedQuestions(set.questions || []);
+        showAlert('Loaded questions from saved set.', 'success');
+        openSelectedQuestionsReview();
+    };
+
+    document.getElementById('btn-create-question-set')?.addEventListener('click', () => {
+        isCreatingSet = true;
+        selectedQuestions = [];
+        updatePreview();
+        document.getElementById('assign-title').value = '';
+        activateDashboardTab('create');
+    });
+
     // ========== CREATE ASSIGNMENT ==========
     // Populate filter chips
     const cats = [...new Set(allQuestions.map(q => q.meta?.category || q.category || '').filter(Boolean))]
@@ -3788,7 +3878,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const instructions = document.getElementById('assign-instructions').value.trim();
 
         if (!title) return showAlert('Title is required.', 'error');
-        if (!classId) return showAlert('Select a class.', 'error');
+        if (!isCreatingSet && !classId) return showAlert('Select a class.', 'error');
         if (!selectedQuestions.length) return showAlert('Select some questions first.', 'error');
         const duplicateGroups = assignmentDuplicateAnswerGroups();
         if (duplicateGroups.length) {
@@ -3797,54 +3887,67 @@ document.addEventListener('DOMContentLoaded', async () => {
                 return `${group.answer || 'Duplicate answer'} (${spots})`;
             }).join('\n');
             const more = duplicateGroups.length > 5 ? `\n...and ${duplicateGroups.length - 5} more duplicate answer group${duplicateGroups.length - 5 === 1 ? '' : 's'}.` : '';
-            const proceed = confirm(`This assignment includes duplicate answers:\n\n${duplicateSummary}${more}\n\nPublish anyway?`);
+            const proceed = confirm(`This ${isCreatingSet ? 'question set' : 'assignment'} includes duplicate answers:\n\n${duplicateSummary}${more}\n\nPublish anyway?`);
             if (!proceed) return;
         }
 
         const btn = document.getElementById('btn-create-assignment');
-        btn.disabled = true; btn.textContent = 'Creating...';
+        btn.disabled = true; btn.textContent = isCreatingSet ? 'Saving...' : 'Creating...';
 
         try {
-            const { data: assignment, error } = await sb.from('assignments').insert({
-                class_id: classId, teacher_id: uid, title,
-                instructions, due_date: due ? new Date(due).toISOString() : null
-            }).select().single();
-            if (error) throw error;
+            if (isCreatingSet) {
+                const { error } = await sb.from('question_sets').insert({
+                    teacher_id: uid,
+                    title,
+                    questions: selectedQuestions
+                });
+                if (error) throw error;
+                
+                showAlert('Question Set saved successfully!', 'success');
+                selectedQuestions = [];
+                updatePreview();
+                document.getElementById('assign-title').value = '';
+                document.getElementById('assign-instructions').value = '';
+                isCreatingSet = false;
+                loadQuestionSets();
+                activateDashboardTab('question-sets');
+            } else {
+                const { data: assignment, error } = await sb.from('assignments').insert({
+                    class_id: classId, teacher_id: uid, title,
+                    instructions, due_date: due ? new Date(due).toISOString() : null
+                }).select().single();
+                if (error) throw error;
 
-            const questions = selectedQuestions.map(q => ({
-                assignment_id: assignment.id,
-                question_id: questionKey(q),
-                question_text: q.question || q.q || '',
-                answer_text: q.answer || q.a || '',
-                aliases: Array.isArray(q.aliases) ? q.aliases : [],
-                category: q.meta?.category || q.category || '',
-                era: q.meta?.era || q.era || '',
-                source: q.meta?.source || q.source || ''
-            }));
-            let { error: questionInsertError } = await sb.from('assignment_questions').insert(questions);
-            if (questionInsertError && /aliases|source/i.test(String(questionInsertError.message || ''))) {
-                const legacyRows = questions.map(({ aliases, source, ...rest }) => rest);
-                const { error: legacyError } = await sb.from('assignment_questions').insert(legacyRows);
-                questionInsertError = legacyError || null;
+                const questions = selectedQuestions.map(q => ({
+                    assignment_id: assignment.id,
+                    question_id: questionKey(q),
+                    question_text: q.question || q.q || '',
+                    answer_text: q.answer || q.a || '',
+                    aliases: Array.isArray(q.aliases) ? q.aliases : [],
+                    category: q.meta?.category || q.category || '',
+                    era: q.meta?.era || q.era || '',
+                    source: q.meta?.source || q.source || ''
+                }));
+                let { error: questionInsertError } = await sb.from('assignment_questions').insert(questions);
+                if (questionInsertError && /aliases|source/i.test(String(questionInsertError.message || ''))) {
+                    const legacyRows = questions.map(({ aliases, source, ...rest }) => rest);
+                    const { error: legacyError } = await sb.from('assignment_questions').insert(legacyRows);
+                    questionInsertError = legacyError || null;
+                }
+                if (questionInsertError) throw questionInsertError;
+
+                showAlert('Assignment created successfully!', 'success');
+                selectedQuestions = [];
+                updatePreview();
+                document.getElementById('assign-title').value = '';
+                document.getElementById('assign-instructions').value = '';
+                loadAssignments();
+                activateDashboardTab('assignments');
             }
-            if (questionInsertError) throw questionInsertError;
-
-            showAlert('Assignment created successfully!', 'success');
-            selectedQuestions = [];
-            updatePreview();
-            document.getElementById('assign-title').value = '';
-            document.getElementById('assign-instructions').value = '';
-            loadAssignments();
-
-            // Switch to assignments tab
-            document.querySelectorAll('.dash-tab').forEach(t => t.classList.remove('active'));
-            document.querySelectorAll('section.view').forEach(c => c.classList.remove('active'));
-            document.querySelector('[data-tab="assignments"]').classList.add('active');
-            document.getElementById('tab-assignments').classList.add('active');
         } catch (e) {
             showAlert('Failed: ' + e.message, 'error');
         } finally {
-            btn.disabled = false; btn.textContent = '📝 Create Assignment';
+            btn.disabled = false; btn.textContent = isCreatingSet ? 'Save Question Set' : '📝 Create Assignment';
         }
     });
 
@@ -4260,13 +4363,24 @@ document.addEventListener('DOMContentLoaded', async () => {
         document.querySelectorAll('.dash-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === navTab));
         document.querySelectorAll('.view').forEach(c => c.classList.remove('active'));
         nextView.classList.add('active');
-        if (nextTab === 'create') setMode(currentMode);
+        if (nextTab === 'create') {
+            const displayStyle = isCreatingSet ? 'none' : '';
+            const assignClassEl = document.getElementById('assign-class');
+            if (assignClassEl) assignClassEl.closest('.input-group').style.display = displayStyle;
+            const assignDueEl = document.getElementById('assign-due');
+            if (assignDueEl) assignDueEl.closest('.input-group').style.display = displayStyle;
+            const assignInstructionsEl = document.getElementById('assign-instructions');
+            if (assignInstructionsEl) assignInstructionsEl.closest('.input-group').style.display = displayStyle;
+            const btnCreate = document.getElementById('btn-create-assignment');
+            if (btnCreate) btnCreate.textContent = isCreatingSet ? 'Save Question Set' : 'Create Assignment';
+            setMode(currentMode);
+        }
         if (nextTab === 'analytics') {
             renderTeacherAnalytics();
             void loadTeacherAnalytics();
         }
         if (nextTab === 'peer-comparison') {
-            renderPeerComparisonPage();
+            renderTeacherAnalytics();
             if (!teacherAnalyticsState.loading && !(teacherAnalyticsState.classes || []).length) {
                 void loadTeacherAnalytics();
             }
@@ -5368,6 +5482,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     setMode(normalizeTeacherBuilderMode(accountSettings.teacher_builder_default_mode || modeButtons.find(b => b.classList.contains('active'))?.dataset.mode || 'random'));
     loadClasses();
     loadAssignments();
+    loadQuestionSets();
     renderDashboardChatChrome();
     if (window.location.hash === '#peer-comparison') {
         activateDashboardTab('peer-comparison');
