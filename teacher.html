@@ -188,7 +188,7 @@
                 <div class="filter-bar" style="margin-bottom: 18px;">
                     <div class="chips" id="set-visibility-filters">
                         <div class="chip active" data-filter="my">My Sets</div>
-                        <div class="chip" data-filter="school">My School</div>
+                        <div class="chip" data-filter="class">My Classes</div>
                         <div class="chip" data-filter="community">Community</div>
                     </div>
                 </div>
@@ -231,9 +231,13 @@
                             <label>Visibility</label>
                             <select id="assign-visibility">
                                 <option value="private">Private (Only me)</option>
-                                <option value="school">My School</option>
+                                <option value="class">Shared with Class</option>
                                 <option value="public">Public (Community)</option>
                             </select>
+                        </div>
+                        <div id="set-class-selection" class="input-group hidden">
+                            <label>Share with Class</label>
+                            <select id="set-share-class"></select>
                         </div>
                         <div class="input-group">
                             <label>Assign to Class</label>
@@ -664,7 +668,7 @@
                             <div>
                                 <h3 style="margin:0 0 4px;">Shared Study Materials</h3>
                                 <div class="pill">May 6, 2026</div>
-                                <p class="muted" style="margin: 8px 0 0;">Question sets can now be shared school-wide or publicly. Leverage the community's curated materials to diversify your Live Bees and assignments.</p>
+                                <p class="muted" style="margin: 8px 0 0;">Question sets can now be shared class-wide or publicly. Leverage the community's curated materials or your colleagues' sets to diversify your Live Bees and assignments.</p>
                             </div>
                         </div>
                         <div class="list-item">

@@ -640,11 +640,11 @@ document.addEventListener('DOMContentLoaded', async () => {
             el.innerHTML = data.map(set => {
                 const count = Array.isArray(set.questions) ? set.questions.length : 0;
                 const isMine = set.creator_id === uid;
-                const visibilityLabel = set.visibility === 'public' ? 'Public' : (set.visibility === 'school' ? 'School' : 'Private');
+                const visibilityLabel = set.visibility === 'public' ? 'Public' : (set.visibility === 'class' ? 'Class' : 'Private');
                 return `<div class="list-item" style="cursor:pointer;" onclick="loadSetIntoBee('${set.id}')">
                     <div class="item-copy">
                         <span class="item-title">${esc(set.title)}</span>
-                        <span class="item-meta">${count} questions • ${visibilityLabel} • By ${isMine ? 'Me' : (set.creator_role === 'teacher' ? 'Teacher' : 'Student')}</span>
+                        <span class="item-meta">${count} questions • ${visibilityLabel} • By ${isMine ? 'Me' : (set.creator_role === 'teacher' ? 'Teacher' : 'Peer')}</span>
                     </div>
                     <span class="item-badge">Load</span>
                 </div>`;

@@ -102,12 +102,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Student Flow
     async function saveStudentProfile() {
         try {
-            const schoolName = document.getElementById('student-school-name')?.value.trim();
             await upsertProfileRecord({
                 id: currentUser.id,
                 role: 'student',
-                class_code: null,
-                school_name: schoolName || null
+                class_code: null
             });
             window.location.href = 'student.html';
         } catch (err) {
@@ -127,11 +125,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     async function saveTeacherProfile(className, inviteCode) {
         try {
-            const schoolName = document.getElementById('teacher-school-name')?.value.trim();
             await upsertProfileRecord({
                 id: currentUser.id,
-                role: 'teacher',
-                school_name: schoolName || null
+                role: 'teacher'
             });
 
             if (inviteCode) {

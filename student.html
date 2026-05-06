@@ -239,7 +239,7 @@
                 <div class="filter-bar" style="margin-bottom: 18px;">
                     <div class="chips" id="set-visibility-filters">
                         <div class="chip active" data-filter="my">My Sets</div>
-                        <div class="chip" data-filter="school">My School</div>
+                        <div class="chip" data-filter="class">My Classes</div>
                         <div class="chip" data-filter="community">Community</div>
                     </div>
                 </div>
@@ -281,9 +281,13 @@
                         <label>Visibility</label>
                         <select id="assign-visibility">
                             <option value="private">Private (Only me)</option>
-                            <option value="school">My School</option>
+                            <option value="class">Shared with Class</option>
                             <option value="public">Public (Community)</option>
                         </select>
+                    </div>
+                    <div id="set-class-selection" class="input-group hidden">
+                        <label>Share with Class</label>
+                        <select id="set-share-class"></select>
                     </div>
                 </div>
 
@@ -763,9 +767,9 @@
                     <div class="list-container">
                         <div class="list-item">
                             <div>
-                                <h3 style="margin:0 0 4px;">Community Question Sets! 🌍</h3>
+                                <h3 style="margin:0 0 4px;">Class-wide Question Sets! 🏫</h3>
                                 <div class="pill">May 6, 2026</div>
-                                <p class="muted" style="margin: 8px 0 0;">You can now share your custom question sets with your school or the entire IHBB community! Discover sets curated by peers and teachers in the new "Community" and "School" tabs.</p>
+                                <p class="muted" style="margin: 8px 0 0;">You can now share your custom question sets with your classroom or the entire IHBB community! Discover sets curated by your teacher and classmates in the new "My Classes" and "Community" filters.</p>
                             </div>
                         </div>
                         <div class="list-item">

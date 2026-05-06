@@ -57,13 +57,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     let myQuestionSets = [];
     let draftQuestions = [];
     let setVisibilityFilter = 'my';
-    let mySchoolName = null;
-
-    // Load school name
-    (async () => {
-        const { data: profData } = await sb.from('profiles').select('school_name').eq('id', uid).single();
-        if (profData) mySchoolName = profData.school_name;
-    })();
+    let myClasses = []; // Populated via currentMemberships in loadClasses
 
     try {
         const resp = await fetch('questions.json');
@@ -4519,12 +4513,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         
         if (setVisibilityFilter === 'my') {
             query = query.eq('creator_id', uid);
-        } else if (setVisibilityFilter === 'school') {
-            if (!mySchoolName) {
-                el.innerHTML = emptyStateHtml('School Sets', 'No school set', 'Set your school name in your profile to see sets from your classmates.');
+        } else if (setVisibilityFilter === 'class') {
+            const classIds = currentMemberships.map(m => String(m.class_id || classDetailsForMembership(m)?.id || '').trim()).filter(Boolean);
+            if (!classIds.length) {
+                el.innerHTML = emptyStateHtml('Class Sets', 'No classes joined', 'Join a class to see question sets shared by your teacher and classmates.');
                 return;
             }
-            query = query.eq('visibility', 'school').eq('creator_school', mySchoolName);
+            query = query.eq('visibility', 'class').in('class_id', classIds);
         } else if (setVisibilityFilter === 'community') {
             query = query.eq('visibility', 'public');
         }
@@ -4542,7 +4537,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const el = document.getElementById('question-sets-list');
         if (!el) return;
         if (!myQuestionSets.length) {
-            const kicker = setVisibilityFilter === 'my' ? 'Question Sets' : (setVisibilityFilter === 'school' ? 'School Sets' : 'Community Sets');
+            const kicker = setVisibilityFilter === 'my' ? 'Question Sets' : (setVisibilityFilter === 'class' ? 'Class Sets' : 'Community Sets');
             const title = 'No sets found';
             const copy = setVisibilityFilter === 'my' ? 'Create your first question set to reuse it across assignments and Live Bee games.' : 'Try a different filter or create your own set.';
             el.innerHTML = emptyStateHtml(kicker, title, copy);
@@ -4551,7 +4546,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         el.innerHTML = myQuestionSets.map(set => {
             const count = Array.isArray(set.questions) ? set.questions.length : 0;
             const isMine = set.creator_id === uid;
-            const visibilityLabel = set.visibility === 'public' ? 'Public' : (set.visibility === 'school' ? 'School' : 'Private');
+            const visibilityLabel = set.visibility === 'public' ? 'Public' : (set.visibility === 'class' ? 'Class' : 'Private');
             
             return `
                 <div class="list-item">
@@ -4581,12 +4576,15 @@ document.addEventListener('DOMContentLoaded', async () => {
             title: `${set.title} (Copy)`,
             questions: set.questions,
             visibility: 'private',
-            creator_school: mySchoolName
+            class_id: null
         });
         if (error) { showAlert('Failed to copy: ' + error.message); return; }
         showAlert('Set copied to your personal collection!', 'success');
         setVisibilityFilter = 'my';
-        document.querySelectorAll('#set-visibility-filters .chip').forEach(c => c.classList.toggle('active', c.dataset.filter === 'my'));
+        const chips = document.querySelectorAll('#set-visibility-filters .chip');
+        if (chips.length) {
+            chips.forEach(c => c.classList.toggle('active', c.dataset.filter === 'my'));
+        }
         loadQuestionSets();
     };
 
@@ -4613,6 +4611,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         
         document.getElementById('builder-title').textContent = 'Edit Question Set';
         document.getElementById('assign-title').value = set.title;
+        const visEl = document.getElementById('assign-visibility');
+        if (visEl) {
+            visEl.value = set.visibility || 'private';
+            toggleBuilderClassSelection(visEl.value);
+        }
+        const classEl = document.getElementById('set-share-class');
+        if (classEl) classEl.value = set.class_id || '';
         updatePreview();
     };
 
@@ -4631,7 +4636,31 @@ document.addEventListener('DOMContentLoaded', async () => {
         
         document.getElementById('builder-title').textContent = 'Create Question Set';
         document.getElementById('assign-title').value = '';
+        const visEl = document.getElementById('assign-visibility');
+        if (visEl) {
+            visEl.value = 'private';
+            toggleBuilderClassSelection(visEl.value);
+        }
         updatePreview();
+    });
+
+    function toggleBuilderClassSelection(visibility) {
+        const wrap = document.getElementById('set-class-selection');
+        const select = document.getElementById('set-share-class');
+        if (!wrap || !select) return;
+        
+        if (visibility === 'class') {
+            wrap.classList.remove('hidden');
+            const classes = currentMemberships.map(m => classDetailsForMembership(m)).filter(Boolean);
+            select.innerHTML = classes.map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join('');
+        } else {
+            wrap.classList.add('hidden');
+            select.innerHTML = '';
+        }
+    }
+
+    document.getElementById('assign-visibility')?.addEventListener('change', (e) => {
+        toggleBuilderClassSelection(e.target.value);
     });
 
     const esc = (str) => String(str || '').replace(/[&<>"']/g, m => ({
@@ -4822,30 +4851,32 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('btn-create-assignment')?.addEventListener('click', async () => {
         const title = document.getElementById('assign-title').value.trim();
         const visibility = document.getElementById('assign-visibility')?.value || 'private';
+        const classId = document.getElementById('set-share-class')?.value || null;
+
         if (!title) { showAlert('Please provide a title.'); return; }
         if (!selectedQuestions.length) { showAlert('Please select at least one question.'); return; }
+        if (visibility === 'class' && !classId) { showAlert('Please select a class to share with.'); return; }
 
         const btn = document.getElementById('btn-create-assignment');
         btn.disabled = true;
         btn.textContent = 'Saving...';
 
         try {
+            const payload = {
+                title,
+                questions: selectedQuestions,
+                visibility,
+                class_id: visibility === 'class' ? classId : null
+            };
+
             if (currentEditSetId) {
-                const { error } = await sb.from('question_sets').update({
-                    title,
-                    questions: selectedQuestions,
-                    visibility,
-                    creator_school: mySchoolName
-                }).eq('id', currentEditSetId);
+                const { error } = await sb.from('question_sets').update(payload).eq('id', currentEditSetId);
                 if (error) throw error;
                 showAlert('Question set updated!', 'success');
             } else {
                 const { error } = await sb.from('question_sets').insert({
                     creator_id: uid,
-                    title,
-                    questions: selectedQuestions,
-                    visibility,
-                    creator_school: mySchoolName
+                    ...payload
                 });
                 if (error) throw error;
                 showAlert('Question set created!', 'success');
@@ -4900,6 +4931,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // ========== HELPERS ==========
     function showAlert(msg, type = 'error') {
         const el = document.getElementById('alert-box');
+        if (!el) return;
         el.textContent = msg; el.className = `alert ${type}`; el.classList.remove('hidden');
         setTimeout(() => el.classList.add('hidden'), 4000);
     }
@@ -4914,3 +4946,4 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (initialDashboardTab !== 'coach') loadCoachWorkspace(false);
     renderDashboardChatChrome();
 });
+

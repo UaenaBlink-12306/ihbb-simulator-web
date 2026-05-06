@@ -259,7 +259,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     setValue('pf-display-name', targetProfile.display_name || 'Unnamed');
     setValue('pf-role', formatRole(targetProfile.role));
     setValue('pf-class-code', targetProfile.class_code || '—');
-    setValue('pf-school-name', targetProfile.school_name || '—');
     setValue('pf-created-at', targetProfile.created_at ? new Date(targetProfile.created_at).toLocaleString() : '—');
     setValue('pf-user-id', targetProfile.id || '—');
 
