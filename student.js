@@ -199,7 +199,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             // Ignore storage failures.
         }
     };
-    const STUDENT_DASHBOARD_TABS = new Set(['classes', 'assignments', 'coach', 'analytics', 'leaderboard']);
+    const STUDENT_DASHBOARD_TABS = new Set(['classes', 'assignments', 'coach', 'livebee', 'game-history', 'goals', 'analytics', 'leaderboard']);
     const ACCOUNT_SETTING_DEFAULTS = Object.freeze({
         student_dashboard_default_tab: 'assignments',
         practice_hub_auto_open: true,
@@ -723,6 +723,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (tabName === 'leaderboard') activateLeaderboardSubtab('global');
         if (tabName === 'question-sets') loadQuestionSets();
         if (tabName === 'create') setupBuilder();
+        if (tabName === 'game-history') loadGameHistory();
+        if (tabName === 'goals') loadGoals();
         renderDashboardChatChrome();
     }
 
@@ -1968,6 +1970,247 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
         closeDashboardChat();
         window.location.href = 'index.html?drill=1';
+    }
+
+    // ========== GAME HISTORY ==========
+    let gameHistoryLoaded = false;
+    async function loadGameHistory() {
+        if (gameHistoryLoaded) return;
+        const listEl = document.getElementById('game-history-list');
+        if (!listEl) return;
+        listEl.innerHTML = '<p class="muted">Loading game history...</p>';
+        try {
+            const { data, error } = await sb.from('livebee_game_reviews')
+                .select('*').order('created_at', { ascending: false }).limit(30);
+            if (error) throw error;
+            if (!data || !data.length) {
+                listEl.innerHTML = '<div class="card-muted-box"><p>No game history yet. Join a Live Bee game to see your reviews here!</p></div>';
+                gameHistoryLoaded = true;
+                return;
+            }
+            gameHistoryLoaded = true;
+            renderGameHistory(data);
+        } catch (err) {
+            listEl.innerHTML = '<div class="card-muted-box text-bad">Could not load game history. Try refreshing.</div>';
+            console.warn('Game history load error:', err);
+        }
+    }
+
+    function renderGameHistory(games) {
+        const listEl = document.getElementById('game-history-list');
+        if (!listEl) return;
+        listEl.innerHTML = games.map(game => {
+            let standings, summary;
+            try { standings = typeof game.standings === 'string' ? JSON.parse(game.standings) : game.standings; } catch { standings = []; }
+            try { summary = typeof game.summary === 'string' ? JSON.parse(game.summary) : game.summary; } catch { summary = {}; }
+            const date = new Date(game.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+            const time = new Date(game.created_at).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+            const rankEl = game.my_rank ? `<span class="game-history-rank rank-${Math.min(game.my_rank, 3)}">#${game.my_rank}</span>` : '';
+            const podium = Array.isArray(standings) ? standings.slice(0, 3).map((s, i) => {
+                const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : '🥉';
+                return `<span class="game-history-podium-item">${medal} ${esc(s.name)} (${s.score})</span>`;
+            }).join('') : '';
+            return `
+            <div class="list-item game-history-card">
+                <div style="width:100%;">
+                    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+                        <div>
+                            <h3 style="margin:0 0 4px;">Room ${esc(game.room_code)} ${rankEl}</h3>
+                            <div class="pill">${date} at ${time}</div>
+                        </div>
+                        <div>
+                            <span style="font-size:18px;font-weight:700;">${esc(String(game.my_score))} pts</span>
+                            <span class="pill" style="margin-left:6px;">${game.player_count} players</span>
+                        </div>
+                    </div>
+                    <p class="muted" style="margin:8px 0;">${podium || 'No podium data'}</p>
+                    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:4px;">
+                        <span class="pill pill-ok">${summary.solved || 0} solved</span>
+                        <span class="pill pill-warn">${summary.missed || 0} missed</span>
+                        <span class="pill">${summary.totalQuestions || 0} questions</span>
+                    </div>
+                    <button class="btn ghost game-history-expand" data-game-id="${esc(String(game.id))}" style="margin-top:10px;">Show Review Details</button>
+                    <div class="game-history-review hidden" id="game-review-${esc(String(game.id))}"></div>
+                </div>
+            </div>`;
+        }).join('');
+
+        // Expand/collapse review details
+        listEl.addEventListener('click', (event) => {
+            const button = event.target.closest('.game-history-expand');
+            if (!button) return;
+            const gameId = button.dataset.gameId;
+            const reviewEl = document.getElementById('game-review-' + gameId);
+            if (!reviewEl) return;
+            const game = games.find(g => String(g.id) === gameId);
+            if (!game) return;
+            if (reviewEl.classList.contains('hidden')) {
+                let review;
+                try { review = typeof game.review === 'string' ? JSON.parse(game.review) : game.review; } catch { review = []; }
+                reviewEl.innerHTML = renderGameReviewDetails(review);
+                reviewEl.classList.remove('hidden');
+                button.textContent = 'Hide Review Details';
+            } else {
+                reviewEl.classList.add('hidden');
+                button.textContent = 'Show Review Details';
+            }
+        });
+    }
+
+    function renderGameReviewDetails(review) {
+        const list = Array.isArray(review) ? review.filter(item => item.question || item.answer) : [];
+        if (!list.length) return '<p class="muted">No round details available.</p>';
+        return list.map(item => {
+            const status = item.solvedBy
+                ? `Solved by ${item.solvedBy.name || 'Player'}`
+                : (item.unanswered || !item.attempts.length ? 'No correct buzz' : 'Missed after buzzes');
+            const meta = [item.meta?.category, item.meta?.era].filter(Boolean).join(' • ');
+            const attemptsHtml = Array.isArray(item.attempts) && item.attempts.length
+                ? item.attempts.map(a => `<div class="game-history-attempt ${a.correct ? 'is-correct' : 'is-missed'}"><span>${esc(a.name)}:</span> <span>${esc(a.text || 'No answer')}</span> <span>— ${a.correct ? 'Correct' : esc(a.reason || 'Incorrect')}</span></div>`).join('')
+                : '<p class="muted">No one buzzed.</p>';
+            return `<details class="post-game-round" ${item.solvedBy ? '' : 'open'}>
+                <summary><span class="post-game-round-number">Q${item.number}</span><span class="post-game-round-status">${esc(status)}</span><span class="post-game-round-answer">${esc(item.answer || 'N/A')}</span></summary>
+                <div class="post-game-round-body">${meta ? `<div class="post-game-meta">${esc(meta)}</div>` : ''}<p class="post-game-question">${esc(item.question || '')}</p><p><strong>Answer:</strong> ${esc(item.answer || '')}</p>${attemptsHtml}</div>
+            </details>`;
+        }).join('');
+    }
+
+    document.getElementById('btn-refresh-game-history')?.addEventListener('click', () => {
+        gameHistoryLoaded = false;
+        loadGameHistory();
+    });
+
+    // ========== WEEKLY GOALS ==========
+    let goalsLoaded = false;
+    async function loadGoals() {
+        if (goalsLoaded) return;
+        const contentEl = document.getElementById('goals-content');
+        if (!contentEl) return;
+        contentEl.innerHTML = '<p class="muted">Loading goals...</p>';
+        try {
+            const weekStart = getMondayOfWeek(new Date());
+            const weekLabel = document.getElementById('goals-week-label');
+            if (weekLabel) weekLabel.textContent = `Week of ${weekStart.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} • Track your practice targets and streaks.`;
+
+            // Fetch current week's goals
+            const weekStartStr = weekStart.toISOString().split('T')[0];
+            const { data: goals } = await sb.from('weekly_student_goals')
+                .select('*').eq('user_id', uid).eq('week_start', weekStartStr).maybeSingle();
+
+            // Fetch streak
+            let streak = 0;
+            try {
+                const { data: streakData } = await sb.rpc('get_user_practice_streak', { p_user_id: uid });
+                streak = streakData || 0;
+            } catch { /* streak best-effort */ }
+
+            // Fetch progress data
+            const weekEnd = new Date(weekStart);
+            weekEnd.setDate(weekEnd.getDate() + 7);
+            const { data: sessions } = await sb.from('user_drill_sessions')
+                .select('total, correct').eq('user_id', uid)
+                .gte('created_at', weekStartStr).lt('created_at', weekEnd.toISOString().split('T')[0]);
+
+            const totalAnswered = (sessions || []).reduce((sum, s) => sum + (s.total || 0), 0);
+            const totalCorrect = (sessions || []).reduce((sum, s) => sum + (s.correct || 0), 0);
+            const accuracy = totalAnswered > 0 ? Math.round(totalCorrect / totalAnswered * 100) : 0;
+            const activeDays = new Set((sessions || []).map(s => (s.created_at || '').split('T')[0])).size;
+
+            const currentGoals = goals || { target_questions: 50, target_accuracy: 70, weak_area_targets: [] };
+            goalsLoaded = true;
+            renderGoals(contentEl, currentGoals, { totalAnswered, totalCorrect, accuracy, activeDays, streak });
+        } catch (err) {
+            contentEl.innerHTML = '<div class="card-muted-box text-bad">Could not load goals. Try refreshing.</div>';
+            console.warn('Goals load error:', err);
+        }
+    }
+
+    function getMondayOfWeek(date) {
+        const d = new Date(date);
+        const day = d.getDay();
+        const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+        d.setDate(diff);
+        d.setHours(0, 0, 0, 0);
+        return d;
+    }
+
+    function renderGoals(contentEl, goals, progress) {
+        const qPct = goals.target_questions > 0 ? Math.min(100, Math.round(progress.totalAnswered / goals.target_questions * 100)) : 0;
+        const accOnTrack = progress.totalAnswered > 0 ? progress.accuracy >= goals.target_accuracy : false;
+        const weekStart = getMondayOfWeek(new Date());
+        const weekEnd = new Date(weekStart);
+        weekEnd.setDate(weekEnd.getDate() + 6);
+
+        contentEl.innerHTML = `
+            <div class="goals-grid">
+                <div class="goals-streak-card">
+                    <div class="goals-streak-flame">${progress.streak > 0 ? '🔥' : '🕯️'}</div>
+                    <div class="goals-streak-count">${progress.streak}</div>
+                    <div class="goals-streak-label">day streak</div>
+                    ${progress.streak >= 7 ? '<div class="pill pill-ok" style="margin-top:6px;">Weekly warrior!</div>' : progress.streak >= 3 ? '<div class="pill" style="margin-top:6px;">Building momentum</div>' : '<p class="muted" style="margin-top:4px;font-size:12px;">Practice today to start a streak!</p>'}
+                </div>
+                <div class="goals-progress-card">
+                    <div class="goals-metric">
+                        <div class="goals-metric-head">
+                            <span>Questions Answered</span>
+                            <span><strong>${progress.totalAnswered}</strong> / ${goals.target_questions}</span>
+                        </div>
+                        <div class="goals-bar"><div class="goals-bar-fill ${qPct >= 100 ? 'goals-bar-green' : qPct >= 50 ? 'goals-bar-yellow' : 'goals-bar-red'}" style="width:${qPct}%"></div></div>
+                    </div>
+                    <div class="goals-metric">
+                        <div class="goals-metric-head">
+                            <span>Accuracy</span>
+                            <span><strong>${progress.accuracy}%</strong> / ${goals.target_accuracy}%</span>
+                        </div>
+                        <div class="goals-bar"><div class="goals-bar-fill ${accOnTrack ? 'goals-bar-green' : progress.accuracy >= goals.target_accuracy * 0.7 ? 'goals-bar-yellow' : 'goals-bar-red'}" style="width:${Math.min(100, progress.accuracy)}%"></div></div>
+                    </div>
+                    <div class="goals-metric">
+                        <div class="goals-metric-head">
+                            <span>Active Days</span>
+                            <span><strong>${progress.activeDays}</strong> / 7 days</span>
+                        </div>
+                        <div class="goals-bar"><div class="goals-bar-fill ${progress.activeDays >= 7 ? 'goals-bar-green' : progress.activeDays >= 4 ? 'goals-bar-yellow' : 'goals-bar-red'}" style="width:${Math.round(progress.activeDays / 7 * 100)}%"></div></div>
+                    </div>
+                </div>
+            </div>
+            <div class="goals-edit-section" style="margin-top:24px;">
+                <h3 style="margin:0 0 12px;">Set Your Goals</h3>
+                <div class="goals-form">
+                    <div class="inline-form" style="flex-wrap:wrap;">
+                        <div class="input-group" style="min-width:140px;">
+                            <label>Questions per week</label>
+                            <input type="number" id="goal-questions" value="${goals.target_questions}" min="10" max="500" step="10">
+                        </div>
+                        <div class="input-group" style="min-width:140px;">
+                            <label>Accuracy target %</label>
+                            <input type="number" id="goal-accuracy" value="${goals.target_accuracy}" min="30" max="100" step="5">
+                        </div>
+                        <button id="btn-save-goals" class="btn pri">Save Goals</button>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        document.getElementById('btn-save-goals')?.addEventListener('click', async () => {
+            const q = Math.max(10, Math.min(500, parseInt(document.getElementById('goal-questions')?.value) || 50));
+            const a = Math.max(30, Math.min(100, parseInt(document.getElementById('goal-accuracy')?.value) || 70));
+            const weekStartStr = weekStart.toISOString().split('T')[0];
+            try {
+                const { error } = await sb.from('weekly_student_goals').upsert({
+                    user_id: uid,
+                    week_start: weekStartStr,
+                    target_questions: q,
+                    target_accuracy: a,
+                    updated_at: new Date().toISOString()
+                }, { onConflict: 'user_id,week_start' });
+                if (error) throw error;
+                showAlert('Goals saved!', 'success');
+                goalsLoaded = false;
+                loadGoals();
+            } catch (err) {
+                showAlert('Failed to save goals: ' + (err.message || 'Unknown error'), 'error');
+            }
+        });
     }
 
     // ========== TAB SWITCHING ==========
@@ -3804,7 +4047,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                 : 'Local summary ready from current 30-day data.';
         }
         if (contentEl) {
-            const weakAreasHtml = (Array.isArray(insights.weak_areas) ? insights.weak_areas : []).map(area => `
+            const weakAreasHtml = (Array.isArray(insights.weak_areas) ? insights.weak_areas : []).map(area => {
+                const drillConfig = buildDrillConfigFromAnalyticsArea(area);
+                return `
                 <div class="analytics-ai-focus">
                     <div class="analytics-ai-focus-head">
                         <div class="analytics-ai-focus-title">${esc(area.title)}</div>
@@ -3813,8 +4058,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                     <p>${esc(area.why)}</p>
                     <p>${esc(area.evidence)}</p>
                     <p><strong>Next move:</strong> ${esc(area.action)}</p>
+                    ${drillConfig ? `<button class="btn pri btn-start-drill" data-analytics-drill='${esc(JSON.stringify(drillConfig))}' style="margin-top:8px;">Start Recommended Drill</button>` : ''}
                 </div>
-            `).join('');
+            `}).join('');
             const winsHtml = (Array.isArray(insights.wins) ? insights.wins : []).map(item => `<li>${esc(item)}</li>`).join('');
             const stepsHtml = (Array.isArray(insights.next_steps) ? insights.next_steps : []).map(item => `<li>${esc(item)}</li>`).join('');
 
@@ -3842,6 +4088,35 @@ document.addEventListener('DOMContentLoaded', async () => {
         setAnalyticsInsightsButton('Refresh Insights', false);
         renderCoachWorkspace();
     }
+
+    function buildDrillConfigFromAnalyticsArea(area) {
+        if (!area || !area.dimension) return null;
+        const dim = String(area.dimension).toLowerCase();
+        const name = String(area.title || '').replace(/^(era|region|focus):\s*/i, '').trim();
+        if (!name) return null;
+        const config = { region: '', era: '', title: area.title, reason: area.action || '', mode: 'guided', source: 'analytics' };
+        if (dim === 'era') config.era = name;
+        else if (dim === 'region') config.region = name;
+        else { config.region = name; config.era = ''; }
+        return config;
+    }
+
+    // Delegate click for analytics drill buttons
+    document.addEventListener('click', (event) => {
+        const button = event.target.closest('.btn-start-drill');
+        if (!button) return;
+        event.preventDefault();
+        let config;
+        try { config = JSON.parse(button.dataset.analyticsDrill || button.dataset.coachDrill || '{}'); } catch { return; }
+        if (!config || !config.title) return;
+        localStorage.setItem(COACH_DRILL_STORAGE_KEY, JSON.stringify({
+            region: config.region || '', era: config.era || '',
+            topic: config.topic || '', title: config.title || '',
+            reason: config.reason || '', mode: config.mode || 'guided',
+            source: config.source || 'analytics', ts: Date.now()
+        }));
+        window.location.href = 'index.html?drill=1&coach=1';
+    });
 
     function prepareAnalyticsInsights(snapshot, hasData) {
         analyticsSnapshotCurrent = hasData ? snapshot : null;
@@ -4900,11 +5175,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     function updatePreview() {
         const el = document.getElementById('selected-list');
         const countEl = document.getElementById('selected-count');
+        const qualityEl = document.getElementById('set-quality-panel');
         if (countEl) countEl.textContent = selectedQuestions.length;
         if (!el) return;
 
         if (!selectedQuestions.length) {
             el.innerHTML = '<p class="muted">No questions selected yet.</p>';
+            if (qualityEl) qualityEl.innerHTML = '';
             return;
         }
 
@@ -4912,13 +5189,113 @@ document.addEventListener('DOMContentLoaded', async () => {
             <div class="list-item">
                 <div class="list-item-main">
                     <div class="list-item-title">${esc(q.answer)}</div>
-                    <div class="list-item-meta">${esc(q.question.substring(0, 100))}...</div>
+                    <div class="list-item-meta">${esc((q.question || '').substring(0, 100))}...</div>
                 </div>
                 <div class="list-item-actions">
+                    <span class="quality-diff-label">${esc(q._difficulty || getQuestionDifficulty(q))}</span>
                     <button class="btn bad ghost" onclick="removeSelectedQuestion(${i})">Remove</button>
                 </div>
             </div>
         `).join('');
+
+        // Render quality panel
+        if (qualityEl) {
+            const analysis = analyzeQuestionSet(selectedQuestions);
+            qualityEl.innerHTML = renderQualityPanel(analysis);
+        }
+    }
+
+    function getQuestionDifficulty(q) {
+        const qLen = (q.question || '').length;
+        const aLen = (q.answer || '').length;
+        if (qLen > 300 || aLen > 30) return 'Hard';
+        if (qLen > 150 || aLen > 15) return 'Medium';
+        return 'Easy';
+    }
+
+    function analyzeQuestionSet(questions) {
+        if (!questions || !questions.length) return { duplicates: [], overlaps: [], balance: {}, difficulty: { Easy: 0, Medium: 0, Hard: 0 }, total: 0 };
+
+        // Assign difficulty
+        const withDiff = questions.map(q => ({ ...q, _difficulty: getQuestionDifficulty(q) }));
+
+        // Duplicate detection
+        const duplicates = [];
+        const seen = new Map();
+        withDiff.forEach((q, i) => {
+            const norm = (q.question || '').toLowerCase().replace(/[^a-z0-9 ]/g, '').trim();
+            if (seen.has(norm)) {
+                duplicates.push({ index1: seen.get(norm), index2: i, question: (q.question || '').substring(0, 60), answer: q.answer });
+            } else {
+                seen.set(norm, i);
+            }
+        });
+
+        // Answer overlap detection
+        const overlaps = [];
+        const answerMap = new Map();
+        withDiff.forEach((q, i) => {
+            const a = (q.answer || '').toLowerCase().trim();
+            if (answerMap.has(a)) {
+                overlaps.push({ index1: answerMap.get(a), index2: i, answer: q.answer });
+            } else {
+                answerMap.set(a, i);
+            }
+        });
+
+        // Region/Era balance
+        const balance = { regions: {}, eras: {} };
+        withDiff.forEach(q => {
+            const r = q.category || 'Unknown';
+            const e = q.era || 'Unknown';
+            balance.regions[r] = (balance.regions[r] || 0) + 1;
+            balance.eras[e] = (balance.eras[e] || 0) + 1;
+        });
+
+        // Difficulty distribution
+        const difficulty = { Easy: 0, Medium: 0, Hard: 0 };
+        withDiff.forEach(q => { difficulty[q._difficulty] = (difficulty[q._difficulty] || 0) + 1; });
+
+        return { duplicates, overlaps, balance, difficulty, total: withDiff.length };
+    }
+
+    function renderQualityPanel(analysis) {
+        const { duplicates, overlaps, balance, difficulty, total } = analysis;
+        const hasIssues = duplicates.length > 0 || overlaps.length > 0;
+        const statusClass = duplicates.length > 0 ? 'quality-bad' : overlaps.length > 0 ? 'quality-warn' : 'quality-ok';
+        const statusText = duplicates.length > 0 ? `${duplicates.length} duplicate${duplicates.length > 1 ? 's' : ''} found` : overlaps.length > 0 ? `${overlaps.length} answer overlap${overlaps.length > 1 ? 's' : ''} found` : 'All clear';
+
+        const regionBars = Object.entries(balance.regions || {}).sort((a, b) => b[1] - a[1]).map(([r, c]) => {
+            const pct = Math.round(c / total * 100);
+            return `<div class="quality-bar-row"><span>${esc(r)}</span><div class="quality-bar"><div class="quality-bar-fill" style="width:${pct}%"></div></div><span>${c}</span></div>`;
+        }).join('');
+
+        const eraBars = Object.entries(balance.eras || {}).sort((a, b) => b[1] - a[1]).map(([e, c]) => {
+            const pct = Math.round(c / total * 100);
+            const label = ERA_LABELS[e] || e;
+            return `<div class="quality-bar-row"><span>${esc(label)}</span><div class="quality-bar"><div class="quality-bar-fill" style="width:${pct}%"></div></div><span>${c}</span></div>`;
+        }).join('');
+
+        return `
+            <div class="quality-panel ${statusClass}">
+                <div class="quality-status">
+                    <span class="quality-status-icon">${duplicates.length > 0 ? '⚠️' : overlaps.length > 0 ? '⚡' : '✅'}</span>
+                    <span><strong>Set Quality:</strong> ${statusText}</span>
+                </div>
+                <div class="quality-detail">
+                    <span class="quality-chip quality-chip-easy">Easy: ${difficulty.Easy}</span>
+                    <span class="quality-chip quality-chip-medium">Medium: ${difficulty.Medium}</span>
+                    <span class="quality-chip quality-chip-hard">Hard: ${difficulty.Hard}</span>
+                    <span class="pill">${total} total</span>
+                </div>
+                ${duplicates.length > 0 ? `<div class="quality-warnings"><strong>Duplicate Questions:</strong> ${duplicates.map(d => `<div>Q${d.index1 + 1} & Q${d.index2 + 1} — "${esc(d.answer)}"</div>`).join('')}</div>` : ''}
+                ${overlaps.length > 0 ? `<div class="quality-warnings"><strong>Repeated Answers:</strong> ${overlaps.map(d => `<div>Q${d.index1 + 1} & Q${d.index2 + 1} — "${esc(d.answer)}"</div>`).join('')}</div>` : ''}
+                <div class="quality-balance-grid">
+                    <div><strong>Region Balance</strong>${regionBars || '<p class="muted">No regions</p>'}</div>
+                    <div><strong>Era Balance</strong>${eraBars || '<p class="muted">No eras</p>'}</div>
+                </div>
+            </div>
+        `;
     }
 
     window.removeSelectedQuestion = (i) => {

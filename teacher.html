@@ -130,6 +130,8 @@
             <button class="dash-tab" data-tab="question-sets">Question Sets</button>
             <button class="dash-tab" data-tab="create">Create Assignment</button>
             <button class="dash-tab" data-tab="livebee">Live Bee</button>
+            <button class="dash-tab" data-tab="game-history" title="Revisit past Live Bee games and their reviews">Game History</button>
+            <button class="dash-tab" data-tab="export" title="Export scores, reports, and student data">Export</button>
             <button class="dash-tab" data-tab="analytics">Analytics</button>
             <button class="dash-tab" data-tab="account">Account</button>
             <button class="dash-tab" data-tab="whatsnew">What's New</button>
@@ -398,6 +400,7 @@
                             <div class="empty-kicker">Status</div>
                             <p class="empty-copy">Add a title, class, and question set.</p>
                         </div>
+                        <div id="preview-quality-panel" style="margin-bottom: 14px;"></div>
                         <button id="btn-create-assignment" class="btn pri auth-option">Create Assignment</button>
                     </div>
                 </aside>
@@ -411,6 +414,73 @@
                     <h2>Live Bee Rooms</h2>
                     <p class="cs-desc">Room controls live here.</p>
                     <a href="livebee.html" class="btn pri">Host a Live Bee</a>
+                </div>
+            </div>
+        </section>
+
+        <section id="tab-game-history" class="view">
+            <div class="card section-card">
+                <div class="section-head">
+                    <div>
+                        <h2 class="card-title">Game History</h2>
+                        <p class="section-subtitle">Past Live Bee games you hosted or participated in, with full reviews.</p>
+                    </div>
+                    <button id="btn-refresh-teacher-game-history" class="btn ghost">Refresh</button>
+                </div>
+                <div id="teacher-game-history-list" class="list-container">
+                    <p class="muted">Loading game history...</p>
+                </div>
+            </div>
+        </section>
+
+        <section id="tab-export" class="view">
+            <div class="card section-card">
+                <div class="section-head">
+                    <div>
+                        <h2 class="card-title">Export Reports</h2>
+                        <p class="section-subtitle">Download CSV score reports, missed-question summaries, and per-student participation data.</p>
+                    </div>
+                </div>
+                <div id="export-content">
+                    <div class="card-muted-box" style="margin-bottom:20px;">
+                        <div class="input-group">
+                            <label>Select Class</label>
+                            <select id="export-class-select">
+                                <option value="">-- Choose a class --</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="dashboard-split" style="gap:16px;">
+                        <div class="card-muted-box">
+                            <h3 style="margin:0 0 8px;">Live Bee Export</h3>
+                            <p class="muted" style="margin:0 0 12px;">Export scores and missed-question summaries from a game.</p>
+                            <div class="input-group">
+                                <label>Select Game</label>
+                                <select id="export-bee-select">
+                                    <option value="">-- Choose a game --</option>
+                                </select>
+                            </div>
+                            <div class="form-actions" style="margin-top:12px;">
+                                <button id="btn-export-bee-csv" class="btn pri" disabled>Export CSV</button>
+                                <button id="btn-export-bee-pdf" class="btn ghost" disabled>Export PDF Report</button>
+                            </div>
+                        </div>
+                        <div class="card-muted-box">
+                            <h3 style="margin:0 0 8px;">Assignment Export</h3>
+                            <p class="muted" style="margin:0 0 12px;">Export assignment scores and per-question breakdowns.</p>
+                            <div class="input-group">
+                                <label>Select Assignment</label>
+                                <select id="export-assignment-select">
+                                    <option value="">-- Choose an assignment --</option>
+                                </select>
+                            </div>
+                            <div class="form-actions" style="margin-top:12px;">
+                                <button id="btn-export-assignment-csv" class="btn pri" disabled>Export CSV</button>
+                                <button id="btn-export-assignment-pdf" class="btn ghost" disabled>Export PDF Report</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="export-preview" style="margin-top:20px;"></div>
                 </div>
             </div>
         </section>
@@ -664,6 +734,13 @@
                 </div>
                 <div class="dashboard-split dashboard-split-solo">
                     <div class="list-container">
+                        <div class="list-item">
+                            <div>
+                                <h3 style="margin:0 0 4px;">5 Major Updates: Game History, Export, Quick Drills, Set Quality & Goals</h3>
+                                <div class="pill">May 6, 2026</div>
+                                <p class="muted" style="margin: 8px 0 0;">Live Bee game reviews are saved to the new Game History tab. Export CSV reports for Live Bee scores and assignment results with per-student breakdowns. Question-set quality tools now flag duplicates, answer overlaps, and show difficulty/balance before publishing. Weekly student goals track streaks and progress.</p>
+                            </div>
+                        </div>
                         <div class="list-item">
                             <div>
                                 <h3 style="margin:0 0 4px;">DeepSeek Recommendations & Live Bee Review</h3>

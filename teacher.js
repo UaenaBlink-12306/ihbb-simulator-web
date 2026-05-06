@@ -4464,6 +4464,158 @@ document.addEventListener('DOMContentLoaded', async () => {
     loadDashboardChatUiPrefs();
     loadDashboardChatSession();
 
+    // ========== TEACHER GAME HISTORY ==========
+    let teacherGameHistoryLoaded = false;
+    async function loadTeacherGameHistory() {
+        if (teacherGameHistoryLoaded) return;
+        const listEl = document.getElementById('teacher-game-history-list');
+        if (!listEl) return;
+        listEl.innerHTML = '<p class="muted">Loading game history...</p>';
+        try {
+            const { data, error } = await sb.from('livebee_game_reviews')
+                .select('*').order('created_at', { ascending: false }).limit(30);
+            if (error) throw error;
+            if (!data || !data.length) {
+                listEl.innerHTML = '<div class="card-muted-box"><p>No game history yet. Host or join a Live Bee game to see reviews here!</p></div>';
+                teacherGameHistoryLoaded = true;
+                return;
+            }
+            teacherGameHistoryLoaded = true;
+            listEl.innerHTML = data.map(game => {
+                let standings;
+                try { standings = typeof game.standings === 'string' ? JSON.parse(game.standings) : game.standings; } catch { standings = []; }
+                let summary;
+                try { summary = typeof game.summary === 'string' ? JSON.parse(game.summary) : game.summary; } catch { summary = {}; }
+                const date = new Date(game.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+                const hostLabel = game.host_name ? `Hosted by ${esc(game.host_name)}` : '';
+                const podium = Array.isArray(standings) ? standings.slice(0, 3).map((s, i) => {
+                    const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : '🥉';
+                    return `<span class="game-history-podium-item">${medal} ${esc(s.name)} (${s.score})</span>`;
+                }).join('') : '';
+                return `<div class="list-item"><div style="width:100%;">
+                    <h3 style="margin:0 0 4px;">Room ${esc(game.room_code)} ${hostLabel}</h3>
+                    <div class="pill">${date} • ${game.player_count} players</div>
+                    <p class="muted" style="margin:8px 0;">${podium || 'No podium data'}</p>
+                    <div style="display:flex;gap:10px;flex-wrap:wrap;">
+                        <span class="pill pill-ok">${summary.solved || 0} solved</span>
+                        <span class="pill pill-warn">${summary.missed || 0} missed</span>
+                        <span class="pill">${summary.totalQuestions || 0} questions</span>
+                    </div>
+                </div></div>`;
+            }).join('');
+        } catch (err) {
+            listEl.innerHTML = '<div class="card-muted-box text-bad">Could not load game history.</div>';
+        }
+    }
+
+    document.getElementById('btn-refresh-teacher-game-history')?.addEventListener('click', () => {
+        teacherGameHistoryLoaded = false;
+        loadTeacherGameHistory();
+    });
+
+    // ========== TEACHER EXPORT ==========
+    let teacherExportLoaded = false;
+    async function loadTeacherExport() {
+        if (teacherExportLoaded) return;
+        const classSelect = document.getElementById('export-class-select');
+        if (!classSelect) return;
+        try {
+            const { data: classes } = await sb.from('classes').select('id, name, code').eq('teacher_id', uid);
+            classSelect.innerHTML = '<option value="">-- Choose a class --</option>' + (classes || []).map(c =>
+                `<option value="${esc(c.id)}">${esc(c.name)} (${esc(c.code)})</option>`
+            ).join('');
+
+            classSelect.addEventListener('change', async () => {
+                const classId = classSelect.value;
+                document.getElementById('export-bee-select').innerHTML = '<option value="">-- Choose a game --</option>';
+                document.getElementById('export-assignment-select').innerHTML = '<option value="">-- Choose an assignment --</option>';
+                document.getElementById('btn-export-bee-csv').disabled = true;
+                document.getElementById('btn-export-assignment-csv').disabled = true;
+                if (!classId) return;
+
+                // Load games for this class's students
+                const { data: students } = await sb.from('class_students').select('student_id').eq('class_id', classId);
+                const studentIds = (students || []).map(s => s.student_id);
+                if (studentIds.length) {
+                    const { data: games } = await sb.from('livebee_game_reviews')
+                        .select('id, room_code, created_at, player_count').in('user_id', studentIds)
+                        .order('created_at', { ascending: false }).limit(50);
+                    document.getElementById('export-bee-select').innerHTML = '<option value="">-- Choose a game --</option>' +
+                        (games || []).map(g => `<option value="${esc(g.id)}">Room ${esc(g.room_code)} — ${new Date(g.created_at).toLocaleDateString()} (${g.player_count} players)</option>`).join('');
+                }
+
+                // Load assignments
+                const { data: assignments } = await sb.from('assignments')
+                    .select('id, title').eq('class_id', classId).order('created_at', { ascending: false });
+                document.getElementById('export-assignment-select').innerHTML = '<option value="">-- Choose an assignment --</option>' +
+                    (assignments || []).map(a => `<option value="${esc(a.id)}">${esc(a.title)}</option>`).join('');
+            });
+
+            // Export buttons
+            document.getElementById('export-bee-select')?.addEventListener('change', () => {
+                document.getElementById('btn-export-bee-csv').disabled = !document.getElementById('export-bee-select').value;
+            });
+            document.getElementById('export-assignment-select')?.addEventListener('change', () => {
+                document.getElementById('btn-export-assignment-csv').disabled = !document.getElementById('export-assignment-select').value;
+            });
+
+            document.getElementById('btn-export-bee-csv')?.addEventListener('click', () => exportBeeCSV(classSelect.value, document.getElementById('export-bee-select').value));
+            document.getElementById('btn-export-assignment-csv')?.addEventListener('click', () => exportAssignmentCSV(classSelect.value, document.getElementById('export-assignment-select').value));
+
+            teacherExportLoaded = true;
+        } catch (err) {
+            console.warn('Export load error:', err);
+        }
+    }
+
+    async function exportBeeCSV(classId, gameId) {
+        if (!gameId) return;
+        const { data: game } = await sb.from('livebee_game_reviews').select('*').eq('id', gameId).single();
+        if (!game) return;
+        let standings, review;
+        try { standings = typeof game.standings === 'string' ? JSON.parse(game.standings) : game.standings; } catch { standings = []; }
+        try { review = typeof game.review === 'string' ? JSON.parse(game.review) : game.review; } catch { review = []; }
+
+        let csv = 'Rank,Player,Score\n';
+        (standings || []).forEach(s => { csv += `${s.rank},"${s.name}",${s.score}\n`; });
+        csv += '\nQuestion #,Question,Answer,Status,Solved By\n';
+        (review || []).forEach(r => {
+            const status = r.solvedBy ? 'Solved' : (r.unanswered ? 'Unanswered' : 'Missed');
+            csv += `${r.number},"${(r.question || '').replace(/"/g, '""')}","${(r.answer || '').replace(/"/g, '""')}",${status},${r.solvedBy ? r.solvedBy.name : 'N/A'}\n`;
+        });
+        downloadCSV(csv, `livebee_${game.room_code}_report.csv`);
+    }
+
+    async function exportAssignmentCSV(classId, assignId) {
+        if (!assignId) return;
+        const { data: assignment } = await sb.from('assignments').select('id, title').eq('id', assignId).single();
+        const { data: submissions } = await sb.from('assignment_submissions').select('student_id, total, correct').eq('assignment_id', assignId);
+        const studentIds = (submissions || []).map(s => s.student_id);
+        let profiles = [];
+        if (studentIds.length) {
+            const { data } = await sb.from('profiles').select('id, display_name').in('id', studentIds);
+            profiles = data || [];
+        }
+        const profileMap = {};
+        profiles.forEach(p => { profileMap[p.id] = p.display_name || 'Unknown'; });
+
+        let csv = `Assignment: ${(assignment?.title || 'N/A')}\n\n`;
+        csv += 'Student,Questions Correct,Total Questions,Score %\n';
+        (submissions || []).forEach(s => {
+            const pct = s.total > 0 ? Math.round(s.correct / s.total * 100) : 0;
+            csv += `"${profileMap[s.student_id] || 'Unknown'}",${s.correct},${s.total},${pct}%\n`;
+        });
+        downloadCSV(csv, `assignment_${esc(assignment?.title || 'report').replace(/[^a-zA-Z0-9]/g, '_')}_report.csv`);
+    }
+
+    function downloadCSV(csv, filename) {
+        const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = filename; a.click();
+        URL.revokeObjectURL(url);
+    }
+
     function activateDashboardTab(tabName) {
         const nextTab = String(tabName || 'classes').trim() || 'classes';
         const nextView = document.getElementById('tab-' + nextTab);
@@ -4494,6 +4646,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                 void loadTeacherAnalytics();
             }
         }
+        if (nextTab === 'game-history') loadTeacherGameHistory();
+        if (nextTab === 'export') loadTeacherExport();
         renderDashboardChatChrome();
     }
 

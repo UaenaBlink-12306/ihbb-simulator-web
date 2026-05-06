@@ -1452,7 +1452,37 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
         await sb.from('bee_rooms').update({ status: 'finished' }).eq('id', room.id);
 
-        channel.send({ type: 'broadcast', event: 'game_end', payload: { review: buildPostGameReviewPayload() } });
+        // Save post-game review for each participant
+        const reviewPayload = buildPostGameReviewPayload();
+        const standings = getFinalStandings();
+        const summary = {
+            totalQuestions: gameQuestions.length,
+            solved: reviewPayload.filter(item => item.solvedBy).length,
+            missed: reviewPayload.filter(item => !item.solvedBy).length,
+            totalAttempts: reviewPayload.reduce((sum, item) => sum + (item.attempts ? item.attempts.length : 0), 0)
+        };
+        for (const [id, p] of Object.entries(players)) {
+            if (id === room.host_id && myRole !== 'teacher') continue; // skip non-teacher host
+            const standing = standings.find(s => s.id === id);
+            try {
+                await sb.from('livebee_game_reviews').insert({
+                    room_id: room.id,
+                    user_id: id,
+                    room_code: room.code,
+                    host_name: players[room.host_id]?.name || 'Host',
+                    player_count: Object.keys(players).length - (room.host_id ? 1 : 0),
+                    my_rank: standing ? standing.rank : null,
+                    my_score: p.score,
+                    standings: JSON.stringify(standings.map(s => ({
+                        rank: s.rank, name: s.name, avatarId: s.avatarId, score: s.score
+                    }))),
+                    review: JSON.stringify(reviewPayload),
+                    summary: JSON.stringify(summary)
+                });
+            } catch { /* Review save is best-effort */ }
+        }
+
+        channel.send({ type: 'broadcast', event: 'game_end', payload: { review: reviewPayload } });
     }
 
     function broadcastScores() {
