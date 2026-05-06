@@ -4462,15 +4462,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         renderLeaderboardNodes('leaderboard-list-class', data, 'pts');
     }
 
-    const ERA_LABELS = {
-        '01': 'Prehistory to 600 BCE',
-        '02': '600 BCE to 600 CE',
-        '03': '600 to 1450',
-        '04': '1450 to 1750',
-        '05': '1750 to 1914',
-        '06': '1914 to Present',
-        '07': 'US History'
-    };
     const CATEGORIES = ['World', 'Europe', 'North America', 'South Asia', 'East Asia', 'Central Asia', 'Southeast Asia', 'Middle East', 'Africa', 'Latin America', 'Oceania', 'US History'];
 
     const getEraLabel = (era) => ERA_LABELS[era] || era;
@@ -4935,7 +4926,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         el.textContent = msg; el.className = `alert ${type}`; el.classList.remove('hidden');
         setTimeout(() => el.classList.add('hidden'), 4000);
     }
-    function esc(s) { const d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; }
+    // function esc removed as it's declared above
 
     // Init
     const initialDashboardTab = normalizeStudentDashboardTab(accountSettings.student_dashboard_default_tab);

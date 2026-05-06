@@ -82,7 +82,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     // State
     let allQuestions = [];
     let selectedQuestions = [];
-    let myClasses = [];
     let latestAssignments = [];
     let myQuestionSets = [];
     let isCreatingSet = false;
@@ -2839,6 +2838,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (error) { showAlert('Failed to delete: ' + error.message); return; }
         loadQuestionSets();
     };
+
+    function renderBuilderSavedSets(list) {
         const el = document.getElementById('builder-saved-sets-list');
         if (!el) return;
         if (!list.length) {
