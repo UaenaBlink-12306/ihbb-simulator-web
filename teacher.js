@@ -610,6 +610,81 @@ document.addEventListener('DOMContentLoaded', async () => {
             blindSpots
         };
     };
+    const rankMissStats = (mapObj) => Object.values(mapObj)
+        .map((row) => ({
+            name: row.name,
+            missed: row.missed,
+            attempts: row.attempts,
+            missRate: row.attempts ? Math.round((row.missed / row.attempts) * 100) : 0
+        }))
+        .sort((a, b) => b.missed - a.missed || b.missRate - a.missRate || a.name.localeCompare(b.name));
+    const addMissStat = (mapObj, name, missed) => {
+        const key = String(name || '').trim() || 'Unknown';
+        if (!mapObj[key]) mapObj[key] = { name: key, missed: 0, attempts: 0 };
+        mapObj[key].attempts += 1;
+        if (missed) mapObj[key].missed += 1;
+    };
+    const computeClassWeakAreaGroups = (sessionsRaw, coachRowsRaw) => {
+        const regionAgg = {};
+        const eraAgg = {};
+        (Array.isArray(sessionsRaw) ? sessionsRaw : []).map(normalizeSessionForAnalytics).forEach((session) => {
+            const results = Array.isArray(session.results) ? session.results : [];
+            const meta = Array.isArray(session.meta) ? session.meta : [];
+            const maxLen = Math.min(results.length, meta.length || results.length);
+            for (let i = 0; i < maxLen; i++) {
+                const m = meta[i] || {};
+                const missed = !results[i];
+                addMissStat(regionAgg, normalizeAnalyticsRegion(m.category || ''), missed);
+                addMissStat(eraAgg, normalizeAnalyticsEra(m.era || ''), missed);
+            }
+        });
+
+        const confusedAgg = {};
+        (Array.isArray(coachRowsRaw) ? coachRowsRaw : []).forEach((row) => {
+            if (row?.correct === true) return;
+            const expected = String(row?.expected_answer || '').trim();
+            const given = String(row?.user_answer || '').trim();
+            if (!expected || !given) return;
+            const key = `${given.toLowerCase()}=>${expected.toLowerCase()}`;
+            if (!confusedAgg[key]) {
+                confusedAgg[key] = {
+                    given,
+                    expected,
+                    missed: 0
+                };
+            }
+            confusedAgg[key].missed += 1;
+        });
+
+        return {
+            missedRegions: rankMissStats(regionAgg).filter((row) => row.missed > 0).slice(0, 5),
+            missedEras: rankMissStats(eraAgg).filter((row) => row.missed > 0).slice(0, 5),
+            confusedAnswers: Object.values(confusedAgg)
+                .sort((a, b) => b.missed - a.missed || a.expected.localeCompare(b.expected))
+                .slice(0, 5)
+        };
+    };
+    const buildClassWeakAreaHtml = (weakAreas) => {
+        const groups = [
+            { title: 'Most missed regions', rows: weakAreas?.missedRegions || [], type: 'area' },
+            { title: 'Most missed eras', rows: weakAreas?.missedEras || [], type: 'area' },
+            { title: 'Most confused answers', rows: weakAreas?.confusedAnswers || [], type: 'confusion' }
+        ];
+        return groups.map((group) => {
+            const rowsHtml = group.rows.length
+                ? group.rows.map((row) => group.type === 'confusion'
+                    ? `<div class="class-weak-row"><span>${esc(row.given)} -&gt; ${esc(row.expected)}</span><strong>${esc(`${row.missed} ${row.missed === 1 ? 'miss' : 'misses'}`)}</strong></div>`
+                    : `<div class="class-weak-row"><span>${esc(row.name)}</span><strong>${esc(`${row.missed}/${row.attempts} missed`)}</strong></div>`)
+                    .join('')
+                : '<p class="muted">No saved misses yet.</p>';
+            return `
+                <div class="class-weak-card">
+                    <h3>${esc(group.title)}</h3>
+                    <div class="class-weak-list">${rowsHtml}</div>
+                </div>
+            `;
+        }).join('');
+    };
     const renderStudentList = (containerId, rows, emptyCopy, options = {}) => {
         const el = document.getElementById(containerId);
         if (!el) return;
@@ -784,6 +859,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             const avgAssignmentScore = totalPossible > 0 ? Math.round((totalCorrect / totalPossible) * 100) : null;
             const sessionCount = sumBy(studentRows, row => row.sessionCount);
             const sessionRowsForClass = studentIds.flatMap(studentId => sessionsByStudent.get(studentId) || []);
+            const coachRowsForClass = studentIds.flatMap(studentId => coachByStudent.get(studentId) || []);
+            const weakAreas = computeClassWeakAreaGroups(sessionRowsForClass, coachRowsForClass);
             const sessionAttempts = sumBy(sessionRowsForClass, row => row.total);
             const sessionCorrectTotal = sumBy(sessionRowsForClass, row => row.correct);
             const avgSessionAccuracy = sessionAttempts > 0 ? Math.round((sessionCorrectTotal / sessionAttempts) * 100) : null;
@@ -840,6 +917,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 coachCount,
                 activeStudentCount,
                 lastActivity,
+                weakAreas,
                 students: studentRows,
                 topStudents,
                 watchStudents
@@ -1730,6 +1808,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const titleEl = document.getElementById('analytics-class-title');
         const summaryEl = document.getElementById('analytics-class-summary');
         const summaryListEl = document.getElementById('analytics-class-summary-list');
+        const weakAreaEl = document.getElementById('analytics-class-weak-areas');
         const topEl = document.getElementById('analytics-top-students');
         const watchEl = document.getElementById('analytics-watch-students');
         const rosterEl = document.getElementById('analytics-class-roster');
@@ -1759,6 +1838,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 ? 'Building a class-level snapshot from your rosters and submissions.'
                 : 'Create a class to see average scores, completion, and engagement for the roster.';
             if (summaryListEl) summaryListEl.innerHTML = '';
+            if (weakAreaEl) weakAreaEl.innerHTML = '<p class="muted">Choose a class to see missed regions, eras, and answer confusions.</p>';
             if (topEl) topEl.innerHTML = `<p class="muted">${esc(teacherAnalyticsState.loading ? 'Loading class analytics...' : 'No class analytics yet.')}</p>`;
             if (watchEl) watchEl.innerHTML = `<p class="muted">${esc(teacherAnalyticsState.loading ? 'Loading class analytics...' : 'No class analytics yet.')}</p>`;
             if (rosterEl) rosterEl.innerHTML = `<p class="muted">${esc(teacherAnalyticsState.loading ? 'Loading roster analytics...' : 'No students to inspect yet.')}</p>`;
@@ -1788,6 +1868,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             summaryEl.textContent = `${formatCount(selected.studentCount, 'student')} across ${formatCount(selected.assignmentCount, 'assignment')}.${avgScore}${completion} Click any student below to open the full drill-down.${latest}${errorNote}`;
         }
         if (summaryListEl) summaryListEl.innerHTML = buildClassSummaryList(selected);
+        if (weakAreaEl) weakAreaEl.innerHTML = buildClassWeakAreaHtml(selected.weakAreas);
         renderStudentList('analytics-top-students', selected.topStudents, 'No top students yet.', { clickable: true, classId: selected.id });
         renderStudentList('analytics-watch-students', selected.watchStudents, 'No students need attention yet.', { clickable: true, classId: selected.id });
         renderStudentList('analytics-class-roster', selected.students, 'No students are enrolled in this class yet.', { clickable: true, classId: selected.id });
@@ -1859,7 +1940,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     ? sb.from('user_wrong_questions').select('user_id, created_at').in('user_id', studentIds).gte('created_at', STUDY_DATA_RESET_CUTOFF_ISO)
                     : Promise.resolve({ data: [] }),
                 studentIds.length
-                    ? sb.from('user_coach_attempts').select('user_id, created_at').in('user_id', studentIds).gte('created_at', STUDY_DATA_RESET_CUTOFF_ISO)
+                    ? sb.from('user_coach_attempts').select('user_id, question_text, expected_answer, user_answer, correct, reason, coach, category, era, source, focus_topic, created_at').in('user_id', studentIds).gte('created_at', STUDY_DATA_RESET_CUTOFF_ISO)
                     : Promise.resolve({ data: [] })
             ]);
             if (version !== teacherAnalyticsLoadVersion) return;
@@ -1908,6 +1989,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 coachCount: 0,
                 activeStudentCount: 0,
                 lastActivity: 0,
+                weakAreas: computeClassWeakAreaGroups([], []),
                 students: [],
                 topStudents: [],
                 watchStudents: []

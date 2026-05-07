@@ -19,6 +19,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const SESSION_SYNC_TABLE = 'user_drill_sessions';
     const COACH_SYNC_TABLE = 'user_coach_attempts';
     const COACH_DRILL_STORAGE_KEY = scopedStorageKey('ihbb_student_coach_drill');
+    const ASSIGNMENT_RESULT_BASE_KEY = 'ihbb_assignment_result';
     const PRACTICE_HUB_AUTO_OPEN_DISABLED_KEY = 'ihbb_v2_practice_hub_auto_open_disabled';
     const ANALYTICS_INSIGHTS_CACHE_KEY = `ihbb_student_analytics_insights_${uid}`;
     const STUDY_DATA_RESET_CUTOFF_ISO = '2026-04-10T02:07:20Z';
@@ -3037,6 +3038,32 @@ document.addEventListener('DOMContentLoaded', async () => {
         `;
     }
 
+    function assignmentResultStorageKey(assignId) {
+        const id = String(assignId || '').trim();
+        return id ? `${ASSIGNMENT_RESULT_BASE_KEY}_${id}_${uid}` : '';
+    }
+
+    function readAssignmentRetrySummary(assignId) {
+        const key = assignmentResultStorageKey(assignId);
+        if (!key) return null;
+        try {
+            const raw = JSON.parse(localStorage.getItem(key) || 'null');
+            if (!raw || typeof raw !== 'object') return null;
+            const missedIds = Array.isArray(raw.missedIds) ? raw.missedIds.map(x => String(x || '').trim()).filter(Boolean) : [];
+            const total = Number(raw.total || 0);
+            const correct = Number(raw.correct || 0);
+            return {
+                total,
+                correct,
+                missedIds,
+                missedCount: Number.isFinite(Number(raw.missedCount)) ? Number(raw.missedCount) : missedIds.length,
+                savedAt: raw.savedAt || ''
+            };
+        } catch {
+            return null;
+        }
+    }
+
     async function loadAssignments() {
         try {
             const memberships = await fetchStudentMemberships({ includeClassDetails: false });
@@ -3140,15 +3167,19 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const cls = a.classes?.name || '';
                 const sub = subMap[a.id];
                 const pct = sub.total ? Math.round(sub.correct / sub.total * 100) : 0;
+                const retry = readAssignmentRetrySummary(a.id);
+                const missedCount = retry?.missedIds?.length || Math.max(0, (Number(sub.total) || 0) - (Number(sub.correct) || 0));
+                const missedDisabled = missedCount <= 0 ? 'disabled title="No missed questions were saved from the submitted run."' : '';
                 return `<div class="list-item">
                     <div class="item-copy">
                         <span class="item-title">${esc(a.title)}</span>
-                        <span class="item-meta">${esc(cls)} · Due: ${due}</span>
+                        <span class="item-meta">${esc(cls)} · Due: ${due} · Original score stays ${sub.correct}/${sub.total}</span>
                     </div>
                     <span class="status-pill done">Completed</span>
                     <span class="item-score ${pct >= 50 ? 'good' : 'bad'}">${sub.correct}/${sub.total} (${pct}%)</span>
                     <div class="item-actions">
-                        <button class="btn ghost" onclick="startAssignment('${a.id}', '${esc(a.title)}')">Redo</button>
+                        <button class="btn pri" onclick="startAssignment('${a.id}', '${esc(a.title)}', 'missed')" ${missedDisabled}>Redo missed${missedCount > 0 ? ` (${missedCount})` : ''}</button>
+                        <button class="btn ghost" onclick="startAssignment('${a.id}', '${esc(a.title)}', 'all')">Practice all</button>
                     </div>
                 </div>`;
             }).join('');
@@ -3163,14 +3194,38 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     // ========== START ASSIGNMENT → PRACTICE HUB ==========
-    window.startAssignment = async (assignId, title) => {
+    window.startAssignment = async (assignId, title, mode = 'first') => {
         // Fetch assignment questions from Supabase
         const { data: questions } = await sb.from('assignment_questions').select('*').eq('assignment_id', assignId);
         if (!questions || !questions.length) { showAlert('No questions in this assignment.', 'error'); return; }
 
+        const retryMode = String(mode || 'first').trim().toLowerCase();
+        let selectedQuestionsForRun = questions;
+        let missedIds = [];
+        if (retryMode === 'missed') {
+            const retry = readAssignmentRetrySummary(assignId);
+            missedIds = retry?.missedIds || [];
+            if (!missedIds.length) {
+                showAlert('No missed-question list is saved for this assignment yet. Practice the full set instead.', 'error');
+                return;
+            }
+            const missedSet = new Set(missedIds);
+            selectedQuestionsForRun = questions.filter((q) => missedSet.has(String(q.question_id || q.id || '').trim()));
+            if (!selectedQuestionsForRun.length) {
+                showAlert('The saved missed questions are no longer available in this assignment.', 'error');
+                return;
+            }
+        }
+
         // Store in localStorage for the practice hub to pick up
         const storageKey = `ihbb_assignment_${assignId}_${uid}`;
-        localStorage.setItem(storageKey, JSON.stringify({ title, questions }));
+        localStorage.setItem(storageKey, JSON.stringify({
+            title,
+            questions: selectedQuestionsForRun,
+            retryMode,
+            originalQuestionCount: questions.length,
+            missedIds
+        }));
 
         // Redirect to practice hub with assignment param
         window.location.href = 'index.html?drill=1&assignment=' + assignId;
@@ -5471,4 +5526,3 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (initialDashboardTab !== 'coach') loadCoachWorkspace(false);
     renderDashboardChatChrome();
 });
-

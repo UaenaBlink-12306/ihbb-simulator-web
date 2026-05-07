@@ -377,6 +377,7 @@
             <div class="grow"></div>
             <button id="btn-copy-answer" class="btn ghost" disabled>Copy answer</button>
             <button id="btn-alias" class="btn ghost" disabled>Add alias</button>
+            <button id="btn-bookmark" class="btn ghost" disabled>Study later</button>
             <button id="btn-flag" class="btn ghost" disabled>Flag</button>
           </div>
 
@@ -479,6 +480,21 @@
             </table>
           </div>
           <div id="wrong-mobile-list" class="mobile-record-list" aria-live="polite"></div>
+        </div>
+
+        <div class="card section-card">
+          <div class="section-head">
+            <div>
+              <div class="eyebrow">Personal review</div>
+              <h2 class="card-title">Study Later</h2>
+              <p class="section-subtitle">Confusing questions you saved on purpose.</p>
+            </div>
+          </div>
+          <div class="inline-actions">
+            <div class="pill">Saved: <span id="study-bookmark-count">0</span></div>
+            <button id="btn-practice-bookmarks" class="btn ghost">Practice saved</button>
+          </div>
+          <div id="study-bookmark-list" class="study-bookmark-list"></div>
         </div>
 
         <div class="card section-card">
@@ -612,6 +628,7 @@
                 <th>Region</th>
                 <th>Era</th>
                 <th>Source</th>
+                <th></th>
               </tr>
             </thead>
             <tbody></tbody>

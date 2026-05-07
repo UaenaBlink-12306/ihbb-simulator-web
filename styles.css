@@ -864,6 +864,86 @@ tr:hover td {
   color: var(--bad);
 }
 
+.btn.is-saved {
+  border-color: rgba(52, 211, 153, 0.45);
+  color: var(--good);
+  background: rgba(52, 211, 153, 0.1);
+}
+
+.study-bookmark-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.study-bookmark-row {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 14px;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.study-bookmark-row .item-copy {
+  min-width: 0;
+  flex: 1;
+}
+
+.study-bookmark-question {
+  display: block;
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+@media (max-width: 760px) {
+  .study-bookmark-row {
+    flex-direction: column;
+  }
+}
+
+.class-weak-area-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.class-weak-card {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 14px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.class-weak-card h3 {
+  margin: 0 0 10px;
+  font-size: 14px;
+}
+
+.class-weak-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.class-weak-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.class-weak-row strong {
+  color: var(--ink);
+  white-space: nowrap;
+}
+
 /* Auth Forms & Input Groups */
 .input-group {
   margin-bottom: 20px;

@@ -90,6 +90,8 @@ const BASE_KEY_COACH_CHAT_ACTION = 'ihbb_v2_coach_chat_action';
 const BASE_COACH_CHAT_UI_KEY = 'ihbb_v2_coach_chat_ui';
 const BASE_COACH_CHAT_SUPPRESS_KEY = 'ihbb_v2_coach_chat_suppressed';
 const BASE_TEACHER_CLASS_GUIDANCE_DRAFT = 'ihbb_teacher_class_guidance_draft';
+const BASE_KEY_STUDY_BOOKMARKS = 'ihbb_v2_study_bookmarks';
+const BASE_KEY_ASSIGNMENT_RESULTS = 'ihbb_assignment_result';
 const STUDY_DATA_RESET_CUTOFF_ISO = '2026-04-10T02:07:20Z';
 const STUDY_DATA_RESET_MARKER = 'ihbb_v2_study_data_reset_20260410_v1';
 const STUDY_DATA_RESET_PREFIXES = [
@@ -97,6 +99,8 @@ const STUDY_DATA_RESET_PREFIXES = [
   BASE_KEY_WRONG,
   BASE_KEY_COACH_LOCAL,
   BASE_KEY_COACH_PENDING,
+  BASE_KEY_STUDY_BOOKMARKS,
+  BASE_KEY_ASSIGNMENT_RESULTS,
   KEY_WRONG_SYNC_SEEN,
   KEY_SESS_SYNC_SEEN,
   'ihbb_student_analytics_insights'
@@ -111,6 +115,7 @@ let KEY_COACH_PENDING = BASE_KEY_COACH_PENDING;
 let KEY_COACH_DRILL = BASE_KEY_COACH_DRILL;
 let KEY_COACH_CHAT_ACTION = BASE_KEY_COACH_CHAT_ACTION;
 let COACH_CHAT_UI_KEY = BASE_COACH_CHAT_UI_KEY;
+let KEY_STUDY_BOOKMARKS = BASE_KEY_STUDY_BOOKMARKS;
 const PRACTICE_HUB_AUTO_OPEN_DISABLED_KEY = 'ihbb_v2_practice_hub_auto_open_disabled';
 const WRONG_SYNC_TABLE = 'user_wrong_questions';
 const SESSION_SYNC_TABLE = 'user_drill_sessions';
@@ -140,6 +145,7 @@ function applyStorageScope(userId) {
   KEY_COACH_DRILL = scopedStorageKey(BASE_KEY_COACH_DRILL, StorageScopeUserId);
   KEY_COACH_CHAT_ACTION = scopedStorageKey(BASE_KEY_COACH_CHAT_ACTION, StorageScopeUserId);
   COACH_CHAT_UI_KEY = scopedStorageKey(BASE_COACH_CHAT_UI_KEY, StorageScopeUserId);
+  KEY_STUDY_BOOKMARKS = scopedStorageKey(BASE_KEY_STUDY_BOOKMARKS, StorageScopeUserId);
 }
 async function initStorageScope() {
   if (StorageScopeReady) return StorageScopeUserId;
@@ -661,6 +667,135 @@ function escHtml(s) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
+}
+function assignmentResultStorageKey(assignId, userId = StorageScopeUserId) {
+  const id = String(assignId || '').trim();
+  if (!id) return '';
+  const scope = normalizeStorageScopeUserId(userId) || STORAGE_SCOPE_GUEST;
+  return `${BASE_KEY_ASSIGNMENT_RESULTS}_${id}_${scope}`;
+}
+function normalizeStudyBookmarkItem(raw) {
+  const id = normalizeQuestionId(raw?.id || raw?.question_id);
+  const question = String(raw?.question || raw?.question_text || '').trim();
+  const answer = String(raw?.answer || raw?.answer_text || '').trim();
+  if (!id || !question || !answer) return null;
+  const meta = raw?.meta && typeof raw.meta === 'object' ? raw.meta : {};
+  return {
+    id,
+    question,
+    answer,
+    aliases: Array.isArray(raw?.aliases) ? raw.aliases : [],
+    meta: {
+      category: String(meta.category || raw?.category || '').trim(),
+      era: String(meta.era || raw?.era || '').trim(),
+      source: String(meta.source || raw?.source || '').trim()
+    },
+    savedAt: raw?.savedAt || raw?.saved_at || new Date().toISOString()
+  };
+}
+function readStudyBookmarks() {
+  const raw = safeReadJson(KEY_STUDY_BOOKMARKS, []);
+  const seen = new Set();
+  const safe = (Array.isArray(raw) ? raw : []).map(normalizeStudyBookmarkItem).filter(Boolean).filter((item) => {
+    if (seen.has(item.id)) return false;
+    seen.add(item.id);
+    return true;
+  });
+  if (Array.isArray(raw) && safe.length !== raw.length) setJsonSafe(KEY_STUDY_BOOKMARKS, safe);
+  return safe;
+}
+function writeStudyBookmarks(items) {
+  setJsonSafe(KEY_STUDY_BOOKMARKS, (Array.isArray(items) ? items : []).map(normalizeStudyBookmarkItem).filter(Boolean).slice(0, 200));
+}
+function isQuestionBookmarked(item) {
+  const id = normalizeQuestionId(item?.id);
+  if (!id) return false;
+  return readStudyBookmarks().some((row) => row.id === id);
+}
+function syncBookmarkButton() {
+  const btn = $('btn-bookmark');
+  if (!btn) return;
+  const hasItem = !!normalizeStudyBookmarkItem(App.curItem || {});
+  const saved = hasItem && isQuestionBookmarked(App.curItem);
+  btn.disabled = !hasItem;
+  btn.textContent = saved ? 'Saved for later' : 'Study later';
+  btn.classList.toggle('is-saved', !!saved);
+}
+function saveQuestionBookmark(item, source = 'practice') {
+  const safe = normalizeStudyBookmarkItem(item);
+  if (!safe) {
+    toast('No question is available to save.');
+    return false;
+  }
+  const rows = readStudyBookmarks();
+  const existingIndex = rows.findIndex((row) => row.id === safe.id);
+  const next = { ...safe, savedAt: new Date().toISOString(), source };
+  if (existingIndex >= 0) rows.splice(existingIndex, 1);
+  rows.unshift(next);
+  writeStudyBookmarks(rows);
+  syncBookmarkButton();
+  renderStudyBookmarks();
+  if ($('view-library')?.classList.contains('active')) renderLibraryTable();
+  playFeedbackCue('mastered', { sound: false });
+  toast(existingIndex >= 0 ? 'Moved to the top of Study Later.' : 'Saved to Study Later.');
+  return true;
+}
+function removeStudyBookmark(id) {
+  const qid = normalizeQuestionId(id);
+  if (!qid) return;
+  writeStudyBookmarks(readStudyBookmarks().filter((row) => row.id !== qid));
+  syncBookmarkButton();
+  renderStudyBookmarks();
+  if ($('view-library')?.classList.contains('active')) renderLibraryTable();
+  toast('Removed from Study Later.');
+}
+function startBookmarkedStudySession() {
+  const items = readStudyBookmarks();
+  if (!items.length) {
+    toast('Study Later is empty.');
+    return;
+  }
+  setPracticeWrongBank(false);
+  App.sessionOverrideItems = items.map((item) => ({
+    id: item.id,
+    question: item.question,
+    answer: item.answer,
+    aliases: item.aliases || [],
+    meta: item.meta || {}
+  }));
+  App.size = 'all';
+  startSession();
+}
+function renderStudyBookmarks() {
+  const countEl = $('study-bookmark-count');
+  const listEl = $('study-bookmark-list');
+  if (!listEl) return;
+  const rows = readStudyBookmarks();
+  if (countEl) countEl.textContent = String(rows.length);
+  if (!rows.length) {
+    listEl.innerHTML = '<p class="muted">Save any confusing question and it will wait here, even if you answered it correctly.</p>';
+    return;
+  }
+  listEl.innerHTML = rows.slice(0, 8).map((item) => {
+    const meta = [
+      item.meta?.category || '',
+      item.meta?.era ? getEraName(item.meta.era) : '',
+      item.savedAt ? `Saved ${new Date(item.savedAt).toLocaleDateString()}` : ''
+    ].filter(Boolean).join(' • ');
+    return `
+      <div class="study-bookmark-row">
+        <div class="item-copy">
+          <span class="item-title">${escHtml(item.answer)}</span>
+          <span class="item-meta">${escHtml(meta || 'Saved question')}</span>
+          <span class="study-bookmark-question">${escHtml(item.question)}</span>
+        </div>
+        <button class="btn ghost" type="button" data-study-remove="${escHtml(item.id)}">Remove</button>
+      </div>
+    `;
+  }).join('');
+  listEl.querySelectorAll('[data-study-remove]').forEach((button) => {
+    button.addEventListener('click', () => removeStudyBookmark(button.dataset.studyRemove));
+  });
 }
 function topicFromQuestion(q) {
   const t = String(q || '').toLowerCase();
@@ -4519,7 +4654,7 @@ function startSession() {
     toast('Wrong bank empty');
     return;
   }
-  App.correct = 0; App.sessionBuzzTimes = []; App.resultsCorrect = []; App.i = 0; App.phase = 'idle';
+  App.correct = 0; App.sessionBuzzTimes = []; App.resultsCorrect = []; App.i = 0; App.phase = 'idle'; App.curItem = null;
   App.sessionId = `sess_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
   App.submitBusy = false;
   clearCoachCard();
@@ -4529,6 +4664,7 @@ function startSession() {
   const bt = $('buzz-time'); if (bt) bt.textContent = '—';
   unlockPracticeAfterGrade();
   const cp = $('btn-copy-answer'); if (cp) cp.disabled = true;
+  syncBookmarkButton();
   if (App._cdIv) { clearInterval(App._cdIv); App._cdIv = null; }
 
   if (practicingWrongBank) {
@@ -4575,6 +4711,7 @@ async function nextQuestion(first = false) {
   updateHeader();
 
   const item = App.pool[App.order[App.i]]; App.curItem = item; App.phase = 'reading';
+  syncBookmarkButton();
   const st = $('status'); if (st) st.textContent = Settings.strict ? 'Reading… (strict mode)' : 'Reading…';
   setPracticeButtons({ buzz: true, next: true, right: false, wrong: false, replay: false, alias: false, flag: true });
   const nx = $('btn-next'); if (nx) nx.disabled = true;
@@ -4666,7 +4803,8 @@ function finishSession() {
   const st = $('status'); if (st) st.textContent = `Complete — ${correct}/${total} (${acc}%).`;
   setPracticeButtons({ buzz: false, next: false, right: false, wrong: false, replay: false, alias: false, flag: false });
   pushSession(total, correct, durSec, App.sessionBuzzTimes, App.pool, App.order, App.resultsCorrect, App.sessionId);
-  navSet('nav-review'); SHOW('view-review'); renderHistory(); renderWrongBank(); drawCharts();
+  syncBookmarkButton();
+  navSet('nav-review'); SHOW('view-review'); renderHistory(); renderWrongBank(); renderStudyBookmarks(); drawCharts();
   void refreshCoachNotebook(false).then(() => {
     renderCoachChatChrome();
     maybeAutoOpenCoachChat('review');
@@ -5269,6 +5407,7 @@ $('nav-review')?.addEventListener('click', async (e) => {
   SHOW('view-review');
   renderHistory();
   renderWrongBank();
+  renderStudyBookmarks();
   drawCharts();
   flushCoachPending();
   await refreshCoachNotebook(true);
@@ -5426,6 +5565,7 @@ $('btn-alias')?.addEventListener('click', () => {
   if (!App.curItem) return; const v = prompt('Add an alias (accepted form) for this answer:', '');
   if (!v) return; App.curItem.aliases = App.curItem.aliases || []; App.curItem.aliases.push(v.trim()); playFeedbackCue('mastered'); toast('Alias added (local)');
 });
+$('btn-bookmark')?.addEventListener('click', () => saveQuestionBookmark(App.curItem, 'practice'));
 $('btn-flag')?.addEventListener('click', () => { playFeedbackCue('tap', { sound: false }); toast('Flag noted (local only)'); });
 
 // Review actions
@@ -5439,6 +5579,7 @@ $('btn-clear-wrong')?.addEventListener('click', () => {
 });
 $('btn-review-misses')?.addEventListener('click', reviewMissedNow);
 $('btn-practice-due')?.addEventListener('click', reviewMissedNow);
+$('btn-practice-bookmarks')?.addEventListener('click', startBookmarkedStudySession);
 $('wrong-refresh')?.addEventListener('click', async () => {
   await initWrongBankSync();
   renderWrongBank();
@@ -5466,6 +5607,7 @@ $('btn-coach-back-review')?.addEventListener('click', async () => {
   SHOW('view-review');
   renderHistory();
   renderWrongBank();
+  renderStudyBookmarks();
   drawCharts();
   flushCoachPending();
   await refreshCoachNotebook(true);
@@ -5672,6 +5814,14 @@ document.addEventListener('click', (e) => {
     if (item) openLibraryQuestionModal(item, index);
     return;
   }
+  const bookmarkButton = e.target.closest?.('.study-bookmark-save');
+  if (bookmarkButton) {
+    const set = getActiveSet();
+    const index = Number(bookmarkButton.dataset.libraryIndex);
+    const item = Number.isInteger(index) ? set?.items?.[index] : null;
+    if (item) saveQuestionBookmark(item, 'library');
+    return;
+  }
   if (e.target.closest?.('.library-question-modal-close') || e.target.id === 'library-question-modal') {
     closeLibraryQuestionModal();
   }
@@ -5697,7 +5847,8 @@ function renderLibraryTable() {
     if (fc && (it.meta?.category || '') !== fc) return;
     if (fe && (it.meta?.era || '') !== fe) return;
     const tr = document.createElement('tr');
-    tr.innerHTML = `<td class='stat'>${idx + 1}</td><td><button class="library-answer-button" type="button" data-library-index="${idx}">${escHtml(it.answer)}</button></td><td>${escHtml((it.aliases || []).slice(0, 3).join(', '))}</td><td>${escHtml(it.meta?.category || '')}</td><td>${escHtml(getEraName(it.meta?.era || ''))}</td><td>${escHtml(it.meta?.source || '')}</td>`;
+    const saved = isQuestionBookmarked(it);
+    tr.innerHTML = `<td class='stat'>${idx + 1}</td><td><button class="library-answer-button" type="button" data-library-index="${idx}">${escHtml(it.answer)}</button></td><td>${escHtml((it.aliases || []).slice(0, 3).join(', '))}</td><td>${escHtml(it.meta?.category || '')}</td><td>${escHtml(getEraName(it.meta?.era || ''))}</td><td>${escHtml(it.meta?.source || '')}</td><td><button class="btn ghost study-bookmark-save ${saved ? 'is-saved' : ''}" type="button" data-library-index="${idx}">${saved ? 'Saved' : 'Study later'}</button></td>`;
     tb.appendChild(tr);
     mobileCards.push(mobileRecordCard({
       eyebrow: `Question ${idx + 1}`,
@@ -5710,7 +5861,7 @@ function renderLibraryTable() {
         (it.aliases || []).length ? `Aliases: ${escHtml((it.aliases || []).slice(0, 3).join(', '))}` : 'Aliases: —',
         it.meta?.source ? `Source: ${escHtml(it.meta.source)}` : ''
       ],
-      actionHtml: `<button class="btn ghost library-answer-button" type="button" data-library-index="${idx}">View question</button>`
+      actionHtml: `<button class="btn ghost library-answer-button" type="button" data-library-index="${idx}">View question</button><button class="btn ghost study-bookmark-save ${saved ? 'is-saved' : ''}" type="button" data-library-index="${idx}">${saved ? 'Saved' : 'Study later'}</button>`
     }));
   });
   renderMobileRecordList('lib-mobile-list', mobileCards, 'No questions match', 'Try broadening the search term or clearing one of the active filters.');
@@ -6241,6 +6392,7 @@ try {
 (function assignmentHook() {
   const assignId = ASSIGNMENT_ID;
   if (!assignId) return;
+  let activeAssignmentData = null;
 
   void (async () => {
     await initStorageScope();
@@ -6251,18 +6403,25 @@ try {
 
     try {
       const assignData = JSON.parse(raw);
-      const items = (assignData.questions || []).map(q => ({
+      activeAssignmentData = assignData && typeof assignData === 'object' ? assignData : {};
+      const retryMode = String(activeAssignmentData.retryMode || 'first').trim().toLowerCase();
+      let items = (activeAssignmentData.questions || []).map(q => ({
         id: q.question_id || q.id || uid(),
         question: q.question_text || q.question || q.q || '',
         answer: q.answer_text || q.answer || q.a || '',
         aliases: Array.isArray(q.aliases) ? q.aliases : [],
         meta: { category: q.category || '', era: q.era || '', source: q.source || '' }
       }));
+      if (retryMode === 'missed') {
+        const missedSet = new Set((Array.isArray(activeAssignmentData.missedIds) ? activeAssignmentData.missedIds : []).map(x => String(x || '').trim()).filter(Boolean));
+        if (missedSet.size) items = items.filter((item) => missedSet.has(String(item.id || '').trim()));
+      }
 
       if (!items.length) return;
 
       // Inject as a volatile library set
-      const set = { id: 'assignment_' + assignId, name: assignData.title || 'Assignment', items, volatile: true };
+      const titleSuffix = retryMode === 'missed' ? ' - missed-question retry' : (retryMode === 'all' ? ' - practice retry' : '');
+      const set = { id: 'assignment_' + assignId, name: (activeAssignmentData.title || 'Assignment') + titleSuffix, items, volatile: true };
       Library.sets.unshift(set);
       Library.activeSetId = set.id;
       renderLibrarySelectors();
@@ -6275,7 +6434,7 @@ try {
 
       // Auto-start the session after a short delay (DOM needs to be ready)
       setTimeout(() => {
-        toast('📝 Starting assignment: ' + (assignData.title || 'Assignment'));
+        toast((retryMode === 'first' ? 'Starting assignment: ' : 'Starting practice retry: ') + (activeAssignmentData.title || 'Assignment'));
         startSession();
       }, 500);
 
@@ -6302,17 +6461,60 @@ try {
       if (!window.supabaseClient) return;
       const { data: { session } } = await window.supabaseClient.auth.getSession();
       if (!session) return;
+      const retryMode = String(activeAssignmentData?.retryMode || 'first').trim().toLowerCase();
+      const itemIds = App.order.map(i => App.pool[i]?.id).filter(Boolean);
+      const missedIds = itemIds.filter((id, index) => !App.resultsCorrect[index]);
+      const resultKey = assignmentResultStorageKey(aId, session.user.id);
+      if (resultKey) {
+        const previousResult = safeReadJson(resultKey, null);
+        const previousMissed = Array.isArray(previousResult?.missedIds) ? previousResult.missedIds : [];
+        setJsonSafe(resultKey, {
+          assignmentId: aId,
+          title: activeAssignmentData?.title || 'Assignment',
+          total: retryMode === 'first' ? total : (previousResult?.total || activeAssignmentData?.originalQuestionCount || total),
+          correct: retryMode === 'first' ? (App.correct || 0) : (previousResult?.correct || 0),
+          missedIds: retryMode === 'first' ? missedIds : previousMissed,
+          missedCount: retryMode === 'first' ? missedIds.length : previousMissed.length,
+          retryMode,
+          lastRetry: retryMode === 'first' ? null : {
+            total,
+            correct: App.correct || 0,
+            remainingMissedIds: missedIds,
+            savedAt: new Date().toISOString()
+          },
+          savedAt: new Date().toISOString()
+        });
+      }
+      if (retryMode !== 'first') {
+        localStorage.removeItem(storageKey);
+        toast('Practice retry saved. Your teacher still sees the original score.');
+        setTimeout(() => { window.location.href = 'student.html'; }, 2500);
+        return;
+      }
+      const { data: existing, error: existingError } = await window.supabaseClient
+        .from('assignment_submissions')
+        .select('assignment_id')
+        .eq('assignment_id', aId)
+        .eq('student_id', session.user.id)
+        .maybeSingle();
+      if (existingError) throw existingError;
+      if (existing) {
+        localStorage.removeItem(storageKey);
+        toast('Practice saved. Original assignment score was kept.');
+        setTimeout(() => { window.location.href = 'student.html'; }, 2500);
+        return;
+      }
       const { error } = await window.supabaseClient
         .from('assignment_submissions')
-        .upsert({
+        .insert({
           assignment_id: aId,
           student_id: session.user.id,
           total: total,
           correct: App.correct || 0
-        }, { onConflict: 'assignment_id,student_id' });
+        });
       if (error) throw error;
       localStorage.removeItem(storageKey);
-      toast('✅ Assignment score submitted! Returning to dashboard...');
+      toast('Assignment score submitted. Returning to dashboard...');
       setTimeout(() => { window.location.href = 'student.html'; }, 2500);
     } catch (e) {
       window._assignmentSubmitted = false;
