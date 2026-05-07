@@ -124,17 +124,42 @@
 
         <div id="alert-box" class="alert hidden"></div>
 
-        <nav class="tab-strip dashboard-tabs">
-            <button class="dash-tab active" data-tab="classes">My Classes</button>
-            <button class="dash-tab" data-tab="assignments">Assignments</button>
-            <button class="dash-tab" data-tab="question-sets">Question Sets</button>
-            <button class="dash-tab" data-tab="create">Create Assignment</button>
-            <button class="dash-tab" data-tab="livebee">Live Bee</button>
-            <button class="dash-tab" data-tab="game-history" title="Revisit past Live Bee games and their reviews">Game History</button>
-            <button class="dash-tab" data-tab="export" title="Export scores, reports, and student data">Export</button>
-            <button class="dash-tab" data-tab="analytics">Analytics</button>
-            <button class="dash-tab" data-tab="account">Account</button>
-            <button class="dash-tab" data-tab="whatsnew">What's New</button>
+        <nav class="tab-strip dashboard-tabs grouped-dashboard-tabs" aria-label="Teacher dashboard sections">
+            <div class="dashboard-tab-group active" data-tabs="classes assignments">
+                <button class="dashboard-tab-group-trigger active" type="button" data-default-tab="classes" aria-haspopup="true">Coursework</button>
+                <div class="dashboard-tab-menu" role="menu">
+                    <button class="dash-tab active" type="button" data-tab="classes" role="menuitem">My Classes</button>
+                    <button class="dash-tab" type="button" data-tab="assignments" role="menuitem">Assignments</button>
+                </div>
+            </div>
+            <div class="dashboard-tab-group" data-tabs="question-sets create">
+                <button class="dashboard-tab-group-trigger" type="button" data-default-tab="question-sets" aria-haspopup="true">Question Tools</button>
+                <div class="dashboard-tab-menu" role="menu">
+                    <button class="dash-tab" type="button" data-tab="question-sets" role="menuitem">Browse Sets</button>
+                    <button class="dash-tab" type="button" data-tab="create" role="menuitem">Create Assignment</button>
+                </div>
+            </div>
+            <div class="dashboard-tab-group" data-tabs="livebee game-history">
+                <button class="dashboard-tab-group-trigger" type="button" data-default-tab="livebee" aria-haspopup="true">Live Bee</button>
+                <div class="dashboard-tab-menu" role="menu">
+                    <button class="dash-tab" type="button" data-tab="livebee" role="menuitem">Rooms</button>
+                    <button class="dash-tab" type="button" data-tab="game-history" title="Revisit past Live Bee games and their reviews" role="menuitem">Game History</button>
+                </div>
+            </div>
+            <div class="dashboard-tab-group" data-tabs="analytics export peer-comparison">
+                <button class="dashboard-tab-group-trigger" type="button" data-default-tab="analytics" aria-haspopup="true">Reports</button>
+                <div class="dashboard-tab-menu" role="menu">
+                    <button class="dash-tab" type="button" data-tab="analytics" role="menuitem">Analytics</button>
+                    <button class="dash-tab" type="button" data-tab="export" title="Export scores, reports, and student data" role="menuitem">Export</button>
+                </div>
+            </div>
+            <div class="dashboard-tab-group" data-tabs="account whatsnew">
+                <button class="dashboard-tab-group-trigger" type="button" data-default-tab="account" aria-haspopup="true">Account</button>
+                <div class="dashboard-tab-menu" role="menu">
+                    <button class="dash-tab" type="button" data-tab="account" role="menuitem">Settings</button>
+                    <button class="dash-tab" type="button" data-tab="whatsnew" role="menuitem">What's New</button>
+                </div>
+            </div>
         </nav>
 
         <section id="tab-classes" class="view active">
@@ -738,6 +763,13 @@
                 </div>
                 <div class="dashboard-split dashboard-split-solo">
                     <div class="list-container">
+                        <div class="list-item">
+                            <div>
+                                <h3 style="margin:0 0 4px;">Grouped Dashboard Tabs</h3>
+                                <div class="pill">May 7, 2026</div>
+                                <p class="muted" style="margin: 8px 0 0;">Teacher dashboard navigation is now organized into Coursework, Question Tools, Live Bee, Reports, and Account groups so related tools are easier to find.</p>
+                            </div>
+                        </div>
                         <div class="list-item">
                             <div>
                                 <h3 style="margin:0 0 4px;">Class Weak-Area Groups and Score-Safe Retries</h3>

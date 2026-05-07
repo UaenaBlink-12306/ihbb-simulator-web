@@ -2055,6 +2055,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.querySelectorAll('.dash-tab').forEach(tab => {
         tab.addEventListener('click', () => activateDashboardTab(tab.dataset.tab));
     });
+    document.querySelectorAll('.dashboard-tab-group-trigger').forEach(trigger => {
+        trigger.addEventListener('click', () => activateDashboardTab(trigger.dataset.defaultTab));
+    });
 
     // Mode switching (create assignment)
     const modeButtons = [...document.querySelectorAll('.mode-btn')];
@@ -4704,6 +4707,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (!nextView) return;
         const navTab = nextTab === 'peer-comparison' ? 'analytics' : nextTab;
         document.querySelectorAll('.dash-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === navTab));
+        syncDashboardTabGroups(nextTab);
         document.querySelectorAll('.view').forEach(c => c.classList.remove('active'));
         nextView.classList.add('active');
         if (nextTab === 'create') {
@@ -4731,6 +4735,16 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (nextTab === 'game-history') loadTeacherGameHistory();
         if (nextTab === 'export') loadTeacherExport();
         renderDashboardChatChrome();
+    }
+
+    function syncDashboardTabGroups(tabName) {
+        const activeTab = String(tabName || '').trim();
+        document.querySelectorAll('.dashboard-tab-group').forEach(group => {
+            const groupTabs = String(group.dataset.tabs || '').split(/\s+/).filter(Boolean);
+            const isActive = groupTabs.includes(activeTab);
+            group.classList.toggle('active', isActive);
+            group.querySelector('.dashboard-tab-group-trigger')?.classList.toggle('active', isActive);
+        });
     }
 
     function activeTeacherTabName() {

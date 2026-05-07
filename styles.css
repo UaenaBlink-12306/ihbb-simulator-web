@@ -5243,6 +5243,80 @@ body::after {
   padding: 8px;
 }
 
+.grouped-dashboard-tabs {
+  position: relative;
+  z-index: 80;
+  overflow: visible;
+  align-items: stretch;
+}
+
+.dashboard-tab-group {
+  position: relative;
+  display: inline-flex;
+  align-items: stretch;
+}
+
+.dashboard-tab-group-trigger {
+  min-width: 116px;
+}
+
+.dashboard-tab-group.active .dashboard-tab-group-trigger {
+  color: var(--ink);
+  background:
+    linear-gradient(180deg, rgba(99, 168, 255, 0.26), rgba(99, 168, 255, 0.12)),
+    rgba(255, 255, 255, 0.04);
+  border-color: rgba(99, 168, 255, 0.36);
+  box-shadow: 0 14px 30px -20px rgba(99, 168, 255, 0.56);
+}
+
+.dashboard-tab-group-trigger::after {
+  content: "";
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-left: 10px;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: translateY(-2px) rotate(45deg);
+}
+
+.dashboard-tab-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  z-index: 90;
+  display: grid;
+  min-width: 190px;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.46);
+  border-radius: 16px;
+  background:
+    var(--glass-highlight-soft),
+    var(--glass-overlay-soft),
+    rgba(255, 255, 255, 0.84);
+  box-shadow: var(--glass-border), 0 22px 52px -26px rgba(15, 23, 42, 0.38);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-4px);
+  transition: opacity 0.16s ease, transform 0.16s ease;
+}
+
+.dashboard-tab-group:hover .dashboard-tab-menu,
+.dashboard-tab-group:focus-within .dashboard-tab-menu {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+}
+
+.dashboard-tab-menu .dash-tab {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  width: 100%;
+  text-align: left;
+}
+
 
 .subtab-strip {
   padding: 6px;
@@ -6625,11 +6699,17 @@ input[type=datetime-local]:focus {
 }
 
 .dashboard-tabs .dash-tab,
+.dashboard-tabs .dashboard-tab-group-trigger,
 .nav.tab-strip a {
   min-height: 46px;
   padding: 11px 18px;
   border-radius: 14px;
   font-size: 14px;
+}
+
+.dashboard-tabs.grouped-dashboard-tabs {
+  overflow: visible;
+  flex-wrap: wrap;
 }
 
 .card:hover,

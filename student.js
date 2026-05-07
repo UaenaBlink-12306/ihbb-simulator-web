@@ -717,6 +717,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     function activateDashboardTab(tabName) {
         document.querySelectorAll('.dash-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tabName));
+        syncDashboardTabGroups(tabName);
         document.querySelectorAll('.view').forEach(c => c.classList.remove('active'));
         document.getElementById('tab-' + tabName)?.classList.add('active');
         if (tabName === 'analytics') loadAnalytics();
@@ -727,6 +728,16 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (tabName === 'game-history') loadGameHistory();
         if (tabName === 'goals') loadGoals();
         renderDashboardChatChrome();
+    }
+
+    function syncDashboardTabGroups(tabName) {
+        const activeTab = String(tabName || '').trim();
+        document.querySelectorAll('.dashboard-tab-group').forEach(group => {
+            const groupTabs = String(group.dataset.tabs || '').split(/\s+/).filter(Boolean);
+            const isActive = groupTabs.includes(activeTab);
+            group.classList.toggle('active', isActive);
+            group.querySelector('.dashboard-tab-group-trigger')?.classList.toggle('active', isActive);
+        });
     }
 
     function focusJoinClassEntry() {
@@ -2217,6 +2228,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     // ========== TAB SWITCHING ==========
     document.querySelectorAll('.dash-tab').forEach(tab => {
         tab.addEventListener('click', () => activateDashboardTab(tab.dataset.tab));
+    });
+    document.querySelectorAll('.dashboard-tab-group-trigger').forEach(trigger => {
+        trigger.addEventListener('click', () => activateDashboardTab(trigger.dataset.defaultTab));
     });
     document.addEventListener('click', (event) => {
         const trigger = event.target.closest('[data-action="focus-join-class"]');
