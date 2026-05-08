@@ -4732,7 +4732,12 @@ document.addEventListener('DOMContentLoaded', async () => {
                 void loadTeacherAnalytics();
             }
         }
-        if (nextTab === 'game-history') loadTeacherGameHistory();
+        if (nextTab === 'game-history') {
+            const tabEl = document.querySelector('.dash-tab[data-tab="game-history"]');
+            if (tabEl) tabEl.removeAttribute('data-badge');
+            localStorage.setItem('lastViewedGameHistory_teacher', new Date().toISOString());
+            loadTeacherGameHistory();
+        }
         if (nextTab === 'export') loadTeacherExport();
         renderDashboardChatChrome();
     }
@@ -5837,11 +5842,28 @@ document.addEventListener('DOMContentLoaded', async () => {
         document.body.classList.remove('coach-chat-resizing');
     });
 
+    async function checkNewTeacherGameHistory() {
+        const lastViewed = localStorage.getItem('lastViewedGameHistory_teacher') || '2000-01-01T00:00:00.000Z';
+        try {
+            const { data, error } = await sb.from('livebee_game_reviews')
+                .select('created_at')
+                .gt('created_at', lastViewed)
+                .limit(1);
+            if (!error && data && data.length > 0) {
+                const tabEl = document.querySelector('.dash-tab[data-tab="game-history"]');
+                if (tabEl) tabEl.setAttribute('data-badge', '');
+            }
+        } catch (e) {
+            console.warn('Failed to check new teacher game history:', e);
+        }
+    }
+
     // Init
     setMode(normalizeTeacherBuilderMode(accountSettings.teacher_builder_default_mode || modeButtons.find(b => b.classList.contains('active'))?.dataset.mode || 'random'));
     loadClasses();
     loadAssignments();
     loadQuestionSets();
+    checkNewTeacherGameHistory();
     renderDashboardChatChrome();
     if (window.location.hash === '#peer-comparison') {
         activateDashboardTab('peer-comparison');

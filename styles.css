@@ -5193,6 +5193,7 @@ body::after {
 .dash-tab,
 .assign-sub-tab {
   appearance: none;
+  position: relative;
   border: 1px solid transparent;
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.04)),
@@ -8736,3 +8737,28 @@ input[type=datetime-local] {
 /* ===== PILL VARIANTS ===== */
 .pill-ok { background: rgba(45, 212, 191, 0.15); color: #2dd4bf; }
 .pill-warn { background: rgba(251, 191, 36, 0.15); color: #fbbf24; }
+
+/* Dashboard Tab Badges */
+.dash-tab[data-badge]::after {
+  content: attr(data-badge);
+  position: absolute;
+  top: -6px;
+  right: -8px;
+  background-color: var(--status-bad, #ef4444);
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 800;
+  padding: 2px 6px;
+  border-radius: 12px;
+  line-height: 1;
+  box-shadow: 0 0 0 2px var(--surface-glass, #1e1e1e);
+  pointer-events: none;
+  z-index: 10;
+}
+.dash-tab[data-badge=""]::after {
+  content: '';
+  padding: 4px;
+  top: -2px;
+  right: -2px;
+  border-radius: 50%;
+}

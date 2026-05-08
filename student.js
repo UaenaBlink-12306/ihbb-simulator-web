@@ -725,7 +725,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (tabName === 'leaderboard') activateLeaderboardSubtab('global');
         if (tabName === 'question-sets') loadQuestionSets();
         if (tabName === 'create') setupBuilder();
-        if (tabName === 'game-history') loadGameHistory();
+        if (tabName === 'game-history') {
+            const tabEl = document.querySelector('.dash-tab[data-tab="game-history"]');
+            if (tabEl) tabEl.removeAttribute('data-badge');
+            localStorage.setItem('lastViewedGameHistory_student', new Date().toISOString());
+            loadGameHistory();
+        }
         if (tabName === 'goals') loadGoals();
         renderDashboardChatChrome();
     }
@@ -3151,6 +3156,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         setMetric('student-hero-done', doneList.length);
         renderAssignmentReminders(todoList);
 
+        const assignTab = document.querySelector('.dash-tab[data-tab="assignments"]');
+        if (assignTab) {
+            if (todoList.length > 0) assignTab.setAttribute('data-badge', todoList.length);
+            else assignTab.removeAttribute('data-badge');
+        }
+
         // Render To Do
         if (!todoList.length) {
             todoEl.innerHTML = emptyStateHtml('To do', 'All caught up', 'You do not have any pending assignments right now.');
@@ -5531,11 +5542,28 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     // function esc removed as it's declared above
 
+    async function checkNewGameHistory() {
+        const lastViewed = localStorage.getItem('lastViewedGameHistory_student') || '2000-01-01T00:00:00.000Z';
+        try {
+            const { data, error } = await sb.from('livebee_game_reviews')
+                .select('created_at')
+                .gt('created_at', lastViewed)
+                .limit(1);
+            if (!error && data && data.length > 0) {
+                const tabEl = document.querySelector('.dash-tab[data-tab="game-history"]');
+                if (tabEl) tabEl.setAttribute('data-badge', '');
+            }
+        } catch (e) {
+            console.warn('Failed to check new game history:', e);
+        }
+    }
+
     // Init
     const initialDashboardTab = normalizeStudentDashboardTab(accountSettings.student_dashboard_default_tab);
     activateDashboardTab(initialDashboardTab);
     loadClasses();
     loadAssignments();
+    checkNewGameHistory();
     if (initialDashboardTab !== 'analytics') loadAnalytics();
     if (initialDashboardTab !== 'coach') loadCoachWorkspace(false);
     renderDashboardChatChrome();
