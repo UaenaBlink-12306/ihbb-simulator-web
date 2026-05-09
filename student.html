@@ -155,9 +155,22 @@
                     </div>
                 </div>
                 <div id="assignment-reminders" class="assignment-reminder-panel hidden" aria-live="polite"></div>
+                <div id="student-today-plan" class="simple-helper-panel" aria-live="polite"></div>
 
                 <div class="dashboard-split">
                     <div class="panel-stack">
+                        <div class="simple-filter-panel" aria-label="Assignment filters">
+                            <div>
+                                <div class="empty-kicker">Show</div>
+                                <p class="muted" style="margin: 4px 0 0;">Choose the list that feels useful right now.</p>
+                            </div>
+                            <div id="student-assignment-filters" class="chips simple-filter-chips">
+                                <button class="chip active" type="button" data-student-assignment-filter="all">All</button>
+                                <button class="chip" type="button" data-student-assignment-filter="urgent">Due soon</button>
+                                <button class="chip" type="button" data-student-assignment-filter="later">Later</button>
+                                <button class="chip" type="button" data-student-assignment-filter="no-date">No date</button>
+                            </div>
+                        </div>
                         <div class="tab-strip subtab-strip">
                             <button class="assign-sub-tab active" data-sub="todo">To Do</button>
                             <button class="assign-sub-tab" data-sub="completed">Completed</button>
@@ -823,6 +836,14 @@
                 </div>
                 <div class="dashboard-split dashboard-split-solo">
                     <div class="list-container">
+                        <div class="list-item">
+                            <div>
+                                <h3 style="margin:0 0 4px;">Easy Daily Helpers</h3>
+                                <div class="pill">May 9, 2026</div>
+                                <p class="muted" style="margin: 8px 0 0;">Added a student Today's Plan card, simple assignment filters, a teacher class launchpad, teacher assignment health filters, and quick due-date buttons so common dashboard tasks are easier to start without extra setup.</p>
+                            </div>
+                        </div>
+
                         <div class="list-item">
                             <div>
                                 <h3 style="margin:0 0 4px;">Notification Badges</h3>

@@ -170,6 +170,7 @@
                     </div>
                     <button id="btn-new-class" class="btn pri">New Class</button>
                 </div>
+                <div id="teacher-class-launchpad" class="simple-helper-panel" aria-live="polite"></div>
                 <div class="dashboard-split dashboard-split-solo">
                     <div class="panel-stack">
                         <div id="new-class-form" class="card-muted-box hidden">
@@ -192,6 +193,19 @@
                 <div class="section-head">
                     <div>
                         <h2 class="card-title">Assignments</h2>
+                    </div>
+                </div>
+                <div id="teacher-assignment-overview" class="simple-helper-panel" aria-live="polite"></div>
+                <div class="simple-filter-panel" aria-label="Assignment filters">
+                    <div>
+                        <div class="empty-kicker">Show</div>
+                        <p class="muted" style="margin: 4px 0 0;">Narrow the list before checking scores or dates.</p>
+                    </div>
+                    <div id="teacher-assignment-filters" class="chips simple-filter-chips">
+                        <button class="chip active" type="button" data-teacher-assignment-filter="all">All</button>
+                        <button class="chip" type="button" data-teacher-assignment-filter="soon">Due soon</button>
+                        <button class="chip" type="button" data-teacher-assignment-filter="no-date">No date</button>
+                        <button class="chip" type="button" data-teacher-assignment-filter="recent">Recent</button>
                     </div>
                 </div>
                 <div class="dashboard-split dashboard-split-solo">
@@ -273,6 +287,12 @@
                         <div class="input-group">
                             <label>Due Date</label>
                             <input type="datetime-local" id="assign-due">
+                            <div id="assign-due-shortcuts" class="chips due-date-shortcuts" aria-label="Quick due date choices">
+                                <button class="chip" type="button" data-due-shortcut="tomorrow">Tomorrow</button>
+                                <button class="chip" type="button" data-due-shortcut="friday">Friday</button>
+                                <button class="chip" type="button" data-due-shortcut="next-week">Next week</button>
+                                <button class="chip" type="button" data-due-shortcut="clear">No date</button>
+                            </div>
                         </div>
                         <div class="input-group full-width">
                             <label>Instructions (optional)</label>
@@ -763,6 +783,14 @@
                 </div>
                 <div class="dashboard-split dashboard-split-solo">
                     <div class="list-container">
+                        <div class="list-item">
+                            <div>
+                                <h3 style="margin:0 0 4px;">Easy Daily Helpers</h3>
+                                <div class="pill">May 9, 2026</div>
+                                <p class="muted" style="margin: 8px 0 0;">Added a student Today's Plan card, simple assignment filters, a teacher class launchpad, teacher assignment health filters, and quick due-date buttons so common dashboard tasks are easier to start without extra setup.</p>
+                            </div>
+                        </div>
+
                         <div class="list-item">
                             <div>
                                 <h3 style="margin:0 0 4px;">Notification Badges</h3>

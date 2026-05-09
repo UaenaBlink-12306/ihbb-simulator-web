@@ -38,6 +38,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     const ASSIGNMENT_REMINDER_WINDOW_MS = ASSIGNMENT_REMINDER_WINDOW_DAYS * DAY_MS;
     let userEmail = String(session.user?.email || '').trim();
     let currentMemberships = [];
+    let latestStudentAssignments = [];
+    let latestStudentSubmissions = {};
+    let studentAssignmentFilter = 'all';
     let analyticsCloudReady = true;
     let analyticsCloudWarned = false;
     let analyticsSnapshotCurrent = null;
@@ -2887,6 +2890,23 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     });
 
+    document.getElementById('student-assignment-filters')?.addEventListener('click', (event) => {
+        const button = event.target.closest('[data-student-assignment-filter]');
+        if (!button) return;
+        studentAssignmentFilter = String(button.dataset.studentAssignmentFilter || 'all');
+        renderAssignments(latestStudentAssignments, latestStudentSubmissions, { persist: false });
+    });
+
+    document.getElementById('student-today-plan')?.addEventListener('click', (event) => {
+        const startButton = event.target.closest('[data-student-start-assignment]');
+        if (startButton) {
+            window.startAssignment?.(startButton.dataset.studentStartAssignment, startButton.dataset.studentStartTitle || 'Assignment');
+            return;
+        }
+        const tabButton = event.target.closest('[data-student-plan-tab]');
+        if (tabButton) activateDashboardTab(tabButton.dataset.studentPlanTab || 'coach');
+    });
+
     document.getElementById('btn-assignments-coach-tab')?.addEventListener('click', () => activateDashboardTab('coach'));
     document.getElementById('btn-assignments-coach-drill')?.addEventListener('click', () => launchCoachGuidedDrill());
     document.getElementById('btn-coach-refresh')?.addEventListener('click', async () => {
@@ -3057,6 +3077,103 @@ document.addEventListener('DOMContentLoaded', async () => {
         `;
     }
 
+    function studentAssignmentFilterCounts(todoList) {
+        const rows = Array.isArray(todoList) ? todoList : [];
+        const nowDate = new Date();
+        return rows.reduce((counts, assignment) => {
+            const state = getAssignmentDueState(assignment, nowDate);
+            counts.all += 1;
+            if (state.level === 'none') counts['no-date'] += 1;
+            else if (state.reminder) counts.urgent += 1;
+            else counts.later += 1;
+            return counts;
+        }, { all: 0, urgent: 0, later: 0, 'no-date': 0 });
+    }
+
+    function syncStudentAssignmentFilterChips(todoList) {
+        const wrap = document.getElementById('student-assignment-filters');
+        if (!wrap) return;
+        const labels = {
+            all: 'All',
+            urgent: 'Due soon',
+            later: 'Later',
+            'no-date': 'No date'
+        };
+        const counts = studentAssignmentFilterCounts(todoList);
+        wrap.querySelectorAll('[data-student-assignment-filter]').forEach((button) => {
+            const filter = String(button.dataset.studentAssignmentFilter || 'all');
+            button.classList.toggle('active', filter === studentAssignmentFilter);
+            button.textContent = `${labels[filter] || 'All'} ${counts[filter] || 0}`;
+        });
+    }
+
+    function matchesStudentAssignmentFilter(assignment, nowDate = new Date()) {
+        const state = getAssignmentDueState(assignment, nowDate);
+        if (studentAssignmentFilter === 'urgent') return !!state.reminder;
+        if (studentAssignmentFilter === 'later') return state.level !== 'none' && !state.reminder;
+        if (studentAssignmentFilter === 'no-date') return state.level === 'none';
+        return true;
+    }
+
+    function studentFilterEmptyCopy() {
+        if (studentAssignmentFilter === 'urgent') {
+            return ['Due soon', 'No urgent assignments', 'Nothing is overdue or due in the next few days.'];
+        }
+        if (studentAssignmentFilter === 'later') {
+            return ['Later', 'No later assignments', 'Assignments with future due dates will appear here.'];
+        }
+        if (studentAssignmentFilter === 'no-date') {
+            return ['No date', 'No assignments without dates', 'Assignments without due dates will appear here.'];
+        }
+        return ['To do', 'All caught up', 'You do not have any pending assignments right now.'];
+    }
+
+    function renderStudentTodayPlan(todoList, doneList) {
+        const planEl = document.getElementById('student-today-plan');
+        if (!planEl) return;
+        const todos = Array.isArray(todoList) ? todoList : [];
+        const completed = Array.isArray(doneList) ? doneList : [];
+        const nowDate = new Date();
+        const withState = todos
+            .map((assignment) => ({ assignment, state: getAssignmentDueState(assignment, nowDate) }))
+            .sort((a, b) => a.state.sortTs - b.state.sortTs);
+        const urgent = withState.find((entry) => entry.state.reminder);
+        const next = urgent || withState[0] || null;
+        const overdueCount = withState.filter((entry) => entry.state.level === 'overdue').length;
+        const dueSoonCount = withState.filter((entry) => entry.state.reminder && entry.state.level !== 'overdue').length;
+
+        let title = 'Start with a short practice block';
+        let copy = 'You can practice freely while you wait for new class work.';
+        let actionHtml = '<a class="btn pri" href="index.html?drill=1">Open Practice Hub</a><button class="btn ghost" type="button" data-student-plan-tab="coach">Open Coach</button>';
+
+        if (!currentMemberships.length) {
+            title = 'Join a class or practice on your own';
+            copy = 'Enter a class code if your teacher gave you one, or keep using the Practice Hub independently.';
+            actionHtml = `${joinClassActionHtml('Enter class code')}<a class="btn ghost" href="index.html?drill=1">Practice on my own</a>`;
+        } else if (next) {
+            title = urgent ? `Start ${next.state.label.toLowerCase()}: ${next.assignment.title}` : `Next assignment: ${next.assignment.title}`;
+            copy = `${next.assignment.classes?.name ? `${next.assignment.classes.name} - ` : ''}${next.state.detail}`;
+            actionHtml = `<button class="btn pri" type="button" data-student-start-assignment="${esc(next.assignment.id)}" data-student-start-title="${esc(next.assignment.title)}">Start assignment</button><button class="btn ghost" type="button" data-student-plan-tab="coach">Ask Coach</button>`;
+        } else if (completed.length) {
+            title = 'All assigned work is done';
+            copy = 'Keep the habit going with a quick review or ask Coach what to sharpen next.';
+        }
+
+        planEl.innerHTML = `
+            <div class="simple-helper-copy">
+                <div class="empty-kicker">Today's plan</div>
+                <h3>${esc(title)}</h3>
+                <p>${esc(copy)}</p>
+            </div>
+            <div class="simple-helper-stats">
+                <span><strong>${overdueCount}</strong> overdue</span>
+                <span><strong>${dueSoonCount}</strong> due soon</span>
+                <span><strong>${completed.length}</strong> completed</span>
+            </div>
+            <div class="simple-helper-actions">${actionHtml}</div>
+        `;
+    }
+
     function assignmentResultStorageKey(assignId) {
         const id = String(assignId || '').trim();
         return id ? `${ASSIGNMENT_RESULT_BASE_KEY}_${id}_${uid}` : '';
@@ -3086,10 +3203,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     async function loadAssignments() {
         try {
             const memberships = await fetchStudentMemberships({ includeClassDetails: false });
+            if (memberships.length && !currentMemberships.length) currentMemberships = memberships;
             if (!memberships.length) {
+                latestStudentAssignments = [];
+                latestStudentSubmissions = {};
                 setMetric('student-hero-todo', 0);
                 setMetric('student-hero-done', 0);
                 renderAssignmentReminders([]);
+                renderStudentTodayPlan([], []);
+                syncStudentAssignmentFilterChips([]);
                 document.getElementById('student-assignments-todo').innerHTML = emptyStateHtml(
                     'Assignments',
                     'Join a class first',
@@ -3129,9 +3251,13 @@ document.addEventListener('DOMContentLoaded', async () => {
             renderAssignments(assignmentsResult.data || [], subMap);
         } catch (error) {
             console.warn('[Student Assignments] failed to load:', error);
+            latestStudentAssignments = [];
+            latestStudentSubmissions = {};
             setMetric('student-hero-todo', 0);
             setMetric('student-hero-done', 0);
             renderAssignmentReminders([]);
+            renderStudentTodayPlan([], []);
+            syncStudentAssignmentFilterChips([]);
             document.getElementById('student-assignments-todo').innerHTML = emptyStateHtml(
                 'Assignments',
                 'Assignments unavailable',
@@ -3146,15 +3272,25 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
-    function renderAssignments(list, subMap) {
+    function renderAssignments(list = latestStudentAssignments, subMap = latestStudentSubmissions, options = {}) {
+        const safeList = Array.isArray(list) ? list : [];
+        const safeSubMap = subMap && typeof subMap === 'object' ? subMap : {};
+        if (options.persist !== false) {
+            latestStudentAssignments = safeList;
+            latestStudentSubmissions = safeSubMap;
+        }
         const todoEl = document.getElementById('student-assignments-todo');
         const doneEl = document.getElementById('student-assignments-completed');
 
-        const todoList = list.filter(a => !subMap[a.id]);
-        const doneList = list.filter(a => subMap[a.id]);
+        const todoList = safeList.filter(a => !safeSubMap[a.id]);
+        const doneList = safeList.filter(a => safeSubMap[a.id]);
+        const nowDate = new Date();
+        const visibleTodoList = todoList.filter(a => matchesStudentAssignmentFilter(a, nowDate));
         setMetric('student-hero-todo', todoList.length);
         setMetric('student-hero-done', doneList.length);
         renderAssignmentReminders(todoList);
+        renderStudentTodayPlan(todoList, doneList);
+        syncStudentAssignmentFilterChips(todoList);
 
         const assignTab = document.querySelector('.dash-tab[data-tab="assignments"]');
         if (assignTab) {
@@ -3162,12 +3298,35 @@ document.addEventListener('DOMContentLoaded', async () => {
             else assignTab.removeAttribute('data-badge');
         }
 
+        if (!currentMemberships.length && !safeList.length) {
+            todoEl.innerHTML = emptyStateHtml(
+                'Assignments',
+                'Join a class first',
+                'Assignments will appear here once you are enrolled in at least one classroom.',
+                joinClassActionHtml()
+            );
+            doneEl.innerHTML = emptyStateHtml(
+                'Completed',
+                'Join a class to unlock class work',
+                'Finished assignments and redo links will appear here after you join a classroom.',
+                joinClassActionHtml()
+            );
+            document.querySelectorAll('.assign-sub-tab').forEach(t => {
+                if (t.dataset.sub === 'todo') t.textContent = 'To Do · 0';
+                if (t.dataset.sub === 'completed') t.textContent = 'Completed · 0';
+            });
+            renderAssignmentsCoachBrief();
+            return;
+        }
+
         // Render To Do
         if (!todoList.length) {
             todoEl.innerHTML = emptyStateHtml('To do', 'All caught up', 'You do not have any pending assignments right now.');
+        } else if (!visibleTodoList.length) {
+            const [kicker, title, copy] = studentFilterEmptyCopy();
+            todoEl.innerHTML = emptyStateHtml(kicker, title, copy);
         } else {
-            const nowDate = new Date();
-            todoEl.innerHTML = todoList.map(a => {
+            todoEl.innerHTML = visibleTodoList.map(a => {
                 const dueState = getAssignmentDueState(a, nowDate);
                 const cls = a.classes?.name || '';
                 return `<div class="list-item">
@@ -3190,7 +3349,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             doneEl.innerHTML = doneList.map(a => {
                 const due = a.due_date ? new Date(a.due_date).toLocaleDateString() : 'No deadline';
                 const cls = a.classes?.name || '';
-                const sub = subMap[a.id];
+                const sub = safeSubMap[a.id];
                 const pct = sub.total ? Math.round(sub.correct / sub.total * 100) : 0;
                 const retry = readAssignmentRetrySummary(a.id);
                 const missedCount = retry?.missedIds?.length || Math.max(0, (Number(sub.total) || 0) - (Number(sub.correct) || 0));
@@ -5166,9 +5325,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         toggleBuilderClassSelection(e.target.value);
     });
 
-    const esc = (str) => String(str || '').replace(/[&<>"']/g, m => ({
+    function esc(str) {
+        return String(str || '').replace(/[&<>"']/g, m => ({
         '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
-    }[m]));
+        }[m]));
+    }
 
     // ========== SET BUILDER ==========
     function setupBuilder() {

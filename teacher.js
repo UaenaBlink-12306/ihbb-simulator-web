@@ -83,6 +83,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     let allQuestions = [];
     let selectedQuestions = [];
     let latestAssignments = [];
+    let teacherAssignmentFilter = 'all';
     let myQuestionSets = [];
     let isCreatingSet = false;
     let currentMode = 'random';
@@ -781,6 +782,166 @@ document.addEventListener('DOMContentLoaded', async () => {
         selectAnalyticsClass(classId);
         document.querySelector('[data-tab="analytics"]')?.click();
     };
+
+    function teacherAssignmentDueInfo(assignment, nowDate = new Date()) {
+        const rawDue = assignment?.due_date ? new Date(assignment.due_date) : null;
+        if (!rawDue || Number.isNaN(rawDue.getTime())) {
+            return { level: 'no-date', label: 'No date', detail: 'No due date', sortTs: Number.POSITIVE_INFINITY };
+        }
+        const diffMs = rawDue.getTime() - nowDate.getTime();
+        const detail = `Due ${rawDue.toLocaleDateString()}`;
+        if (diffMs < 0) return { level: 'past', label: 'Past due', detail, sortTs: rawDue.getTime() };
+        if (diffMs <= 7 * DAY_MS) return { level: 'soon', label: 'Due soon', detail, sortTs: rawDue.getTime() };
+        return { level: 'later', label: 'Later', detail, sortTs: rawDue.getTime() };
+    }
+
+    function teacherAssignmentCreatedRecently(assignment) {
+        const created = toTs(assignment?.created_at);
+        return !!created && Date.now() - created <= 7 * DAY_MS;
+    }
+
+    function teacherAssignmentFilterCounts(list) {
+        const rows = Array.isArray(list) ? list : [];
+        const nowDate = new Date();
+        return rows.reduce((counts, assignment) => {
+            const info = teacherAssignmentDueInfo(assignment, nowDate);
+            counts.all += 1;
+            if (info.level === 'no-date') counts['no-date'] += 1;
+            if (info.level === 'soon' || info.level === 'past') counts.soon += 1;
+            if (teacherAssignmentCreatedRecently(assignment)) counts.recent += 1;
+            return counts;
+        }, { all: 0, soon: 0, 'no-date': 0, recent: 0 });
+    }
+
+    function syncTeacherAssignmentFilterChips(list) {
+        const wrap = document.getElementById('teacher-assignment-filters');
+        if (!wrap) return;
+        const labels = {
+            all: 'All',
+            soon: 'Due soon',
+            'no-date': 'No date',
+            recent: 'Recent'
+        };
+        const counts = teacherAssignmentFilterCounts(list);
+        wrap.querySelectorAll('[data-teacher-assignment-filter]').forEach((button) => {
+            const filter = String(button.dataset.teacherAssignmentFilter || 'all');
+            button.classList.toggle('active', filter === teacherAssignmentFilter);
+            button.textContent = `${labels[filter] || 'All'} ${counts[filter] || 0}`;
+        });
+    }
+
+    function matchesTeacherAssignmentFilter(assignment, nowDate = new Date()) {
+        const info = teacherAssignmentDueInfo(assignment, nowDate);
+        if (teacherAssignmentFilter === 'soon') return info.level === 'soon' || info.level === 'past';
+        if (teacherAssignmentFilter === 'no-date') return info.level === 'no-date';
+        if (teacherAssignmentFilter === 'recent') return teacherAssignmentCreatedRecently(assignment);
+        return true;
+    }
+
+    function teacherAssignmentFilterEmptyCopy() {
+        if (teacherAssignmentFilter === 'soon') return ['Due soon', 'No assignments due soon', 'Assignments due in the next week will appear here.'];
+        if (teacherAssignmentFilter === 'no-date') return ['No date', 'Every assignment has a date', 'Assignments without a due date will appear here.'];
+        if (teacherAssignmentFilter === 'recent') return ['Recent', 'No recent assignments', 'Assignments created in the last week will appear here.'];
+        return ['Assignments', 'No assignments yet', 'Use the builder to create your first assignment and publish it to a class.'];
+    }
+
+    function renderTeacherAssignmentOverview(list) {
+        const overview = document.getElementById('teacher-assignment-overview');
+        if (!overview) return;
+        const rows = Array.isArray(list) ? list : [];
+        const counts = teacherAssignmentFilterCounts(rows);
+        const title = rows.length ? `${rows.length} assignment${rows.length === 1 ? '' : 's'} on deck` : 'Create the first assignment';
+        const copy = rows.length
+            ? 'Use the filters below to check what needs attention before opening scores.'
+            : 'Once a class exists, the builder can make a short assignment in a few clicks.';
+        overview.innerHTML = `
+            <div class="simple-helper-copy">
+                <div class="empty-kicker">Assignment health</div>
+                <h3>${esc(title)}</h3>
+                <p>${esc(copy)}</p>
+            </div>
+            <div class="simple-helper-stats">
+                <span><strong>${counts.soon}</strong> due soon</span>
+                <span><strong>${counts['no-date']}</strong> no date</span>
+                <span><strong>${counts.recent}</strong> recent</span>
+            </div>
+            <div class="simple-helper-actions">
+                <button class="btn pri" type="button" data-teacher-launch-action="create-assignment">Build assignment</button>
+                <button class="btn ghost" type="button" data-teacher-launch-action="open-analytics">Open analytics</button>
+            </div>
+        `;
+    }
+
+    function renderTeacherClassLaunchpad() {
+        const panel = document.getElementById('teacher-class-launchpad');
+        if (!panel) return;
+        const hasClass = myClasses.length > 0;
+        const hasAssignment = latestAssignments.length > 0;
+        const hasStudents = (teacherAnalyticsState.totals?.studentCount || 0) > 0;
+        const nextTitle = !hasClass
+            ? 'Create a class first'
+            : !hasAssignment
+                ? 'Build a short first assignment'
+                : hasStudents
+                    ? 'Review class progress'
+                    : 'Share an invite code';
+        const nextCopy = !hasClass
+            ? 'A class gives students one simple code to join.'
+            : !hasAssignment
+                ? 'Pick a topic, choose a due date, and publish a small set.'
+                : hasStudents
+                    ? 'Analytics can show who may need help before the next practice.'
+                    : 'Students can join with the class code before you check scores.';
+        const steps = [
+            { label: 'Class ready', done: hasClass },
+            { label: 'Assignment ready', done: hasAssignment },
+            { label: 'Students visible', done: hasStudents }
+        ];
+        const primaryAction = !hasClass ? 'create-class' : (!hasAssignment ? 'create-assignment' : 'open-analytics');
+        panel.innerHTML = `
+            <div class="simple-helper-copy">
+                <div class="empty-kicker">Teacher launchpad</div>
+                <h3>${esc(nextTitle)}</h3>
+                <p>${esc(nextCopy)}</p>
+            </div>
+            <div class="simple-checklist">
+                ${steps.map(step => `<span class="simple-check ${step.done ? 'done' : 'pending'}">${esc(step.done ? 'Done' : 'Next')} - ${esc(step.label)}</span>`).join('')}
+            </div>
+            <div class="simple-helper-actions">
+                <button class="btn pri" type="button" data-teacher-launch-action="${esc(primaryAction)}">${hasClass ? 'Continue' : 'Create class'}</button>
+                <button class="btn ghost" type="button" data-teacher-launch-action="host-livebee">Host Live Bee</button>
+            </div>
+        `;
+    }
+
+    function setDueDateShortcut(kind) {
+        const input = document.getElementById('assign-due');
+        if (!input) return;
+        const mode = String(kind || '').trim();
+        if (mode === 'clear') {
+            input.value = '';
+            showAlert('Due date cleared.', 'success');
+            return;
+        }
+        const now = new Date();
+        const target = new Date(now);
+        if (mode === 'tomorrow') {
+            target.setDate(now.getDate() + 1);
+        } else if (mode === 'friday') {
+            const day = now.getDay();
+            const addDays = ((5 - day + 7) % 7) || 7;
+            target.setDate(now.getDate() + addDays);
+        } else if (mode === 'next-week') {
+            const day = now.getDay();
+            const addDays = ((1 - day + 7) % 7) || 7;
+            target.setDate(now.getDate() + addDays);
+        }
+        target.setHours(18, 0, 0, 0);
+        const pad = (value) => String(value).padStart(2, '0');
+        input.value = `${target.getFullYear()}-${pad(target.getMonth() + 1)}-${pad(target.getDate())}T${pad(target.getHours())}:${pad(target.getMinutes())}`;
+        showAlert(`Due date set to ${target.toLocaleString()}.`, 'success');
+    }
+
     function normalizeTeacherAnalyticsClassRows(classRows, rosterRows, assignmentRows, submissionRows, sessionRows, wrongRows, coachRows, profileRows) {
         const rosterByClass = groupBy(rosterRows, row => String(row.class_id || ''));
         const rosterByStudent = groupBy(rosterRows, row => String(row.student_id || ''));
@@ -2059,6 +2220,45 @@ document.addEventListener('DOMContentLoaded', async () => {
         trigger.addEventListener('click', () => activateDashboardTab(trigger.dataset.defaultTab));
     });
 
+    document.getElementById('teacher-assignment-filters')?.addEventListener('click', (event) => {
+        const button = event.target.closest('[data-teacher-assignment-filter]');
+        if (!button) return;
+        teacherAssignmentFilter = String(button.dataset.teacherAssignmentFilter || 'all');
+        renderAssignments(latestAssignments);
+    });
+
+    document.getElementById('teacher-class-launchpad')?.addEventListener('click', (event) => {
+        const button = event.target.closest('[data-teacher-launch-action]');
+        if (!button) return;
+        const action = String(button.dataset.teacherLaunchAction || '');
+        if (action === 'create-class') {
+            const form = document.getElementById('new-class-form');
+            form?.classList.remove('hidden');
+            document.getElementById('new-class-name')?.focus();
+        } else if (action === 'create-assignment') {
+            activateDashboardTab('create');
+        } else if (action === 'open-analytics') {
+            if (myClasses[0]?.id) window.openClassAnalytics(myClasses[0].id);
+            else activateDashboardTab('analytics');
+        } else if (action === 'host-livebee') {
+            window.location.href = 'livebee.html';
+        }
+    });
+
+    document.getElementById('teacher-assignment-overview')?.addEventListener('click', (event) => {
+        const button = event.target.closest('[data-teacher-launch-action]');
+        if (!button) return;
+        const action = String(button.dataset.teacherLaunchAction || '');
+        if (action === 'create-assignment') activateDashboardTab('create');
+        if (action === 'open-analytics') activateDashboardTab('analytics');
+    });
+
+    document.getElementById('assign-due-shortcuts')?.addEventListener('click', (event) => {
+        const button = event.target.closest('[data-due-shortcut]');
+        if (!button) return;
+        setDueDateShortcut(button.dataset.dueShortcut);
+    });
+
     // Mode switching (create assignment)
     const modeButtons = [...document.querySelectorAll('.mode-btn')];
     const modePanels = [...document.querySelectorAll('.mode-panel')];
@@ -2365,6 +2565,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         populateClassDropdown();
         syncAccountSettingsInputs();
         applyAccountSettingsLocally();
+        renderTeacherClassLaunchpad();
         void applyPendingAssistantClassGuidanceDraft({ notify: window.location.hash === '#assistant-class-draft' });
         void loadTeacherAnalytics();
     }
@@ -2372,6 +2573,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     function renderClasses() {
         const el = document.getElementById('classes-list');
         setMetric('teacher-hero-classes', myClasses.length);
+        renderTeacherClassLaunchpad();
         if (!myClasses.length) {
             el.innerHTML = emptyStateHtml('Classes', 'No classes yet', 'Create your first class to generate an invite code and start assigning work.');
             return;
@@ -2728,24 +2930,38 @@ document.addEventListener('DOMContentLoaded', async () => {
         const { data } = await sb.from('assignments').select('*, classes(name, code)').eq('teacher_id', uid).order('created_at', { ascending: false });
         latestAssignments = data || [];
         renderAssignments(latestAssignments);
+        renderTeacherClassLaunchpad();
         void loadTeacherAnalytics();
     }
 
-    function renderAssignments(list) {
+    function renderAssignments(list = latestAssignments) {
         const el = document.getElementById('assignments-list');
-        setMetric('teacher-hero-assignments', list.length);
-        if (!list.length) {
-            el.innerHTML = emptyStateHtml('Assignments', 'No assignments yet', 'Use the builder to create your first assignment and publish it to a class.');
+        const rows = Array.isArray(list) ? list : [];
+        const nowDate = new Date();
+        const visibleRows = rows.filter((assignment) => matchesTeacherAssignmentFilter(assignment, nowDate));
+        setMetric('teacher-hero-assignments', rows.length);
+        renderTeacherAssignmentOverview(rows);
+        syncTeacherAssignmentFilterChips(rows);
+        if (!rows.length) {
+            const [kicker, title, copy] = teacherAssignmentFilterEmptyCopy();
+            el.innerHTML = emptyStateHtml(kicker, title, copy);
             return;
         }
-        el.innerHTML = list.map(a => {
-            const due = a.due_date ? new Date(a.due_date).toLocaleDateString() : 'No due date';
+        if (!visibleRows.length) {
+            const [kicker, title, copy] = teacherAssignmentFilterEmptyCopy();
+            el.innerHTML = emptyStateHtml(kicker, title, copy);
+            return;
+        }
+        el.innerHTML = visibleRows.map(a => {
+            const dueInfo = teacherAssignmentDueInfo(a, nowDate);
             const cls = a.classes ? a.classes.name : '';
+            const pillClass = dueInfo.level === 'past' ? 'overdue' : (dueInfo.level === 'soon' ? 'due-soon' : 'pending');
             return `<div class="list-item">
                 <div class="item-copy">
                     <span class="item-title">${esc(a.title)}</span>
-                    <span class="item-meta">${esc(cls)} · Due: ${due}</span>
+                    <span class="item-meta">${esc(cls)} · ${esc(dueInfo.detail)}</span>
                 </div>
+                <span class="status-pill ${pillClass}">${esc(dueInfo.label)}</span>
                 <div class="item-actions">
                     <button class="btn ghost" onclick="viewScores('${a.id}')">View Scores</button>
                     <button class="btn bad" onclick="deleteAssignment('${a.id}')">Delete</button>

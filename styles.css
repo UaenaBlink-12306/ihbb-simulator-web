@@ -8656,6 +8656,132 @@ input[type=datetime-local] {
 .quality-chip-medium { background: rgba(251, 191, 36, 0.15); color: #fbbf24; }
 .quality-chip-hard { background: rgba(248, 113, 113, 0.15); color: #f87171; }
 
+button.chip {
+  color: inherit;
+  font-family: inherit;
+}
+
+.simple-helper-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) auto auto;
+  align-items: center;
+  gap: 16px;
+  margin: 0 0 18px;
+  padding: 16px;
+  border: 1px solid rgba(96, 165, 250, 0.24);
+  border-radius: 16px;
+  background:
+    linear-gradient(135deg, rgba(96, 165, 250, 0.13), rgba(45, 212, 191, 0.07)),
+    var(--surface-glass);
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.04);
+}
+
+.simple-helper-panel:empty {
+  display: none;
+}
+
+.simple-helper-copy {
+  min-width: 0;
+}
+
+.simple-helper-copy h3 {
+  margin: 4px 0 6px;
+  color: var(--ink);
+  font-size: 18px;
+  line-height: 1.25;
+}
+
+.simple-helper-copy p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.simple-helper-stats,
+.simple-checklist {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.simple-helper-stats span,
+.simple-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.04);
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.simple-helper-stats strong {
+  color: var(--ink);
+  font-size: 14px;
+}
+
+.simple-check.done {
+  color: var(--good);
+  border-color: rgba(52, 211, 153, 0.24);
+  background: rgba(52, 211, 153, 0.1);
+}
+
+.simple-check.pending {
+  color: var(--warn);
+  border-color: rgba(251, 191, 36, 0.24);
+  background: rgba(251, 191, 36, 0.1);
+}
+
+.simple-helper-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.simple-filter-panel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.simple-filter-chips {
+  justify-content: flex-end;
+}
+
+.due-date-shortcuts {
+  margin-top: 10px;
+}
+
+@media (max-width: 860px) {
+  .simple-helper-panel {
+    grid-template-columns: 1fr;
+    align-items: flex-start;
+  }
+
+  .simple-helper-stats,
+  .simple-checklist,
+  .simple-helper-actions,
+  .simple-filter-chips {
+    justify-content: flex-start;
+  }
+
+  .simple-filter-panel {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
 .quality-warnings {
   margin-top: 10px;
   padding: 10px;
