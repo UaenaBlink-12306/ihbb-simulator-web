@@ -170,7 +170,22 @@ document.addEventListener('DOMContentLoaded', async () => {
         return Math.max(1, Math.min(200, v));
     };
     const TEACHER_BUILDER_MODES = new Set(['random', 'filter', 'pick']);
+    const TEACHER_DASHBOARD_TAB_LABELS = Object.freeze({
+        classes: 'My Classes',
+        assignments: 'Assignments',
+        'question-sets': 'Browse Sets',
+        create: 'Create Assignment',
+        livebee: 'Live Bee Rooms',
+        'game-history': 'Game History',
+        analytics: 'Analytics',
+        'peer-comparison': 'Peer Comparison',
+        export: 'Export',
+        account: 'Settings',
+        whatsnew: "What's New"
+    });
+    const TEACHER_DASHBOARD_TABS = new Set(Object.keys(TEACHER_DASHBOARD_TAB_LABELS));
     const ACCOUNT_SETTING_DEFAULTS = Object.freeze({
+        teacher_dashboard_default_tab: 'classes',
         teacher_builder_default_class_id: '',
         teacher_builder_default_mode: 'random',
         teacher_builder_default_question_count: 10,
@@ -257,6 +272,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         return TEACHER_BUILDER_MODES.has(normalized) ? normalized : ACCOUNT_SETTING_DEFAULTS.teacher_builder_default_mode;
     };
     const normalizeTeacherQuestionCount = (value) => clampCount(value, ACCOUNT_SETTING_DEFAULTS.teacher_builder_default_question_count);
+    const normalizeTeacherDashboardTab = (value) => {
+        const normalized = String(value || '').trim().toLowerCase();
+        return TEACHER_DASHBOARD_TABS.has(normalized) ? normalized : ACCOUNT_SETTING_DEFAULTS.teacher_dashboard_default_tab;
+    };
     const normalizeAssistantResponseDetail = (value) => {
         const normalized = String(value || '').trim().toLowerCase();
         return ASSISTANT_RESPONSE_DETAILS.has(normalized) ? normalized : ACCOUNT_SETTING_DEFAULTS.assistant_response_detail;
@@ -284,6 +303,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
         return {
             ...source,
+            teacher_dashboard_default_tab: normalizeTeacherDashboardTab(source.teacher_dashboard_default_tab),
             teacher_builder_default_class_id: normalizeTeacherClassId(source.teacher_builder_default_class_id),
             teacher_builder_default_mode: normalizeTeacherBuilderMode(source.teacher_builder_default_mode),
             teacher_builder_default_question_count: normalizeTeacherQuestionCount(source.teacher_builder_default_question_count),
@@ -2355,6 +2375,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     function readAccountSettingsFromForm() {
         return normalizeAccountSettings({
             ...accountSettings,
+            teacher_dashboard_default_tab: document.getElementById('acc-teacher-default-tab')?.value,
             teacher_builder_default_class_id: document.getElementById('acc-teacher-default-class')?.value,
             teacher_builder_default_mode: document.getElementById('acc-teacher-default-mode')?.value,
             teacher_builder_default_question_count: document.getElementById('acc-teacher-default-count')?.value,
@@ -2363,6 +2384,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     function syncAccountSettingsInputs() {
         populateTeacherSettingsClassDropdowns();
+        setInput('acc-teacher-default-tab', normalizeTeacherDashboardTab(accountSettings.teacher_dashboard_default_tab));
         setInput('acc-teacher-default-mode', normalizeTeacherBuilderMode(accountSettings.teacher_builder_default_mode));
         setInput('acc-teacher-default-count', normalizeTeacherQuestionCount(accountSettings.teacher_builder_default_question_count));
         const builderSelect = document.getElementById('acc-teacher-default-class');
@@ -2408,7 +2430,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     renderAccountProfile(true);
 
-    ['acc-teacher-default-class', 'acc-teacher-default-mode', 'acc-teacher-default-count', 'acc-teacher-analytics-class'].forEach((id) => {
+    ['acc-teacher-default-tab', 'acc-teacher-default-class', 'acc-teacher-default-mode', 'acc-teacher-default-count', 'acc-teacher-analytics-class'].forEach((id) => {
         document.getElementById(id)?.addEventListener('change', () => {
             accountSettings = readAccountSettingsFromForm();
             syncAccountSettingsInputs();
@@ -4913,7 +4935,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     function activateDashboardTab(tabName) {
-        const nextTab = String(tabName || 'classes').trim() || 'classes';
+        const nextTab = normalizeTeacherDashboardTab(tabName);
         const nextView = document.getElementById('tab-' + nextTab);
         if (!nextView) return;
         const navTab = nextTab === 'peer-comparison' ? 'analytics' : nextTab;
@@ -4983,17 +5005,244 @@ document.addEventListener('DOMContentLoaded', async () => {
         activateDashboardTab(tabName);
     }
 
+    function dashboardMenuItems(group) {
+        return Array.from(group?.querySelectorAll('.dash-tab[data-tab]') || []);
+    }
+
+    function dashboardGroups() {
+        return Array.from(document.querySelectorAll('.dashboard-tab-group'));
+    }
+
+    function focusDashboardMenuItem(group, index) {
+        const items = dashboardMenuItems(group);
+        if (!items.length) return;
+        const nextIndex = (index + items.length) % items.length;
+        openDashboardMenu(group);
+        items[nextIndex].focus();
+    }
+
+    function focusAdjacentDashboardGroup(group, offset) {
+        const groups = dashboardGroups();
+        const index = groups.indexOf(group);
+        if (index < 0 || !groups.length) return;
+        const nextGroup = groups[(index + offset + groups.length) % groups.length];
+        const trigger = nextGroup?.querySelector('.dashboard-tab-group-trigger');
+        if (!trigger) return;
+        openDashboardMenu(nextGroup);
+        trigger.focus();
+    }
+
+    function handleDashboardTriggerKeydown(event, trigger) {
+        const group = trigger?.closest('.dashboard-tab-group');
+        if (!group) return;
+        if (event.key === 'ArrowDown' || event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            focusDashboardMenuItem(group, 0);
+        } else if (event.key === 'ArrowUp') {
+            event.preventDefault();
+            focusDashboardMenuItem(group, dashboardMenuItems(group).length - 1);
+        } else if (event.key === 'ArrowRight') {
+            event.preventDefault();
+            focusAdjacentDashboardGroup(group, 1);
+        } else if (event.key === 'ArrowLeft') {
+            event.preventDefault();
+            focusAdjacentDashboardGroup(group, -1);
+        } else if (event.key === 'Escape') {
+            setDashboardMenuOpen(group, false);
+        }
+    }
+
+    function handleDashboardMenuItemKeydown(event, tab) {
+        const group = tab?.closest('.dashboard-tab-group');
+        const items = dashboardMenuItems(group);
+        const index = items.indexOf(tab);
+        if (!group || index < 0) return;
+        if (event.key === 'ArrowDown') {
+            event.preventDefault();
+            focusDashboardMenuItem(group, index + 1);
+        } else if (event.key === 'ArrowUp') {
+            event.preventDefault();
+            focusDashboardMenuItem(group, index - 1);
+        } else if (event.key === 'Home') {
+            event.preventDefault();
+            focusDashboardMenuItem(group, 0);
+        } else if (event.key === 'End') {
+            event.preventDefault();
+            focusDashboardMenuItem(group, items.length - 1);
+        } else if (event.key === 'ArrowRight') {
+            event.preventDefault();
+            focusAdjacentDashboardGroup(group, 1);
+        } else if (event.key === 'ArrowLeft') {
+            event.preventDefault();
+            focusAdjacentDashboardGroup(group, -1);
+        } else if (event.key === 'Escape') {
+            event.preventDefault();
+            setDashboardMenuOpen(group, false);
+            group.querySelector('.dashboard-tab-group-trigger')?.focus();
+        } else if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            activateDashboardControl(tab);
+            setDashboardMenuOpen(group, false);
+        }
+    }
+
+    function dashboardGroupLabel(group) {
+        return String(group?.querySelector('.dashboard-tab-group-trigger')?.textContent || '')
+            .replace(/\s+/g, ' ')
+            .trim();
+    }
+
+    function collectDashboardSwitcherTools(extraTools = []) {
+        const seen = new Set();
+        const tools = [];
+        document.querySelectorAll('.dashboard-tab-group').forEach(group => {
+            const groupLabel = dashboardGroupLabel(group);
+            group.querySelectorAll('.dash-tab[data-tab]').forEach(tab => {
+                const tabName = String(tab.dataset.tab || '').trim();
+                if (!tabName || seen.has(tabName) || !document.getElementById('tab-' + tabName)) return;
+                seen.add(tabName);
+                const label = String(tab.textContent || TEACHER_DASHBOARD_TAB_LABELS[tabName] || tabName)
+                    .replace(/\s+/g, ' ')
+                    .trim();
+                const keywords = [label, groupLabel, tabName.replace(/-/g, ' '), tab.getAttribute('title') || '']
+                    .join(' ')
+                    .toLowerCase();
+                tools.push({ tabName, label, groupLabel, keywords });
+            });
+        });
+        extraTools.forEach(tool => {
+            const tabName = String(tool?.tabName || '').trim();
+            if (!tabName || seen.has(tabName) || !document.getElementById('tab-' + tabName)) return;
+            seen.add(tabName);
+            const label = String(tool.label || TEACHER_DASHBOARD_TAB_LABELS[tabName] || tabName).trim();
+            const groupLabel = String(tool.groupLabel || '').trim();
+            const keywords = [label, groupLabel, tabName.replace(/-/g, ' '), tool.keywords || ''].join(' ').toLowerCase();
+            tools.push({ tabName, label, groupLabel, keywords, focusTab: tool.focusTab || tabName });
+        });
+        return tools;
+    }
+
+    function isDashboardTextEntry(target) {
+        const tagName = String(target?.tagName || '').toUpperCase();
+        return !!target?.isContentEditable || tagName === 'INPUT' || tagName === 'TEXTAREA' || tagName === 'SELECT';
+    }
+
+    function dashboardSwitcherMatches(tools, query) {
+        const terms = String(query || '').trim().toLowerCase().split(/\s+/).filter(Boolean);
+        if (!terms.length) return tools.slice(0, 8);
+        return tools.filter(tool => terms.every(term => tool.keywords.includes(term))).slice(0, 8);
+    }
+
+    function closeDashboardSwitcher(state) {
+        state.results.classList.remove('open');
+        state.input.setAttribute('aria-expanded', 'false');
+        state.input.removeAttribute('aria-activedescendant');
+        state.matches = [];
+        state.activeIndex = 0;
+    }
+
+    function renderDashboardSwitcherOptions(state) {
+        state.tools = collectDashboardSwitcherTools(state.extraTools);
+        state.matches = dashboardSwitcherMatches(state.tools, state.input.value);
+        if (state.activeIndex >= state.matches.length) state.activeIndex = 0;
+        if (!state.matches.length) {
+            state.results.innerHTML = '<div class="dashboard-switcher-empty">No matching tools</div>';
+            state.results.classList.add('open');
+            state.input.setAttribute('aria-expanded', 'true');
+            state.input.removeAttribute('aria-activedescendant');
+            return;
+        }
+        state.results.innerHTML = state.matches.map((tool, index) => {
+            const id = `${state.input.id}-option-${index}`;
+            const active = index === state.activeIndex;
+            return `
+                <button id="${esc(id)}" class="dashboard-switcher-option${active ? ' active' : ''}" type="button" role="option" aria-selected="${active ? 'true' : 'false'}" data-switcher-index="${index}">
+                    <strong>${esc(tool.label)}</strong>
+                    <span>${esc(tool.groupLabel || 'Dashboard')}</span>
+                </button>
+            `;
+        }).join('');
+        state.results.classList.add('open');
+        state.input.setAttribute('aria-expanded', 'true');
+        state.input.setAttribute('aria-activedescendant', `${state.input.id}-option-${state.activeIndex}`);
+    }
+
+    function chooseDashboardSwitcherTool(state, tool) {
+        if (!tool) return;
+        activateDashboardTab(tool.tabName);
+        state.input.value = '';
+        closeDashboardSwitcher(state);
+        const focusTab = tool.focusTab || tool.tabName;
+        const navTab = Array.from(document.querySelectorAll('.dash-tab[data-tab]'))
+            .find(tab => String(tab.dataset.tab || '') === focusTab);
+        navTab?.focus({ preventScroll: true });
+    }
+
+    function wireDashboardQuickSwitcher(inputId, resultsId, extraTools = []) {
+        const input = document.getElementById(inputId);
+        const results = document.getElementById(resultsId);
+        const wrap = input?.closest('.dashboard-switcher-shell');
+        if (!input || !results || !wrap) return;
+        const state = { input, results, wrap, extraTools, tools: [], matches: [], activeIndex: 0 };
+        input.addEventListener('focus', () => renderDashboardSwitcherOptions(state));
+        input.addEventListener('input', () => {
+            state.activeIndex = 0;
+            renderDashboardSwitcherOptions(state);
+        });
+        input.addEventListener('keydown', (event) => {
+            if (event.key === 'ArrowDown') {
+                event.preventDefault();
+                if (!state.matches.length) renderDashboardSwitcherOptions(state);
+                if (state.matches.length) {
+                    state.activeIndex = (state.activeIndex + 1) % state.matches.length;
+                    renderDashboardSwitcherOptions(state);
+                }
+            } else if (event.key === 'ArrowUp') {
+                event.preventDefault();
+                if (!state.matches.length) renderDashboardSwitcherOptions(state);
+                if (state.matches.length) {
+                    state.activeIndex = (state.activeIndex - 1 + state.matches.length) % state.matches.length;
+                    renderDashboardSwitcherOptions(state);
+                }
+            } else if (event.key === 'Enter') {
+                event.preventDefault();
+                chooseDashboardSwitcherTool(state, state.matches[state.activeIndex] || dashboardSwitcherMatches(collectDashboardSwitcherTools(extraTools), input.value)[0]);
+            } else if (event.key === 'Escape') {
+                event.preventDefault();
+                closeDashboardSwitcher(state);
+                input.blur();
+            }
+        });
+        results.addEventListener('mousedown', event => event.preventDefault());
+        results.addEventListener('click', (event) => {
+            const option = event.target.closest('.dashboard-switcher-option');
+            if (!option) return;
+            chooseDashboardSwitcherTool(state, state.matches[Number(option.dataset.switcherIndex)]);
+        });
+        document.addEventListener('click', (event) => {
+            if (!wrap.contains(event.target)) closeDashboardSwitcher(state);
+        });
+        document.addEventListener('keydown', (event) => {
+            if (event.key !== '/' || event.ctrlKey || event.metaKey || event.altKey || isDashboardTextEntry(event.target)) return;
+            event.preventDefault();
+            input.focus();
+            input.select();
+        });
+    }
+
     function wireDashboardNavigation() {
         document.querySelectorAll('.dash-tab').forEach(tab => {
             tab.addEventListener('click', () => activateDashboardControl(tab));
             tab.addEventListener('pointerenter', () => activateDashboardControl(tab));
             tab.addEventListener('focus', () => activateDashboardControl(tab));
+            tab.addEventListener('keydown', (event) => handleDashboardMenuItemKeydown(event, tab));
         });
         document.querySelectorAll('.dashboard-tab-group-trigger').forEach(trigger => {
             trigger.setAttribute('aria-expanded', 'false');
             trigger.addEventListener('click', () => activateDashboardControl(trigger));
             trigger.addEventListener('pointerenter', () => activateDashboardControl(trigger));
             trigger.addEventListener('focus', () => activateDashboardControl(trigger));
+            trigger.addEventListener('keydown', (event) => handleDashboardTriggerKeydown(event, trigger));
         });
         document.querySelectorAll('.dashboard-tab-group').forEach(group => {
             group.addEventListener('pointerenter', () => {
@@ -5010,6 +5259,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                 if (!group.contains(event.relatedTarget)) setDashboardMenuOpen(group, false);
             });
         });
+        wireDashboardQuickSwitcher('teacher-dashboard-switcher', 'teacher-dashboard-switcher-results', [
+            { tabName: 'peer-comparison', label: 'Peer Comparison', groupLabel: 'Reports', keywords: 'compare students analytics peers', focusTab: 'analytics' }
+        ]);
     }
 
     function activeTeacherTabName() {
@@ -6127,5 +6379,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     renderDashboardChatChrome();
     if (window.location.hash === '#peer-comparison') {
         activateDashboardTab('peer-comparison');
+    } else {
+        activateDashboardTab(normalizeTeacherDashboardTab(accountSettings.teacher_dashboard_default_tab));
     }
 });

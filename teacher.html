@@ -124,6 +124,16 @@
 
         <div id="alert-box" class="alert hidden"></div>
 
+        <div class="dashboard-quick-switcher" role="search">
+            <div class="dashboard-switcher-shell">
+                <input id="teacher-dashboard-switcher" class="dashboard-switcher-input" type="search"
+                    placeholder="Search dashboard tools" aria-label="Search dashboard tools" autocomplete="off"
+                    role="combobox" aria-autocomplete="list" aria-expanded="false"
+                    aria-controls="teacher-dashboard-switcher-results">
+                <div id="teacher-dashboard-switcher-results" class="dashboard-switcher-results" role="listbox"></div>
+            </div>
+        </div>
+
         <nav class="tab-strip dashboard-tabs grouped-dashboard-tabs" aria-label="Teacher dashboard sections">
             <div class="dashboard-tab-group active" data-tabs="classes assignments">
                 <button class="dashboard-tab-group-trigger active" type="button" data-default-tab="classes" aria-haspopup="true">Coursework</button>
@@ -719,6 +729,23 @@
                                 <div class="section-head" style="margin-bottom:12px;"><h4 style="margin:0;">Teacher workspace defaults</h4><button class="btn ghost btn-save-account-action">Save Preferences</button></div>
                                 <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;">
                                     <div class="input-group" style="margin:0;">
+                                        <label for="acc-teacher-default-tab">Favorite dashboard tab</label>
+                                        <select id="acc-teacher-default-tab">
+                                            <option value="classes">My Classes</option>
+                                            <option value="assignments">Assignments</option>
+                                            <option value="question-sets">Browse Sets</option>
+                                            <option value="create">Create Assignment</option>
+                                            <option value="livebee">Live Bee Rooms</option>
+                                            <option value="game-history">Game History</option>
+                                            <option value="analytics">Analytics</option>
+                                            <option value="peer-comparison">Peer Comparison</option>
+                                            <option value="export">Export</option>
+                                            <option value="account">Settings</option>
+                                            <option value="whatsnew">What's New</option>
+                                        </select>
+                                        <p class="muted" style="margin:8px 0 0;">Choose which teacher workspace opens first after you sign in.</p>
+                                    </div>
+                                    <div class="input-group" style="margin:0;">
                                         <label for="acc-teacher-default-class">Default assignment class</label>
                                         <select id="acc-teacher-default-class"></select>
                                         <p class="muted" style="margin:8px 0 0;">Used to prefill the class selector in the assignment builder.</p>
@@ -783,6 +810,14 @@
                 </div>
                 <div class="dashboard-split dashboard-split-solo">
                     <div class="list-container">
+                        <div class="list-item">
+                            <div>
+                                <h3 style="margin:0 0 4px;">Dashboard Fast Navigation</h3>
+                                <div class="pill">May 9, 2026</div>
+                                <p class="muted" style="margin: 8px 0 0;">Added keyboard arrow movement inside dashboard dropdowns, a favorite landing tab preference, and a quick search box for jumping straight to dashboard tools.</p>
+                            </div>
+                        </div>
+
                         <div class="list-item">
                             <div>
                                 <h3 style="margin:0 0 4px;">Smoother Dashboard Tabs</h3>
