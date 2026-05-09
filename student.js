@@ -773,10 +773,22 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     function openDashboardMenu(group) {
         if (!group) return;
+        group.classList.remove('selection-closed');
         document.querySelectorAll('.dashboard-tab-group.open').forEach(openGroup => {
             if (openGroup !== group) setDashboardMenuOpen(openGroup, false);
         });
         setDashboardMenuOpen(group, true);
+    }
+
+    function closeDashboardMenuAfterSelection(control) {
+        const group = control?.closest('.dashboard-tab-group');
+        if (!group) return;
+        setDashboardMenuOpen(group, false);
+        group.classList.add('selection-closed');
+        const trigger = group.querySelector('.dashboard-tab-group-trigger');
+        if (trigger && group.contains(document.activeElement)) {
+            trigger.focus({ preventScroll: true });
+        }
     }
 
     function activateDashboardControl(control, fallbackTab) {
@@ -862,7 +874,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         } else if (event.key === 'Enter' || event.key === ' ') {
             event.preventDefault();
             activateDashboardControl(tab);
-            setDashboardMenuOpen(group, false);
+            closeDashboardMenuAfterSelection(tab);
         }
     }
 
@@ -1012,7 +1024,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     function wireDashboardNavigation() {
         document.querySelectorAll('.dash-tab').forEach(tab => {
-            tab.addEventListener('click', () => activateDashboardControl(tab));
+            tab.addEventListener('click', () => {
+                activateDashboardControl(tab);
+                closeDashboardMenuAfterSelection(tab);
+            });
             tab.addEventListener('pointerenter', () => activateDashboardControl(tab));
             tab.addEventListener('focus', () => activateDashboardControl(tab));
             tab.addEventListener('keydown', (event) => handleDashboardMenuItemKeydown(event, tab));
@@ -1021,7 +1036,11 @@ document.addEventListener('DOMContentLoaded', async () => {
             trigger.setAttribute('aria-expanded', 'false');
             trigger.addEventListener('click', () => activateDashboardControl(trigger));
             trigger.addEventListener('pointerenter', () => activateDashboardControl(trigger));
-            trigger.addEventListener('focus', () => activateDashboardControl(trigger));
+            trigger.addEventListener('focus', () => {
+                const group = trigger.closest('.dashboard-tab-group');
+                if (group?.classList.contains('selection-closed')) return;
+                activateDashboardControl(trigger);
+            });
             trigger.addEventListener('keydown', (event) => handleDashboardTriggerKeydown(event, trigger));
         });
         document.querySelectorAll('.dashboard-tab-group').forEach(group => {
@@ -1031,6 +1050,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             });
             group.addEventListener('pointerleave', () => setDashboardMenuOpen(group, false));
             group.addEventListener('focusin', (event) => {
+                if (group.classList.contains('selection-closed')) return;
                 openDashboardMenu(group);
                 const control = event.target.closest('.dash-tab, .dashboard-tab-group-trigger');
                 activateDashboardControl(control, group.querySelector('.dashboard-tab-group-trigger')?.dataset?.defaultTab);

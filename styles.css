@@ -5394,8 +5394,8 @@ body::after {
 
 .dashboard-tab-group.active .dashboard-tab-group-trigger,
 .dashboard-tab-group.open .dashboard-tab-group-trigger,
-.dashboard-tab-group:hover .dashboard-tab-group-trigger,
-.dashboard-tab-group:focus-within .dashboard-tab-group-trigger {
+.dashboard-tab-group:not(.selection-closed):hover .dashboard-tab-group-trigger,
+.dashboard-tab-group:not(.selection-closed):focus-within .dashboard-tab-group-trigger {
   color: var(--ink);
   background:
     linear-gradient(180deg, rgba(99, 168, 255, 0.26), rgba(99, 168, 255, 0.12)),
@@ -5417,8 +5417,8 @@ body::after {
 }
 
 .dashboard-tab-group.open .dashboard-tab-group-trigger::after,
-.dashboard-tab-group:hover .dashboard-tab-group-trigger::after,
-.dashboard-tab-group:focus-within .dashboard-tab-group-trigger::after {
+.dashboard-tab-group:not(.selection-closed):hover .dashboard-tab-group-trigger::after,
+.dashboard-tab-group:not(.selection-closed):focus-within .dashboard-tab-group-trigger::after {
   transform: translateY(1px) rotate(225deg);
 }
 
@@ -5447,8 +5447,8 @@ body::after {
 }
 
 .dashboard-tab-group.open .dashboard-tab-menu,
-.dashboard-tab-group:hover .dashboard-tab-menu,
-.dashboard-tab-group:focus-within .dashboard-tab-menu {
+.dashboard-tab-group:not(.selection-closed):hover .dashboard-tab-menu,
+.dashboard-tab-group:not(.selection-closed):focus-within .dashboard-tab-menu {
   visibility: visible;
   opacity: 1;
   pointer-events: auto;
