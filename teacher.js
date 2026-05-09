@@ -2213,12 +2213,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     populateGeneratorControls();
 
     // Tab switching
-    document.querySelectorAll('.dash-tab').forEach(tab => {
-        tab.addEventListener('click', () => activateDashboardTab(tab.dataset.tab));
-    });
-    document.querySelectorAll('.dashboard-tab-group-trigger').forEach(trigger => {
-        trigger.addEventListener('click', () => activateDashboardTab(trigger.dataset.defaultTab));
-    });
+    wireDashboardNavigation();
 
     document.getElementById('teacher-assignment-filters')?.addEventListener('click', (event) => {
         const button = event.target.closest('[data-teacher-assignment-filter]');
@@ -4965,6 +4960,55 @@ document.addEventListener('DOMContentLoaded', async () => {
             const isActive = groupTabs.includes(activeTab);
             group.classList.toggle('active', isActive);
             group.querySelector('.dashboard-tab-group-trigger')?.classList.toggle('active', isActive);
+        });
+    }
+
+    function setDashboardMenuOpen(group, isOpen) {
+        if (!group) return;
+        group.classList.toggle('open', Boolean(isOpen));
+        group.querySelector('.dashboard-tab-group-trigger')?.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+    }
+
+    function openDashboardMenu(group) {
+        if (!group) return;
+        document.querySelectorAll('.dashboard-tab-group.open').forEach(openGroup => {
+            if (openGroup !== group) setDashboardMenuOpen(openGroup, false);
+        });
+        setDashboardMenuOpen(group, true);
+    }
+
+    function activateDashboardControl(control, fallbackTab) {
+        const tabName = String(control?.dataset?.tab || control?.dataset?.defaultTab || fallbackTab || '').trim();
+        if (!tabName) return;
+        activateDashboardTab(tabName);
+    }
+
+    function wireDashboardNavigation() {
+        document.querySelectorAll('.dash-tab').forEach(tab => {
+            tab.addEventListener('click', () => activateDashboardControl(tab));
+            tab.addEventListener('pointerenter', () => activateDashboardControl(tab));
+            tab.addEventListener('focus', () => activateDashboardControl(tab));
+        });
+        document.querySelectorAll('.dashboard-tab-group-trigger').forEach(trigger => {
+            trigger.setAttribute('aria-expanded', 'false');
+            trigger.addEventListener('click', () => activateDashboardControl(trigger));
+            trigger.addEventListener('pointerenter', () => activateDashboardControl(trigger));
+            trigger.addEventListener('focus', () => activateDashboardControl(trigger));
+        });
+        document.querySelectorAll('.dashboard-tab-group').forEach(group => {
+            group.addEventListener('pointerenter', () => {
+                openDashboardMenu(group);
+                activateDashboardControl(group.querySelector('.dashboard-tab-group-trigger'));
+            });
+            group.addEventListener('pointerleave', () => setDashboardMenuOpen(group, false));
+            group.addEventListener('focusin', (event) => {
+                openDashboardMenu(group);
+                const control = event.target.closest('.dash-tab, .dashboard-tab-group-trigger');
+                activateDashboardControl(control, group.querySelector('.dashboard-tab-group-trigger')?.dataset?.defaultTab);
+            });
+            group.addEventListener('focusout', (event) => {
+                if (!group.contains(event.relatedTarget)) setDashboardMenuOpen(group, false);
+            });
         });
     }
 

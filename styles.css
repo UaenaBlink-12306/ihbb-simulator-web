@@ -5257,11 +5257,24 @@ body::after {
   align-items: stretch;
 }
 
+.dashboard-tab-group::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: -6px;
+  right: -6px;
+  height: 14px;
+  z-index: 1;
+}
+
 .dashboard-tab-group-trigger {
   min-width: 116px;
 }
 
-.dashboard-tab-group.active .dashboard-tab-group-trigger {
+.dashboard-tab-group.active .dashboard-tab-group-trigger,
+.dashboard-tab-group.open .dashboard-tab-group-trigger,
+.dashboard-tab-group:hover .dashboard-tab-group-trigger,
+.dashboard-tab-group:focus-within .dashboard-tab-group-trigger {
   color: var(--ink);
   background:
     linear-gradient(180deg, rgba(99, 168, 255, 0.26), rgba(99, 168, 255, 0.12)),
@@ -5279,11 +5292,18 @@ body::after {
   border-right: 2px solid currentColor;
   border-bottom: 2px solid currentColor;
   transform: translateY(-2px) rotate(45deg);
+  transition: transform 0.2s ease;
+}
+
+.dashboard-tab-group.open .dashboard-tab-group-trigger::after,
+.dashboard-tab-group:hover .dashboard-tab-group-trigger::after,
+.dashboard-tab-group:focus-within .dashboard-tab-group-trigger::after {
+  transform: translateY(1px) rotate(225deg);
 }
 
 .dashboard-tab-menu {
   position: absolute;
-  top: calc(100% + 8px);
+  top: calc(100% + 4px);
   left: 0;
   z-index: 90;
   display: grid;
@@ -5297,17 +5317,22 @@ body::after {
     var(--glass-overlay-soft),
     rgba(255, 255, 255, 0.84);
   box-shadow: var(--glass-border), 0 22px 52px -26px rgba(15, 23, 42, 0.38);
+  visibility: hidden;
   opacity: 0;
   pointer-events: none;
-  transform: translateY(-4px);
-  transition: opacity 0.16s ease, transform 0.16s ease;
+  transform: translateY(-6px) scale(0.98);
+  transform-origin: top left;
+  transition: opacity 0.2s ease, transform 0.2s ease, visibility 0s linear 0.2s;
 }
 
+.dashboard-tab-group.open .dashboard-tab-menu,
 .dashboard-tab-group:hover .dashboard-tab-menu,
 .dashboard-tab-group:focus-within .dashboard-tab-menu {
+  visibility: visible;
   opacity: 1;
   pointer-events: auto;
-  transform: translateY(0);
+  transform: translateY(0) scale(1);
+  transition-delay: 0s;
 }
 
 .dashboard-tab-menu .dash-tab {
@@ -5316,6 +5341,12 @@ body::after {
   justify-content: flex-start;
   width: 100%;
   text-align: left;
+  transform: none;
+}
+
+.dashboard-tab-menu .dash-tab:hover,
+.dashboard-tab-menu .dash-tab:focus-visible {
+  transform: translateX(2px);
 }
 
 
