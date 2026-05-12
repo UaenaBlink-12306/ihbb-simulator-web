@@ -5580,6 +5580,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     const CATEGORIES = ['World', 'Europe', 'North America', 'South Asia', 'East Asia', 'Central Asia', 'Southeast Asia', 'Middle East', 'Africa', 'Latin America', 'Oceania', 'US History'];
 
     const getEraLabel = (era) => ERA_LABELS[era] || era;
+    const builderQuality = window.SetBuilderQuality || null;
+    const builderQuestionMetaHtml = (question, options = {}) => builderQuality
+        ? builderQuality.questionMetaHtml(question, { eraLabeler: getEraLabel, ...options })
+        : '';
     const questionKey = (q) => {
         if (!q) return '';
         const raw = (q.question || '').toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -5838,6 +5842,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     <div class="list-item-main">
                         <div class="list-item-title">${esc(q.answer)}</div>
                         <div class="list-item-meta">${esc(q.question.substring(0, 100))}...</div>
+                        ${builderQuestionMetaHtml(q, { showAliasSuggestions: true })}
                     </div>
                     <div class="list-item-actions">
                         <input type="checkbox" ${selected ? 'checked' : ''} style="pointer-events: none;">
@@ -5875,9 +5880,10 @@ document.addEventListener('DOMContentLoaded', async () => {
                 <div class="list-item-main">
                     <div class="list-item-title">${esc(q.answer)}</div>
                     <div class="list-item-meta">${esc((q.question || '').substring(0, 100))}...</div>
+                    ${builderQuestionMetaHtml(q, { showDifficulty: false, showAliases: true, showAliasSuggestions: true, showProvenance: true })}
                 </div>
                 <div class="list-item-actions">
-                    <span class="quality-diff-label">${esc(q._difficulty || getQuestionDifficulty(q))}</span>
+                    <span class="quality-diff-label quality-diff-${esc(getQuestionDifficulty(q).toLowerCase())}">${esc(q._difficulty || getQuestionDifficulty(q))}</span>
                     <button class="btn bad ghost" onclick="removeSelectedQuestion(${i})">Remove</button>
                 </div>
             </div>
@@ -5891,6 +5897,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     function getQuestionDifficulty(q) {
+        if (builderQuality) return builderQuality.difficultyLabel(q);
         const qLen = (q.question || '').length;
         const aLen = (q.answer || '').length;
         if (qLen > 300 || aLen > 30) return 'Hard';
@@ -5899,6 +5906,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     function analyzeQuestionSet(questions) {
+        if (builderQuality) return builderQuality.analyze(questions);
         if (!questions || !questions.length) return { duplicates: [], overlaps: [], balance: {}, difficulty: { Easy: 0, Medium: 0, Hard: 0 }, total: 0 };
 
         // Assign difficulty
@@ -5945,6 +5953,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     function renderQualityPanel(analysis) {
+        if (builderQuality) return builderQuality.renderQualityPanel(analysis, { eraLabeler: getEraLabel });
         const { duplicates, overlaps, balance, difficulty, total } = analysis;
         const hasIssues = duplicates.length > 0 || overlaps.length > 0;
         const statusClass = duplicates.length > 0 ? 'quality-bad' : overlaps.length > 0 ? 'quality-warn' : 'quality-ok';
@@ -6025,6 +6034,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 <div class="preview-item" style="margin-bottom: 8px; padding-bottom: 8px; border-bottom: 1px solid var(--line-light);">
                     <strong>${i+1}. ${esc(q.answer)}</strong><br>
                     <span class="muted">${esc(q.question)}</span>
+                    ${builderQuestionMetaHtml(q, { showAliasSuggestions: true, showProvenance: true })}
                 </div>
             `).join('');
 
@@ -6066,6 +6076,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (!title) { showAlert('Please provide a title.'); return; }
         if (!selectedQuestions.length) { showAlert('Please select at least one question.'); return; }
         if (visibility === 'class' && !classId) { showAlert('Please select a class to share with.'); return; }
+        const qualitySummary = builderQuality?.qualityIssueSummary(analyzeQuestionSet(selectedQuestions)) || '';
+        if (qualitySummary && !confirm(`This question set has review warnings:\n\n${qualitySummary}\n\nSave anyway?`)) return;
 
         const btn = document.getElementById('btn-create-assignment');
         btn.disabled = true;

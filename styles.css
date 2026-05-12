@@ -1581,6 +1581,10 @@ tr:hover td {
   grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.35fr);
 }
 
+.assignment-review-quality {
+  margin: 0;
+}
+
 .assignment-review-list {
   display: grid;
   gap: 14px;
@@ -8867,6 +8871,10 @@ input[type=datetime-local] {
 .quality-chip-easy { background: rgba(45, 212, 191, 0.15); color: #2dd4bf; }
 .quality-chip-medium { background: rgba(251, 191, 36, 0.15); color: #fbbf24; }
 .quality-chip-hard { background: rgba(248, 113, 113, 0.15); color: #f87171; }
+.quality-chip-source {
+  background: rgba(96, 165, 250, 0.14);
+  color: #93c5fd;
+}
 
 button.chip {
   color: inherit;
@@ -9004,6 +9012,55 @@ button.chip {
   color: #fca5a5;
 }
 
+.quality-warnings ul {
+  margin: 6px 0 0;
+  padding-left: 18px;
+}
+
+.quality-warnings li {
+  margin: 4px 0;
+}
+
+.quality-warnings-similar {
+  color: #fde68a;
+  border-color: rgba(251, 191, 36, 0.28);
+  background: rgba(251, 191, 36, 0.08);
+}
+
+.quality-warnings-clues {
+  color: #bfdbfe;
+  border-color: rgba(96, 165, 250, 0.26);
+  background: rgba(96, 165, 250, 0.08);
+}
+
+.quality-warnings-aliases {
+  color: #99f6e4;
+  border-color: rgba(45, 212, 191, 0.26);
+  background: rgba(45, 212, 191, 0.08);
+}
+
+.set-builder-meta-grid {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  min-width: 0;
+}
+
+.set-builder-meta-grid .pill,
+.set-builder-meta-grid .quality-diff-label {
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.alias-suggestion-pill {
+  border-color: rgba(45, 212, 191, 0.32);
+  color: #99f6e4;
+  background: rgba(45, 212, 191, 0.09);
+}
+
 .quality-balance-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -9053,6 +9110,21 @@ button.chip {
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.04em;
+}
+
+.quality-diff-easy {
+  color: #2dd4bf;
+  background: rgba(45, 212, 191, 0.12);
+}
+
+.quality-diff-medium {
+  color: #fbbf24;
+  background: rgba(251, 191, 36, 0.12);
+}
+
+.quality-diff-hard {
+  color: #f87171;
+  background: rgba(248, 113, 113, 0.12);
 }
 
 @media (max-width: 600px) {

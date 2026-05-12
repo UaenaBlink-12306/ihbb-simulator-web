@@ -153,6 +153,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         const era = String(q?.meta?.era || q?.era || '').trim().toLowerCase();
         return `${ans}::${ques}::${cat}::${era}`;
     };
+    const builderQuality = window.SetBuilderQuality || null;
+    const builderQuestionMetaHtml = (question, options = {}) => builderQuality
+        ? builderQuality.questionMetaHtml(question, { eraLabeler: getEraLabel, ...options })
+        : '';
     const dedupeQuestions = (list) => {
         const seen = new Set();
         const out = [];
@@ -339,11 +343,11 @@ document.addEventListener('DOMContentLoaded', async () => {
                 <div class="generator-item-head">
                     <button class="library-answer-button assignment-question-view-btn" type="button" data-generated-index="${index}">${esc(q.answer || 'Answer')}</button>
                     <div style="display: flex; gap: 8px; align-items: center;">
-                        <span class="pill">${esc(q.meta?.category || 'World')}${q.meta?.era ? ` • ${esc(getEraLabel(q.meta.era))}` : ''}${q.meta?.source ? ` • ${esc(q.meta.source)}` : ''}</span>
                         <button class="btn ghost btn-delete-draft-q" data-index="${index}" style="padding: 2px 6px; min-height: 24px; font-size: 12px; height: 24px; line-height: 1;">Delete</button>
                     </div>
                 </div>
                 <p>${esc(q.question || '')}</p>
+                ${builderQuestionMetaHtml(q, { showAliasSuggestions: true, showProvenance: true })}
                 <div class="generator-item-meta">Draft ${index + 1}${q.topic ? ` • ${esc(q.topic)}` : ''}</div>
             </div>
         `).join('');
@@ -2644,11 +2648,13 @@ document.addEventListener('DOMContentLoaded', async () => {
                 <div class="empty-kicker">${esc(detailLabel)}</div>
                 <p class="library-question-text">${esc(question || 'No question text available.')}</p>
             </div>
-            <div class="library-question-meta-grid">
-                <div class="pill">Region: ${esc(region || '—')}</div>
-                <div class="pill">Era: ${esc(era ? getEraLabel(era) : '—')}</div>
-                <div class="pill">Source: ${esc(source || '—')}</div>
-            </div>
+            ${builderQuestionMetaHtml(item, { showAliases: true, showAliasSuggestions: true, showProvenance: true }) || `
+                <div class="library-question-meta-grid">
+                    <div class="pill">Region: ${esc(region || '—')}</div>
+                    <div class="pill">Era: ${esc(era ? getEraLabel(era) : '—')}</div>
+                    <div class="pill">Source: ${esc(source || '—')}</div>
+                </div>
+            `}
             ${aliases.length ? `<div><div class="empty-kicker">Aliases</div><p class="muted">${esc(aliases.join(', '))}</p></div>` : ''}
         `, {
             wide: true,
@@ -3391,6 +3397,27 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     function assignmentDuplicateWarningsHtml() {
+        if (builderQuality) {
+            if (!selectedQuestions.length) return '';
+            const analysis = builderQuality.analyze(selectedQuestions);
+            const summary = builderQuality.qualityIssueSummary(analysis);
+            if (!summary) {
+                return `
+                    <div class="assignment-builder-alert assignment-builder-alert-ok">
+                        <strong>No duplicate or similarity warnings detected.</strong>
+                        <span>Selected answers, clue text, and repeated clue signals look clean.</span>
+                    </div>
+                `;
+            }
+            const rows = summary.split('\n').filter(Boolean).slice(0, 5).map(line => `<li>${esc(line)}</li>`).join('');
+            return `
+                <div class="assignment-builder-alert assignment-builder-alert-warning">
+                    <strong>Question quality warning</strong>
+                    <span>Review these possible duplicate, repeated-clue, or near-match issues before publishing.</span>
+                    <ul>${rows}</ul>
+                </div>
+            `;
+        }
         const duplicateGroups = assignmentDuplicateAnswerGroups();
         if (!selectedQuestions.length) return '';
         if (!duplicateGroups.length) {
@@ -3421,6 +3448,19 @@ document.addEventListener('DOMContentLoaded', async () => {
         const wrap = document.getElementById('assignment-builder-alerts');
         if (!wrap) return;
         wrap.innerHTML = assignmentDuplicateWarningsHtml();
+    }
+
+    function renderAssignmentQualityPanel() {
+        const wrap = document.getElementById('preview-quality-panel');
+        if (!wrap) return;
+        if (!builderQuality || !selectedQuestions.length) {
+            wrap.innerHTML = '';
+            return;
+        }
+        wrap.innerHTML = builderQuality.renderQualityPanel(builderQuality.analyze(selectedQuestions), {
+            title: 'Draft Quality',
+            eraLabeler: getEraLabel
+        });
     }
 
     function groupedAssignmentCoverage(getValue, fallbackLabel, labelValue = value => value) {
@@ -3520,6 +3560,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     function assignmentQuestionMetaHtml(question) {
+        if (builderQuality) {
+            return builderQuestionMetaHtml(question, {
+                showAliases: true,
+                showAliasSuggestions: true,
+                showProvenance: true
+            });
+        }
         const region = questionCategory(question) || '—';
         const era = questionEra(question);
         const source = String(question?.meta?.source || question?.source || '').trim() || '—';
@@ -3570,6 +3617,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     <div class="assignment-builder-alerts">${assignmentDuplicateWarningsHtml()}</div>
                     <div class="assignment-coverage">${assignmentCoverageHtml()}</div>
                 </div>
+                ${builderQuality ? `<div class="assignment-review-quality">${builderQuality.renderQualityPanel(builderQuality.analyze(selectedQuestions), { title: 'Review Quality', eraLabeler: getEraLabel })}</div>` : ''}
                 <div class="assignment-review-actions" style="margin-bottom: 16px; display: flex; gap: 8px;">
                     <button class="btn ghost" type="button" id="btn-review-reset-order">Reset to Original Order</button>
                     <button class="btn ghost" type="button" id="btn-review-randomize-order">Randomize Order</button>
@@ -3607,6 +3655,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (note) note.textContent = 'Open the large review window to inspect, reorder, or remove selected questions.';
             renderAssignmentDuplicateWarnings();
             renderAssignmentCoverage();
+            renderAssignmentQualityPanel();
             refreshSelectedQuestionsReviewIfOpen();
             return;
         }
@@ -3614,6 +3663,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         count.textContent = selectedQuestions.length;
         renderAssignmentDuplicateWarnings();
         renderAssignmentCoverage();
+        renderAssignmentQualityPanel();
         if (note) note.textContent = 'Use Review Questions for a full-size list with complete question text and ordering controls.';
         refreshSelectedQuestionsReviewIfOpen();
     }
@@ -4238,6 +4288,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     <div class="pick-question-copy">
                         <button class="library-answer-button assignment-question-view-btn" type="button" data-pick-index="${i}">${esc(answer)}</button>
                         <span class="muted pick-question-snippet">${esc(snippet || 'No question text available.')}</span>
+                        ${builderQuestionMetaHtml(item, { showAliasSuggestions: true, showProvenance: true })}
                     </div>
                 </div>`;
             }).join('');
@@ -4292,8 +4343,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (!title) return showAlert('Title is required.', 'error');
         if (!isCreatingSet && !classId) return showAlert('Select a class.', 'error');
         if (!selectedQuestions.length) return showAlert('Select some questions first.', 'error');
-        const duplicateGroups = assignmentDuplicateAnswerGroups();
-        if (duplicateGroups.length) {
+        const qualitySummary = builderQuality?.qualityIssueSummary(builderQuality.analyze(selectedQuestions)) || '';
+        const duplicateGroups = builderQuality ? [] : assignmentDuplicateAnswerGroups();
+        if (qualitySummary) {
+            const proceed = confirm(`This ${isCreatingSet ? 'question set' : 'assignment'} has quality warnings:\n\n${qualitySummary}\n\nPublish anyway?`);
+            if (!proceed) return;
+        } else if (duplicateGroups.length) {
             const duplicateSummary = duplicateGroups.slice(0, 5).map(group => {
                 const spots = group.indices.map(index => `#${index + 1}`).join(', ');
                 return `${group.answer || 'Duplicate answer'} (${spots})`;
