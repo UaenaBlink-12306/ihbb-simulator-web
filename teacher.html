@@ -124,16 +124,6 @@
 
         <div id="alert-box" class="alert hidden"></div>
 
-        <div class="dashboard-quick-switcher" role="search">
-            <div class="dashboard-switcher-shell">
-                <input id="teacher-dashboard-switcher" class="dashboard-switcher-input" type="search"
-                    placeholder="Search dashboard tools" aria-label="Search dashboard tools" autocomplete="off"
-                    role="combobox" aria-autocomplete="list" aria-expanded="false"
-                    aria-controls="teacher-dashboard-switcher-results">
-                <div id="teacher-dashboard-switcher-results" class="dashboard-switcher-results" role="listbox"></div>
-            </div>
-        </div>
-
         <nav class="tab-strip dashboard-tabs grouped-dashboard-tabs" aria-label="Teacher dashboard sections">
             <div class="dashboard-tab-group active" data-tabs="classes assignments">
                 <button class="dashboard-tab-group-trigger active" type="button" data-default-tab="classes" aria-haspopup="true">Coursework</button>
@@ -168,6 +158,16 @@
                 <div class="dashboard-tab-menu" role="menu">
                     <button class="dash-tab" type="button" data-tab="account" role="menuitem">Settings</button>
                     <button class="dash-tab" type="button" data-tab="whatsnew" role="menuitem">What's New</button>
+                </div>
+            </div>
+
+            <div class="dashboard-quick-switcher" role="search">
+                <div class="dashboard-switcher-shell">
+                    <input id="teacher-dashboard-switcher" class="dashboard-switcher-input" type="search"
+                        placeholder="Search dashboard tools" aria-label="Search dashboard tools" autocomplete="nope" spellcheck="false" data-lpignore="true" data-1p-ignore="true"
+                        role="combobox" aria-autocomplete="list" aria-expanded="false"
+                        aria-controls="teacher-dashboard-switcher-results">
+                    <div id="teacher-dashboard-switcher-results" class="dashboard-switcher-results" role="listbox"></div>
                 </div>
             </div>
         </nav>
@@ -810,6 +810,14 @@
                 </div>
                 <div class="dashboard-split dashboard-split-solo">
                     <div class="list-container">
+                        <div class="list-item">
+                            <div>
+                                <h3 style="margin:0 0 4px;">Search Integrated into Tabs</h3>
+                                <div class="pill">May 12, 2026</div>
+                                <p class="muted" style="margin: 8px 0 0;">The Search Dashboard Tools bar is now conveniently integrated directly into the main tabs and is protected against intrusive browser autofill.</p>
+                            </div>
+                        </div>
+
                         <div class="list-item">
                             <div>
                                 <h3 style="margin:0 0 4px;">Dashboard Dropdown Auto-Close</h3>

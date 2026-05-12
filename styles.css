@@ -5245,7 +5245,7 @@ body::after {
   z-index: 85;
   display: flex;
   justify-content: flex-end;
-  margin: 0 0 12px;
+  margin-left: auto;
 }
 
 .dashboard-switcher-shell {
