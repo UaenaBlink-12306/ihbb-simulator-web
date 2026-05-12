@@ -19,6 +19,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const SESSION_SYNC_TABLE = 'user_drill_sessions';
     const COACH_SYNC_TABLE = 'user_coach_attempts';
     const COACH_DRILL_STORAGE_KEY = scopedStorageKey('ihbb_student_coach_drill');
+    const REMEDIATION_PACK_STORAGE_KEY = scopedStorageKey('ihbb_v2_remediation_pack');
     const ASSIGNMENT_RESULT_BASE_KEY = 'ihbb_assignment_result';
     const PRACTICE_HUB_AUTO_OPEN_DISABLED_KEY = 'ihbb_v2_practice_hub_auto_open_disabled';
     const ANALYTICS_INSIGHTS_CACHE_KEY = `ihbb_student_analytics_insights_${uid}`;
@@ -2363,7 +2364,10 @@ document.addEventListener('DOMContentLoaded', async () => {
                         <span class="pill pill-warn">${summary.missed || 0} missed</span>
                         <span class="pill">${summary.totalQuestions || 0} questions</span>
                     </div>
-                    <button class="btn ghost game-history-expand" data-game-id="${esc(String(game.id))}" style="margin-top:10px;">Show Review Details</button>
+                    <div class="item-actions" style="margin-top:10px;">
+                        <button class="btn ghost game-history-expand" data-game-id="${esc(String(game.id))}">Show Review Details</button>
+                        <button class="btn pri game-history-remediate" data-game-id="${esc(String(game.id))}" ${(summary.missed || 0) > 0 ? '' : 'disabled'}>Remediation pack</button>
+                    </div>
                     <div class="game-history-review hidden" id="game-review-${esc(String(game.id))}"></div>
                 </div>
             </div>`;
@@ -2372,7 +2376,17 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Expand/collapse review details
         listEl.addEventListener('click', (event) => {
             const button = event.target.closest('.game-history-expand');
-            if (!button) return;
+            const remediationButton = event.target.closest('.game-history-remediate');
+            if (!button && !remediationButton) return;
+            if (remediationButton) {
+                const gameId = remediationButton.dataset.gameId;
+                const game = games.find(g => String(g.id) === gameId);
+                if (!game) return;
+                let review;
+                try { review = typeof game.review === 'string' ? JSON.parse(game.review) : game.review; } catch { review = []; }
+                startLiveBeeRemediationFromReview(review, game.room_code || 'Live Bee');
+                return;
+            }
             const gameId = button.dataset.gameId;
             const reviewEl = document.getElementById('game-review-' + gameId);
             if (!reviewEl) return;
@@ -2388,6 +2402,37 @@ document.addEventListener('DOMContentLoaded', async () => {
                 reviewEl.classList.add('hidden');
                 button.textContent = 'Show Review Details';
             }
+        });
+    }
+
+    function liveBeeReviewQuestion(item) {
+        if (!item || typeof item !== 'object') return null;
+        return normalizePracticeQuestion({
+            id: item.id || item.question_id || `livebee_${item.number || ''}_${String(item.answer || '').slice(0, 30)}`,
+            question: item.question || '',
+            answer: item.answer || '',
+            aliases: item.aliases || [],
+            meta: item.meta || {}
+        });
+    }
+
+    function startLiveBeeRemediationFromReview(review, roomLabel = 'Live Bee') {
+        const list = Array.isArray(review) ? review.filter(item => item && (item.question || item.answer)) : [];
+        const sourceItems = list.map(liveBeeReviewQuestion).filter(Boolean);
+        const missedItems = list
+            .filter(item => !item.solvedBy)
+            .map(liveBeeReviewQuestion)
+            .filter(Boolean);
+        if (!missedItems.length) {
+            showAlert('No missed Live Bee rounds are available for a remediation pack.', 'error');
+            return;
+        }
+        writeRemediationPack({
+            title: `${roomLabel} remediation pack`,
+            originTitle: roomLabel,
+            source: 'live-bee-history',
+            missedItems,
+            sourceItems
         });
     }
 
@@ -3488,6 +3533,59 @@ document.addEventListener('DOMContentLoaded', async () => {
         return id ? `${ASSIGNMENT_RESULT_BASE_KEY}_${id}_${uid}` : '';
     }
 
+    function remediationQuestionId(raw) {
+        const direct = String(raw?.id || raw?.question_id || '').trim();
+        if (direct) return direct;
+        const answer = String(raw?.answer || raw?.answer_text || raw?.a || '').toLowerCase().replace(/[^a-z0-9]+/g, '').slice(0, 40);
+        const question = String(raw?.question || raw?.question_text || raw?.q || '').toLowerCase().replace(/[^a-z0-9]+/g, '').slice(0, 60);
+        return answer && question ? `rem_${answer}_${question}` : '';
+    }
+
+    function normalizePracticeQuestion(raw) {
+        if (!raw || typeof raw !== 'object') return null;
+        const meta = raw.meta && typeof raw.meta === 'object' ? raw.meta : {};
+        const question = String(raw.question || raw.question_text || raw.q || '').trim();
+        const answer = String(raw.answer || raw.answer_text || raw.a || '').trim();
+        if (!question || !answer) return null;
+        const id = remediationQuestionId(raw);
+        if (!id) return null;
+        return {
+            id,
+            question,
+            answer,
+            aliases: Array.isArray(raw.aliases) ? raw.aliases : [],
+            meta: {
+                category: String(raw.category || meta.category || '').trim(),
+                era: String(raw.era || meta.era || '').trim(),
+                source: String(raw.source || meta.source || '').trim()
+            }
+        };
+    }
+
+    function writeRemediationPack(payload) {
+        const safe = {
+            title: String(payload?.title || 'Remediation pack').trim() || 'Remediation pack',
+            originTitle: String(payload?.originTitle || payload?.title || '').trim(),
+            source: String(payload?.source || 'student-dashboard').trim() || 'student-dashboard',
+            missedItemIds: Array.isArray(payload?.missedItemIds) ? payload.missedItemIds : [],
+            missedItems: (Array.isArray(payload?.missedItems) ? payload.missedItems : []).map(normalizePracticeQuestion).filter(Boolean),
+            sourceItems: (Array.isArray(payload?.sourceItems) ? payload.sourceItems : []).map(normalizePracticeQuestion).filter(Boolean),
+            createdAt: Date.now()
+        };
+        if (!safe.missedItems.length && !safe.missedItemIds.length) {
+            showAlert('No missed items are available for a remediation pack yet.', 'error');
+            return false;
+        }
+        try {
+            localStorage.setItem(REMEDIATION_PACK_STORAGE_KEY, JSON.stringify(safe));
+        } catch {
+            showAlert('Could not prepare the remediation pack on this device.', 'error');
+            return false;
+        }
+        window.location.href = 'index.html?drill=1&remediation=1';
+        return true;
+    }
+
     function readAssignmentRetrySummary(assignId) {
         const key = assignmentResultStorageKey(assignId);
         if (!key) return null;
@@ -3495,12 +3593,14 @@ document.addEventListener('DOMContentLoaded', async () => {
             const raw = JSON.parse(localStorage.getItem(key) || 'null');
             if (!raw || typeof raw !== 'object') return null;
             const missedIds = Array.isArray(raw.missedIds) ? raw.missedIds.map(x => String(x || '').trim()).filter(Boolean) : [];
+            const missedItems = Array.isArray(raw.missedItems) ? raw.missedItems.map(normalizePracticeQuestion).filter(Boolean) : [];
             const total = Number(raw.total || 0);
             const correct = Number(raw.correct || 0);
             return {
                 total,
                 correct,
                 missedIds,
+                missedItems,
                 missedCount: Number.isFinite(Number(raw.missedCount)) ? Number(raw.missedCount) : missedIds.length,
                 savedAt: raw.savedAt || ''
             };
@@ -3663,6 +3763,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const retry = readAssignmentRetrySummary(a.id);
                 const missedCount = retry?.missedIds?.length || Math.max(0, (Number(sub.total) || 0) - (Number(sub.correct) || 0));
                 const missedDisabled = missedCount <= 0 ? 'disabled title="No missed questions were saved from the submitted run."' : '';
+                const canRemediate = missedCount > 0 && (!!retry?.missedIds?.length || !!retry?.missedItems?.length);
+                const remediationDisabled = canRemediate ? '' : 'disabled title="Finish the assignment once with the latest version to save missed-topic details."';
                 return `<div class="list-item">
                     <div class="item-copy">
                         <span class="item-title">${esc(a.title)}</span>
@@ -3672,6 +3774,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     <span class="item-score ${pct >= 50 ? 'good' : 'bad'}">${sub.correct}/${sub.total} (${pct}%)</span>
                     <div class="item-actions">
                         <button class="btn pri" onclick="startAssignment('${a.id}', '${esc(a.title)}', 'missed')" ${missedDisabled}>Redo missed${missedCount > 0 ? ` (${missedCount})` : ''}</button>
+                        <button class="btn ghost" onclick="startAssignmentRemediation('${a.id}', '${esc(a.title)}')" ${remediationDisabled}>Remediation pack</button>
                         <button class="btn ghost" onclick="startAssignment('${a.id}', '${esc(a.title)}', 'all')">Practice all</button>
                     </div>
                 </div>`;
@@ -3722,6 +3825,38 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         // Redirect to practice hub with assignment param
         window.location.href = 'index.html?drill=1&assignment=' + assignId;
+    };
+
+    window.startAssignmentRemediation = async (assignId, title) => {
+        const retry = readAssignmentRetrySummary(assignId);
+        const missedIds = retry?.missedIds || [];
+        const storedMissed = retry?.missedItems || [];
+        if (!missedIds.length && !storedMissed.length) {
+            showAlert('No missed-topic details are saved for this assignment yet.', 'error');
+            return;
+        }
+        const { data: questions, error } = await sb.from('assignment_questions').select('*').eq('assignment_id', assignId);
+        if (error) {
+            showAlert('Could not load assignment questions for the remediation pack.', 'error');
+            return;
+        }
+        const sourceItems = (questions || []).map(normalizePracticeQuestion).filter(Boolean);
+        const missedSet = new Set(missedIds);
+        const missedItems = storedMissed.length
+            ? storedMissed
+            : sourceItems.filter((item) => missedSet.has(String(item.id || '').trim()));
+        if (!missedItems.length) {
+            showAlert('The saved missed questions are no longer available in this assignment.', 'error');
+            return;
+        }
+        writeRemediationPack({
+            title: `${title || 'Assignment'} remediation pack`,
+            originTitle: title || 'Assignment',
+            source: 'assignment',
+            missedItemIds: missedIds,
+            missedItems,
+            sourceItems
+        });
     };
 
     function normalizeCoachRecord(raw) {

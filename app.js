@@ -92,6 +92,7 @@ const BASE_COACH_CHAT_SUPPRESS_KEY = 'ihbb_v2_coach_chat_suppressed';
 const BASE_TEACHER_CLASS_GUIDANCE_DRAFT = 'ihbb_teacher_class_guidance_draft';
 const BASE_KEY_STUDY_BOOKMARKS = 'ihbb_v2_study_bookmarks';
 const BASE_KEY_ASSIGNMENT_RESULTS = 'ihbb_assignment_result';
+const BASE_KEY_REMEDIATION_PACK = 'ihbb_v2_remediation_pack';
 const STUDY_DATA_RESET_CUTOFF_ISO = '2026-04-10T02:07:20Z';
 const STUDY_DATA_RESET_MARKER = 'ihbb_v2_study_data_reset_20260410_v1';
 const STUDY_DATA_RESET_PREFIXES = [
@@ -116,6 +117,7 @@ let KEY_COACH_DRILL = BASE_KEY_COACH_DRILL;
 let KEY_COACH_CHAT_ACTION = BASE_KEY_COACH_CHAT_ACTION;
 let COACH_CHAT_UI_KEY = BASE_COACH_CHAT_UI_KEY;
 let KEY_STUDY_BOOKMARKS = BASE_KEY_STUDY_BOOKMARKS;
+let KEY_REMEDIATION_PACK = BASE_KEY_REMEDIATION_PACK;
 const PRACTICE_HUB_AUTO_OPEN_DISABLED_KEY = 'ihbb_v2_practice_hub_auto_open_disabled';
 const WRONG_SYNC_TABLE = 'user_wrong_questions';
 const SESSION_SYNC_TABLE = 'user_drill_sessions';
@@ -146,6 +148,7 @@ function applyStorageScope(userId) {
   KEY_COACH_CHAT_ACTION = scopedStorageKey(BASE_KEY_COACH_CHAT_ACTION, StorageScopeUserId);
   COACH_CHAT_UI_KEY = scopedStorageKey(BASE_COACH_CHAT_UI_KEY, StorageScopeUserId);
   KEY_STUDY_BOOKMARKS = scopedStorageKey(BASE_KEY_STUDY_BOOKMARKS, StorageScopeUserId);
+  KEY_REMEDIATION_PACK = scopedStorageKey(BASE_KEY_REMEDIATION_PACK, StorageScopeUserId);
 }
 async function initStorageScope() {
   if (StorageScopeReady) return StorageScopeUserId;
@@ -797,6 +800,278 @@ function renderStudyBookmarks() {
     button.addEventListener('click', () => removeStudyBookmark(button.dataset.studyRemove));
   });
 }
+
+function remediationItemKey(item) {
+  const id = normalizeQuestionId(item?.id);
+  if (id) return `id:${id}`;
+  const answer = String(item?.answer || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
+  const question = String(item?.question || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
+  return `qa:${answer}:${question.slice(0, 80)}`;
+}
+
+function normalizeRemediationItem(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  const meta = raw.meta && typeof raw.meta === 'object' ? raw.meta : {};
+  const item = normalizeJsonItem({
+    id: raw.id || raw.question_id,
+    question: raw.question || raw.question_text || raw.q,
+    answer: raw.answer || raw.answer_text || raw.a,
+    aliases: raw.aliases,
+    category: raw.category || meta.category,
+    era: raw.era || meta.era,
+    source: raw.source || meta.source
+  });
+  if (!item) return null;
+  item.meta = {
+    category: String(item.meta?.category || meta.category || raw.category || '').trim(),
+    era: String(item.meta?.era || meta.era || raw.era || '').trim(),
+    source: String(item.meta?.source || meta.source || raw.source || '').trim()
+  };
+  return item;
+}
+
+function uniqueRemediationItems(items) {
+  const seen = new Set();
+  const out = [];
+  for (const raw of (Array.isArray(items) ? items : [])) {
+    const item = normalizeRemediationItem(raw);
+    if (!item) continue;
+    const key = remediationItemKey(item);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(item);
+  }
+  return out;
+}
+
+function remediationTokens(text) {
+  const stop = new Set(['the', 'and', 'for', 'from', 'with', 'that', 'this', 'into', 'after', 'before', 'over', 'under']);
+  return new Set(String(text || '').toLowerCase()
+    .replace(/[^a-z0-9\s]+/g, ' ')
+    .split(/\s+/)
+    .map(token => token.trim())
+    .filter(token => token.length >= 4 && !stop.has(token))
+    .slice(0, 24));
+}
+
+function remediationOverlapScore(candidate, missedItems) {
+  const candidateAnswer = remediationTokens(candidate?.answer || '');
+  const candidateQuestion = remediationTokens(candidate?.question || '');
+  let score = 0;
+  for (const missed of missedItems) {
+    const missedAnswer = remediationTokens(missed.answer || '');
+    const missedQuestion = remediationTokens(missed.question || '');
+    candidateAnswer.forEach(token => { if (missedAnswer.has(token)) score += 3; });
+    candidateQuestion.forEach(token => { if (missedQuestion.has(token)) score += 1; });
+  }
+  return Math.min(score, 8);
+}
+
+function collectLibraryRemediationItems(extraItems = []) {
+  const all = [];
+  for (const set of (Library.sets || [])) {
+    for (const item of (set?.items || [])) all.push(item);
+  }
+  return uniqueRemediationItems([...(Array.isArray(extraItems) ? extraItems : []), ...all]);
+}
+
+function sessionMissedItems(record) {
+  if (!record || !Array.isArray(record.items) || !Array.isArray(record.results)) return [];
+  const setItems = collectLibraryRemediationItems();
+  const byId = new Map(setItems.map(item => [String(item.id || '').trim(), item]));
+  const wrongById = new Map(wrongRecords().map(({ id, rec, item }) => {
+    const normalized = normalizeRemediationItem(item || {
+      id,
+      question: rec?.q || '',
+      answer: rec?.answer || '',
+      aliases: rec?.aliases || [],
+      meta: { category: rec?.category || '', era: rec?.era || '', source: rec?.source || '' }
+    });
+    return [String(id || '').trim(), normalized];
+  }).filter(([id, item]) => id && item));
+  return record.items
+    .map((id, index) => ({ id: String(id || '').trim(), correct: !!record.results[index] }))
+    .filter(row => row.id && !row.correct)
+    .map(row => byId.get(row.id) || wrongById.get(row.id))
+    .filter(Boolean);
+}
+
+function resolveRemediationMisses(payload = {}) {
+  const sourceItems = uniqueRemediationItems(payload.sourceItems || payload.questions || payload.items || []);
+  let missed = uniqueRemediationItems(payload.missedItems || []);
+  const missedIds = new Set((Array.isArray(payload.missedItemIds) ? payload.missedItemIds : payload.missedIds || [])
+    .map(id => String(id || '').trim())
+    .filter(Boolean));
+  if (!missed.length && missedIds.size && sourceItems.length) {
+    missed = sourceItems.filter(item => missedIds.has(String(item.id || '').trim()));
+  }
+  if (!missed.length && payload.sessionRecord) missed = sessionMissedItems(payload.sessionRecord);
+  return { missed, sourceItems };
+}
+
+function buildRemediationPack(payload = {}) {
+  const { missed, sourceItems } = resolveRemediationMisses(payload);
+  if (!missed.length) return null;
+  const missedKeys = new Set(missed.map(remediationItemKey));
+  const regions = new Set(missed.map(item => String(item.meta?.category || '').trim()).filter(Boolean));
+  const eras = new Set(missed.map(item => String(item.meta?.era || '').trim()).filter(Boolean));
+  const topics = new Set(missed.map(item => topicFromQuestion(item.question || '')).filter(Boolean));
+  const candidates = [];
+  const seen = new Set();
+  const addCandidate = (item, score, reason) => {
+    const normalized = normalizeRemediationItem(item);
+    if (!normalized) return;
+    const key = remediationItemKey(normalized);
+    if (seen.has(key)) return;
+    seen.add(key);
+    candidates.push({ item: normalized, score, reason });
+  };
+
+  missed.forEach(item => addCandidate(item, 100, 'Missed item'));
+
+  for (const { id, rec, item } of wrongRecords()) {
+    const wrongItem = normalizeRemediationItem(item || {
+      id,
+      question: rec?.q || '',
+      answer: rec?.answer || '',
+      aliases: rec?.aliases || [],
+      meta: { category: rec?.category || '', era: rec?.era || '', source: rec?.source || 'wrong-bank' }
+    });
+    if (!wrongItem) continue;
+    const sameRegion = regions.has(String(wrongItem.meta?.category || '').trim());
+    const sameEra = eras.has(String(wrongItem.meta?.era || '').trim());
+    addCandidate(wrongItem, 48 + (sameRegion ? 10 : 0) + (sameEra ? 8 : 0), 'Wrong-bank item');
+  }
+
+  for (const item of collectLibraryRemediationItems(sourceItems)) {
+    if (!item || missedKeys.has(remediationItemKey(item))) continue;
+    const region = String(item.meta?.category || '').trim();
+    const era = String(item.meta?.era || '').trim();
+    const topic = topicFromQuestion(item.question || '');
+    let score = remediationOverlapScore(item, missed);
+    if (region && regions.has(region)) score += 24;
+    if (era && eras.has(era)) score += 20;
+    if (topic && topics.has(topic)) score += 10;
+    if (sourceItems.some(sourceItem => remediationItemKey(sourceItem) === remediationItemKey(item))) score += 5;
+    if (score > 0) addCandidate(item, score, 'Related item');
+  }
+
+  const limit = Math.max(4, Math.min(12, Number(payload.limit || 10) || 10, missed.length + 8));
+  const sorted = candidates
+    .sort((a, b) => (b.score - a.score) || String(a.item.answer || '').localeCompare(String(b.item.answer || '')))
+    .slice(0, limit);
+  if (!sorted.length) return null;
+  const titleBase = String(payload.title || payload.originTitle || 'Remediation pack').trim() || 'Remediation pack';
+  const regionText = Array.from(regions).slice(0, 2).join(', ');
+  const eraText = Array.from(eras).slice(0, 2).map(getEraName).join(', ');
+  return {
+    title: titleBase,
+    source: String(payload.source || 'practice').trim() || 'practice',
+    items: sorted.map(row => row.item),
+    missedCount: missed.length,
+    wrongBankCount: sorted.filter(row => row.reason === 'Wrong-bank item').length,
+    relatedCount: sorted.filter(row => row.reason === 'Related item').length,
+    focusSummary: [regionText, eraText].filter(Boolean).join(' • '),
+    createdAt: payload.createdAt || Date.now()
+  };
+}
+
+function startRemediationPack(payload, options = {}) {
+  const pack = buildRemediationPack(payload);
+  if (!pack || !pack.items.length) {
+    toast('No missed items available for a remediation pack');
+    return false;
+  }
+  const set = {
+    id: `remediation_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+    name: pack.title,
+    items: pack.items,
+    volatile: true
+  };
+  Library.sets = [set, ...(Library.sets || []).filter(existing => !String(existing?.id || '').startsWith('remediation_'))];
+  Library.activeSetId = set.id;
+  App.sessionOverrideItems = pack.items.slice();
+  App.size = 'all';
+  App.filters = { cat: '', cats: [], era: '', eras: [], src: '' };
+  setPracticeWrongBank(false);
+  renderLibrarySelectors();
+  updateSetMeta();
+  if (options.clearPending) clearPendingRemediationPack();
+  if (options.autoStart === false) {
+    navSet('nav-setup');
+    SHOW('view-setup');
+    toast(`Remediation pack ready: ${pack.items.length} questions`);
+    return true;
+  }
+  toast(`Starting remediation pack: ${pack.items.length} questions`);
+  startSession();
+  return true;
+}
+
+function readPendingRemediationPack() {
+  const raw = safeReadJson(KEY_REMEDIATION_PACK, null);
+  if (!raw || typeof raw !== 'object') return null;
+  const ts = Number(raw.createdAt || raw.ts || 0);
+  if (ts && Date.now() - ts > 2 * 60 * 60 * 1000) {
+    clearPendingRemediationPack();
+    return null;
+  }
+  return raw;
+}
+
+function clearPendingRemediationPack() {
+  try { localStorage.removeItem(KEY_REMEDIATION_PACK); } catch { /* noop */ }
+}
+
+function applyPendingRemediationPack() {
+  if (URL_PARAMS.get('remediation') !== '1') return false;
+  const pending = readPendingRemediationPack();
+  if (!pending) {
+    toast('Remediation pack expired. Open it again from your dashboard.');
+    return false;
+  }
+  return startRemediationPack(pending, { clearPending: true });
+}
+
+function buildLastSessionRemediationPayload() {
+  const record = safeReadJson(KEY_SESS, [])[0];
+  if (!record) return null;
+  const missed = sessionMissedItems(record);
+  if (!missed.length) return null;
+  return {
+    title: 'Practice Hub remediation pack',
+    source: 'practice-hub',
+    missedItems: missed,
+    sessionRecord: record,
+    createdAt: Date.now()
+  };
+}
+
+function renderReviewRemediationCard() {
+  const el = $('review-remediation-card');
+  if (!el) return;
+  const payload = buildLastSessionRemediationPayload();
+  const pack = payload ? buildRemediationPack(payload) : null;
+  if (!pack) {
+    el.innerHTML = `
+      <div class="empty-kicker">Remediation pack</div>
+      <p class="empty-copy">Miss a question in a session to create a targeted mini drill from the same era, same region, related answers, and your wrong bank.</p>
+    `;
+    return;
+  }
+  el.innerHTML = `
+    <div class="remediation-pack-copy">
+      <div class="empty-kicker">Remediation pack</div>
+      <h3>${escHtml(pack.items.length)} question mini drill</h3>
+      <p class="empty-copy">${escHtml(pack.missedCount)} missed item${pack.missedCount === 1 ? '' : 's'} anchored this pack${pack.focusSummary ? ` around ${pack.focusSummary}` : ''}. Includes ${escHtml(String(pack.relatedCount))} related and ${escHtml(String(pack.wrongBankCount))} wrong-bank item${pack.wrongBankCount === 1 ? '' : 's'}.</p>
+    </div>
+    <button id="btn-review-remediation" class="btn pri" type="button">Generate mini drill</button>
+  `;
+  $('btn-review-remediation')?.addEventListener('click', () => {
+    startRemediationPack(buildLastSessionRemediationPayload());
+  });
+}
+
 function topicFromQuestion(q) {
   const t = String(q || '').toLowerCase();
   if (/(battle|war|campaign|siege|army|navy|admiral|military)/.test(t)) return 'Military';
@@ -4629,8 +4904,16 @@ function srsAddWrong(item) {
   const qid = normalizeQuestionId(item?.id);
   if (!qid) return;
   const s = getSRS(); const now = Date.now();
-  if (!s[qid]) s[qid] = { box: 1, dueAt: now, lastSeen: now, lapses: 0, answer: item.answer, aliases: item.aliases || [], q: item.question };
-  else { s[qid].box = 1; s[qid].dueAt = now; s[qid].lastSeen = now; s[qid].lapses = (s[qid].lapses || 0) + 1; s[qid].answer = item.answer; s[qid].q = item.question; }
+  const meta = {
+    category: String(item?.meta?.category || '').trim(),
+    era: String(item?.meta?.era || '').trim(),
+    source: String(item?.meta?.source || '').trim()
+  };
+  if (!s[qid]) s[qid] = { box: 1, dueAt: now, lastSeen: now, lapses: 0, answer: item.answer, aliases: item.aliases || [], q: item.question, ...meta };
+  else {
+    s[qid].box = 1; s[qid].dueAt = now; s[qid].lastSeen = now; s[qid].lapses = (s[qid].lapses || 0) + 1; s[qid].answer = item.answer; s[qid].q = item.question;
+    s[qid].category = meta.category; s[qid].era = meta.era; s[qid].source = meta.source;
+  }
   setSRS(s);
   syncWrongIdsAdd([qid]);
 }
@@ -5229,6 +5512,7 @@ function renderHistory() {
   bindRepeatButtons(tb);
   renderMobileRecordList('history-mobile-list', mobileCards, 'No history yet', 'Complete a drill to store a replayable session here.');
   bindRepeatButtons($('history-mobile-list'));
+  renderReviewRemediationCard();
 }
 
 function repeatSession(ts) {
@@ -6095,6 +6379,7 @@ async function tryFetchDefault(force = false) {
   }
   await hydratePrivateGeneratedQuestions(false);
   await hydrateSharedGeneratedQuestions();
+  applyPendingRemediationPack();
   updateSetupOverview();
   renderCoachChatChrome();
   await applyPendingCoachChatAction();
@@ -6464,16 +6749,28 @@ try {
       const retryMode = String(activeAssignmentData?.retryMode || 'first').trim().toLowerCase();
       const itemIds = App.order.map(i => App.pool[i]?.id).filter(Boolean);
       const missedIds = itemIds.filter((id, index) => !App.resultsCorrect[index]);
+      const missedItems = App.order
+        .map((poolIndex, index) => ({ item: App.pool[poolIndex], correct: !!App.resultsCorrect[index] }))
+        .filter(row => row.item && !row.correct)
+        .map(row => ({
+          id: row.item.id || '',
+          question: row.item.question || '',
+          answer: row.item.answer || '',
+          aliases: row.item.aliases || [],
+          meta: row.item.meta || {}
+        }));
       const resultKey = assignmentResultStorageKey(aId, session.user.id);
       if (resultKey) {
         const previousResult = safeReadJson(resultKey, null);
         const previousMissed = Array.isArray(previousResult?.missedIds) ? previousResult.missedIds : [];
+        const previousMissedItems = Array.isArray(previousResult?.missedItems) ? previousResult.missedItems : [];
         setJsonSafe(resultKey, {
           assignmentId: aId,
           title: activeAssignmentData?.title || 'Assignment',
           total: retryMode === 'first' ? total : (previousResult?.total || activeAssignmentData?.originalQuestionCount || total),
           correct: retryMode === 'first' ? (App.correct || 0) : (previousResult?.correct || 0),
           missedIds: retryMode === 'first' ? missedIds : previousMissed,
+          missedItems: retryMode === 'first' ? missedItems : previousMissedItems,
           missedCount: retryMode === 'first' ? missedIds.length : previousMissed.length,
           retryMode,
           lastRetry: retryMode === 'first' ? null : {

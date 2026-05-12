@@ -5151,6 +5151,42 @@ body::after {
   display: none;
 }
 
+.remediation-pack-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.remediation-pack-copy {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.remediation-pack-copy h3 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 18px;
+  font-weight: 850;
+  line-height: 1.25;
+}
+
+.remediation-pack-card .btn {
+  flex: 0 0 auto;
+}
+
+@media (max-width: 720px) {
+  .remediation-pack-card {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .remediation-pack-card .btn {
+    width: 100%;
+  }
+}
+
 .inline-form,
 .inline-actions {
   display: flex;

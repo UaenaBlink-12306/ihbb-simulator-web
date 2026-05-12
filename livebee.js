@@ -10,6 +10,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const uid = session.user.id;
 
     const KEY_SETTINGS = `ihbb_v2_settings_${uid}`;
+    const REMEDIATION_PACK_STORAGE_KEY = `ihbb_v2_remediation_pack_${uid}`;
     const avatarCatalog = window.AvatarCatalog || {};
     const normalizeAvatarId = (value) => {
         if (typeof avatarCatalog.normalizeAvatarId === 'function') return avatarCatalog.normalizeAvatarId(value);
@@ -126,6 +127,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             roundReviews[safeIndex] = {
                 index: safeIndex,
                 number: safeIndex + 1,
+                id: q.id || q.question_id || '',
                 question: q.question || q.q || '',
                 answer: q.answer || q.a || '',
                 meta: q.meta || {},
@@ -135,6 +137,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 unanswered: false
             };
         } else {
+            roundReviews[safeIndex].id = roundReviews[safeIndex].id || q.id || q.question_id || '';
             roundReviews[safeIndex].question = roundReviews[safeIndex].question || q.question || q.q || '';
             roundReviews[safeIndex].answer = roundReviews[safeIndex].answer || q.answer || q.a || '';
             roundReviews[safeIndex].meta = roundReviews[safeIndex].meta || q.meta || {};
@@ -198,6 +201,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         return list.map((item, idx) => ({
             index: Number.isFinite(Number(item?.index)) ? Number(item.index) : idx,
             number: Number.isFinite(Number(item?.number)) ? Number(item.number) : idx + 1,
+            id: String(item?.id || item?.question_id || '').trim(),
             question: String(item?.question || '').trim(),
             answer: String(item?.answer || '').trim(),
             meta: item?.meta && typeof item.meta === 'object' ? item.meta : {},
@@ -922,10 +926,16 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         // Normalize questions
         gameQuestions = selectedQuestions.map(q => ({
+            id: q.id || q.question_id || '',
             question: q.question || q.q || '',
             answer: q.answer || q.a || '',
             aliases: q.aliases || [],
-            meta: q.meta || {}
+            meta: {
+                ...(q.meta || {}),
+                category: q.meta?.category || q.category || '',
+                era: q.meta?.era || q.era || '',
+                source: q.meta?.source || q.source || ''
+            }
         }));
 
         // Update room status
@@ -1620,6 +1630,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         const solved = list.filter(item => item.solvedBy).length;
         const missed = list.length - solved;
         const attempts = list.reduce((sum, item) => sum + item.attempts.length, 0);
+        const remediateButton = missed > 0
+            ? '<button id="btn-livebee-remediation" class="btn pri" type="button">Generate mini drill</button>'
+            : '<button class="btn ghost" type="button" disabled>No misses to drill</button>';
         const reviewItems = list.map(item => {
             const status = item.solvedBy
                 ? `Solved by ${item.solvedBy.name || 'Player'}`
@@ -1658,10 +1671,57 @@ document.addEventListener('DOMContentLoaded', async () => {
                     <h3 class="card-title">Post-game review</h3>
                     <p class="section-subtitle">${list.length} questions • ${solved} solved • ${missed} missed • ${attempts} buzz attempt${attempts === 1 ? '' : 's'}</p>
                 </div>
+                <div class="inline-actions">${remediateButton}</div>
             </div>
             <div class="post-game-review-list">${reviewItems}</div>
         `;
         hydrateAvatarImages(el);
+        $('btn-livebee-remediation')?.addEventListener('click', () => startLiveBeeRemediationPack(list));
+    }
+
+    function normalizeLiveBeeRemediationQuestion(item) {
+        if (!item || typeof item !== 'object') return null;
+        const meta = item.meta && typeof item.meta === 'object' ? item.meta : {};
+        const question = String(item.question || item.question_text || '').trim();
+        const answer = String(item.answer || item.answer_text || '').trim();
+        if (!question || !answer) return null;
+        return {
+            id: String(item.id || item.question_id || `livebee_${item.number || ''}_${answer}`).trim(),
+            question,
+            answer,
+            aliases: Array.isArray(item.aliases) ? item.aliases : [],
+            meta: {
+                category: String(meta.category || item.category || '').trim(),
+                era: String(meta.era || item.era || '').trim(),
+                source: String(meta.source || item.source || '').trim()
+            }
+        };
+    }
+
+    function startLiveBeeRemediationPack(reviewItems) {
+        const sourceItems = (Array.isArray(reviewItems) ? reviewItems : []).map(normalizeLiveBeeRemediationQuestion).filter(Boolean);
+        const missedItems = (Array.isArray(reviewItems) ? reviewItems : [])
+            .filter(item => !item.solvedBy)
+            .map(normalizeLiveBeeRemediationQuestion)
+            .filter(Boolean);
+        if (!missedItems.length) {
+            showAlert('No missed rounds are available for a remediation pack.', 'error');
+            return;
+        }
+        try {
+            localStorage.setItem(REMEDIATION_PACK_STORAGE_KEY, JSON.stringify({
+                title: `Live Bee ${room?.code || ''} remediation pack`.trim(),
+                originTitle: room?.code ? `Live Bee ${room.code}` : 'Live Bee',
+                source: 'live-bee',
+                missedItems,
+                sourceItems,
+                createdAt: Date.now()
+            }));
+        } catch {
+            showAlert('Could not prepare the remediation pack on this device.', 'error');
+            return;
+        }
+        window.location.href = 'index.html?drill=1&remediation=1';
     }
 
     function launchResultsConfetti() {
