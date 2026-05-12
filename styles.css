@@ -5361,6 +5361,14 @@ body::after {
   }
 }
 
+@media (max-width: 760px) {
+  .dashboard-quick-switcher {
+    flex: 1 1 100%;
+    margin-left: 0;
+    margin-top: 4px;
+  }
+}
+
 .dashboard-tabs {
   padding: 8px;
 }
@@ -6863,6 +6871,22 @@ input[type=datetime-local]:focus {
 .dashboard-tabs.grouped-dashboard-tabs {
   overflow: visible;
   flex-wrap: wrap;
+}
+
+@media (max-width: 760px) {
+  .dashboard-tabs,
+  .nav.tab-strip {
+    gap: 6px;
+    padding: 6px;
+  }
+  
+  .dashboard-tabs .dash-tab,
+  .dashboard-tabs .dashboard-tab-group-trigger,
+  .nav.tab-strip a {
+    min-height: 40px;
+    padding: 8px 14px;
+    font-size: 13px;
+  }
 }
 
 .card:hover,
