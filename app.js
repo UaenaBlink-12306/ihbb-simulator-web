@@ -1063,7 +1063,7 @@ function renderReviewRemediationCard() {
     <div class="remediation-pack-copy">
       <div class="empty-kicker">Remediation pack</div>
       <h3>${escHtml(pack.items.length)} question mini drill</h3>
-      <p class="empty-copy">${escHtml(pack.missedCount)} missed item${pack.missedCount === 1 ? '' : 's'} anchored this pack${pack.focusSummary ? ` around ${pack.focusSummary}` : ''}. Includes ${escHtml(String(pack.relatedCount))} related and ${escHtml(String(pack.wrongBankCount))} wrong-bank item${pack.wrongBankCount === 1 ? '' : 's'}.</p>
+      <p class="empty-copy">${escHtml(pack.missedCount)} missed item${pack.missedCount === 1 ? '' : 's'} anchored this pack${pack.focusSummary ? ` around ${escHtml(pack.focusSummary)}` : ''}. Includes ${escHtml(String(pack.relatedCount))} related and ${escHtml(String(pack.wrongBankCount))} wrong-bank item${pack.wrongBankCount === 1 ? '' : 's'}.</p>
     </div>
     <button id="btn-review-remediation" class="btn pri" type="button">Generate mini drill</button>
   `;

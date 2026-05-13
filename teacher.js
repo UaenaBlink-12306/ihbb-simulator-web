@@ -157,6 +157,22 @@ document.addEventListener('DOMContentLoaded', async () => {
     const builderQuestionMetaHtml = (question, options = {}) => builderQuality
         ? builderQuality.questionMetaHtml(question, { eraLabeler: getEraLabel, ...options })
         : '';
+    let selectedQuestionsRevision = 0;
+    let selectedQuestionsQualityCache = { revision: -1, analysis: null };
+    function invalidateSelectedQuestionsQualityAnalysis() {
+        selectedQuestionsRevision += 1;
+        selectedQuestionsQualityCache = { revision: -1, analysis: null };
+    }
+    function getSelectedQuestionsQualityAnalysis() {
+        if (!builderQuality || !selectedQuestions.length) return null;
+        if (selectedQuestionsQualityCache.revision !== selectedQuestionsRevision) {
+            selectedQuestionsQualityCache = {
+                revision: selectedQuestionsRevision,
+                analysis: builderQuality.analyze(selectedQuestions)
+            };
+        }
+        return selectedQuestionsQualityCache.analysis;
+    }
     const dedupeQuestions = (list) => {
         const seen = new Set();
         const out = [];
@@ -2734,6 +2750,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('modal-body').addEventListener('click', async (event) => {
         if (event.target.id === 'btn-review-reset-order') {
             selectedQuestions = [...originalReviewOrder];
+            invalidateSelectedQuestionsQualityAnalysis();
             refreshSelectedQuestionsReviewIfOpen();
             updatePreview();
             return;
@@ -2745,6 +2762,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
             }
             selectedQuestions = shuffled;
+            invalidateSelectedQuestionsQualityAnalysis();
             refreshSelectedQuestionsReviewIfOpen();
             updatePreview();
             return;
@@ -3212,6 +3230,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('btn-create-question-set')?.addEventListener('click', () => {
         isCreatingSet = true;
         selectedQuestions = [];
+        invalidateSelectedQuestionsQualityAnalysis();
         updatePreview();
         document.getElementById('assign-title').value = '';
         activateDashboardTab('create');
@@ -3399,7 +3418,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     function assignmentDuplicateWarningsHtml() {
         if (builderQuality) {
             if (!selectedQuestions.length) return '';
-            const analysis = builderQuality.analyze(selectedQuestions);
+            const analysis = getSelectedQuestionsQualityAnalysis();
             const summary = builderQuality.qualityIssueSummary(analysis);
             if (!summary) {
                 return `
@@ -3457,7 +3476,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             wrap.innerHTML = '';
             return;
         }
-        wrap.innerHTML = builderQuality.renderQualityPanel(builderQuality.analyze(selectedQuestions), {
+        wrap.innerHTML = builderQuality.renderQualityPanel(getSelectedQuestionsQualityAnalysis(), {
             title: 'Draft Quality',
             eraLabeler: getEraLabel
         });
@@ -3547,12 +3566,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (fromIndex === insertIndex) return;
         const [item] = selectedQuestions.splice(fromIndex, 1);
         selectedQuestions.splice(insertIndex, 0, item);
+        invalidateSelectedQuestionsQualityAnalysis();
         updatePreview();
     }
 
     function removeSelectedQuestion(index) {
         if (index < 0 || index >= selectedQuestions.length) return;
         selectedQuestions.splice(index, 1);
+        invalidateSelectedQuestionsQualityAnalysis();
         updatePreview();
         syncPickResultSelectionState();
         refreshSelectedQuestionsReviewIfOpen();
@@ -3586,6 +3607,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             return;
         }
         question.aliases = [...aliases, alias];
+        invalidateSelectedQuestionsQualityAnalysis();
         updatePreview();
         showAlert(`Added alias "${alias}" to Q${index + 1}.`, 'success');
     }
@@ -3597,6 +3619,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
         const label = String(selectedQuestions[index]?.answer || selectedQuestions[index]?.a || `Q${index + 1}`).trim();
         selectedQuestions.splice(index, 1);
+        invalidateSelectedQuestionsQualityAnalysis();
         updatePreview();
         syncPickResultSelectionState();
         showAlert(`Removed ${label || `Q${index + 1}`} from the draft.`, 'success');
@@ -3677,7 +3700,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     <div class="assignment-builder-alerts">${assignmentDuplicateWarningsHtml()}</div>
                     <div class="assignment-coverage">${assignmentCoverageHtml()}</div>
                 </div>
-                ${builderQuality ? `<div class="assignment-review-quality">${builderQuality.renderQualityPanel(builderQuality.analyze(selectedQuestions), { title: 'Review Quality', eraLabeler: getEraLabel })}</div>` : ''}
+                ${builderQuality ? `<div class="assignment-review-quality">${builderQuality.renderQualityPanel(getSelectedQuestionsQualityAnalysis(), { title: 'Review Quality', eraLabeler: getEraLabel })}</div>` : ''}
                 <div class="assignment-review-actions" style="margin-bottom: 16px; display: flex; gap: 8px;">
                     <button class="btn ghost" type="button" id="btn-review-reset-order">Reset to Original Order</button>
                     <button class="btn ghost" type="button" id="btn-review-randomize-order">Randomize Order</button>
@@ -3729,6 +3752,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     function setSelectedQuestions(next) {
         selectedQuestions = dedupeQuestions(next);
+        invalidateSelectedQuestionsQualityAnalysis();
         updatePreview();
         syncPickResultSelectionState();
     }
@@ -4252,14 +4276,23 @@ document.addEventListener('DOMContentLoaded', async () => {
     function togglePickedQuestion(item, shouldSelect, rowEl) {
         const key = questionKey(item);
         const idx = selectedQuestions.findIndex(s => questionKey(s) === key);
-        if (shouldSelect && idx < 0) selectedQuestions.push(item);
-        if (!shouldSelect && idx >= 0) selectedQuestions.splice(idx, 1);
+        let changed = false;
+        if (shouldSelect && idx < 0) {
+            selectedQuestions.push(item);
+            changed = true;
+        }
+        if (!shouldSelect && idx >= 0) {
+            selectedQuestions.splice(idx, 1);
+            changed = true;
+        }
+        if (changed) invalidateSelectedQuestionsQualityAnalysis();
         if (rowEl) rowEl.classList.toggle('selected', !!shouldSelect);
         updatePreview();
     }
     document.getElementById('btn-clear-selection')?.addEventListener('click', () => {
         if (!selectedQuestions.length) return;
         selectedQuestions = [];
+        invalidateSelectedQuestionsQualityAnalysis();
         updatePreview();
         if (currentMode === 'pick') {
             const search = document.getElementById('pick-search');
@@ -4404,7 +4437,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (!title) return showAlert('Title is required.', 'error');
         if (!isCreatingSet && !classId) return showAlert('Select a class.', 'error');
         if (!selectedQuestions.length) return showAlert('Select some questions first.', 'error');
-        const qualitySummary = builderQuality?.qualityIssueSummary(builderQuality.analyze(selectedQuestions)) || '';
+        const qualitySummary = builderQuality?.qualityIssueSummary(getSelectedQuestionsQualityAnalysis()) || '';
         const duplicateGroups = builderQuality ? [] : assignmentDuplicateAnswerGroups();
         if (qualitySummary) {
             const proceed = confirm(`This ${isCreatingSet ? 'question set' : 'assignment'} has quality warnings:\n\n${qualitySummary}\n\nPublish anyway?`);
@@ -4447,6 +4480,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 }
                 
                 selectedQuestions = [];
+                invalidateSelectedQuestionsQualityAnalysis();
                 updatePreview();
                 document.getElementById('assign-title').value = '';
                 document.getElementById('assign-instructions').value = '';
@@ -4481,6 +4515,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
                 showAlert('Assignment created successfully!', 'success');
                 selectedQuestions = [];
+                invalidateSelectedQuestionsQualityAnalysis();
                 updatePreview();
                 document.getElementById('assign-title').value = '';
                 document.getElementById('assign-instructions').value = '';

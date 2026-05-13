@@ -2335,9 +2335,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         const listEl = document.getElementById('game-history-list');
         if (!listEl) return;
         listEl.innerHTML = games.map(game => {
-            let standings, summary;
+            let standings, summary, review;
             try { standings = typeof game.standings === 'string' ? JSON.parse(game.standings) : game.standings; } catch { standings = []; }
             try { summary = typeof game.summary === 'string' ? JSON.parse(game.summary) : game.summary; } catch { summary = {}; }
+            try { review = typeof game.review === 'string' ? JSON.parse(game.review) : game.review; } catch { review = []; }
+            const remediationMissCount = getLiveBeeRemediationReviewItems(review).length;
             const date = new Date(game.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
             const time = new Date(game.created_at).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
             const rankEl = game.my_rank ? `<span class="game-history-rank rank-${Math.min(game.my_rank, 3)}">#${game.my_rank}</span>` : '';
@@ -2366,7 +2368,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     </div>
                     <div class="item-actions" style="margin-top:10px;">
                         <button class="btn ghost game-history-expand" data-game-id="${esc(String(game.id))}">Show Review Details</button>
-                        <button class="btn pri game-history-remediate" data-game-id="${esc(String(game.id))}" ${(summary.missed || 0) > 0 ? '' : 'disabled'}>Remediation pack</button>
+                        <button class="btn pri game-history-remediate" data-game-id="${esc(String(game.id))}" ${remediationMissCount > 0 ? '' : 'disabled'}>Remediation pack</button>
                     </div>
                     <div class="game-history-review hidden" id="game-review-${esc(String(game.id))}"></div>
                 </div>
@@ -2416,11 +2418,61 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     }
 
+    function liveBeeReviewList(review) {
+        return Array.isArray(review) ? review.filter(item => item && (item.question || item.answer)) : [];
+    }
+
+    function liveBeeAttemptUserId(attempt) {
+        return String(attempt?.userId || attempt?.user_id || attempt?.uid || attempt?.playerId || attempt?.player_id || '').trim();
+    }
+
+    function liveBeeAttemptIsCorrect(attempt) {
+        if (!attempt || typeof attempt !== 'object') return false;
+        if (typeof attempt.correct === 'boolean') return attempt.correct;
+        if (typeof attempt.isCorrect === 'boolean') return attempt.isCorrect;
+        const status = String(attempt.result || attempt.status || attempt.verdict || '').trim().toLowerCase();
+        if (['correct', 'right', 'solved'].includes(status)) return true;
+        const reason = String(attempt.reason || '').trim().toLowerCase();
+        return !!reason && reason.includes('correct') && !reason.includes('incorrect');
+    }
+
+    function liveBeeAttemptIsIncorrect(attempt) {
+        if (!attempt || typeof attempt !== 'object' || liveBeeAttemptIsCorrect(attempt)) return false;
+        if (attempt.correct === false || attempt.isCorrect === false) return true;
+        const status = String(attempt.result || attempt.status || attempt.verdict || '').trim().toLowerCase();
+        if (['incorrect', 'wrong', 'missed', 'miss', 'timeout', 'timed out', 'timed_out', 'no attempt', 'no_attempt', 'no attempt submitted'].includes(status)) return true;
+        const reason = String(attempt.reason || '').trim().toLowerCase();
+        return reason.includes('incorrect') || reason.includes('wrong') || reason.includes('time ran out') || reason.includes('timeout') || reason.includes('no attempt');
+    }
+
+    function liveBeeReviewHasAttemptData(item) {
+        return !!item && typeof item === 'object' && Object.prototype.hasOwnProperty.call(item, 'attempts');
+    }
+
+    function liveBeeUserMissedReviewItem(item, currentUserId) {
+        const userId = String(currentUserId || '').trim();
+        if (!userId || !item || typeof item !== 'object') return false;
+        if (liveBeeAttemptUserId(item.solvedBy) === userId) return false;
+        const userAttempts = (Array.isArray(item.attempts) ? item.attempts : [])
+            .filter(attempt => liveBeeAttemptUserId(attempt) === userId);
+        if (userAttempts.some(liveBeeAttemptIsCorrect)) return false;
+        return userAttempts.some(liveBeeAttemptIsIncorrect);
+    }
+
+    function getLiveBeeRemediationReviewItems(review, currentUserId = uid) {
+        const list = liveBeeReviewList(review);
+        const userId = String(currentUserId || '').trim();
+        if (!userId || !list.some(liveBeeReviewHasAttemptData)) {
+            // Older reviews did not store per-player attempts, so keep their room-level remediation behavior.
+            return list.filter(item => !item.solvedBy);
+        }
+        return list.filter(item => liveBeeUserMissedReviewItem(item, userId));
+    }
+
     function startLiveBeeRemediationFromReview(review, roomLabel = 'Live Bee') {
-        const list = Array.isArray(review) ? review.filter(item => item && (item.question || item.answer)) : [];
+        const list = liveBeeReviewList(review);
         const sourceItems = list.map(liveBeeReviewQuestion).filter(Boolean);
-        const missedItems = list
-            .filter(item => !item.solvedBy)
+        const missedItems = getLiveBeeRemediationReviewItems(list)
             .map(liveBeeReviewQuestion)
             .filter(Boolean);
         if (!missedItems.length) {
@@ -3261,6 +3313,24 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (tabButton) activateDashboardTab(tabButton.dataset.studentPlanTab || 'coach');
     });
 
+    function handleStudentAssignmentListClick(event) {
+        const startButton = event.target.closest('[data-student-start-assignment]');
+        if (startButton) {
+            window.startAssignment?.(
+                startButton.dataset.studentStartAssignment,
+                startButton.dataset.studentStartTitle || 'Assignment',
+                startButton.dataset.studentStartMode || 'first'
+            );
+            return;
+        }
+        const remediationButton = event.target.closest('[data-assignment-remediation]');
+        if (!remediationButton) return;
+        window.startAssignmentRemediation?.(remediationButton.dataset.assignmentId, remediationButton.dataset.title || 'Assignment');
+    }
+
+    document.getElementById('student-assignments-todo')?.addEventListener('click', handleStudentAssignmentListClick);
+    document.getElementById('student-assignments-completed')?.addEventListener('click', handleStudentAssignmentListClick);
+
     document.getElementById('btn-assignments-coach-tab')?.addEventListener('click', () => activateDashboardTab('coach'));
     document.getElementById('btn-assignments-coach-drill')?.addEventListener('click', () => launchCoachGuidedDrill());
     document.getElementById('btn-coach-refresh')?.addEventListener('click', async () => {
@@ -3745,7 +3815,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     </div>
                     <span class="status-pill pending ${esc(dueState.level)}">${esc(dueState.label)}</span>
                     <div class="item-actions">
-                        <button class="btn pri" onclick="startAssignment('${a.id}', '${esc(a.title)}')">Start</button>
+                        <button class="btn pri" type="button" data-student-start-assignment="${esc(a.id)}" data-student-start-title="${esc(a.title)}">Start</button>
                     </div>
                 </div>`;
             }).join('');
@@ -3773,9 +3843,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                     <span class="status-pill done">Completed</span>
                     <span class="item-score ${pct >= 50 ? 'good' : 'bad'}">${sub.correct}/${sub.total} (${pct}%)</span>
                     <div class="item-actions">
-                        <button class="btn pri" onclick="startAssignment('${a.id}', '${esc(a.title)}', 'missed')" ${missedDisabled}>Redo missed${missedCount > 0 ? ` (${missedCount})` : ''}</button>
-                        <button class="btn ghost" onclick="startAssignmentRemediation('${a.id}', '${esc(a.title)}')" ${remediationDisabled}>Remediation pack</button>
-                        <button class="btn ghost" onclick="startAssignment('${a.id}', '${esc(a.title)}', 'all')">Practice all</button>
+                        <button class="btn pri" type="button" data-student-start-assignment="${esc(a.id)}" data-student-start-title="${esc(a.title)}" data-student-start-mode="missed" ${missedDisabled}>Redo missed${missedCount > 0 ? ` (${missedCount})` : ''}</button>
+                        <button class="btn ghost" type="button" data-assignment-remediation="1" data-assignment-id="${esc(a.id)}" data-title="${esc(a.title)}" ${remediationDisabled}>Remediation pack</button>
+                        <button class="btn ghost" type="button" data-student-start-assignment="${esc(a.id)}" data-student-start-title="${esc(a.title)}" data-student-start-mode="all">Practice all</button>
                     </div>
                 </div>`;
             }).join('');

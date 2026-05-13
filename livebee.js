@@ -1630,7 +1630,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         const solved = list.filter(item => item.solvedBy).length;
         const missed = list.length - solved;
         const attempts = list.reduce((sum, item) => sum + item.attempts.length, 0);
-        const remediateButton = missed > 0
+        const personalMisses = getLiveBeeRemediationReviewItems(list);
+        const remediateButton = personalMisses.length > 0
             ? '<button id="btn-livebee-remediation" class="btn pri" type="button">Generate mini drill</button>'
             : '<button class="btn ghost" type="button" disabled>No misses to drill</button>';
         const reviewItems = list.map(item => {
@@ -1698,10 +1699,57 @@ document.addEventListener('DOMContentLoaded', async () => {
         };
     }
 
+    function liveBeeAttemptUserId(attempt) {
+        return String(attempt?.userId || attempt?.user_id || attempt?.uid || attempt?.playerId || attempt?.player_id || '').trim();
+    }
+
+    function liveBeeAttemptIsCorrect(attempt) {
+        if (!attempt || typeof attempt !== 'object') return false;
+        if (typeof attempt.correct === 'boolean') return attempt.correct;
+        if (typeof attempt.isCorrect === 'boolean') return attempt.isCorrect;
+        const status = String(attempt.result || attempt.status || attempt.verdict || '').trim().toLowerCase();
+        if (['correct', 'right', 'solved'].includes(status)) return true;
+        const reason = String(attempt.reason || '').trim().toLowerCase();
+        return !!reason && reason.includes('correct') && !reason.includes('incorrect');
+    }
+
+    function liveBeeAttemptIsIncorrect(attempt) {
+        if (!attempt || typeof attempt !== 'object' || liveBeeAttemptIsCorrect(attempt)) return false;
+        if (attempt.correct === false || attempt.isCorrect === false) return true;
+        const status = String(attempt.result || attempt.status || attempt.verdict || '').trim().toLowerCase();
+        if (['incorrect', 'wrong', 'missed', 'miss', 'timeout', 'timed out', 'timed_out', 'no attempt', 'no_attempt', 'no attempt submitted'].includes(status)) return true;
+        const reason = String(attempt.reason || '').trim().toLowerCase();
+        return reason.includes('incorrect') || reason.includes('wrong') || reason.includes('time ran out') || reason.includes('timeout') || reason.includes('no attempt');
+    }
+
+    function liveBeeReviewHasAttemptData(item) {
+        return !!item && typeof item === 'object' && Object.prototype.hasOwnProperty.call(item, 'attempts');
+    }
+
+    function liveBeeUserMissedReviewItem(item, currentUserId) {
+        const userId = String(currentUserId || '').trim();
+        if (!userId || !item || typeof item !== 'object') return false;
+        if (liveBeeAttemptUserId(item.solvedBy) === userId) return false;
+        const userAttempts = (Array.isArray(item.attempts) ? item.attempts : [])
+            .filter(attempt => liveBeeAttemptUserId(attempt) === userId);
+        if (userAttempts.some(liveBeeAttemptIsCorrect)) return false;
+        return userAttempts.some(liveBeeAttemptIsIncorrect);
+    }
+
+    function getLiveBeeRemediationReviewItems(reviewItems) {
+        const list = Array.isArray(reviewItems) ? reviewItems.filter(item => item && (item.question || item.answer)) : [];
+        const currentUserId = String(uid || '').trim();
+        if (!currentUserId || !list.some(liveBeeReviewHasAttemptData)) {
+            // Older reviews did not store per-player attempts, so keep their room-level remediation behavior.
+            return list.filter(item => !item.solvedBy);
+        }
+        return list.filter(item => liveBeeUserMissedReviewItem(item, currentUserId));
+    }
+
     function startLiveBeeRemediationPack(reviewItems) {
-        const sourceItems = (Array.isArray(reviewItems) ? reviewItems : []).map(normalizeLiveBeeRemediationQuestion).filter(Boolean);
-        const missedItems = (Array.isArray(reviewItems) ? reviewItems : [])
-            .filter(item => !item.solvedBy)
+        const list = Array.isArray(reviewItems) ? reviewItems : [];
+        const sourceItems = list.map(normalizeLiveBeeRemediationQuestion).filter(Boolean);
+        const missedItems = getLiveBeeRemediationReviewItems(list)
             .map(normalizeLiveBeeRemediationQuestion)
             .filter(Boolean);
         if (!missedItems.length) {
