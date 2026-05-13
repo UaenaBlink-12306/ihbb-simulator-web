@@ -347,6 +347,25 @@
     `;
   }
 
+  function qualityActionButton(label, attrs = {}) {
+    const attrText = Object.entries(attrs)
+      .map(([name, value]) => ` ${name}="${esc(value)}"`)
+      .join('');
+    return `<button class="btn ghost quality-action" type="button"${attrText}>${esc(label)}</button>`;
+  }
+
+  function removeQuestionButton(index) {
+    return qualityActionButton(`Remove Q${index + 1}`, {
+      'data-quality-action': 'remove-question',
+      'data-quality-index': index,
+      title: `Remove Q${index + 1} from this draft`
+    });
+  }
+
+  function actionRow(copy, actions) {
+    return `${copy}${actions ? `<div class="quality-actions">${actions}</div>` : ''}`;
+  }
+
   function renderQualityPanel(analysis, options = {}) {
     const data = analysis || analyze([]);
     const issueCount = data.duplicateQuestions.length + data.answerOverlaps.length + data.similarQuestions.length + data.duplicateClues.length;
@@ -357,16 +376,35 @@
         ? `${issueCount} review warning${issueCount === 1 ? '' : 's'}`
         : 'All clear';
 
-    const duplicateRows = data.duplicateQuestions.slice(0, 5).map(item => `Q${item.index1 + 1} and Q${item.index2 + 1} have the same clue text${item.answer ? ` (${esc(item.answer)})` : ''}.`);
-    const overlapRows = data.answerOverlaps.slice(0, 5).map(item => `Q${item.index1 + 1} and Q${item.index2 + 1} repeat the answer "${esc(item.answer || 'Untitled answer')}".`);
+    const actionable = options.actionable !== false;
+    const duplicateRows = data.duplicateQuestions.slice(0, 5).map(item => actionRow(
+      `Q${item.index1 + 1} and Q${item.index2 + 1} have the same clue text${item.answer ? ` (${esc(item.answer)})` : ''}.`,
+      actionable ? `${removeQuestionButton(item.index2)}${removeQuestionButton(item.index1)}` : ''
+    ));
+    const overlapRows = data.answerOverlaps.slice(0, 5).map(item => actionRow(
+      `Q${item.index1 + 1} and Q${item.index2 + 1} repeat the answer "${esc(item.answer || 'Untitled answer')}".`,
+      actionable ? `${removeQuestionButton(item.index2)}${removeQuestionButton(item.index1)}` : ''
+    ));
     const similarRows = data.similarQuestions.slice(0, 5).map(item => {
       const shared = item.shared.length ? ` Shared terms: ${esc(item.shared.join(', '))}.` : '';
-      return `Q${item.index1 + 1} and Q${item.index2 + 1} are ${Math.round(item.score * 100)}% similar.${shared}`;
+      return actionRow(
+        `Q${item.index1 + 1} and Q${item.index2 + 1} are ${Math.round(item.score * 100)}% similar.${shared}`,
+        actionable ? `${removeQuestionButton(item.index2)}${removeQuestionButton(item.index1)}` : ''
+      );
     });
-    const clueRows = data.duplicateClues.slice(0, 6).map(item => `${esc(item.clue)} appears in ${item.indices.map(index => `Q${index + 1}`).join(', ')}.`);
+    const clueRows = data.duplicateClues.slice(0, 6).map(item => actionRow(
+      `${esc(item.clue)} appears in ${item.indices.map(index => `Q${index + 1}`).join(', ')}.`,
+      actionable ? item.indices.slice(0, 4).map(index => removeQuestionButton(index)).join('') : ''
+    ));
     const aliasRows = data.aliasSuggestions.slice(0, 6).map(row => {
       const answer = answerText(row.question) || `Q${row.index + 1}`;
-      return `Q${row.index + 1} ${esc(answer)}: ${esc(row.aliasSuggestions.join(', '))}`;
+      const actions = row.aliasSuggestions.map(suggestion => qualityActionButton(`Add ${suggestion}`, {
+        'data-quality-action': 'add-alias',
+        'data-quality-index': row.index,
+        'data-quality-alias': suggestion,
+        title: `Add "${suggestion}" as an alias for Q${row.index + 1}`
+      })).join('');
+      return actionRow(`Q${row.index + 1} ${esc(answer)}: ${esc(row.aliasSuggestions.join(', '))}`, actionable ? actions : '');
     });
     const sourceChips = Object.entries(data.sources || {})
       .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))

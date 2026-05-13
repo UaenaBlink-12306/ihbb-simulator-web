@@ -3559,6 +3559,66 @@ document.addEventListener('DOMContentLoaded', async () => {
         showAlert('Question removed from the assignment draft.', 'success');
     }
 
+    function normalizeAssignmentAliasForCompare(value) {
+        return String(value || '')
+            .toLowerCase()
+            .replace(/&/g, ' and ')
+            .replace(/[^a-z0-9]+/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim();
+    }
+
+    function addAliasSuggestionToSelectedQuestion(index, aliasValue) {
+        if (index < 0 || index >= selectedQuestions.length) {
+            showAlert('That question is no longer in the draft.', 'error');
+            return;
+        }
+        const alias = String(aliasValue || '').replace(/\s+/g, ' ').trim();
+        if (!alias) return;
+        const question = selectedQuestions[index];
+        const aliases = Array.isArray(question.aliases)
+            ? question.aliases.map(item => String(item || '').replace(/\s+/g, ' ').trim()).filter(Boolean)
+            : [];
+        const existing = new Set([question.answer, question.a, ...aliases].map(normalizeAssignmentAliasForCompare).filter(Boolean));
+        const aliasKey = normalizeAssignmentAliasForCompare(alias);
+        if (!aliasKey || existing.has(aliasKey)) {
+            showAlert('That alias is already covered for this question.', 'error');
+            return;
+        }
+        question.aliases = [...aliases, alias];
+        updatePreview();
+        showAlert(`Added alias "${alias}" to Q${index + 1}.`, 'success');
+    }
+
+    function removeQualityWarningQuestion(index) {
+        if (index < 0 || index >= selectedQuestions.length) {
+            showAlert('That question is no longer in the draft.', 'error');
+            return;
+        }
+        const label = String(selectedQuestions[index]?.answer || selectedQuestions[index]?.a || `Q${index + 1}`).trim();
+        selectedQuestions.splice(index, 1);
+        updatePreview();
+        syncPickResultSelectionState();
+        showAlert(`Removed ${label || `Q${index + 1}`} from the draft.`, 'success');
+    }
+
+    function handleAssignmentQualityAction(event) {
+        const actionButton = event.target.closest('[data-quality-action]');
+        if (!actionButton || !actionButton.closest('.quality-panel')) return;
+        const index = Number.parseInt(String(actionButton.dataset.qualityIndex || ''), 10);
+        if (!Number.isFinite(index)) return;
+        event.preventDefault();
+        event.stopPropagation();
+        const action = String(actionButton.dataset.qualityAction || '');
+        if (action === 'remove-question') {
+            removeQualityWarningQuestion(index);
+            return;
+        }
+        if (action === 'add-alias') {
+            addAliasSuggestionToSelectedQuestion(index, actionButton.dataset.qualityAlias || '');
+        }
+    }
+
     function assignmentQuestionMetaHtml(question) {
         if (builderQuality) {
             return builderQuestionMetaHtml(question, {
@@ -4216,6 +4276,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
         openSelectedQuestionsReview();
     });
+    document.addEventListener('click', handleAssignmentQualityAction);
 
     // Templates
     document.querySelectorAll('.template-btn').forEach(btn => {
