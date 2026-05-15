@@ -3604,7 +3604,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     function remediationQuestionId(raw) {
-        const direct = String(raw?.id || raw?.question_id || '').trim();
+        const direct = String(raw?.question_id || raw?.id || '').trim();
         if (direct) return direct;
         const answer = String(raw?.answer || raw?.answer_text || raw?.a || '').toLowerCase().replace(/[^a-z0-9]+/g, '').slice(0, 40);
         const question = String(raw?.question || raw?.question_text || raw?.q || '').toLowerCase().replace(/[^a-z0-9]+/g, '').slice(0, 60);
@@ -3662,21 +3662,229 @@ document.addEventListener('DOMContentLoaded', async () => {
         try {
             const raw = JSON.parse(localStorage.getItem(key) || 'null');
             if (!raw || typeof raw !== 'object') return null;
-            const missedIds = Array.isArray(raw.missedIds) ? raw.missedIds.map(x => String(x || '').trim()).filter(Boolean) : [];
+            let missedIds = Array.isArray(raw.missedIds) ? raw.missedIds.map(x => String(x || '').trim()).filter(Boolean) : [];
             const missedItems = Array.isArray(raw.missedItems) ? raw.missedItems.map(normalizePracticeQuestion).filter(Boolean) : [];
+            if (!missedIds.length && missedItems.length) {
+                missedIds = missedItems.map(item => String(item.id || '').trim()).filter(Boolean);
+            }
             const total = Number(raw.total || 0);
             const correct = Number(raw.correct || 0);
+            const inferredMissedCount = Math.max(missedIds.length, missedItems.length);
             return {
                 total,
                 correct,
                 missedIds,
                 missedItems,
-                missedCount: Number.isFinite(Number(raw.missedCount)) ? Number(raw.missedCount) : missedIds.length,
-                savedAt: raw.savedAt || ''
+                missedCount: Number.isFinite(Number(raw.missedCount)) ? Number(raw.missedCount) : inferredMissedCount,
+                savedAt: raw.savedAt || '',
+                recoverySource: String(raw.recoverySource || '').trim(),
+                recoveredAt: raw.recoveredAt || ''
             };
         } catch {
             return null;
         }
+    }
+
+    let assignmentRecoverySessionCache = null;
+
+    function normalizeAssignmentSessionForRecovery(raw, source = 'local') {
+        const items = Array.isArray(raw?.items)
+            ? raw.items.map(item => String(item || '').trim()).filter(Boolean)
+            : [];
+        const results = Array.isArray(raw?.results)
+            ? raw.results.slice(0, items.length).map(value => value === true || value === 'true' || value === 1 || value === '1')
+            : [];
+        if (!items.length || !results.length) return null;
+        const correctFromResults = results.filter(Boolean).length;
+        const total = Number.isFinite(Number(raw?.total)) && Number(raw.total) > 0 ? Number(raw.total) : items.length;
+        const correct = Number.isFinite(Number(raw?.correct)) ? Number(raw.correct) : correctFromResults;
+        return {
+            sid: String(raw?.sid || raw?.client_session_id || '').trim(),
+            ts: Number(raw?.ts) || (raw?.created_at ? new Date(raw.created_at).getTime() : 0),
+            total,
+            correct,
+            items,
+            results,
+            source
+        };
+    }
+
+    function mergeAssignmentRecoverySessions(localRows = [], cloudRows = []) {
+        const seen = new Set();
+        return [...localRows, ...cloudRows]
+            .map((row) => normalizeAssignmentSessionForRecovery(row, row?.client_session_id ? 'cloud' : 'local'))
+            .filter(Boolean)
+            .filter((row) => {
+                const key = row.sid || `${row.ts}:${row.total}:${row.correct}:${row.items.join('|')}`;
+                if (seen.has(key)) return false;
+                seen.add(key);
+                return true;
+            })
+            .sort((a, b) => (Number(b.ts) || 0) - (Number(a.ts) || 0));
+    }
+
+    async function loadAssignmentRecoverySessions() {
+        if (assignmentRecoverySessionCache) return assignmentRecoverySessionCache;
+        const localRows = safeReadJson(KEY_SESS, []);
+        let cloudRows = [];
+        try {
+            const { data, error } = await sb
+                .from(SESSION_SYNC_TABLE)
+                .select('client_session_id, ts, total, correct, items, results, created_at')
+                .eq('user_id', uid)
+                .order('ts', { ascending: false })
+                .limit(300);
+            if (error) throw error;
+            cloudRows = data || [];
+        } catch (err) {
+            console.warn('[Assignments] session recovery using local history only:', err);
+        }
+        assignmentRecoverySessionCache = mergeAssignmentRecoverySessions(
+            Array.isArray(localRows) ? localRows : [],
+            Array.isArray(cloudRows) ? cloudRows : []
+        );
+        return assignmentRecoverySessionCache;
+    }
+
+    function parseTimestampMs(value) {
+        const direct = Number(value || 0);
+        if (Number.isFinite(direct) && direct > 0) return direct;
+        const parsed = value ? new Date(value).getTime() : 0;
+        return Number.isFinite(parsed) ? parsed : 0;
+    }
+
+    function findAssignmentRecoveryFromSessions(assignment, submission, questionItems, sessions) {
+        const submittedTotal = Number(submission?.total || 0);
+        const submittedCorrect = Number(submission?.correct || 0);
+        const expectedMissed = Math.max(0, submittedTotal - submittedCorrect);
+        if (!submittedTotal || expectedMissed <= 0 || !questionItems.length) return null;
+
+        const questionById = new Map(questionItems.map((item) => [String(item.id || '').trim(), item]));
+        const questionIds = new Set(questionById.keys());
+        const submittedAt = parseTimestampMs(submission?.submitted_at || submission?.created_at);
+        let best = null;
+
+        for (const session of sessions || []) {
+            if (!session?.items?.length || !session?.results?.length) continue;
+            if (Number(session.total || session.items.length) !== submittedTotal) continue;
+            if (Number(session.correct || 0) !== submittedCorrect) continue;
+            if (session.items.length !== submittedTotal) continue;
+            if (!session.items.every((id) => questionIds.has(String(id || '').trim()))) continue;
+
+            const missedIds = session.items
+                .map((id, index) => ({ id: String(id || '').trim(), correct: !!session.results[index] }))
+                .filter(row => row.id && !row.correct)
+                .map(row => row.id);
+            if (missedIds.length !== expectedMissed) continue;
+
+            const exactSet = questionItems.length === submittedTotal && questionItems.every(item => session.items.includes(String(item.id || '').trim()));
+            let score = exactSet ? 80 : 60;
+            if (submittedAt && session.ts) {
+                const delta = Math.abs(submittedAt - session.ts);
+                if (delta <= 60 * 60 * 1000) score += 18;
+                else if (delta <= 24 * 60 * 60 * 1000) score += 10;
+                else if (delta <= 7 * 24 * 60 * 60 * 1000) score += 4;
+            }
+            if (session.source === 'cloud') score += 2;
+            if (!best || score > best.score || (score === best.score && Number(session.ts || 0) > Number(best.session?.ts || 0))) {
+                best = { score, session, missedIds };
+            }
+        }
+
+        if (!best) return null;
+        return {
+            missedIds: best.missedIds,
+            missedItems: best.missedIds.map(id => questionById.get(id)).filter(Boolean),
+            source: best.session.source === 'cloud' ? 'cloud session history' : 'local session history'
+        };
+    }
+
+    function inferAssignmentMissesFromScore(submission, questionItems) {
+        const submittedTotal = Number(submission?.total || 0);
+        const submittedCorrect = Number(submission?.correct || 0);
+        const expectedMissed = Math.max(0, submittedTotal - submittedCorrect);
+        if (!submittedTotal || expectedMissed <= 0) return null;
+        if (submittedCorrect === 0 && questionItems.length === submittedTotal) {
+            return {
+                missedIds: questionItems.map(item => String(item.id || '').trim()).filter(Boolean),
+                missedItems: questionItems.slice(),
+                source: 'assignment score'
+            };
+        }
+        return null;
+    }
+
+    function saveRecoveredAssignmentRetrySummary(assignment, submission, recovery) {
+        const key = assignmentResultStorageKey(assignment?.id);
+        if (!key || !recovery?.missedIds?.length) return false;
+        const previous = safeReadJson(key, {});
+        const nowIso = new Date().toISOString();
+        try {
+            localStorage.setItem(key, JSON.stringify({
+                ...(previous && typeof previous === 'object' ? previous : {}),
+                assignmentId: assignment.id,
+                title: assignment.title || 'Assignment',
+                total: Number(submission?.total || 0),
+                correct: Number(submission?.correct || 0),
+                missedIds: recovery.missedIds,
+                missedItems: (recovery.missedItems || []).map(normalizePracticeQuestion).filter(Boolean),
+                missedCount: recovery.missedIds.length,
+                retryMode: 'first',
+                recoverySource: recovery.source || 'session history',
+                recoveredAt: nowIso,
+                savedAt: previous?.savedAt || submission?.submitted_at || submission?.created_at || nowIso
+            }));
+            return true;
+        } catch (err) {
+            console.warn('[Assignments] could not save recovered remediation details:', err);
+            return false;
+        }
+    }
+
+    async function backfillAssignmentRemediationSummaries(assignments = [], submissions = {}) {
+        const rows = Array.isArray(assignments) ? assignments : [];
+        const needed = rows.filter((assignment) => {
+            const submission = submissions?.[assignment?.id];
+            if (!submission) return false;
+            const missedCount = Math.max(0, (Number(submission.total) || 0) - (Number(submission.correct) || 0));
+            if (missedCount <= 0) return false;
+            const retry = readAssignmentRetrySummary(assignment.id);
+            return !(retry?.missedIds?.length || retry?.missedItems?.length);
+        });
+        if (!needed.length) return 0;
+
+        let questionRows = [];
+        try {
+            const { data, error } = await sb
+                .from('assignment_questions')
+                .select('*')
+                .in('assignment_id', needed.map(assignment => assignment.id));
+            if (error) throw error;
+            questionRows = data || [];
+        } catch (err) {
+            console.warn('[Assignments] remediation backfill could not load assignment questions:', err);
+            return 0;
+        }
+
+        const questionsByAssignment = new Map();
+        (questionRows || []).forEach((row) => {
+            const id = String(row?.assignment_id || '').trim();
+            const item = normalizePracticeQuestion(row);
+            if (!id || !item) return;
+            if (!questionsByAssignment.has(id)) questionsByAssignment.set(id, []);
+            questionsByAssignment.get(id).push(item);
+        });
+
+        const sessions = await loadAssignmentRecoverySessions();
+        let recoveredCount = 0;
+        needed.forEach((assignment) => {
+            const questionItems = questionsByAssignment.get(String(assignment.id || '').trim()) || [];
+            const submission = submissions[assignment.id];
+            const recovery = findAssignmentRecoveryFromSessions(assignment, submission, questionItems, sessions)
+                || inferAssignmentMissesFromScore(submission, questionItems);
+            if (recovery && saveRecoveredAssignmentRetrySummary(assignment, submission, recovery)) recoveredCount += 1;
+        });
+        return recoveredCount;
     }
 
     async function loadAssignments() {
@@ -3718,7 +3926,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             const submissionsResult = await sb
                 .from('assignment_submissions')
-                .select('assignment_id, correct, total')
+                .select('assignment_id, correct, total, submitted_at')
                 .eq('student_id', uid);
             if (submissionsResult.error) throw submissionsResult.error;
 
@@ -3727,6 +3935,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 subMap[submission.assignment_id] = submission;
             });
 
+            await backfillAssignmentRemediationSummaries(assignmentsResult.data || [], subMap);
             renderAssignments(assignmentsResult.data || [], subMap);
         } catch (error) {
             console.warn('[Student Assignments] failed to load:', error);
@@ -3831,14 +4040,19 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const sub = safeSubMap[a.id];
                 const pct = sub.total ? Math.round(sub.correct / sub.total * 100) : 0;
                 const retry = readAssignmentRetrySummary(a.id);
-                const missedCount = retry?.missedIds?.length || Math.max(0, (Number(sub.total) || 0) - (Number(sub.correct) || 0));
-                const missedDisabled = missedCount <= 0 ? 'disabled title="No missed questions were saved from the submitted run."' : '';
+                const missedCount = retry?.missedIds?.length || retry?.missedItems?.length || Math.max(0, (Number(sub.total) || 0) - (Number(sub.correct) || 0));
+                const hasRecoveredDetails = !!(retry?.missedIds?.length || retry?.missedItems?.length);
+                const recoveredNote = retry?.recoverySource ? ` · Missed details recovered from ${retry.recoverySource}` : '';
+                const unavailableReason = missedCount > 0
+                    ? 'Exact missed questions were not saved, and no matching session history could be found. Practice all to rebuild them.'
+                    : 'No missed questions were recorded for this assignment.';
+                const missedDisabled = missedCount <= 0 || !hasRecoveredDetails ? `disabled title="${esc(unavailableReason)}"` : '';
                 const canRemediate = missedCount > 0 && (!!retry?.missedIds?.length || !!retry?.missedItems?.length);
-                const remediationDisabled = canRemediate ? '' : 'disabled title="Finish the assignment once with the latest version to save missed-topic details."';
+                const remediationDisabled = canRemediate ? '' : `disabled title="${esc(unavailableReason)}"`;
                 return `<div class="list-item">
                     <div class="item-copy">
                         <span class="item-title">${esc(a.title)}</span>
-                        <span class="item-meta">${esc(cls)} · Due: ${due} · Original score stays ${sub.correct}/${sub.total}</span>
+                        <span class="item-meta">${esc(cls)} · Due: ${due} · Original score stays ${sub.correct}/${sub.total}${esc(recoveredNote)}</span>
                     </div>
                     <span class="status-pill done">Completed</span>
                     <span class="item-score ${pct >= 50 ? 'good' : 'bad'}">${sub.correct}/${sub.total} (${pct}%)</span>
