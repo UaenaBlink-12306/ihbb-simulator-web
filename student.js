@@ -971,12 +971,47 @@ document.addEventListener('DOMContentLoaded', async () => {
         navTab?.focus({ preventScroll: true });
     }
 
+    function hardenDashboardSwitcherAutofill(input) {
+        if (!input) return;
+        const attrs = {
+            autocomplete: 'off',
+            autocapitalize: 'none',
+            autocorrect: 'off',
+            spellcheck: 'false',
+            inputmode: 'search',
+            'data-lpignore': 'true',
+            'data-1p-ignore': 'true',
+            'data-bwignore': 'true',
+            'data-keeper-lock-ignore': 'true',
+            'data-form-type': 'other'
+        };
+        Object.entries(attrs).forEach(([key, value]) => input.setAttribute(key, value));
+        input.readOnly = true;
+        let userHasInteracted = false;
+        const unlockForUserInput = () => {
+            userHasInteracted = true;
+            input.readOnly = false;
+        };
+        const clearInjectedValue = () => {
+            if (userHasInteracted || document.activeElement === input || !input.value) return;
+            input.value = '';
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+        };
+        input.addEventListener('pointerdown', unlockForUserInput, { once: true });
+        input.addEventListener('keydown', unlockForUserInput, { once: true });
+        input.addEventListener('beforeinput', unlockForUserInput, { once: true });
+        window.addEventListener('pageshow', clearInjectedValue);
+        setTimeout(clearInjectedValue, 100);
+        setTimeout(clearInjectedValue, 500);
+    }
+
     function wireDashboardQuickSwitcher(inputId, resultsId, extraTools = []) {
         const input = document.getElementById(inputId);
         const results = document.getElementById(resultsId);
         const wrap = input?.closest('.dashboard-switcher-shell');
         if (!input || !results || !wrap) return;
         const state = { input, results, wrap, extraTools, tools: [], matches: [], activeIndex: 0 };
+        hardenDashboardSwitcherAutofill(input);
         input.addEventListener('focus', () => renderDashboardSwitcherOptions(state));
         input.addEventListener('input', () => {
             state.activeIndex = 0;
