@@ -75,6 +75,13 @@ document.addEventListener('DOMContentLoaded', () => {
         alertBox.textContent = '';
     }
 
+    const recoveredSessionNotice = typeof window.readIhbbAuthRecoveryNotice === 'function'
+        ? window.readIhbbAuthRecoveryNotice()
+        : '';
+    if (recoveredSessionNotice) {
+        showAlert(recoveredSessionNotice, 'error');
+    }
+
     form.addEventListener('submit', async (e) => {
         e.preventDefault();
         clearAlert();
