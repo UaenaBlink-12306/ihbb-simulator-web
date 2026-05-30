@@ -43,6 +43,51 @@ module.exports = async function handler(req, res) {
       return false;
     }
 
+    function levenshtein(a, b) {
+      const left = String(a || '');
+      const right = String(b || '');
+      if (!left.length) return right.length;
+      if (!right.length) return left.length;
+
+      const prev = new Array(right.length + 1);
+      const curr = new Array(right.length + 1);
+      for (let j = 0; j <= right.length; j += 1) prev[j] = j;
+
+      for (let i = 1; i <= left.length; i += 1) {
+        curr[0] = i;
+        for (let j = 1; j <= right.length; j += 1) {
+          const cost = left[i - 1] === right[j - 1] ? 0 : 1;
+          curr[j] = Math.min(
+            prev[j] + 1,
+            curr[j - 1] + 1,
+            prev[j - 1] + cost
+          );
+        }
+        for (let j = 0; j <= right.length; j += 1) prev[j] = curr[j];
+      }
+
+      return prev[right.length];
+    }
+
+    function lenientMatch(userAns, expectedAnswer, acceptedAliases = []) {
+      const user = normalizeCompact(userAns);
+      if (!user) return false;
+
+      const candidates = [expectedAnswer, ...(acceptedAliases || [])]
+        .map(normalizeCompact)
+        .filter(Boolean);
+      for (const candidate of candidates) {
+        if (user === candidate) return true;
+        const maxLen = Math.max(user.length, candidate.length);
+        const distance = levenshtein(user, candidate);
+        const similarity = maxLen ? 1 - (distance / maxLen) : 0;
+        if ((maxLen <= 8 && distance <= 1) || (maxLen <= 18 && distance <= 2) || similarity >= 0.88) {
+          return true;
+        }
+      }
+      return false;
+    }
+
     function parseJsonFromContent(content) {
       if (!content) return null;
       const trimmed = String(content).trim();
@@ -255,8 +300,8 @@ module.exports = async function handler(req, res) {
       return parseJsonFromContent(content);
     }
 
-    const fallbackCorrect = basicMatch(userAnswer, expected, aliases);
-    const noKeyReason = 'DeepSeek API key not set, using basic match.';
+    const fallbackCorrect = lenientMatch(userAnswer, expected, aliases);
+    const noKeyReason = 'DeepSeek API key not set, using lenient match.';
 
     if (!process.env.DEEPSEEK_API_KEY) {
       const lockedCorrect = (coachOnly && suppliedCorrect !== null) ? suppliedCorrect : fallbackCorrect;
@@ -270,7 +315,12 @@ module.exports = async function handler(req, res) {
       const messages = [
         {
           role: 'system',
-          content: 'You are a strict IHBB short-answer grader. Return only JSON: {"correct":boolean,"reason":string}.'
+          content: [
+            'You are an IHBB short-answer grader.',
+            'Be lenient on spelling and minor phonetic variations when the intended answer is clear.',
+            'If the student answer is understandable and the phonics line up with the expected answer, mark it correct instead of penalizing small spelling mistakes.',
+            'Return only JSON: {"correct":boolean,"reason":string}.'
+          ].join(' ')
         },
         {
           role: 'user',
@@ -281,9 +331,15 @@ module.exports = async function handler(req, res) {
       if (!result || typeof result.correct !== 'boolean') {
         return res.status(200).json({ correct: fallbackCorrect, reason: 'Could not parse DeepSeek response, used basic match instead.' });
       }
+      let correct = !!result.correct;
+      let reason = String(result.reason || '');
+      if (!correct && /(spell|typo|phon|pronoun|misspell|capital)/i.test(reason) && lenientMatch(userAnswer, expected, aliases)) {
+        correct = true;
+        reason = 'Accepted with lenient spelling matching.';
+      }
       return res.status(200).json({
-        correct: !!result.correct,
-        reason: String(result.reason || '')
+        correct,
+        reason
       });
     }
 
@@ -297,6 +353,8 @@ module.exports = async function handler(req, res) {
         'Act as a personalized IHBB coach. Generate only coaching content for an already-graded incorrect answer.',
         'Do not re-grade. Respect provided is_correct and reason as the locked verdict.',
         'Address the student directly and use their wrong answer to explain the mismatch.',
+        'Be lenient on spelling and minor phonetic variations when the intended answer is clear.',
+        'If the student answer is understandable and the phonics line up with the expected answer, treat it as correct instead of penalizing small spelling mistakes.',
         'Do not write one large paragraph; use bullet-style strings in arrays.',
         'INSTRUCTIONS:',
         '1) summary: one concise personalized takeaway.',
@@ -345,6 +403,8 @@ module.exports = async function handler(req, res) {
       'Act as a personalized IHBB coach. Your goal is to provide a high-density "Micro-Lesson" that helps a student not just memorize a fact, but understand its place in a broader system of knowledge.',
       'First, grade the answer and return top-level fields: {"correct":boolean,"reason":string}. If the answer is correct, return coach as null.',
       'CONTEXT KEYS PROVIDED: question, expected_answer, user_answer, aliases, strict, category, meta, coach_depth.',
+      'Be lenient on spelling and minor phonetic variations when the intended answer is clear.',
+      'If the student answer is understandable and the phonics line up with the expected answer, mark it correct instead of penalizing small spelling mistakes.',
       'INSTRUCTIONS:',
       '1) Personalize the lesson to the student wrong answer.',
       '2) Do not write one large paragraph; use bullet-style strings in arrays.',

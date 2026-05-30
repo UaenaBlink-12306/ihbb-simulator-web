@@ -109,6 +109,49 @@ def basic_match(user: str, expected: str, aliases: List[str]) -> bool:
     return False
 
 
+def levenshtein(a: str, b: str) -> int:
+    left = str(a or "")
+    right = str(b or "")
+    if not left:
+        return len(right)
+    if not right:
+        return len(left)
+
+    prev = list(range(len(right) + 1))
+    curr = [0] * (len(right) + 1)
+    for i, ch_left in enumerate(left, start=1):
+        curr[0] = i
+        for j, ch_right in enumerate(right, start=1):
+            cost = 0 if ch_left == ch_right else 1
+            curr[j] = min(
+                prev[j] + 1,
+                curr[j - 1] + 1,
+                prev[j - 1] + cost,
+            )
+        prev, curr = curr, prev
+    return prev[len(right)]
+
+
+def lenient_match(user: str, expected: str, aliases: List[str]) -> bool:
+    nu = normalize_compact(user)
+    if not nu:
+        return False
+
+    candidates = [expected, *(aliases or [])]
+    for candidate in candidates:
+        nc = normalize_compact(candidate)
+        if not nc:
+            continue
+        if nu == nc:
+            return True
+        max_len = max(len(nu), len(nc))
+        distance = levenshtein(nu, nc)
+        similarity = 1 - (distance / max_len) if max_len else 0
+        if (max_len <= 8 and distance <= 1) or (max_len <= 18 and distance <= 2) or similarity >= 0.88:
+            return True
+    return False
+
+
 def parse_json_from_content(content: str) -> Dict[str, Any]:
     txt = (content or "").strip()
     if not txt:
@@ -506,11 +549,11 @@ def grade_with_deepseek(payload: Dict[str, Any]) -> Dict[str, Any]:
     supplied_correct = payload.get("correct") if isinstance(payload.get("correct"), bool) else None
     supplied_reason = str(payload.get("reason", payload.get("grade_reason", "")))
 
-    fallback_correct = basic_match(user_answer, expected, aliases)
+    fallback_correct = lenient_match(user_answer, expected, aliases)
 
     if not DEEPSEEK_API_KEY:
         locked_correct = supplied_correct if (coach_only and supplied_correct is not None) else fallback_correct
-        locked_reason = supplied_reason if coach_only and supplied_reason else "DEEPSEEK_API_KEY not set; used fallback matcher"
+        locked_reason = supplied_reason if coach_only and supplied_reason else "DEEPSEEK_API_KEY not set; used lenient matcher"
         out = {
             "correct": locked_correct,
             "reason": locked_reason
@@ -522,7 +565,9 @@ def grade_with_deepseek(payload: Dict[str, Any]) -> Dict[str, Any]:
     try:
         if not coach_enabled:
             system = (
-                "You are a strict IHBB short-answer grader.\n"
+                "You are an IHBB short-answer grader.\n"
+                "Be lenient on spelling and minor phonetic variations when the intended answer is clear.\n"
+                "If the student's wording is understandable and the phonics line up with the expected answer, mark it correct instead of penalizing small spelling mistakes.\n"
                 "Return only JSON: {\"correct\": boolean, \"reason\": string}."
             )
             user = {
@@ -541,7 +586,12 @@ def grade_with_deepseek(payload: Dict[str, Any]) -> Dict[str, Any]:
                     "correct": fallback_correct,
                     "reason": "Could not parse DeepSeek response; used fallback matcher"
                 }
-            return {"correct": bool(obj.get("correct")), "reason": str(obj.get("reason", ""))}
+            correct = bool(obj.get("correct"))
+            reason = str(obj.get("reason", ""))
+            if not correct and re.search(r"(spell|typo|phon|pronoun|misspell|capital)", reason, re.I) and lenient_match(user_answer, expected, aliases):
+                correct = True
+                reason = "Accepted with lenient spelling matching."
+            return {"correct": correct, "reason": reason}
 
         if coach_only:
             locked_correct = fallback_correct if supplied_correct is None else bool(supplied_correct)
@@ -552,6 +602,8 @@ def grade_with_deepseek(payload: Dict[str, Any]) -> Dict[str, Any]:
                 "Act as a personalized IHBB coach. Generate only coaching content for an already-graded incorrect answer.\n"
                 "Do not re-grade. Respect provided is_correct and reason as the locked verdict.\n"
                 "Address the student directly and use their wrong answer to explain the mismatch.\n"
+                "Be lenient on spelling and minor phonetic variations when the intended answer is clear.\n"
+                "If the student's wording is understandable and the phonics line up with the expected answer, treat it as correct instead of penalizing small spelling mistakes.\n"
                 "Do not write a paragraph block; use bullet-style strings in arrays.\n"
                 "INSTRUCTIONS:\n"
                 "1) summary: one concise personalized takeaway.\n"
@@ -616,6 +668,8 @@ def grade_with_deepseek(payload: Dict[str, Any]) -> Dict[str, Any]:
             "First, grade the answer and return top-level fields: {\"correct\": boolean, \"reason\": string}. "
             "If the answer is correct, return coach as null. Only generate coach content for incorrect answers.\n"
             "CONTEXT KEYS PROVIDED: question, expected_answer, user_answer, aliases, strict, category, meta, coach_depth.\n"
+            "Be lenient on spelling and minor phonetic variations when the intended answer is clear.\n"
+            "If the student's wording is understandable and the phonics line up with the expected answer, mark it correct instead of penalizing small spelling mistakes.\n"
             "INSTRUCTIONS:\n"
             "1) Personalize the lesson to the student's wrong answer.\n"
             "2) Do not write one large paragraph; use bullet-style strings in arrays.\n"
