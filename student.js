@@ -2480,6 +2480,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         return reason.includes('incorrect') || reason.includes('wrong') || reason.includes('time ran out') || reason.includes('timeout') || reason.includes('no attempt');
     }
 
+    function liveBeeAcceptedDespiteTypo(reason = '') {
+        const text = String(reason || '').toLowerCase();
+        return text.includes('lenient spelling matching') || text.includes('accepted despite typo');
+    }
+
     function liveBeeReviewHasAttemptData(item) {
         return !!item && typeof item === 'object' && Object.prototype.hasOwnProperty.call(item, 'attempts');
     }
@@ -2532,7 +2537,14 @@ document.addEventListener('DOMContentLoaded', async () => {
                 : (item.unanswered || !item.attempts.length ? 'No correct buzz' : 'Missed after buzzes');
             const meta = [item.meta?.category, item.meta?.era].filter(Boolean).join(' • ');
             const attemptsHtml = Array.isArray(item.attempts) && item.attempts.length
-                ? item.attempts.map(a => `<div class="game-history-attempt ${a.correct ? 'is-correct' : 'is-missed'}"><span>${esc(a.name)}:</span> <span>${esc(a.text || 'No answer')}</span> <span>— ${a.correct ? 'Correct' : esc(a.reason || 'Incorrect')}</span></div>`).join('')
+                ? item.attempts.map(a => {
+                    const acceptedDespiteTypo = !!a.correct && liveBeeAcceptedDespiteTypo(a.reason);
+                    const verdict = a.correct ? 'Correct' : esc(a.reason || 'Incorrect');
+                    const typoNote = acceptedDespiteTypo
+                        ? '<div class="muted" style="margin-top:4px;">Accepted despite typo. The intended answer was clear.</div>'
+                        : '';
+                    return `<div class="game-history-attempt ${a.correct ? 'is-correct' : 'is-missed'}"><span>${esc(a.name)}:</span> <span>${esc(a.text || 'No answer')}</span> <span>— ${verdict}</span>${typoNote}</div>`;
+                }).join('')
                 : '<p class="muted">No one buzzed.</p>';
             return `<details class="post-game-round" ${item.solvedBy ? '' : 'open'}>
                 <summary><span class="post-game-round-number">Q${item.number}</span><span class="post-game-round-status">${esc(status)}</span><span class="post-game-round-answer">${esc(item.answer || 'N/A')}</span></summary>

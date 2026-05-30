@@ -671,6 +671,10 @@ function escHtml(s) {
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
 }
+function isAcceptedDespiteTypo(reason = '') {
+  const text = String(reason || '').toLowerCase();
+  return text.includes('lenient spelling matching') || text.includes('accepted despite typo');
+}
 function assignmentResultStorageKey(assignId, userId = StorageScopeUserId) {
   const id = String(assignId || '').trim();
   if (!id) return '';
@@ -6502,7 +6506,13 @@ async function submitAnswer(auto = false) {
 
   // Reveal canonical answer and finalize
   const ansText = Settings.strict ? `标准答案：${item.answer}` : `标准答案：${item.answer}${(item.aliases?.length ? `  (aliases: ${item.aliases.slice(0, 3).join(', ')})` : '')}`;
-  if (ans) ans.textContent = ansText + (reason ? `  — ${correct ? '✓' : '✗'} ${reason}` : `  — ${correct ? '✓' : '✗'}`);
+  if (ans) {
+    const verdictLine = ansText + (reason ? `  — ${correct ? '✓' : '✗'} ${reason}` : `  — ${correct ? '✓' : '✗'}`);
+    const typoNote = correct && isAcceptedDespiteTypo(reason)
+      ? '<div class="muted" style="margin-top:4px;">Accepted despite typo. The intended answer was clear.</div>'
+      : '';
+    ans.innerHTML = `<div>${escHtml(verdictLine)}</div>${typoNote}`;
+  }
   const coachEl = $('coach-card');
   if (coachEl) {
     if (correct) {
