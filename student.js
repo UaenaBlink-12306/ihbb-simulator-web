@@ -4212,6 +4212,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             created_at: source.created_at || null,
             coach: {
                 summary: String(coach.summary || '').trim(),
+                teaching_approach: ['introduce_topic', 'diagnose_confusion'].includes(String(coach.teaching_approach || '').trim())
+                    ? String(coach.teaching_approach).trim()
+                    : 'introduce_topic',
                 error_diagnosis: String(coach.error_diagnosis || coach.explanation || '').trim(),
                 overlap_explainer: String(coach.overlap_explainer || '').trim(),
                 explanation_bullets: normalizeCoachList(coach.explanation_bullets || (coach.explanation ? [coach.explanation] : [])),
@@ -4479,6 +4482,11 @@ document.addEventListener('DOMContentLoaded', async () => {
                 noteEl.innerHTML = coachRecordsCurrent.map(record => {
                     const focus = coachFocusFromRecord(record);
                     const coach = record.coach || {};
+                    const teachingApproach = String(coach.teaching_approach || '').trim() === 'diagnose_confusion'
+                        ? 'diagnose_confusion'
+                        : 'introduce_topic';
+                    const diagnosisLabel = teachingApproach === 'diagnose_confusion' ? 'Confusion Check' : 'Topic Introduction';
+                    const overlapLabel = teachingApproach === 'diagnose_confusion' ? 'Key Distinction' : 'Why This Wasn\'t It';
                     const created = record.created_at ? new Date(record.created_at).toLocaleString() : '—';
                     const statusLabel = record.source === 'assistant-reply' ? 'Saved note' : (record.correct ? '✓ Correct' : '✗ Incorrect');
                     return `
@@ -4496,8 +4504,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                                     <div><b>Your answer:</b> ${esc(record.user_answer || '(blank)')}</div>
                                     <div><b>Expected:</b> ${esc(record.expected_answer || '')}</div>
                                     <div><b>Summary:</b> ${esc(coach.summary || '')}</div>
-                                    <div><b>Error Diagnosis:</b> ${esc(coach.error_diagnosis || '')}</div>
-                                    <div><b>Overlap Explainer:</b> ${esc(coach.overlap_explainer || '')}</div>
+                                    <div><b>${esc(diagnosisLabel)}:</b> ${esc(coach.error_diagnosis || '')}</div>
+                                    <div><b>${esc(overlapLabel)}:</b> ${esc(coach.overlap_explainer || '')}</div>
                                     <div><b>Why This Answer Fits:</b>${coachListHtml(coach.explanation_bullets || [])}</div>
                                     <div><b>Key Clues:</b>${coachListHtml(coach.key_clues || [])}</div>
                                     <div><b>Related Facts:</b>${coachListHtml(coach.related_facts || [])}</div>

@@ -197,6 +197,18 @@ module.exports = async function handler(req, res) {
       return `Run a short drill on ${place}${when ? ` in ${when}` : ''} and stop on the first clue that rules out the closest lookalike. Focus especially on ${theme} triggers.`;
     }
 
+    function inferTeachingApproach(userAnswerText, reasonText) {
+      const answer = String(userAnswerText || '').trim().toLowerCase();
+      const reason = String(reasonText || '').trim().toLowerCase();
+      if (!answer) return 'introduce_topic';
+      if (/(confus|mix|overlap|close|near|related|instead|different answer|not .* but|plausible)/i.test(reason)) {
+        return 'diagnose_confusion';
+      }
+      return answer.split(/\s+/).filter(Boolean).length >= 2
+        ? 'diagnose_confusion'
+        : 'introduce_topic';
+    }
+
     function buildFallbackCoach(correct, reasonText) {
       const region = String(meta.category || meta.region || 'World') || 'World';
       const era = String(meta.era || '');
@@ -204,10 +216,13 @@ module.exports = async function handler(req, res) {
       const explanationBullets = fallbackExplanationBullets(correct, reasonText, region, era, topic);
       const relatedFacts = fallbackRelatedFacts(region, era, topic);
       const canonicalAnswer = canonicalAnswerText(expected);
+      const teachingApproach = inferTeachingApproach(userAnswer, reasonText);
       return {
         summary: correct
           ? 'You got it right. Keep tying clues to the specific historical context.'
-          : 'This was likely a near-miss in concept matching rather than total misunderstanding.',
+          : (teachingApproach === 'diagnose_confusion'
+            ? 'This looks like a close mix-up between related ideas.'
+            : 'Start by locking in what the correct topic is and why it matters.'),
         explanation: explanationBullets.join(' '),
         explanation_bullets: explanationBullets,
         related_facts: relatedFacts,
@@ -225,8 +240,13 @@ module.exports = async function handler(req, res) {
           topic,
           icon: iconForFocus(region, topic)
         },
-        error_diagnosis: String(reasonText || explanationBullets[0]).trim(),
-        overlap_explainer: reasonText || relatedFacts[0],
+        teaching_approach: teachingApproach,
+        error_diagnosis: teachingApproach === 'diagnose_confusion'
+          ? String(reasonText || explanationBullets[0]).trim()
+          : `The better move here is to learn the core topic first: ${canonicalAnswer} fits this clue set, so anchor on what it is, where it belongs, and the giveaway clues that point to it.`,
+        overlap_explainer: teachingApproach === 'diagnose_confusion'
+          ? (reasonText || relatedFacts[0])
+          : 'This answer does not need a long error postmortem first; focus on recognizing the correct topic and its signature clues.',
         confidence: 'low'
       };
     }
@@ -256,14 +276,28 @@ module.exports = async function handler(req, res) {
       const mergedRelatedFacts = relatedFacts.length ? relatedFacts : fallbackFacts;
       const canonicalAnswer = canonicalAnswerText(rc.canonical_answer || expected);
       const wikiLink = String(rc.wiki_link || wikiLinkForAnswer(canonicalAnswer)).trim();
+      const teachingApproach = ['introduce_topic', 'diagnose_confusion'].includes(String(rc.teaching_approach || '').trim())
+        ? String(rc.teaching_approach).trim()
+        : inferTeachingApproach(userAnswer, reasonText);
 
       return {
         summary: String(rc.summary || (correct ? 'Correct answer with good clue alignment.' : 'This answer was not accepted; review clue disambiguation.')).trim(),
         explanation: mergedExplanationBullets.join(' ').trim(),
         explanation_bullets: mergedExplanationBullets,
         related_facts: mergedRelatedFacts,
-        error_diagnosis: String(rc.error_diagnosis || reasonText || mergedExplanationBullets[0]).trim(),
-        overlap_explainer: String(rc.overlap_explainer || mergedRelatedFacts.join(' | ') || reasonText || 'Use the most specific clues to separate related answers.').trim(),
+        teaching_approach: teachingApproach,
+        error_diagnosis: String(
+          rc.error_diagnosis
+            || (teachingApproach === 'diagnose_confusion'
+              ? (reasonText || mergedExplanationBullets[0])
+              : `Start with the topic itself: ${canonicalAnswer} is the answer to learn here, so focus first on its identity, context, and the clues that make it stand out.`)
+        ).trim(),
+        overlap_explainer: String(
+          rc.overlap_explainer
+            || (teachingApproach === 'diagnose_confusion'
+              ? (mergedRelatedFacts.join(' | ') || reasonText || 'Use the most specific clues to separate related answers.')
+              : 'Treat this as a topic-introduction moment first, then use the clue list to recognize it faster next time.')
+        ).trim(),
         key_clues: keyClues.length ? keyClues : [
           'Track clues that uniquely identify the expected answer.',
           'Use era and region to eliminate close alternatives.',
@@ -355,19 +389,23 @@ module.exports = async function handler(req, res) {
         'Address the student directly and use their wrong answer to explain the mismatch.',
         'Be lenient on spelling and minor phonetic variations when the intended answer is clear.',
         'If the student answer is understandable and the phonics line up with the expected answer, treat it as correct instead of penalizing small spelling mistakes.',
+        'Default to introducing the correct topic, not diagnosing the mistake.',
+        'Only switch into detailed confusion analysis when the wrong answer is a genuinely plausible mix-up with the expected answer, such as two similar people, events, empires, texts, offices, or concepts.',
+        'If the answer looks random, off-topic, or only loosely connected, keep error_diagnosis focused on introducing the correct topic and its basic context instead of dwelling on what went wrong.',
         'Do not write one large paragraph; use bullet-style strings in arrays.',
         'INSTRUCTIONS:',
         '1) summary: one concise personalized takeaway.',
-        '2) error_diagnosis: clearly explain why the student answer missed.',
-        '3) overlap_explainer: explain the distinction between the student answer and the correct answer.',
-        '4) explanation_bullets: 3 to 4 short bullet strings teaching the answer in context.',
+        '2) teaching_approach: return exactly "introduce_topic" or "diagnose_confusion". Default to "introduce_topic".',
+        '3) error_diagnosis: if teaching_approach is "introduce_topic", use this field as a short topic-first introduction to the correct answer; if teaching_approach is "diagnose_confusion", explain the likely confusion.',
+        '4) overlap_explainer: if teaching_approach is "diagnose_confusion", explain the distinction between the student answer and the correct answer; otherwise keep this brief and secondary.',
+        '5) explanation_bullets: 3 to 4 short bullet strings teaching the answer in context.',
         '5) related_facts: 3 to 5 short bullet strings with valuable adjacent facts.',
         '6) key_clues: 2 to 4 short bullet strings for the best giveaway clues.',
         '7) study_tip: one concrete next study move.',
         '8) canonical_answer: the clean answer only, with parenthetical grading notes removed.',
         '9) wiki_link: https://en.wikipedia.org/wiki/{canonical_answer_with_spaces_replaced_by_underscores}.',
         'Return strict JSON with this shape only:',
-        '{"coach":{"summary":"1-sentence definitive takeaway.","error_diagnosis":"Why the student answer was not accepted.","overlap_explainer":"How the wrong answer overlaps with but differs from the right one.","explanation_bullets":["Personalized teaching bullet 1","Personalized teaching bullet 2","Personalized teaching bullet 3"],"related_facts":["Fact bullet 1","Fact bullet 2","Fact bullet 3"],"key_clues":["Specific clue that gives it away","A chronological or spatial anchor"],"study_tip":"A concrete next drill or recall move.","canonical_answer":"Clean canonical answer only","wiki_link":"https://en.wikipedia.org/wiki/Clean_Canonical_Answer","study_focus":{"region":"String","era":"String","topic":"String"},"confidence":"low|medium|high"}}'
+        '{"coach":{"summary":"1-sentence definitive takeaway.","teaching_approach":"introduce_topic|diagnose_confusion","error_diagnosis":"Topic-first introduction or confusion diagnosis depending on teaching_approach.","overlap_explainer":"Brief secondary distinction field.","explanation_bullets":["Personalized teaching bullet 1","Personalized teaching bullet 2","Personalized teaching bullet 3"],"related_facts":["Fact bullet 1","Fact bullet 2","Fact bullet 3"],"key_clues":["Specific clue that gives it away","A chronological or spatial anchor"],"study_tip":"A concrete next drill or recall move.","canonical_answer":"Clean canonical answer only","wiki_link":"https://en.wikipedia.org/wiki/Clean_Canonical_Answer","study_focus":{"region":"String","era":"String","topic":"String"},"confidence":"low|medium|high"}}'
       ].join('\n');
       const coachOnlyMessages = [
         { role: 'system', content: coachOnlySystem },
@@ -405,17 +443,23 @@ module.exports = async function handler(req, res) {
       'CONTEXT KEYS PROVIDED: question, expected_answer, user_answer, aliases, strict, category, meta, coach_depth.',
       'Be lenient on spelling and minor phonetic variations when the intended answer is clear.',
       'If the student answer is understandable and the phonics line up with the expected answer, mark it correct instead of penalizing small spelling mistakes.',
+      'When the answer is wrong, default to introducing the correct topic instead of over-diagnosing the error.',
+      'Only use detailed confusion analysis when the wrong answer is a believable close cousin of the correct answer and the distinction would genuinely teach something useful.',
+      'If the answer seems random, off-topic, or weakly connected, treat the response as a topic introduction moment first.',
       'INSTRUCTIONS:',
       '1) Personalize the lesson to the student wrong answer.',
       '2) Do not write one large paragraph; use bullet-style strings in arrays.',
-      '3) explanation_bullets: 3 to 4 short bullets teaching why the correct answer fits.',
-      '4) related_facts: 3 to 5 short bullets with valuable adjacent facts.',
-      '5) key_clues: 2 to 4 short bullets identifying the best giveaway clues.',
-      '6) canonical_answer must be the clean answer only, with parenthetical grading notes removed.',
-      '7) wiki_link must be https://en.wikipedia.org/wiki/{canonical_answer_with_spaces_replaced_by_underscores}.',
+      '3) teaching_approach: return exactly "introduce_topic" or "diagnose_confusion". Default to "introduce_topic".',
+      '4) error_diagnosis: if teaching_approach is "introduce_topic", use it to introduce the correct topic and its core context; if teaching_approach is "diagnose_confusion", explain the likely mix-up.',
+      '5) overlap_explainer: if teaching_approach is "diagnose_confusion", explain the distinction; otherwise keep it short and secondary.',
+      '6) explanation_bullets: 3 to 4 short bullets teaching why the correct answer fits.',
+      '7) related_facts: 3 to 5 short bullets with valuable adjacent facts.',
+      '8) key_clues: 2 to 4 short bullets identifying the best giveaway clues.',
+      '9) canonical_answer must be the clean answer only, with parenthetical grading notes removed.',
+      '10) wiki_link must be https://en.wikipedia.org/wiki/{canonical_answer_with_spaces_replaced_by_underscores}.',
       'Use question-specific clues and avoid generic encyclopedia dumps.',
       'OUTPUT FORMAT (Strict JSON, no markdown):',
-      '{"correct":boolean,"reason":string,"coach":{"summary":"1-sentence definitive takeaway.","error_diagnosis":"Why the student answer was not accepted.","overlap_explainer":"How the wrong answer overlaps with but differs from the right one.","explanation_bullets":["Personalized teaching bullet 1","Personalized teaching bullet 2","Personalized teaching bullet 3"],"related_facts":["Fact bullet 1","Fact bullet 2","Fact bullet 3"],"key_clues":["Specific clue that gives it away","A chronological or spatial anchor"],"study_tip":"A concrete next drill or recall move.","canonical_answer":"Clean canonical answer only","wiki_link":"https://en.wikipedia.org/wiki/Clean_Canonical_Answer","study_focus":{"region":"String","era":"String","topic":"String"},"confidence":"low|medium|high"}}'
+      '{"correct":boolean,"reason":string,"coach":{"summary":"1-sentence definitive takeaway.","teaching_approach":"introduce_topic|diagnose_confusion","error_diagnosis":"Topic-first introduction or confusion diagnosis depending on teaching_approach.","overlap_explainer":"Brief secondary distinction field.","explanation_bullets":["Personalized teaching bullet 1","Personalized teaching bullet 2","Personalized teaching bullet 3"],"related_facts":["Fact bullet 1","Fact bullet 2","Fact bullet 3"],"key_clues":["Specific clue that gives it away","A chronological or spatial anchor"],"study_tip":"A concrete next drill or recall move.","canonical_answer":"Clean canonical answer only","wiki_link":"https://en.wikipedia.org/wiki/Clean_Canonical_Answer","study_focus":{"region":"String","era":"String","topic":"String"},"confidence":"low|medium|high"}}'
     ].join('\n');
 
     const coachMessages = [

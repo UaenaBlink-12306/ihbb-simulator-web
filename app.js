@@ -1175,11 +1175,12 @@ function fallbackCoachForItem(item, correct, reason, userAnswer = '') {
   return {
     summary: correct
       ? 'You got it right. Keep tying clues to specific context.'
-      : 'This looks like a near miss from overlapping concepts.',
+      : 'Start by locking in the correct topic and the clues that define it.',
+    teaching_approach: 'introduce_topic',
     error_diagnosis: correct
       ? 'Your response matched the required entity.'
-      : 'Your response likely overlapped with a related but different answer.',
-    overlap_explainer: reason || 'Use uniquely identifying clues to separate close answers.',
+      : `The first goal here is to recognize ${canonicalAnswer}: focus on what it is, where it belongs, and the giveaway clues that point to it.`,
+    overlap_explainer: reason || 'Use the clue list to recognize the correct answer before worrying about detailed mistake analysis.',
     explanation: explanationBullets.join(' '),
     explanation_bullets: explanationBullets,
     related_facts: fallbackCoachFacts(region, era, topic),
@@ -1220,6 +1221,9 @@ function normalizeCoach(coach, item, correct, reason) {
     explanation: String(c.explanation || explanationBullets.join(' ')).trim(),
     explanation_bullets: explanationBullets,
     related_facts: relatedFacts,
+    teaching_approach: ['introduce_topic', 'diagnose_confusion'].includes(String(c.teaching_approach || '').trim())
+      ? String(c.teaching_approach).trim()
+      : 'introduce_topic',
     error_diagnosis: String(c.error_diagnosis || (correct ? 'You identified the right entity.' : 'This answer likely mixed with a related concept.')).trim(),
     overlap_explainer: String(c.overlap_explainer || reason || 'Focus on clues that uniquely identify the expected answer.').trim(),
     key_clues: clues.length ? clues : [
@@ -1251,6 +1255,11 @@ function renderCoachCard(coach) {
   const explanationBullets = Array.isArray(coach.explanation_bullets) ? coach.explanation_bullets : [];
   const relatedFacts = Array.isArray(coach.related_facts) ? coach.related_facts : [];
   const clues = Array.isArray(coach.key_clues) ? coach.key_clues : [];
+  const teachingApproach = String(coach.teaching_approach || '').trim() === 'diagnose_confusion'
+    ? 'diagnose_confusion'
+    : 'introduce_topic';
+  const diagnosisLabel = teachingApproach === 'diagnose_confusion' ? 'Confusion Check' : 'Topic Introduction';
+  const overlapLabel = teachingApproach === 'diagnose_confusion' ? 'Key Distinction' : 'Why This Wasn\'t It';
   el.innerHTML = `
     <div class="coach-head">
       <div class="coach-icon">${escHtml(focus.icon || '📘')}</div>
@@ -1262,8 +1271,8 @@ function renderCoachCard(coach) {
       <div class="coach-confidence">${escHtml(String(coach.confidence || 'low').toUpperCase())}</div>
     </div>
     <div class="coach-section"><b>Summary:</b> ${escHtml(coach.summary || '')}</div>
-    <div class="coach-section"><b>Error Diagnosis:</b> ${escHtml(coach.error_diagnosis || '')}</div>
-    <div class="coach-section"><b>Overlap Explainer:</b> ${escHtml(coach.overlap_explainer || '')}</div>
+    <div class="coach-section"><b>${diagnosisLabel}:</b> ${escHtml(coach.error_diagnosis || '')}</div>
+    <div class="coach-section"><b>${overlapLabel}:</b> ${escHtml(coach.overlap_explainer || '')}</div>
     <div class="coach-section"><b>Why This Answer Fits:</b>${coachListHtml(explanationBullets)}</div>
     <div class="coach-section"><b>Key Clues:</b>${coachListHtml(clues)}</div>
     <div class="coach-section"><b>Related Facts:</b>${coachListHtml(relatedFacts)}</div>
@@ -5372,8 +5381,8 @@ function renderCoachNotebook() {
             <div><b>Your answer:</b> ${escHtml(r.user_answer || '(blank)')}</div>
             <div><b>Expected:</b> ${escHtml(r.expected_answer || '')}</div>
             <div><b>Summary:</b> ${escHtml(coach.summary || '')}</div>
-            <div><b>Error Diagnosis:</b> ${escHtml(coach.error_diagnosis || '')}</div>
-            <div><b>Overlap Explainer:</b> ${escHtml(coach.overlap_explainer || '')}</div>
+            <div><b>${escHtml(String(coach.teaching_approach || '').trim() === 'diagnose_confusion' ? 'Confusion Check' : 'Topic Introduction')}:</b> ${escHtml(coach.error_diagnosis || '')}</div>
+            <div><b>${escHtml(String(coach.teaching_approach || '').trim() === 'diagnose_confusion' ? 'Key Distinction' : 'Why This Wasn\'t It')}:</b> ${escHtml(coach.overlap_explainer || '')}</div>
             <div><b>Why This Answer Fits:</b>${coachListHtml(coach.explanation_bullets || [])}</div>
             <div><b>Key Clues:</b>${coachListHtml(coach.key_clues || [])}</div>
             <div><b>Related Facts:</b>${coachListHtml(coach.related_facts || [])}</div>
