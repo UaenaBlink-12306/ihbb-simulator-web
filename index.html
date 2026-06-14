@@ -101,11 +101,11 @@
         <a href="index.html" class="btn pri hub-nav-button">Back to Dashboard</a>
         <a href="#" id="nav-logout" class="btn bad">Logout</a>
         <button id="coach-chat-launcher" class="coach-chat-launcher" type="button" aria-controls="coach-chat-sidebar"
-          aria-expanded="false" aria-label="Open DeepSeek training assistant">
-          <span class="coach-chat-launcher-icon">DS</span>
+          aria-expanded="false" aria-label="Open Coach">
+          <span class="coach-chat-launcher-icon">Co</span>
           <span class="coach-chat-launcher-copy">
-            <span class="coach-chat-launcher-title">DeepSeek</span>
-            <span id="coach-chat-launcher-note" class="coach-chat-launcher-note">Ask for a drill</span>
+            <span class="coach-chat-launcher-title">Coach</span>
+            <span id="coach-chat-launcher-note" class="coach-chat-launcher-note">Explain a miss</span>
           </span>
           <span id="coach-chat-launcher-count" class="coach-chat-launcher-count hidden">0</span>
         </button>
@@ -116,8 +116,8 @@
       <a href="index.html" id="nav-setup" class="active">Setup</a>
       <a href="#" id="nav-session">Session</a>
       <a href="#" id="nav-practice">Practice</a>
-      <a href="#" id="nav-review">Review</a>
-      <a href="#" id="nav-coach">AI Notebook</a>
+      <a href="#" id="nav-review">Session Review</a>
+      <a href="#" id="nav-coach">Mistake Notebook</a>
       <a href="#" id="nav-library">Library</a>
     </nav>
 
@@ -393,9 +393,9 @@
         <div class="card section-card">
           <div class="section-head">
             <div>
-              <div class="eyebrow">Performance recap</div>
-              <h2 class="card-title">Last session</h2>
-              <p class="section-subtitle">Latest run metrics.</p>
+              <div class="eyebrow">End-of-practice review</div>
+              <h2 class="card-title">Session Review</h2>
+              <p class="section-subtitle">Score, misses, and the next useful drill from your latest run.</p>
             </div>
           </div>
           <div class="review-kpi-band">
@@ -421,7 +421,7 @@
             <svg id="chart-acc-cat" class="chart" viewBox="0 0 640 180" aria-label="Accuracy by region"></svg>
           </div>
           <div class="inline-actions">
-            <button id="btn-review-misses" class="btn pri">Review missed now</button>
+            <button id="btn-review-misses" class="btn pri">Review Misses</button>
             <button id="btn-export-wrong" class="btn ghost">Export wrong.txt</button>
             <button id="btn-clear-wrong" class="btn ghost">Clear wrong bank</button>
           </div>
@@ -431,9 +431,9 @@
         <div class="card section-card">
           <div class="section-head">
             <div>
-              <div class="eyebrow">DeepSeek recap</div>
-              <h2 class="card-title">Session debrief</h2>
-              <p class="section-subtitle">Coach notes from the latest run.</p>
+              <div class="eyebrow">Next practice</div>
+              <h2 class="card-title">Top Focus</h2>
+              <p class="section-subtitle">Built from the mistake notes saved during this session.</p>
             </div>
           </div>
           <div id="review-coach-summary" class="card-muted-box summary-note">
@@ -443,7 +443,7 @@
           <div id="review-coach-focuses" class="coach-focus-grid" style="margin-top: 16px;"></div>
           <div class="inline-actions" style="margin-top: 16px;">
             <button id="btn-review-coach-apply" class="btn pri" type="button">Practice Top Focus</button>
-            <button id="btn-review-coach-notebook" class="btn ghost" type="button">Jump to AI Notebook</button>
+            <button id="btn-review-coach-notebook" class="btn ghost" type="button">Open Mistake Notebook</button>
           </div>
         </div>
       </div>
@@ -535,9 +535,9 @@
         <div class="card section-card">
           <div class="section-head">
             <div>
-              <div class="eyebrow">Saved AI coaching</div>
-              <h2 class="card-title">AI Notebook</h2>
-              <p class="section-subtitle">Saved coach notes and mastery status.</p>
+              <div class="eyebrow">Saved mistakes</div>
+              <h2 class="card-title">Mistake Notebook</h2>
+              <p class="section-subtitle">Saved explanations, diagnoses, and mastery status.</p>
             </div>
           </div>
 
@@ -546,7 +546,7 @@
               <div class="pill">To learn: <span id="coach-open-count">0</span></div>
               <div class="pill">Mastered: <span id="coach-mastered-count">0</span></div>
               <div class="grow"></div>
-              <button id="btn-coach-generate-weak" class="btn action" type="button">Generate from Weak Spots</button>
+              <button id="btn-coach-generate-weak" class="btn action" type="button">Create Targeted Drill</button>
               <button id="btn-coach-apply-top" class="btn pri" type="button">Apply Top Focus</button>
               <button id="btn-coach-clear" class="btn bad" type="button">Clear Notebook</button>
               <button id="btn-coach-back-review" class="btn ghost" type="button">Back to Review</button>
@@ -561,7 +561,7 @@
               <option value="todo" selected>To Learn</option>
               <option value="mastered">Mastered</option>
             </select>
-            <input id="coach-search" type="text" placeholder="Search AI notebook…" style="flex:1 1 260px" />
+            <input id="coach-search" type="text" placeholder="Search mistake notebook…" style="flex:1 1 260px" />
             <button id="coach-refresh" class="btn ghost">Refresh</button>
           </div>
           <div id="coach-list" class="coach-list"></div>
@@ -646,9 +646,9 @@
     <div class="coach-chat-panel">
       <div class="coach-chat-head">
         <div class="coach-chat-head-copy">
-          <div class="eyebrow">DeepSeek student coach</div>
-          <h2 class="card-title">Study Assistant</h2>
-          <p id="coach-chat-context-summary" class="coach-chat-context-summary">Scanning your practice state.</p>
+          <div class="eyebrow">Training coach</div>
+          <h2 class="card-title">Coach</h2>
+          <p id="coach-chat-context-summary" class="coach-chat-context-summary">Explains misses, diagnoses mistakes, and recommends next practice.</p>
         </div>
         <div class="coach-chat-head-actions">
           <button id="coach-chat-new" class="btn ghost coach-chat-utility-btn" type="button">New Chat</button>
@@ -660,12 +660,12 @@
       <div id="coach-chat-body" class="coach-chat-body">
         <div id="coach-chat-status-pills" class="coach-chat-status-pills"></div>
         <div class="coach-chat-section-block">
-          <div class="coach-chat-section-label">Practice shortcuts</div>
+          <div class="coach-chat-section-label">Next practice</div>
           <div id="coach-chat-workspace" class="coach-chat-workspace"></div>
         </div>
         <div id="coach-chat-messages" class="coach-chat-messages" aria-live="polite"></div>
         <div id="coach-chat-starter-box" class="coach-chat-starter-block">
-          <div class="coach-chat-section-label">Study prompts</div>
+          <div class="coach-chat-section-label">Coach prompts</div>
           <div id="coach-chat-starters" class="coach-chat-starters"></div>
         </div>
       </div>
@@ -674,13 +674,13 @@
       </button>
 
       <form id="coach-chat-form" class="coach-chat-form">
-        <div class="coach-chat-section-label">Ask a study question</div>
+        <div class="coach-chat-section-label">Ask the coach</div>
         <label class="coach-chat-input-wrap" for="coach-chat-input">
           <textarea id="coach-chat-input" rows="2"
-            placeholder="Ask what to practice, why you missed something, or for background on an IHBB topic."></textarea>
+            placeholder="Ask why you missed, why the answer fits, or what to practice next."></textarea>
         </label>
         <div class="coach-chat-form-utility">
-          <button id="coach-chat-thinking-toggle" class="coach-chat-thinking-toggle" type="button" aria-pressed="false">Thinking Model: Off</button>
+          <button id="coach-chat-thinking-toggle" class="coach-chat-thinking-toggle" type="button" aria-pressed="false">Detailed Reasoning: Off</button>
         </div>
         <div class="coach-chat-form-actions">
           <div id="coach-chat-hint" class="muted">Auto mode balances explanations with next practice steps.</div>

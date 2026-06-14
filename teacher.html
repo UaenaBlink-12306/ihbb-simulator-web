@@ -112,11 +112,11 @@
                 <a href="livebee.html" class="btn ghost">Host Live Bee</a>
                 <a href="#" id="btn-logout" class="btn bad">Logout</a>
                 <button id="coach-chat-launcher" class="coach-chat-launcher" type="button" aria-controls="coach-chat-sidebar"
-                    aria-expanded="false" aria-label="Open DeepSeek training assistant" title="Launch DeepSeek AI assistant for real-time explanations and guided practice">
-                    <span class="coach-chat-launcher-icon">DS</span>
+                    aria-expanded="false" aria-label="Open Planning Coach" title="Open the planning coach for class-gap analysis, lesson prep, and assignment planning">
+                    <span class="coach-chat-launcher-icon">Co</span>
                     <span class="coach-chat-launcher-copy">
-                        <span class="coach-chat-launcher-title">DeepSeek</span>
-                        <span id="coach-chat-launcher-note" class="coach-chat-launcher-note">Open coach chat</span>
+                        <span class="coach-chat-launcher-title">Planning Coach</span>
+                        <span id="coach-chat-launcher-note" class="coach-chat-launcher-note">Open planner</span>
                     </span>
                     <span id="coach-chat-launcher-count" class="coach-chat-launcher-count hidden">0</span>
                 </button>
@@ -325,8 +325,8 @@
                     <div class="card-muted-box generator-card" style="margin-bottom: 18px;">
                         <div class="section-head" style="margin-bottom: 12px;">
                             <div>
-                                <h3 style="margin: 0;">DeepSeek Draft Builder</h3>
-                                <p id="teacher-gen-status" class="section-subtitle" style="margin: 0;">AI Generation</p>
+                                <h3 style="margin: 0;">Draft Builder</h3>
+                                <p id="teacher-gen-status" class="section-subtitle" style="margin: 0;">Targeted question drafting</p>
                             </div>
                             <div class="inline-actions">
                                 <button id="btn-teacher-generate" class="btn pri" type="button">Generate Draft</button>
@@ -813,6 +813,14 @@
                 </div>
                 <div class="dashboard-split dashboard-split-solo">
                     <div class="list-container">
+                        <div class="list-item">
+                            <div>
+                                <h3 style="margin:0 0 4px;">Cleaner Training Flow</h3>
+                                <div class="pill">June 14, 2026</div>
+                                <p class="muted" style="margin: 8px 0 0;">Student coaching is now focused on explanations, mistake diagnosis, and next-practice advice, with Session Review and Mistake Notebook carrying the post-practice flow.</p>
+                            </div>
+                        </div>
+
                         <div class="list-item">
                             <div>
                                 <h3 style="margin:0 0 4px;">DeepSeek Topic-First Buzz Coaching</h3>
@@ -1478,8 +1486,8 @@
                     <p class="muted" style="margin: 0;">Create classrooms and generate unique join codes for your students. Monitor your roster and see who has joined your class at any time.</p>
                 </div>
                 <div class="card-muted-box">
-                    <h4 style="margin: 0 0 4px;">AI-Powered Draft Builder</h4>
-                    <p class="muted" style="margin: 0;">Use the <strong>Draft Builder</strong> to generate targeted quiz questions based on specific topics, regions, or eras. Perfect for creating unique study material in seconds.</p>
+                    <h4 style="margin: 0 0 4px;">Draft Builder</h4>
+                    <p class="muted" style="margin: 0;">Use the <strong>Draft Builder</strong> to create or select targeted quiz questions based on specific topics, regions, or eras.</p>
                 </div>
                 <div class="card-muted-box">
                     <h4 style="margin: 0 0 4px;">Custom Assignment Builder</h4>
@@ -1498,8 +1506,8 @@
                     <p class="muted" style="margin: 0;">In <strong>Account Settings</strong>, you can set default classes, builder modes, and question counts to streamline your daily workflow.</p>
                 </div>
                 <div class="card-muted-box">
-                    <h4 style="margin: 0 0 4px;">DeepSeek Assistant & Hub</h4>
-                    <p class="muted" style="margin: 0;">Access the <strong>Practice Hub</strong> to use the DeepSeek sidebar for AI-powered research, study aids, and session planning.</p>
+                    <h4 style="margin: 0 0 4px;">Planning Coach & Hub</h4>
+                    <p class="muted" style="margin: 0;">Access the <strong>Practice Hub</strong> for focused explanations, lesson planning, and reviewed assignment guidance.</p>
                 </div>
             </div>
             <div class="form-actions" style="margin-top: 24px;">
@@ -1525,8 +1533,8 @@
         <div class="coach-chat-panel">
             <div class="coach-chat-head">
                 <div class="coach-chat-head-copy">
-                    <div class="eyebrow">DeepSeek teacher planner</div>
-                    <h2 class="card-title">Class Planning Assistant</h2>
+                    <div class="eyebrow">Planning helper</div>
+                    <h2 class="card-title">Planning Coach</h2>
                     <p id="coach-chat-context-summary" class="coach-chat-context-summary">Reviewing classes, assignments, analytics, and draft questions.</p>
                 </div>
                 <div class="coach-chat-head-actions">
@@ -1559,7 +1567,7 @@
                         placeholder="Ask for a class-gap plan, assignment idea, lesson brief, or teacher-ready topic explanation."></textarea>
                 </label>
                 <div class="coach-chat-form-utility">
-                    <button id="coach-chat-thinking-toggle" class="coach-chat-thinking-toggle" type="button" aria-pressed="false" title="Toggle DeepSeek Thinking Model: Enforces deeper AI reasoning for more detailed and structured explanations when turned ON.">Thinking Model: Off</button>
+                    <button id="coach-chat-thinking-toggle" class="coach-chat-thinking-toggle" type="button" aria-pressed="false" title="Toggle detailed planning reasoning for more structured explanations.">Detailed Reasoning: Off</button>
                 </div>
                 <div class="coach-chat-form-actions">
                     <div id="coach-chat-hint" class="muted">Teacher auto mode balances class-gap diagnosis, lesson prep, and assignment planning.</div>

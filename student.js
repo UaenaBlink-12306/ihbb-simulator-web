@@ -221,7 +221,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const STUDENT_DASHBOARD_TABS = new Set(Object.keys(STUDENT_DASHBOARD_TAB_LABELS));
     const ACCOUNT_SETTING_DEFAULTS = Object.freeze({
         student_dashboard_default_tab: 'assignments',
-        practice_hub_auto_open: true,
+        practice_hub_auto_open: false,
         assistant_thinking_enabled: false,
         assistant_show_starters: true,
         assistant_stream_responses: true,
@@ -597,7 +597,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         ].slice(0, 300);
         writeCoachLocalRecords(coachRecordsCurrent);
         renderCoachWorkspace();
-        showAlert('Assistant answer saved to AI Notebook.', 'success');
+        showAlert('Assistant answer saved to Mistake Notebook.', 'success');
 
         if (!coachCloudReady) return;
         try {
@@ -627,7 +627,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (isCloudAnalyticsSetupIssue(err) && !coachCloudWarned) {
                 coachCloudReady = false;
                 coachCloudWarned = true;
-                showAlert('Saved locally. Cloud AI Notebook sync is not set up yet.', 'error');
+                showAlert('Saved locally. Cloud Mistake Notebook sync is not set up yet.', 'error');
             }
         }
     }
@@ -1231,7 +1231,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 id: 'recover-last-miss',
                 title: `Recover from ${recent.title}`,
                 priority: 'high',
-                reason: 'Your latest AI Notebook miss is the clearest thing to fix before starting more mixed work.',
+                reason: 'Your latest Mistake Notebook lesson is the clearest thing to fix before starting more mixed work.',
                 evidence: recent.reason || [recent.region, recent.era, recent.topic].filter(Boolean).join(' • '),
                 action_label: 'Build corrective drill',
                 action: { kind: 'action', id: 'generate_focus_drill', focus_key: recent.key, label: `Generate ${recent.title}` }
@@ -1256,7 +1256,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 id: `train-focus-${topFocus.key || title}`,
                 title: `Train ${title}`,
                 priority: topFocus.priority || (recentAccuracy && recentAccuracy < 70 ? 'high' : 'medium'),
-                reason: topFocus.reason || 'This is the clearest recurring focus from your AI Notebook.',
+                reason: topFocus.reason || 'This is the clearest recurring focus from your Mistake Notebook.',
                 evidence: topFocus.action || 'Dashboard coach, notebook, and review signals point here.',
                 action_label: topFocus.key ? 'Apply focus' : 'Ask for plan',
                 action: topFocus.key
@@ -1283,7 +1283,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 id: 'baseline-session',
                 title: 'Run one baseline Practice Hub drill',
                 priority: 'medium',
-                reason: 'DeepSeek needs one clean session before it can make sharper personal recommendations.',
+                reason: 'The Coach needs one clean session before it can make sharper personal recommendations.',
                 evidence: 'No recent practice history is available yet.',
                 action_label: 'Open Practice Hub',
                 action: { kind: 'action', id: 'start_current_session', label: 'Open Practice Hub' }
@@ -1412,7 +1412,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (!el) return;
         let label = 'Ready';
         if (dashboardChat.busy) label = 'Thinking';
-        else if (dashboardChat.source === 'deepseek') label = 'DeepSeek';
+        else if (dashboardChat.source === 'deepseek') label = 'Powered by DeepSeek';
         else if (dashboardChat.source === 'fallback') label = 'Local fallback';
         el.textContent = `${label} • ${dashboardChat.ui.thinkingEnabled ? 'Think On' : 'Think Off'}`;
     }
@@ -1614,16 +1614,16 @@ document.addEventListener('DOMContentLoaded', async () => {
         const knowledgeTopic = recentTitle || topFocusTitle || 'this topic';
         if (dashboardChat.ui.mode === 'knowledge') {
             return limitDashboardChatStarters([
-                { label: 'Explain it', prompt: `Explain ${knowledgeTopic} in detail and why it matters in IHBB.` },
-                { label: 'Give a timeline', prompt: `Give me a clear timeline of ${knowledgeTopic}.` },
-                { label: 'Common confusions', prompt: `What are the most common confusions or mix-ups around ${knowledgeTopic}?` }
+                { label: 'Explain it', prompt: `Explain why ${knowledgeTopic} matters for IHBB clues.` },
+                { label: 'Diagnose mix-ups', prompt: `What mistakes or mix-ups should I watch for around ${knowledgeTopic}?` },
+                { label: 'Next practice', prompt: `What is one good practice step for ${knowledgeTopic}?` }
             ]);
         }
         if (recentTitle) {
             return limitDashboardChatStarters([
                 { label: 'Last miss', prompt: `Why did I miss ${recentTitle}, and what should I train next?` },
-                { label: 'Best tool', prompt: `For ${recentTitle}, should I use AI Notebook, Wrong-bank, or a guided drill first?` },
-                { label: 'Corrective drill', prompt: `Build me a corrective practice plan for ${recentTitle}.` }
+                { label: 'Clue diagnosis', prompt: `Which clue should have pointed me toward ${recentTitle}?` },
+                { label: 'Corrective drill', prompt: `Recommend one corrective drill for ${recentTitle}.` }
             ]);
         }
         if (wrongDue >= 3) {
@@ -1635,16 +1635,16 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
         if ((dashboardChat.suggestedReason === 'notebook' || notebookOpen > 0) && topFocusTitle) {
             return limitDashboardChatStarters([
-                { label: 'Notebook focus', prompt: `Which AI Notebook focus should I train next if ${topFocusTitle} keeps showing up?` },
-                { label: 'From lesson to drill', prompt: `How should I turn ${topFocusTitle} from AI Notebook into actual practice?` },
-                { label: 'Before assignment', prompt: `Before my next assignment, is ${topFocusTitle} better for notebook review or a targeted drill?` }
+                { label: 'Notebook focus', prompt: `Which Mistake Notebook focus should I train next if ${topFocusTitle} keeps showing up?` },
+                { label: 'From lesson to drill', prompt: `How should I turn ${topFocusTitle} into actual practice?` },
+                { label: 'Next practice', prompt: `What is the single best next practice step for ${topFocusTitle}?` }
             ]);
         }
         if (topRecommendation?.title) {
             return limitDashboardChatStarters([
                 { label: 'Use recommendation', prompt: `Why is "${topRecommendation.title}" the best next practice step for me right now?` },
                 { label: 'Make it concrete', prompt: `Turn "${topRecommendation.title}" into a short practice plan I can follow now.` },
-                { label: 'Compare options', prompt: 'Compare my top practice recommendation with Wrong-bank, AI Notebook, and a mixed drill.' }
+                { label: 'Next step', prompt: 'Give me the single best next practice step from this recommendation.' }
             ]);
         }
         return limitDashboardChatStarters(DASHBOARD_CHAT_STARTERS);
@@ -1671,13 +1671,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         const knowledgeCard = {
             kicker: 'Ask',
             title: 'Explain a topic',
-            copy: 'Get background, timeline, and common confusions.',
+            copy: 'Explanation, mistake diagnosis, and next step.',
             action: {
                 kind: 'prompt',
                 label: 'Ask for context',
                 prompt: topFocus?.title
-                    ? `Explain ${topFocus.title} in detail, connect it to my weak spots, and tell me the best next study step.`
-                    : 'Explain the most important historical background I should understand right now and tell me what to do next.'
+                    ? `Explain ${topFocus.title}, diagnose why I might miss it, and give me one next practice step.`
+                    : 'Explain the most important missed topic, diagnose the likely mistake, and give me one next practice step.'
             }
         };
         const recommendationCard = topRecommendation
@@ -1725,7 +1725,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                         : { kind: 'prompt', label: 'Ask when to use it', prompt: 'When is Wrong-bank better than a fresh drill?' }
                 },
                 {
-                    kicker: 'AI Notebook',
+                    kicker: 'Mistake Notebook',
                     title: topFocus?.title || 'Open Notebook',
                     copy: topFocus?.title ? 'Top saved focus' : `${snapshot?.coach_notebook?.open_lessons || 0} open lesson${(snapshot?.coach_notebook?.open_lessons || 0) === 1 ? '' : 's'}`,
                     action: topFocus?.key
@@ -1772,7 +1772,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const messagesHtml = dashboardChat.messages.map((message, messageIndex) => `
             <div class="coach-chat-message ${message.role === 'user' ? 'user' : 'assistant'}">
                 <div class="coach-chat-message-meta">
-                    <span>${esc(message.role === 'user' ? 'You' : (message.source === 'deepseek' ? 'DeepSeek' : 'Local fallback'))}</span>
+                    <span>${esc(message.role === 'user' ? 'You' : (message.source === 'deepseek' ? 'Powered by DeepSeek' : 'Local fallback'))}</span>
                     <span>${esc(message.role === 'user' ? 'Prompt' : (message.mode === 'knowledge' ? 'Knowledge brief' : 'Coach advice'))}</span>
                 </div>
                 ${message.role === 'assistant' && !isDashboardChatMessageStreaming(message) && message.title ? `<h3 class="coach-chat-message-title">${esc(message.title)}</h3>` : ''}
@@ -1809,7 +1809,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 ${message.role === 'assistant' && !isDashboardChatMessageStreaming(message) ? `
                     <div class="coach-chat-message-tools">
                         <button class="coach-chat-tool" type="button" data-message-index="${messageIndex}" data-tool="copy">Copy answer</button>
-                        <button class="coach-chat-tool" type="button" data-message-index="${messageIndex}" data-tool="save-notebook">Save to AI Notebook</button>
+                        <button class="coach-chat-tool" type="button" data-message-index="${messageIndex}" data-tool="save-notebook">Save to Mistake Notebook</button>
                         <button class="coach-chat-tool" type="button" data-message-index="${messageIndex}" data-tool="shorter" ${dashboardChat.busy ? 'disabled' : ''}>Make this shorter</button>
                         <button class="coach-chat-tool" type="button" data-message-index="${messageIndex}" data-tool="expand" ${dashboardChat.busy ? 'disabled' : ''}>Expand this</button>
                     </div>
@@ -1819,12 +1819,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         const loadingHtml = dashboardChat.busy ? `
             <div class="coach-chat-message assistant coach-chat-thinking">
                 <div class="coach-chat-message-meta">
-                    <span>DeepSeek</span>
+                    <span>Coach</span>
                     <span>Thinking</span>
                 </div>
                     <div class="coach-chat-thinking-bubble">
                         <div class="coach-chat-thinking-dots" aria-hidden="true"><span></span><span></span><span></span></div>
-                        <div class="coach-chat-loading">${dashboardChat.ui.thinkingEnabled ? 'DeepSeek reasoner is synthesizing your practice history, Wrong-bank, AI Notebook, and next steps.' : 'DeepSeek is reviewing your practice history, Wrong-bank, AI Notebook, and dashboard context.'}</div>
+                        <div class="coach-chat-loading">${dashboardChat.ui.thinkingEnabled ? 'Coach is synthesizing your practice history, Wrong-bank, Mistake Notebook, and next steps.' : 'Coach is reviewing your practice history, Wrong-bank, Mistake Notebook, and dashboard context.'}</div>
                     </div>
                 </div>
             ` : '';
@@ -1893,8 +1893,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
         if (hintEl) {
             hintEl.textContent = dashboardChat.ui.thinkingEnabled
-                ? 'Thinking model is on. Answers may take longer but should synthesize more of your study context.'
-                : 'Student auto mode balances explanations with the next practice move.';
+                ? 'Detailed reasoning is on for deeper explanation and mistake diagnosis.'
+                : 'Coach answers stay focused on explanation, diagnosis, and next practice.';
         }
         if (sendBtn) sendBtn.disabled = !!dashboardChat.busy;
         sizeButtons.forEach(button => {
@@ -1905,7 +1905,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (thinkingBtn) {
             thinkingBtn.classList.toggle('active', !!dashboardChat.ui.thinkingEnabled);
             thinkingBtn.setAttribute('aria-pressed', dashboardChat.ui.thinkingEnabled ? 'true' : 'false');
-            thinkingBtn.textContent = `Thinking Model: ${dashboardChat.ui.thinkingEnabled ? 'On' : 'Off'}`;
+            thinkingBtn.textContent = `Detailed Reasoning: ${dashboardChat.ui.thinkingEnabled ? 'On' : 'Off'}`;
         }
         if (fullBtn) {
             fullBtn.textContent = dashboardChat.ui.fullscreen ? 'Windowed' : 'Full Screen';
@@ -1965,8 +1965,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                 title: topic ? `Study brief: ${topic}` : 'Study brief',
                 topic,
                 message: topic
-                    ? `This looks like a knowledge question about ${topic}. DeepSeek did not return a usable knowledge response for this request, so I am showing the built-in study fallback instead.`
-                    : 'This looks like a knowledge question. DeepSeek did not return a usable knowledge response for this request, so I am showing the built-in study fallback instead.',
+                    ? `This looks like a knowledge question about ${topic}. Coach guidance did not return a usable response for this request, so I am showing the built-in study fallback instead.`
+                    : 'This looks like a knowledge question. Coach guidance did not return a usable response for this request, so I am showing the built-in study fallback instead.',
                 highlights: ['Knowledge mode', topic ? 'Wikipedia reference ready' : 'Reference lookup ready'].filter(Boolean),
                 sections: [
                     { heading: 'What to lock in first', body: topic ? `Start with the definition, timeframe, main actors, and why ${topic} matters in the broader historical story.` : 'Start with the definition, timeframe, main actors, and why the topic matters in the broader historical story.' },
@@ -1991,16 +1991,16 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (wrongDue > 0) actions.push({ id: 'practice_due_now', label: `Practice ${wrongDue} due card${wrongDue === 1 ? '' : 's'}`, reason: 'Open the Practice Hub and start due-card review.' });
             else if (topFocusKey) actions.push({ id: 'generate_focus_drill', label: `Generate ${topFocusTitle}`, reason: 'Turn the top notebook focus into a fresh drill.', focus_key: topFocusKey });
         } else if (prompt.includes('notebook') || prompt.includes('lesson') || prompt.includes('coach')) {
-            title = topFocusKey ? `Notebook plan for ${topFocusTitle}` : 'Use AI Notebook for explanation';
+            title = topFocusKey ? `Notebook plan for ${topFocusTitle}` : 'Use the Mistake Notebook for explanation';
             reply = notebookOpen
-                ? `AI Notebook is the better next move when you need explanation and pattern review. You have ${notebookOpen} open lesson${notebookOpen === 1 ? '' : 's'} waiting.`
-                : 'Your AI Notebook is light right now, so the better move is another drill that creates stronger coach evidence.';
-            actions.push({ id: 'open_ai_notebook', label: 'Open Coach Workspace', reason: 'Jump into the saved DeepSeek lessons on this dashboard.' });
+                ? `The Mistake Notebook is the better next move when you need explanation and pattern review. You have ${notebookOpen} open lesson${notebookOpen === 1 ? '' : 's'} waiting.`
+                : 'Your Mistake Notebook is light right now, so the better move is another drill that creates stronger coach evidence.';
+            actions.push({ id: 'open_ai_notebook', label: 'Open Mistake Notebook', reason: 'Jump into the saved lessons on this dashboard.' });
             if (topFocusKey) actions.push({ id: 'generate_focus_drill', label: `Generate ${topFocusTitle}`, reason: 'Send this focus into a fresh practice drill.', focus_key: topFocusKey });
         } else if (recent?.title) {
             title = `Recover from ${recent.title}`;
             reply = `Your latest miss was ${recent.title}. Review that lesson once, then run a short guided drill before returning to mixed practice.`;
-            actions.push({ id: 'open_ai_notebook', label: 'Open Coach Workspace', reason: 'Reopen the saved lesson on this dashboard.' });
+            actions.push({ id: 'open_ai_notebook', label: 'Open Mistake Notebook', reason: 'Reopen the saved lesson on this dashboard.' });
             if (topFocusKey) actions.push({ id: 'apply_top_focus', label: `Guided Drill: ${topFocusTitle}`, reason: 'Launch a guided drill from the dashboard coach focus.', focus_key: topFocusKey });
         } else if (topRecommendation?.title && prompt.includes('recommend')) {
             title = topRecommendation.title;
@@ -2022,7 +2022,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             actions.push({ id: 'generate_focus_drill', label: `Generate ${topFocusTitle}`, reason: 'Create a fresh practice set for the same focus.', focus_key: topFocusKey });
         } else {
             title = 'Open Practice Hub for the next block';
-            reply = 'Start with a Practice Hub drill so DeepSeek has enough evidence to guide you with notebook and weak-area advice.';
+            reply = 'Start with a Practice Hub drill so the Coach has enough evidence to guide you with notebook and weak-area advice.';
             actions.push({ id: 'start_current_session', label: 'Open Practice Hub', reason: 'Jump to the drill builder and start a session.' });
         }
 
@@ -2036,7 +2036,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             sections: [
                 { heading: 'Best next move', body: reply },
                 ...(topRecommendation?.title ? [{ heading: 'Recommendation signal', body: `${topRecommendation.title}: ${topRecommendation.reason}` }] : []),
-                { heading: 'Why this from the dashboard', body: 'The dashboard assistant routes you into the Practice Hub, coach workspace, and review surfaces without making you rebuild context.' }
+                { heading: 'Why this from the dashboard', body: 'The Coach routes you into the Practice Hub, Mistake Notebook, and review surfaces without making you rebuild context.' }
             ],
             links: dashboardChatWikiLink(recent?.title || topFocusTitle || topic) ? [{ label: `Wikipedia: ${recent?.title || topFocusTitle || topic}`, url: dashboardChatWikiLink(recent?.title || topFocusTitle || topic), kind: 'wikipedia' }] : [],
             follow_ups: [
@@ -2894,7 +2894,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const responseDetailHint = document.getElementById('acc-assistant-response-detail-hint');
         if (responseDetailHint) {
             responseDetailHint.textContent = normalizeAssistantResponseDetail(accountSettings.assistant_response_detail) === 'compact'
-                ? 'Compact responses keep DeepSeek answers shorter with fewer sections and quick actions.'
+                ? 'Compact responses keep Coach answers shorter with fewer sections and quick actions.'
                 : 'Detailed responses include richer sections and follow-up prompts.';
         }
         syncAccountToggle({
@@ -2903,8 +2903,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             stateId: 'acc-practice-hub-auto-open-state',
             hintId: 'acc-practice-hub-auto-open-hint',
             enabled: accountSettings.practice_hub_auto_open,
-            enabledHint: 'DeepSeek opens automatically when you enter Practice Hub. You can still launch it manually anytime.',
-            disabledHint: 'DeepSeek stays closed when you enter Practice Hub. You can still launch it manually anytime.'
+            enabledHint: 'Coach opens automatically when you enter Practice Hub. You can still launch it manually anytime.',
+            disabledHint: 'Coach stays closed when you enter Practice Hub. You can still launch it manually anytime.'
         });
         syncAccountToggle({
             wrapId: 'acc-setting-assistant-thinking',
@@ -2912,8 +2912,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             stateId: 'acc-assistant-thinking-state',
             hintId: 'acc-assistant-thinking-hint',
             enabled: accountSettings.assistant_thinking_enabled,
-            enabledHint: 'DeepSeek opens with the Thinking Model already turned on for your next coaching session.',
-            disabledHint: 'DeepSeek opens in its faster default mode until you turn on reasoning manually.'
+            enabledHint: 'Coach opens with detailed reasoning already turned on for your next coaching session.',
+            disabledHint: 'Coach opens in its faster default mode until you turn on detailed reasoning manually.'
         });
         syncAccountToggle({
             wrapId: 'acc-setting-assistant-starters',
@@ -4359,7 +4359,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     topic: recordFocus.topic,
                     icon: recordFocus.icon,
                     meta: `${entry.unresolved} open lesson${entry.unresolved === 1 ? '' : 's'} • ${entry.incorrect} incorrect`,
-                    reason: sample?.coach?.summary || sample?.coach?.error_diagnosis || sample?.reason || 'DeepSeek highlighted this area repeatedly in your recent lessons.',
+                    reason: sample?.coach?.summary || sample?.coach?.error_diagnosis || sample?.reason || 'The Coach highlighted this area repeatedly in your recent lessons.',
                     action: sample?.coach?.study_tip || sample?.coach?.key_clues?.[0] || sample?.coach?.related_facts?.[0] || 'Start a targeted drill around this focus.',
                     priority,
                     source: 'coach',
@@ -4428,7 +4428,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 </div>
                 <div class="coach-focus-actions">
                     <button class="btn pri coach-focus-drill" type="button" data-focus-index="${index}">Guided Drill</button>
-                    <button class="btn ghost coach-focus-generate" type="button" data-focus-index="${index}">Generate Drill</button>
+                    <button class="btn ghost coach-focus-generate" type="button" data-focus-index="${index}">Create Targeted Drill</button>
                     ${focus.attemptId ? `<button class="btn ghost coach-focus-mastered" type="button" data-attempt="${esc(focus.attemptId)}">Mark Top Lesson Mastered</button>` : `<button class="btn ghost coach-focus-open-analytics" type="button">View Analytics</button>`}
                 </div>
             </div>
@@ -5060,12 +5060,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         const contentEl = document.getElementById('analytics-ai-content');
         if (badgeEl) {
             badgeEl.textContent = cached
-                ? (source === 'deepseek' ? 'Cached AI' : 'Cached plan')
-                : (source === 'deepseek' ? 'DeepSeek AI' : 'Local fallback');
+                ? (source === 'deepseek' ? 'Cached plan' : 'Cached plan')
+                : (source === 'deepseek' ? 'Powered by DeepSeek' : 'Local fallback');
         }
         if (statusEl) {
             statusEl.textContent = source === 'deepseek'
-                ? 'AI summary ready from current 30-day data.'
+                ? 'Recommended practice plan ready from current 30-day data.'
                 : 'Local summary ready from current 30-day data.';
         }
         if (contentEl) {
@@ -5107,7 +5107,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 </div>
             `;
         }
-        setAnalyticsInsightsButton('Refresh Insights', false);
+        setAnalyticsInsightsButton('Refresh Plan', false);
         renderCoachWorkspace();
     }
 
@@ -5143,7 +5143,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     function prepareAnalyticsInsights(snapshot, hasData) {
         analyticsSnapshotCurrent = hasData ? snapshot : null;
         if (!hasData || !snapshot) {
-            setAnalyticsInsightsButton('Generate Insights', true);
+            setAnalyticsInsightsButton('Refresh Plan', true);
             renderAnalyticsInsightsPlaceholder(
                 'No insights yet',
                 'More drill data needed.',
@@ -5160,19 +5160,19 @@ document.addEventListener('DOMContentLoaded', async () => {
             return;
         }
 
-        setAnalyticsInsightsButton('Generate Insights', false);
+        setAnalyticsInsightsButton('Refresh Plan', false);
         renderAnalyticsInsightsPlaceholder(
-            'Generate summary',
-            'Summarize current 30-day data.',
+            'Practice plan ready',
+            'Summarize current 30-day data into one next practice move.',
             'Ready',
-            'AI summary ready to generate.'
+            'Practice plan ready to refresh.'
         );
         renderAssignmentsCoachBrief();
     }
 
     async function generateAnalyticsInsights(force = false) {
         if (!analyticsSnapshotCurrent || analyticsSnapshotCurrent.totalAttempts <= 0) {
-            showAlert('Complete a few drill questions before generating AI insights.', 'error');
+            showAlert('Complete a few drill questions before refreshing the practice plan.', 'error');
             return;
         }
 
@@ -5185,10 +5185,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         setAnalyticsInsightsButton('Analyzing...', true);
         renderAnalyticsInsightsPlaceholder(
-            'DeepSeek is reviewing your analytics',
+            'Coach is reviewing your analytics',
             'Scanning recent weak areas, trend shifts, and consistency patterns to build a short study plan.',
             'Analyzing',
-            'DeepSeek is reviewing your latest 30-day history now.'
+            'Coach is reviewing your latest 30-day history now.'
         );
 
         try {
@@ -5205,14 +5205,14 @@ document.addEventListener('DOMContentLoaded', async () => {
             writeAnalyticsInsightsCache(signature, normalized);
             renderAnalyticsInsights(normalized, false);
             if (normalized.source !== 'deepseek') {
-                showAlert('DeepSeek is unavailable right now, so a local fallback study plan was used.', 'error');
+                showAlert('Coach guidance is unavailable right now, so a local fallback study plan was used.', 'error');
             }
         } catch (err) {
             console.warn('Analytics insights request failed:', err);
             const fallback = { source: 'fallback', insights: buildLocalAnalyticsInsights(analyticsSnapshotCurrent) };
             writeAnalyticsInsightsCache(signature, fallback);
             renderAnalyticsInsights(fallback, false);
-            showAlert('Analytics AI request failed, so a local fallback study plan was generated.', 'error');
+            showAlert('Practice plan request failed, so a local fallback study plan was generated.', 'error');
         }
     }
 
@@ -6458,7 +6458,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         document.getElementById('teacher-gen-preview').classList.add('hidden');
         document.getElementById('btn-teacher-add-draft').disabled = true;
         document.getElementById('btn-teacher-clear-draft').style.display = 'none';
-        document.getElementById('teacher-gen-status').textContent = 'AI Generation';
+        document.getElementById('teacher-gen-status').textContent = 'Targeted question drafting';
     });
 
     document.getElementById('btn-teacher-add-draft')?.addEventListener('click', () => {

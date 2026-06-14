@@ -205,7 +205,7 @@ let CurrentProfileRole = '';
 let CurrentAccountSettings = null;
 let PendingCoachGeneration = false;
 const ACCOUNT_SETTING_DEFAULTS = Object.freeze({
-  practice_hub_auto_open: true,
+  practice_hub_auto_open: false,
   assistant_thinking_enabled: false,
   assistant_show_starters: true,
   assistant_stream_responses: true,
@@ -510,8 +510,8 @@ function isCoachChatTeacherRole() {
 function coachChatRoleCopy() {
   return isCoachChatTeacherRole()
     ? {
-        eyebrow: 'DeepSeek teacher planner',
-        title: 'Class Planning Assistant',
+        eyebrow: 'Planning helper',
+        title: 'Planning Coach',
         summary: 'Plan assignments, lessons, and question-bank moves from this Practice Hub context.',
         shortcutLabel: 'Teacher shortcuts',
         starterLabel: 'Teacher prompts',
@@ -521,23 +521,23 @@ function coachChatRoleCopy() {
         autoHint: 'Teacher auto mode balances lesson prep, assignment planning, and class-gap diagnosis.',
         emptyTitle: 'Plan a lesson or assignment.',
         emptyText: 'Pick a prompt or ask how to turn the current practice context into teachable class work.',
-        loadingFast: 'DeepSeek is reviewing the question set, filters, and teacher planning context.',
-        loadingThinking: 'DeepSeek reasoner is synthesizing the question set, filters, and teacher planning context.'
+        loadingFast: 'Coach is reviewing the question set, filters, and teacher planning context.',
+        loadingThinking: 'Coach is synthesizing the question set, filters, and teacher planning context.'
       }
     : {
-        eyebrow: 'DeepSeek student coach',
-        title: 'Study Assistant',
-        summary: 'Ask for explanations, practice advice, Wrong-bank help, or AI Notebook next steps.',
-        shortcutLabel: 'Practice shortcuts',
-        starterLabel: 'Study prompts',
-        askLabel: 'Ask a study question',
-        placeholder: 'Ask what to practice, why you missed something, or for background on an IHBB topic.',
-        thinkingHint: 'Thinking model is on. Answers may take longer but should synthesize more of your study context.',
-        autoHint: 'Auto mode balances explanations with next practice steps.',
-        emptyTitle: 'Ask for knowledge or next steps.',
-        emptyText: 'Pick a prompt or type what you want to understand, what you should do next, or both.',
-        loadingFast: 'DeepSeek is reviewing your wrong-bank, notebook, setup, and recent study state.',
-        loadingThinking: 'DeepSeek reasoner is synthesizing your history, notebook, wrong-bank, and next steps.'
+        eyebrow: 'Training coach',
+        title: 'Coach',
+        summary: 'Ask for an explanation, mistake diagnosis, or next-practice advice.',
+        shortcutLabel: 'Next practice',
+        starterLabel: 'Coach prompts',
+        askLabel: 'Ask the coach',
+        placeholder: 'Ask why you missed, why the answer fits, or what to practice next.',
+        thinkingHint: 'Detailed reasoning is on for deeper explanation and diagnosis.',
+        autoHint: 'Coach answers are limited to explanation, mistake diagnosis, and next practice.',
+        emptyTitle: 'Ask about a miss or next practice.',
+        emptyText: 'Pick a prompt or ask why an answer fits, why you missed, or what to practice next.',
+        loadingFast: 'Coach is reviewing your wrong-bank, mistake notebook, setup, and recent practice.',
+        loadingThinking: 'Coach is synthesizing your practice history, mistake notebook, and next steps.'
       };
 }
 function syncCoachChatRoleChrome() {
@@ -1264,7 +1264,7 @@ function renderCoachCard(coach) {
     <div class="coach-head">
       <div class="coach-icon">${escHtml(focus.icon || '📘')}</div>
       <div>
-        <div class="coach-title">DeepSeek Coach</div>
+        <div class="coach-title">Coach</div>
         <div class="coach-focus">${escHtml(focus.region || 'World')} ${focus.era ? '• ' + escHtml(focus.era) : ''} ${focus.topic ? '• ' + escHtml(focus.topic) : ''}</div>
       </div>
       <div class="grow"></div>
@@ -1287,9 +1287,9 @@ const CoachNotebook = { records: [], loaded: false };
 let CoachFocusSuggestions = [];
 let ReviewCoachFocusSuggestions = [];
 const COACH_CHAT_STARTERS = [
-  { label: 'What next?', prompt: 'What should I practice next in this practice hub?' },
-  { label: 'Explain the weak spot', prompt: 'Explain my current weak spot in detail and tell me what I should do next.' },
-  { label: 'Build a focused drill', prompt: 'Recommend a focused drill and launch the best next practice.' }
+  { label: 'Explain a miss', prompt: 'Explain the most important missed topic from my recent practice.' },
+  { label: 'Diagnose mistake', prompt: 'Diagnose the pattern behind my latest mistake and what clue I should have noticed.' },
+  { label: 'Next practice', prompt: 'Recommend one next practice block and why it is the right next step.' }
 ];
 const COACH_CHAT_TEACHER_STARTERS = [
   { label: 'Assign this set', prompt: 'How should I turn this question set into a focused assignment for my class?' },
@@ -1607,7 +1607,7 @@ function buildCoachChatPracticeRecommendations(options = {}) {
       id: `train-focus-${topFocus.key || title}`,
       title: `Train ${title}`,
       priority: topFocus.priority || (recentAccuracy && recentAccuracy < 70 ? 'high' : 'medium'),
-      reason: topFocus.reason || 'This is the clearest recurring focus from the AI Notebook and recent review context.',
+      reason: topFocus.reason || 'This is the clearest recurring focus from the mistake notebook and recent review context.',
       evidence: topFocus.action || `${currentLength} • ${currentFilters}`,
       action_label: topFocus.key ? 'Apply focus' : 'Ask for plan',
       action: topFocus.key
@@ -1758,7 +1758,7 @@ function updateCoachChatSourceLabel() {
   if (!sourceEl) return;
   let label = 'Ready';
   if (CoachChat.busy) label = 'Thinking';
-  else if (CoachChat.source === 'deepseek') label = 'DeepSeek';
+  else if (CoachChat.source === 'deepseek') label = 'Powered by DeepSeek';
   else if (CoachChat.source === 'fallback') label = 'Local fallback';
   sourceEl.textContent = `${label} • ${CoachChat.ui.thinkingEnabled ? 'Think On' : 'Think Off'}`;
 }
@@ -1863,16 +1863,16 @@ function buildCoachChatStarters(snapshot = buildCoachChatStudyContext()) {
   }
   if (CoachChat.ui.mode === 'knowledge') {
     return limitCoachChatStarters([
-      { label: 'Explain it', prompt: `Explain ${knowledgeTopic} in detail and why it matters in IHBB.` },
-      { label: 'Give a timeline', prompt: `Give me a clear timeline of ${knowledgeTopic}.` },
-      { label: 'Common confusions', prompt: `What are the most common confusions or mix-ups around ${knowledgeTopic}?` }
+      { label: 'Explain it', prompt: `Explain why ${knowledgeTopic} matters for IHBB clues.` },
+      { label: 'Diagnose mix-ups', prompt: `What mistakes or mix-ups should I watch for around ${knowledgeTopic}?` },
+      { label: 'Next practice', prompt: `What is one good practice step for ${knowledgeTopic}?` }
     ]);
   }
   if (CoachChat.suggestedReason === 'miss' && recentTitle) {
     return limitCoachChatStarters([
       { label: 'Last miss', prompt: `Why did I miss ${recentTitle}, and what should I practice next?` },
-      { label: 'Best tool', prompt: `For ${recentTitle}, should I use Wrong-bank, AI Notebook, or a generated drill first?` },
-      { label: 'Corrective drill', prompt: `Build me a corrective practice plan for ${recentTitle}.` }
+      { label: 'Clue diagnosis', prompt: `Which clue should have pointed me toward ${recentTitle}?` },
+      { label: 'Corrective drill', prompt: `Recommend one corrective drill for ${recentTitle}.` }
     ]);
   }
   if (wrongDue >= 3) {
@@ -1884,16 +1884,16 @@ function buildCoachChatStarters(snapshot = buildCoachChatStudyContext()) {
   }
   if ((CoachChat.suggestedReason === 'notebook' || notebookOpen > 0) && topFocusTitle) {
     return limitCoachChatStarters([
-      { label: 'Notebook focus', prompt: `Which AI Notebook focus should I train next if ${topFocusTitle} keeps showing up?` },
-      { label: 'From lesson to drill', prompt: `How should I turn ${topFocusTitle} from AI Notebook into actual practice?` },
-      { label: 'Best next move', prompt: `Is ${topFocusTitle} better for Wrong-bank, AI Notebook review, or a fresh generated drill right now?` }
+      { label: 'Notebook focus', prompt: `Which mistake notebook focus should I train next if ${topFocusTitle} keeps showing up?` },
+      { label: 'From lesson to drill', prompt: `How should I turn ${topFocusTitle} into actual practice?` },
+      { label: 'Best next move', prompt: `What is the single best next practice step for ${topFocusTitle}?` }
     ]);
   }
   if (topRecommendation?.title) {
     return limitCoachChatStarters([
       { label: 'Use recommendation', prompt: `Why is "${topRecommendation.title}" the best next practice step for me right now?` },
       { label: 'Make it concrete', prompt: `Turn "${topRecommendation.title}" into a short practice plan I can follow now.` },
-      { label: 'Compare options', prompt: 'Compare my top practice recommendation with Wrong-bank, AI Notebook, and a mixed drill.' }
+      { label: 'Next step', prompt: 'Give me the single best next practice step from this recommendation.' }
     ]);
   }
   return limitCoachChatStarters(COACH_CHAT_STARTERS);
@@ -1958,13 +1958,13 @@ function renderCoachChatWorkspace(snapshot) {
   const knowledgeCard = {
     kicker: 'Ask',
     title: 'Explain a topic',
-    copy: 'Get background, timeline, and common confusions.',
+    copy: 'Explanation, mistake diagnosis, and next step.',
     action: {
       kind: 'prompt',
       label: 'Ask for context',
       prompt: topFocus?.title
-        ? `Explain ${topFocus.title} in detail, connect it to my current weak spots, and tell me the best next study step.`
-        : 'Explain the most important historical background I should understand right now and tell me what to do next.'
+        ? `Explain ${topFocus.title}, diagnose why I might miss it, and give me one next practice step.`
+        : 'Explain the most important missed topic, diagnose the likely mistake, and give me one next practice step.'
     }
   };
   const topRecommendation = snapshot?.practice_recommendations?.[0] || null;
@@ -2013,7 +2013,7 @@ function renderCoachChatWorkspace(snapshot) {
           : { kind: 'prompt', label: 'Ask when to use it', prompt: 'When is Wrong-bank better than a fresh drill?' }
       },
       {
-        kicker: 'AI Notebook',
+        kicker: 'Mistake Notebook',
         title: topFocus?.title || 'Open Notebook',
         copy: topFocus?.title ? 'Top saved focus' : `${snapshot?.coach_notebook?.open_lessons || 0} open lesson${(snapshot?.coach_notebook?.open_lessons || 0) === 1 ? '' : 's'}`,
         action: topFocus?.key
@@ -2254,7 +2254,7 @@ function saveCoachChatMessageToNotebook(messageIndex) {
   CoachNotebook.loaded = true;
   renderCoachNotebook();
   syncCoachAttempt(record);
-  toast('Assistant reply saved to AI Notebook');
+  toast('Assistant reply saved to Mistake Notebook');
 }
 
 function coachChatTeacherGuidanceTitle(message) {
@@ -2299,7 +2299,7 @@ function sendCoachChatGuidanceToClass(messageIndex) {
 function coachChatMessageHtml(message, index) {
   const metaLabel = message.role === 'user'
     ? 'You'
-    : (message.source === 'deepseek' ? 'DeepSeek' : 'Local fallback');
+    : (message.source === 'deepseek' ? 'Powered by DeepSeek' : 'Local fallback');
   const streaming = isCoachChatMessageStreaming(message);
   const visibleText = coachChatVisibleText(message);
   const actions = Array.isArray(message.actions) ? message.actions : [];
@@ -2315,7 +2315,7 @@ function coachChatMessageHtml(message, index) {
   const toolsHtml = message.role === 'assistant' && !streaming ? `
     <div class="coach-chat-message-tools">
       <button class="coach-chat-tool" type="button" data-message-index="${index}" data-tool="copy">Copy markdown</button>
-      <button class="coach-chat-tool" type="button" data-message-index="${index}" data-tool="save-notebook">Save to AI Notebook</button>
+      <button class="coach-chat-tool" type="button" data-message-index="${index}" data-tool="save-notebook">Save to Mistake Notebook</button>
       ${teacherToolHtml}
       <button class="coach-chat-tool" type="button" data-message-index="${index}" data-tool="shorter" ${CoachChat.busy ? 'disabled' : ''}>Make this shorter</button>
       <button class="coach-chat-tool" type="button" data-message-index="${index}" data-tool="expand" ${CoachChat.busy ? 'disabled' : ''}>Expand this</button>
@@ -2399,7 +2399,7 @@ function renderCoachChatMessages() {
   const busyHtml = CoachChat.busy ? `
     <div class="coach-chat-message assistant coach-chat-thinking">
       <div class="coach-chat-message-meta">
-        <span>DeepSeek</span>
+        <span>Coach</span>
         <span>Thinking</span>
       </div>
       <div class="coach-chat-thinking-bubble">
@@ -2463,7 +2463,7 @@ function renderCoachChatChrome() {
   if (thinkingBtn) {
     thinkingBtn.classList.toggle('active', !!CoachChat.ui.thinkingEnabled);
     thinkingBtn.setAttribute('aria-pressed', CoachChat.ui.thinkingEnabled ? 'true' : 'false');
-    thinkingBtn.textContent = `Thinking Model: ${CoachChat.ui.thinkingEnabled ? 'On' : 'Off'}`;
+    thinkingBtn.textContent = `Detailed Reasoning: ${CoachChat.ui.thinkingEnabled ? 'On' : 'Off'}`;
   }
   if (fullBtn) {
     fullBtn.textContent = CoachChat.ui.fullscreen ? 'Windowed' : 'Full Screen';
@@ -2782,7 +2782,7 @@ function buildLocalCoachChatReply(message, snapshot = buildCoachChatStudyContext
         mode: 'knowledge',
         title: `Teaching brief: ${teacherTopic}`,
         topic: teacherTopic,
-        message: `DeepSeek did not return a usable teaching brief, so here is a teacher-ready fallback for ${teacherTopic}.`,
+        message: `Coach guidance did not return a usable teaching brief, so here is a teacher-ready fallback for ${teacherTopic}.`,
         highlights: ['Teacher mode', 'Lesson framing', 'Question-bank ready'],
         sections: [
           { heading: 'Teach first', body: `Frame ${teacherTopic} by anchoring timeframe, place, main actors, and why students should care before drilling clues.` },
@@ -2831,8 +2831,8 @@ function buildLocalCoachChatReply(message, snapshot = buildCoachChatStudyContext
       title: topic ? `Study brief: ${topic}` : 'Study brief',
       topic,
       message: topic
-        ? `This looks like a knowledge question about ${topic}. DeepSeek did not return a usable knowledge response for this request, so I am showing the built-in study fallback instead.`
-        : 'This looks like a knowledge question. DeepSeek did not return a usable knowledge response for this request, so I am showing the built-in study fallback instead.',
+        ? `This looks like a knowledge question about ${topic}. Coach guidance did not return a usable response for this request, so I am showing the built-in study fallback instead.`
+        : 'This looks like a knowledge question. Coach guidance did not return a usable response for this request, so I am showing the built-in study fallback instead.',
       highlights: ['Knowledge mode', topic ? 'Topic-focused answer' : 'Reference lookup ready', 'Follow-up prompts stay on topic'].filter(Boolean),
       sections: [
         { heading: 'What to lock in first', body: topic ? `Start with the definition, timeframe, main actors, and why ${topic} matters in the broader historical story.` : 'Start with the definition, timeframe, main actors, and why the topic matters in the broader historical story.' },
@@ -2868,12 +2868,12 @@ function buildLocalCoachChatReply(message, snapshot = buildCoachChatStudyContext
       ];
     }
   } else if (prompt.includes('notebook') || prompt.includes('lesson') || prompt.includes('coach')) {
-    title = topFocusKey ? `Notebook plan for ${topFocusTitle}` : 'Use AI Notebook for explanation, not repetition';
-    reply = `AI Notebook is best when you need explanation and pattern review, not repetition of the exact same misses. You have ${notebookOpen} open lesson${notebookOpen === 1 ? '' : 's'}${topFocusKey ? `, and ${topFocusTitle} is the clearest recurring lane.` : '.'}`;
-    actions.push(coachChatAction('open_ai_notebook', 'Open AI Notebook', 'Review saved DeepSeek lessons and mastery state.'));
+    title = topFocusKey ? `Notebook plan for ${topFocusTitle}` : 'Use the Mistake Notebook for explanation';
+    reply = `The Mistake Notebook is best when you need explanation, mistake diagnosis, and pattern review. You have ${notebookOpen} open lesson${notebookOpen === 1 ? '' : 's'}${topFocusKey ? `, and ${topFocusTitle} is the clearest recurring lane.` : '.'}`;
+    actions.push(coachChatAction('open_ai_notebook', 'Open Mistake Notebook', 'Review saved explanations and mastery state.'));
     if (topFocusKey) {
       actions.push(coachChatAction('apply_top_focus', `Apply ${topFocusTitle}`, 'Load that focus into the practice builder.', { focus_key: topFocusKey }));
-      actions.push(coachChatAction('generate_focus_drill', `Generate ${topFocusTitle}`, 'Turn that notebook pattern into a fresh drill.', { focus_key: topFocusKey }));
+      actions.push(coachChatAction('generate_focus_drill', `Create ${topFocusTitle} drill`, 'Turn that notebook pattern into a targeted drill.', { focus_key: topFocusKey }));
     }
     sections = [
       { heading: 'What Notebook is for', body: 'Use it to understand why you missed something, spot recurring patterns, and collect the right mental model.' },
@@ -2883,7 +2883,7 @@ function buildLocalCoachChatReply(message, snapshot = buildCoachChatStudyContext
     title = `Recover from ${recentIncorrect.title}`;
     reply = `You just missed ${recentIncorrect.title}. Review the notebook explanation once, then run a short focused set before going back to mixed drilling.`;
     actions.push(coachChatAction('open_ai_notebook', 'Open the lesson', 'Reopen the saved explanation for this miss.'));
-    actions.push(coachChatAction('generate_focus_drill', `Generate ${recentIncorrect.title}`, 'Build a short corrective drill from the same lane.', { focus_key: recentIncorrect.key }));
+    actions.push(coachChatAction('generate_focus_drill', `Create ${recentIncorrect.title} drill`, 'Build a short corrective drill from the same lane.', { focus_key: recentIncorrect.key }));
     actions.push(coachChatAction('review_last_misses', 'Review recent misses', 'Revisit the review queue before resuming mixed practice.'));
     sections = [
       { heading: 'Why this matters', body: 'A fresh miss is the highest-signal evidence you have. Fixing it immediately usually pays off faster than adding more random volume.' },
@@ -2899,10 +2899,10 @@ function buildLocalCoachChatReply(message, snapshot = buildCoachChatStudyContext
     reply = `Your notebook keeps pointing back to ${topFocusTitle}. Use that as the next targeted block, then return to mixed practice after accuracy stabilizes.`;
     actions.push(coachChatAction('apply_top_focus', `Apply ${topFocusTitle}`, 'Load the recurring notebook focus into setup.', { focus_key: topFocusKey }));
     actions.push(coachChatAction('generate_focus_drill', `Generate ${topFocusTitle}`, 'Create fresh questions in the same lane.', { focus_key: topFocusKey }));
-    actions.push(coachChatAction('open_ai_notebook', 'Open AI Notebook', 'Review the supporting explanations first.'));
+    actions.push(coachChatAction('open_ai_notebook', 'Open Mistake Notebook', 'Review the supporting explanations first.'));
   } else if (totalSessions <= 0) {
     title = 'Get one clean baseline session first';
-    reply = 'Start with one normal mixed drill to create enough evidence for stronger recommendations. Once you miss a few questions, Wrong-bank and AI Notebook become much more useful.';
+    reply = 'Start with one normal mixed drill to create enough evidence for stronger recommendations. Once you miss a few questions, Wrong-bank and the Mistake Notebook become much more useful.';
     actions.push(coachChatAction('start_current_session', 'Start current session', 'Begin the drill you have configured now.'));
     actions.push(coachChatAction('open_setup', 'Open setup', 'Tune region, era, and mode before starting.'));
   } else if (topRecommendation?.title && prompt.includes('recommend')) {
@@ -2934,7 +2934,7 @@ function buildLocalCoachChatReply(message, snapshot = buildCoachChatStudyContext
     title = topFocusKey ? `Use ${topFocusTitle} as the next smart block` : 'Keep momentum with one targeted block and one mixed block';
     if (topFocusKey) actions.push(coachChatAction('apply_top_focus', `Apply ${topFocusTitle}`, 'Set up a targeted block first.', { focus_key: topFocusKey }));
     actions.push(coachChatAction('start_current_session', 'Start current session', 'Run the current practice setup.'));
-    actions.push(coachChatAction('open_review', 'Open Review', 'Check wrong-bank and session debrief before deciding.'));
+    actions.push(coachChatAction('open_review', 'Open Session Review', 'Check wrong-bank and the latest session focus before deciding.'));
   }
 
   if (wrongDue > 0) highlights.push(`${wrongDue} due in Wrong-bank`);
@@ -3134,13 +3134,13 @@ function beginCoachChatResize(event) {
 
 function coachChatPromptForReason(reason = 'manual') {
   if (reason === 'miss') {
-    return 'I just missed a question. What should I practice next, and should I use AI Notebook, Wrong-bank, or a generated focus drill?';
+    return 'I just missed a question. Diagnose the mistake and give me one next practice step.';
   }
   if (reason === 'wrong-bank') {
     return 'What should I do with my due wrong-bank cards right now?';
   }
   if (reason === 'notebook') {
-    return 'Which AI Notebook focus should I train next?';
+    return 'Which Mistake Notebook focus should I train next?';
   }
   return 'What should I practice next in this practice hub?';
 }
@@ -3396,7 +3396,7 @@ function buildCoachFocusSuggestions(records = CoachNotebook.records) {
         topic: entry.topic,
         icon: entry.icon,
         meta: `${entry.unresolved} open lesson${entry.unresolved === 1 ? '' : 's'} • ${entry.incorrect} incorrect`,
-        reason: entry.coach?.summary || entry.coach?.error_diagnosis || entry.sample?.reason || 'DeepSeek has highlighted this area repeatedly in recent practice.',
+        reason: entry.coach?.summary || entry.coach?.error_diagnosis || entry.sample?.reason || 'The Coach highlighted this area repeatedly in recent practice.',
         action: entry.coach?.study_tip || entry.coach?.key_clues?.[0] || entry.coach?.related_facts?.[0] || 'Run a targeted drill on this focus.',
         priority,
         attemptId: String(entry.sample?.client_attempt_id || '').trim()
@@ -3425,8 +3425,8 @@ function coachFocusCardHtml(focus, index, actionClass) {
       </div>
       <div class="coach-focus-actions">
         <button class="btn pri ${actionClass}" type="button" data-focus-index="${index}" data-focus-scope="${scope}">Apply Focus</button>
-        <button class="btn ghost coach-generate-focus" type="button" data-focus-index="${index}" data-focus-scope="${scope}">Generate Drill</button>
-        ${focus.attemptId ? `<button class="btn ghost coach-jump-note" type="button" data-attempt="${escHtml(focus.attemptId)}">Open Lesson</button>` : `<button class="btn ghost coach-open-notebook" type="button">Open AI Notebook</button>`}
+        <button class="btn ghost coach-generate-focus" type="button" data-focus-index="${index}" data-focus-scope="${scope}">Create Targeted Drill</button>
+        ${focus.attemptId ? `<button class="btn ghost coach-jump-note" type="button" data-attempt="${escHtml(focus.attemptId)}">Open Lesson</button>` : `<button class="btn ghost coach-open-notebook" type="button">Open Mistake Notebook</button>`}
       </div>
     </div>
   `;
@@ -3667,12 +3667,12 @@ function renderSetupCoachGuide() {
 async function clearCoachNotebook() {
   const total = Array.isArray(CoachNotebook.records) ? CoachNotebook.records.length : 0;
   if (!total) {
-    toast('AI notebook is already empty');
+    toast('Mistake notebook is already empty');
     return;
   }
-  const firstWarning = confirm(`Clear ${total} saved AI notebook lesson${total === 1 ? '' : 's'}? This cannot be undone.`);
+  const firstWarning = confirm(`Clear ${total} saved mistake notebook lesson${total === 1 ? '' : 's'}? This cannot be undone.`);
   if (!firstWarning) return;
-  const secondWarning = confirm('This will remove your saved AI notebook lessons from this device and, if available, from cloud sync as well. Continue?');
+  const secondWarning = confirm('This will remove your saved mistake notebook lessons from this device and, if available, from cloud sync as well. Continue?');
   if (!secondWarning) return;
 
   CoachNotebook.records = [];
@@ -3702,7 +3702,7 @@ async function clearCoachNotebook() {
   }
 
   playFeedbackCue('unmastered');
-  toast(cloudCleared ? 'AI notebook cleared locally and in the cloud' : 'AI notebook cleared on this device');
+  toast(cloudCleared ? 'Mistake notebook cleared locally and in the cloud' : 'Mistake notebook cleared on this device');
 }
 
 function renderSessionCoachDebrief() {
@@ -6540,7 +6540,7 @@ async function submitAnswer(auto = false) {
     const loadingCoach = normalizeCoach({
       summary: skipDeepSeekForNoAttempt
         ? 'No attempt submitted. Preparing a quick study note without AI grading...'
-        : 'Incorrect. Generating personalized DeepSeek coaching...',
+        : 'Incorrect. Preparing personalized coaching...',
       error_diagnosis: skipDeepSeekForNoAttempt
         ? 'This answer was marked as a no-attempt and skipped AI grading.'
         : 'Analyzing your answer against the expected concept...',

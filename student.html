@@ -57,7 +57,7 @@
                     <div class="metric-card">
                         <div class="metric-label">Coach notes</div>
                         <div id="student-hero-coach" class="metric-value">0</div>
-                        <div class="metric-note">DeepSeek lessons still worth reviewing.</div>
+                        <div class="metric-note">Mistake lessons still worth reviewing.</div>
                     </div>
                 </div>
             </div>
@@ -67,11 +67,11 @@
                 <a href="livebee.html" class="btn ghost">Live Bee</a>
                 <a href="#" id="btn-logout" class="btn bad">Logout</a>
                 <button id="coach-chat-launcher" class="coach-chat-launcher" type="button" aria-controls="coach-chat-sidebar"
-                    aria-expanded="false" aria-label="Open DeepSeek training assistant" title="Launch DeepSeek AI assistant for real-time explanations and guided practice">
-                    <span class="coach-chat-launcher-icon">DS</span>
+                    aria-expanded="false" aria-label="Open Coach" title="Open the Coach for explanations, mistake diagnosis, and next-practice advice">
+                    <span class="coach-chat-launcher-icon">Co</span>
                     <span class="coach-chat-launcher-copy">
-                        <span class="coach-chat-launcher-title">DeepSeek</span>
-                        <span id="coach-chat-launcher-note" class="coach-chat-launcher-note">Open coach chat</span>
+                        <span class="coach-chat-launcher-title">Coach</span>
+                        <span id="coach-chat-launcher-note" class="coach-chat-launcher-note">Explain a miss</span>
                     </span>
                     <span id="coach-chat-launcher-count" class="coach-chat-launcher-count hidden">0</span>
                 </button>
@@ -91,7 +91,7 @@
             <div class="dashboard-tab-group" data-tabs="coach goals analytics leaderboard">
                 <button class="dashboard-tab-group-trigger" type="button" data-default-tab="coach" aria-haspopup="true">Practice</button>
                 <div class="dashboard-tab-menu" role="menu">
-                    <button class="dash-tab" type="button" data-tab="coach" title="Access Coach mode: review AI notes and personal focuses" role="menuitem">Coach</button>
+                    <button class="dash-tab" type="button" data-tab="coach" title="Review mistake notes and personal focuses" role="menuitem">Coach</button>
                     <button class="dash-tab" type="button" data-tab="goals" title="Weekly practice goals, streaks, and progress tracking" role="menuitem">Goals</button>
                     <button class="dash-tab" type="button" data-tab="analytics" title="View your Blind Spot Analytics and 30-day hub performance history" role="menuitem">Analytics</button>
                     <button class="dash-tab" type="button" data-tab="leaderboard" role="menuitem">Leaderboard</button>
@@ -208,8 +208,8 @@
                                     <h3>Assignment Coach</h3>
                                 </div>
                                 <div class="assignment-actions" style="margin-top: 10px;">
-                                    <button id="btn-assignments-coach-drill" class="btn pri" type="button" title="Start an assignment hub with active DeepSeek AI Coach guidance">Guided Hub</button>
-                                    <button id="btn-assignments-coach-tab" class="btn ghost" type="button" title="Open the Coach Workspace to review lessons and focuses">Workspace</button>
+                                    <button id="btn-assignments-coach-drill" class="btn pri" type="button" title="Start a guided assignment practice hub">Guided Hub</button>
+                                    <button id="btn-assignments-coach-tab" class="btn ghost" type="button" title="Open the Mistake Notebook to review lessons and focuses">Notebook</button>
                                 </div>
                             </div>
                             <div id="assignments-coach-summary" class="coach-brief-copy muted">Coach focus will appear here.</div>
@@ -384,8 +384,8 @@
                 <div class="card-muted-box generator-card" style="margin-bottom: 18px;">
                     <div class="section-head" style="margin-bottom: 12px;">
                         <div>
-                            <h3 style="margin: 0;">DeepSeek Draft Builder</h3>
-                            <p id="teacher-gen-status" class="section-subtitle" style="margin: 0;">AI Generation</p>
+                            <h3 style="margin: 0;">Draft Builder</h3>
+                            <p id="teacher-gen-status" class="section-subtitle" style="margin: 0;">Targeted question drafting</p>
                         </div>
                         <div class="inline-actions">
                             <button id="btn-teacher-generate" class="btn pri" type="button">Generate Draft</button>
@@ -617,19 +617,19 @@
                             <div class="analytics-ai-head">
                                 <div>
                                     <div class="analytics-panel-kicker">Interpretation</div>
-                                    <h3 title="Uses DeepSeek AI to interpret your Blind Spot data and recommend a personalized study plan.">DeepSeek Weak-Area Coach</h3>
-                                    <p class="section-subtitle">Weak-area summary.</p>
+                                    <h3 title="Interprets your Blind Spot data and recommends the next useful practice block.">Recommended Next Practice</h3>
+                                    <p class="section-subtitle">Weak-area plan.</p>
                                 </div>
                                 <div class="inline-actions">
                                     <span id="analytics-ai-badge" class="pill">Ready</span>
-                                    <button id="btn-analytics-ai" class="btn pri" type="button">Generate Insights</button>
+                                    <button id="btn-analytics-ai" class="btn pri" type="button">Refresh Plan</button>
                                 </div>
                             </div>
                             <div id="analytics-ai-status" class="analytics-ai-status muted">30-day hub data ready.</div>
                             <div id="analytics-ai-content" class="analytics-ai-content">
                                 <div class="analytics-ai-placeholder">
-                                    <h4>Insights ready</h4>
-                                    <p class="muted">Generate a summary when ready.</p>
+                                    <h4>Practice plan ready</h4>
+                                    <p class="muted">Refresh the plan when you want a next-step recommendation.</p>
                                 </div>
                             </div>
                         </div>
@@ -762,9 +762,8 @@
                                     <div id="acc-setting-practice-hub-auto-open" class="practice-hub-toggle-setting" data-enabled="true">
                                         <div class="practice-hub-toggle-card">
                                             <div class="practice-hub-toggle-copy">
-                                                <p class="practice-hub-toggle-summary">Open the DeepSeek sidebar automatically when
-                                                    you enter Practice Hub.</p>
-                                                <p id="acc-practice-hub-auto-open-hint" class="muted practice-hub-toggle-hint">DeepSeek opens automatically when you enter Practice Hub. You can still launch it manually anytime.</p>
+                                                <p class="practice-hub-toggle-summary">Open the Coach automatically when you enter Practice Hub.</p>
+                                                <p id="acc-practice-hub-auto-open-hint" class="muted practice-hub-toggle-hint">The Coach stays optional by default. You can still launch it manually anytime.</p>
                                             </div>
                                             <label class="practice-hub-switch" for="acc-practice-hub-auto-open">
                                                 <input id="acc-practice-hub-auto-open" type="checkbox" role="switch"
@@ -776,11 +775,11 @@
                                             </label>
                                         </div>
                                     </div>
-                                    <div id="acc-setting-assistant-thinking" class="practice-hub-toggle-setting" data-enabled="false" title="When enabled, DeepSeek uses advanced reasoning to provide deeper, step-by-step coaching explanations.">
+                                    <div id="acc-setting-assistant-thinking" class="practice-hub-toggle-setting" data-enabled="false" title="When enabled, the Coach gives deeper explanation and diagnosis.">
                                         <div class="practice-hub-toggle-card">
                                             <div class="practice-hub-toggle-copy">
-                                                <p class="practice-hub-toggle-summary">Start the coach with Thinking Model enabled.</p>
-                                                <p id="acc-assistant-thinking-hint" class="muted practice-hub-toggle-hint">DeepSeek starts in its faster default mode until you turn on reasoning.</p>
+                                                <p class="practice-hub-toggle-summary">Start the Coach with detailed reasoning enabled.</p>
+                                                <p id="acc-assistant-thinking-hint" class="muted practice-hub-toggle-hint">The Coach starts in its faster default mode until you turn on detailed reasoning.</p>
                                             </div>
                                             <label class="practice-hub-switch" for="acc-assistant-thinking">
                                                 <input id="acc-assistant-thinking" type="checkbox" role="switch"
@@ -793,7 +792,7 @@
                                         </div>
                                     </div>
                                     <div class="input-group" style="margin: 0;">
-                                        <label for="acc-assistant-response-detail">DeepSeek response detail</label>
+                                        <label for="acc-assistant-response-detail">Coach response detail</label>
                                         <select id="acc-assistant-response-detail">
                                             <option value="detailed">Detailed</option>
                                             <option value="compact">Compact</option>
@@ -803,7 +802,7 @@
                                     <div id="acc-setting-assistant-starters" class="practice-hub-toggle-setting" data-enabled="true">
                                         <div class="practice-hub-toggle-card">
                                             <div class="practice-hub-toggle-copy">
-                                                <p class="practice-hub-toggle-summary">Show suggested DeepSeek prompts in the dashboard coach.</p>
+                                                <p class="practice-hub-toggle-summary">Show suggested Coach prompts in the dashboard coach.</p>
                                                 <p id="acc-assistant-starters-hint" class="muted practice-hub-toggle-hint">Starter prompts stay visible until you begin your own coach conversation.</p>
                                             </div>
                                             <label class="practice-hub-switch" for="acc-assistant-starters">
@@ -856,6 +855,14 @@
                 </div>
                 <div class="dashboard-split dashboard-split-solo">
                     <div class="list-container">
+                        <div class="list-item">
+                            <div>
+                                <h3 style="margin:0 0 4px;">Cleaner Training Flow</h3>
+                                <div class="pill">June 14, 2026</div>
+                                <p class="muted" style="margin: 8px 0 0;">The Coach is now focused on explanations, mistake diagnosis, and next-practice advice, while Session Review and Mistake Notebook carry the post-practice training flow.</p>
+                            </div>
+                        </div>
+
                         <div class="list-item">
                             <div>
                                 <h3 style="margin:0 0 4px;">DeepSeek Topic-First Buzz Coaching</h3>
@@ -1514,8 +1521,8 @@
                     <p class="muted" style="margin: 0;">Sharpen your skills with endless practice questions. Track your progress to identify weaknesses.</p>
                 </div>
                 <div class="card-muted-box">
-                    <h4 style="margin: 0 0 4px;">DeepSeek AI Coach</h4>
-                    <p class="muted" style="margin: 0;">A dedicated assistant to explain answers, guide your practice, and help you improve.</p>
+                    <h4 style="margin: 0 0 4px;">Coach</h4>
+                    <p class="muted" style="margin: 0;">A focused helper for answer explanations, mistake diagnosis, and next-practice advice.</p>
                 </div>
                 <div class="card-muted-box">
                     <h4 style="margin: 0 0 4px;">Live Bee</h4>
@@ -1555,9 +1562,9 @@
         <div class="coach-chat-panel">
             <div class="coach-chat-head">
                 <div class="coach-chat-head-copy">
-                    <div class="eyebrow">DeepSeek student coach</div>
-                    <h2 class="card-title">Study Assistant</h2>
-                    <p id="coach-chat-context-summary" class="coach-chat-context-summary">Reviewing your practice history, Wrong-bank, and AI Notebook.</p>
+                    <div class="eyebrow">Training coach</div>
+                    <h2 class="card-title">Coach</h2>
+                    <p id="coach-chat-context-summary" class="coach-chat-context-summary">Explains misses, diagnoses mistakes, and recommends next practice.</p>
                 </div>
                 <div class="coach-chat-head-actions">
                     <button id="coach-chat-new" class="btn ghost coach-chat-utility-btn" type="button">New Chat</button>
@@ -1569,12 +1576,12 @@
             <div id="coach-chat-body" class="coach-chat-body">
                 <div id="coach-chat-status-pills" class="coach-chat-status-pills"></div>
                 <div class="coach-chat-section-block">
-                    <div class="coach-chat-section-label">Practice shortcuts</div>
+                    <div class="coach-chat-section-label">Next practice</div>
                     <div id="coach-chat-workspace" class="coach-chat-workspace"></div>
                 </div>
                 <div id="coach-chat-messages" class="coach-chat-messages" aria-live="polite"></div>
                 <div id="coach-chat-starter-box" class="coach-chat-starter-block">
-                    <div class="coach-chat-section-label">Study prompts</div>
+                    <div class="coach-chat-section-label">Coach prompts</div>
                     <div id="coach-chat-starters" class="coach-chat-starters"></div>
                 </div>
             </div>
@@ -1583,16 +1590,16 @@
             </button>
 
             <form id="coach-chat-form" class="coach-chat-form">
-                <div class="coach-chat-section-label">Ask a study question</div>
+                <div class="coach-chat-section-label">Ask the coach</div>
                 <label class="coach-chat-input-wrap" for="coach-chat-input">
                     <textarea id="coach-chat-input" rows="2"
-                        placeholder="Ask what to practice, why you missed something, or for background on an IHBB topic."></textarea>
+                        placeholder="Ask why you missed, why the answer fits, or what to practice next."></textarea>
                 </label>
                 <div class="coach-chat-form-utility">
-                    <button id="coach-chat-thinking-toggle" class="coach-chat-thinking-toggle" type="button" aria-pressed="false" title="Toggle DeepSeek Thinking Model: Enforces deeper AI reasoning for more detailed and structured explanations when turned ON.">Thinking Model: Off</button>
+                    <button id="coach-chat-thinking-toggle" class="coach-chat-thinking-toggle" type="button" aria-pressed="false" title="Toggle detailed Coach reasoning for deeper explanation and mistake diagnosis.">Detailed Reasoning: Off</button>
                 </div>
                 <div class="coach-chat-form-actions">
-                    <div id="coach-chat-hint" class="muted">Auto mode balances explanations with next practice steps.</div>
+                    <div id="coach-chat-hint" class="muted">Coach answers stay focused on explanation, diagnosis, and next practice.</div>
                     <button id="coach-chat-send" class="btn pri" type="submit">Send</button>
                 </div>
             </form>

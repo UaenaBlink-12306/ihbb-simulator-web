@@ -3351,7 +3351,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         btn.disabled = true;
         const originalText = btn.textContent;
         btn.textContent = 'Generating...';
-        updateGeneratorStatus('DeepSeek is drafting a fresh assignment set...', 'muted');
+        updateGeneratorStatus('Draft Builder is creating a fresh assignment set...', 'muted');
         try {
             const items = await requestGeneratedQuestions();
             if (!items.length) throw new Error('No valid generated questions came back.');
@@ -4227,8 +4227,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             return applyAssignmentQuestionSuggestions(criteria, { ...options, silent: true });
         }
         if (!options.silent) {
-            showAlert(`DeepSeek is hand-picking ${count} real question-bank item${count === 1 ? '' : 's'}...`, 'success');
-            updateGeneratorStatus(`DeepSeek is reviewing ${rows.length} real question-bank candidate${rows.length === 1 ? '' : 's'} for this assignment action...`, 'muted');
+            showAlert(`Draft Builder is hand-picking ${count} real question-bank item${count === 1 ? '' : 's'}...`, 'success');
+            updateGeneratorStatus(`Draft Builder is reviewing ${rows.length} real question-bank candidate${rows.length === 1 ? '' : 's'} for this assignment action...`, 'muted');
         }
         try {
             const response = await fetch('/api/coach-chat', {
@@ -4253,8 +4253,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             applyPickedAssignmentQuestions(picked, criteria, options);
             if (!options.silent) {
                 const sourceNote = data?.candidate_count ? ` from ${data.candidate_count} reviewed candidate${data.candidate_count === 1 ? '' : 's'}` : '';
-                showAlert(`DeepSeek hand-picked ${picked.length} real question${picked.length === 1 ? '' : 's'}${sourceNote}.`, 'success');
-                updateGeneratorStatus(`DeepSeek selected ${picked.length} existing question${picked.length === 1 ? '' : 's'} from the question bank. Review the draft before publishing.`, 'muted');
+                showAlert(`Draft Builder hand-picked ${picked.length} real question${picked.length === 1 ? '' : 's'}${sourceNote}.`, 'success');
+                updateGeneratorStatus(`Draft Builder selected ${picked.length} existing question${picked.length === 1 ? '' : 's'} from the question bank. Review the draft before publishing.`, 'muted');
             }
             return picked;
         } catch (err) {
@@ -4262,8 +4262,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             const picked = applyAssignmentQuestionSuggestions(criteria, { ...options, silent: true });
             if (!options.silent) {
                 if (picked.length) {
-                    showAlert(`DeepSeek selection was unavailable, so the local question-bank picker selected ${picked.length} real question${picked.length === 1 ? '' : 's'}.`, 'success');
-                    updateGeneratorStatus('DeepSeek question selection was unavailable; the assignment draft uses the local question-bank fallback.', 'muted');
+                    showAlert(`Draft Builder selection was unavailable, so the local question-bank picker selected ${picked.length} real question${picked.length === 1 ? '' : 's'}.`, 'success');
+                    updateGeneratorStatus('Draft Builder question selection was unavailable; the assignment draft uses the local question-bank fallback.', 'muted');
                 } else {
                     showAlert('DeepSeek could not pick matching questions yet.', 'error');
                     updateGeneratorStatus('DeepSeek question selection did not find matching bank questions.', 'error');
@@ -5947,7 +5947,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 </div>
                 <div class="coach-chat-thinking-bubble">
                     <div class="coach-chat-thinking-dots" aria-hidden="true"><span></span><span></span><span></span></div>
-                    <div class="coach-chat-loading">${dashboardChat.ui.thinkingEnabled ? 'DeepSeek reasoner is synthesizing class analytics, assignment drafts, and lesson planning context.' : 'DeepSeek is reviewing your classes, assignments, analytics, and question bank context.'}</div>
+                    <div class="coach-chat-loading">${dashboardChat.ui.thinkingEnabled ? 'Planning Coach is synthesizing class analytics, assignment drafts, and lesson planning context.' : 'Planning Coach is reviewing your classes, assignments, analytics, and question bank context.'}</div>
                 </div>
             </div>
         ` : '';
@@ -6027,7 +6027,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (thinkingBtn) {
             thinkingBtn.classList.toggle('active', !!dashboardChat.ui.thinkingEnabled);
             thinkingBtn.setAttribute('aria-pressed', dashboardChat.ui.thinkingEnabled ? 'true' : 'false');
-            thinkingBtn.textContent = `Thinking Model: ${dashboardChat.ui.thinkingEnabled ? 'On' : 'Off'}`;
+            thinkingBtn.textContent = `Detailed Reasoning: ${dashboardChat.ui.thinkingEnabled ? 'On' : 'Off'}`;
         }
         if (fullBtn) {
             fullBtn.textContent = dashboardChat.ui.fullscreen ? 'Windowed' : 'Full Screen';
