@@ -486,7 +486,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // ==================== GAME STATE ====================
     let room = null;         // { id, code, host_id, status }
-    let channel = null;      // Supabase Realtime channel
+    let authorityChannel = null;
+    let playerChannel = null;
     let players = {};        // { [userId]: { name, score, avatarId } }
     let gameQuestions = [];   // Array of { question, answer, aliases, meta }
     let questionIndex = -1;
@@ -498,6 +499,22 @@ document.addEventListener('DOMContentLoaded', async () => {
     let activeRoundId = null;
     let confettiCleanupTimer = null;
     let roundReviews = [];
+    const sendAuthority = (event, payload = {}) => {
+        if (!isHost || !authorityChannel) throw new Error('Host authority channel is unavailable.');
+        return authorityChannel.send({ type: 'broadcast', event, payload });
+    };
+    const sendPlayer = (event, payload = {}) => {
+        if (!playerChannel) throw new Error('Player channel is unavailable.');
+        return playerChannel.send({ type: 'broadcast', event, payload });
+    };
+    const PLAYER_EVENTS = new Set(['player_join', 'player_leave', 'buzz', 'answer_submit']);
+    const channel = {
+        send(message = {}) {
+            return PLAYER_EVENTS.has(message.event)
+                ? sendPlayer(message.event, message.payload || {})
+                : sendAuthority(message.event, message.payload || {});
+        }
+    };
 
     // ==================== LOBBY ====================
     $('lobby-host').classList.remove('hidden');
@@ -522,7 +539,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         BeeHostMusic.enabled = isHost && beePrefs.liveBeeHostMusic !== false;
         
         upsertPlayer(uid, { name: myName, score: 0, avatarId: myAvatarId });
-        await sb.from('bee_participants').insert({ room_id: room.id, user_id: uid, display_name: myName, score: 0 });
+        const hostJoin = await sb.rpc('join_bee_room_by_code', { p_code: code, p_display_name: myName });
+        if (hostJoin.error) { await sb.from('bee_rooms').delete().eq('id', room.id); showAlert('Failed to join the new room.'); return; }
         playBeeCue('join');
         void startHostMusic();
         enterWaitingRoom();
@@ -578,10 +596,11 @@ document.addEventListener('DOMContentLoaded', async () => {
             setupHostQuestionUI();
         }
 
-        // Subscribe to Realtime channel
-        channel = sb.channel('bee:' + room.code, { config: { broadcast: { self: true } } });
+        await sb.realtime.setAuth(session.access_token);
+        authorityChannel = sb.channel('bee-host:' + room.id, { config: { private: true, broadcast: { self: true } } });
+        playerChannel = sb.channel('bee-player:' + room.id, { config: { private: true, broadcast: { self: true } } });
 
-        channel.on('broadcast', { event: 'player_join' }, ({ payload }) => {
+        playerChannel.on('broadcast', { event: 'player_join' }, ({ payload }) => {
             upsertPlayer(payload.userId, {
                 name: payload.name,
                 avatarId: payload.avatarId,
@@ -591,13 +610,13 @@ document.addEventListener('DOMContentLoaded', async () => {
             renderPlayerList();
         });
 
-        channel.on('broadcast', { event: 'player_leave' }, ({ payload }) => {
+        playerChannel.on('broadcast', { event: 'player_leave' }, ({ payload }) => {
             delete players[payload.userId];
             if (payload.userId !== uid) playBeeCue('tap', { sound: false });
             renderPlayerList();
         });
 
-        channel.on('broadcast', { event: 'game_start' }, ({ payload }) => {
+        authorityChannel.on('broadcast', { event: 'game_start' }, ({ payload }) => {
             gameQuestions = payload.questions || [];
             questionIndex = -1;
             resetRoundReviews();
@@ -607,72 +626,72 @@ document.addEventListener('DOMContentLoaded', async () => {
             renderScoreboard();
         });
 
-        channel.on('broadcast', { event: 'question' }, ({ payload }) => {
+        authorityChannel.on('broadcast', { event: 'question' }, ({ payload }) => {
             playBeeCue('question', { haptic: false });
             handleNewQuestion(payload);
         });
 
-        channel.on('broadcast', { event: 'buzz_ack' }, ({ payload }) => {
+        authorityChannel.on('broadcast', { event: 'buzz_ack' }, ({ payload }) => {
             handleBuzzAck(payload);
         });
 
-        channel.on('broadcast', { event: 'your_turn' }, ({ payload }) => {
+        authorityChannel.on('broadcast', { event: 'your_turn' }, ({ payload }) => {
             handleYourTurn(payload);
         });
 
-        channel.on('broadcast', { event: 'answer_show' }, ({ payload }) => {
+        authorityChannel.on('broadcast', { event: 'answer_show' }, ({ payload }) => {
             handleAnswerShow(payload);
         });
 
-        channel.on('broadcast', { event: 'result' }, ({ payload }) => {
+        authorityChannel.on('broadcast', { event: 'result' }, ({ payload }) => {
             handleResult(payload);
         });
 
-        channel.on('broadcast', { event: 'result_update' }, ({ payload }) => {
+        authorityChannel.on('broadcast', { event: 'result_update' }, ({ payload }) => {
             handleResultUpdate(payload);
         });
 
-        channel.on('broadcast', { event: 'scores' }, ({ payload }) => {
+        authorityChannel.on('broadcast', { event: 'scores' }, ({ payload }) => {
             Object.entries(payload.scores).forEach(([id, s]) => {
                 if (players[id]) players[id].score = s;
             });
             renderScoreboard();
         });
 
-        channel.on('broadcast', { event: 'reveal' }, ({ payload }) => {
+        authorityChannel.on('broadcast', { event: 'reveal' }, ({ payload }) => {
             playBeeCue('reveal');
             handleReveal(payload);
         });
 
-        channel.on('broadcast', { event: 'game_end' }, ({ payload }) => {
+        authorityChannel.on('broadcast', { event: 'game_end' }, ({ payload }) => {
             playBeeCue('finish');
             handleGameEnd(payload);
         });
 
-        channel.on('broadcast', { event: 'tts_stop' }, () => {
+        authorityChannel.on('broadcast', { event: 'tts_stop' }, () => {
             ttsStop();
             ttsAborted = true;
         });
 
         if (isHost) {
-            channel.on('broadcast', { event: 'buzz' }, ({ payload }) => {
+            playerChannel.on('broadcast', { event: 'buzz' }, ({ payload }) => {
                 handleHostBuzz(payload);
             });
 
-            channel.on('broadcast', { event: 'answer_submit' }, ({ payload }) => {
+            playerChannel.on('broadcast', { event: 'answer_submit' }, ({ payload }) => {
                 void handleHostAnswerSubmit(payload);
             });
         }
 
         try {
-            await waitForSubscription(channel);
+            await Promise.all([waitForSubscription(authorityChannel), waitForSubscription(playerChannel)]);
         } catch {
             showAlert('Realtime connection failed. Please refresh and rejoin the room.');
             return;
         }
 
         // Announce presence
-        channel.send({ type: 'broadcast', event: 'player_join', payload: { userId: uid, name: myName, avatarId: myAvatarId } });
+        sendPlayer('player_join', { userId: uid, name: myName, avatarId: myAvatarId });
 
         // Load current participants from DB
         const { data: parts } = await sb.from('bee_participants').select('user_id, display_name, score').eq('room_id', room.id);
@@ -723,9 +742,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     $('btn-leave')?.addEventListener('click', async () => {
         playBeeCue('tap', { sound: false });
         stopHostMusic();
-        if (channel) {
-            channel.send({ type: 'broadcast', event: 'player_leave', payload: { userId: uid } });
-            sb.removeChannel(channel); channel = null;
+        if (playerChannel) {
+            sendPlayer('player_leave', { userId: uid });
+            sb.removeChannel(playerChannel); playerChannel = null;
+        }
+        if (authorityChannel) {
+            sb.removeChannel(authorityChannel); authorityChannel = null;
         }
         if (room) {
             await sb.from('bee_participants').delete().eq('room_id', room.id).eq('user_id', uid);
@@ -1370,7 +1392,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Phase 2: DeepSeek grading.
         let deepseekResult = false;
         try {
-            const resp = await fetch('/api/grade', {
+            const resp = await IHBBSecurity.authenticatedFetch(sb, '/api/grade', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -1454,51 +1476,32 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
 
     async function endBee() {
-        // Save final scores to DB
-        for (const [id, p] of Object.entries(players)) {
-            try {
-                await sb.from('bee_participants').update({ score: p.score }).eq('room_id', room.id).eq('user_id', id);
-            } catch { }
-        }
-        await sb.from('bee_rooms').update({ status: 'finished' }).eq('id', room.id);
-
-        // Save post-game review for each participant
+        if (!isHost) return;
         const reviewPayload = buildPostGameReviewPayload();
-        const standings = getFinalStandings();
         const summary = {
             totalQuestions: gameQuestions.length,
             solved: reviewPayload.filter(item => item.solvedBy).length,
             missed: reviewPayload.filter(item => !item.solvedBy).length,
             totalAttempts: reviewPayload.reduce((sum, item) => sum + (item.attempts ? item.attempts.length : 0), 0)
         };
-        for (const [id, p] of Object.entries(players)) {
-            if (id === room.host_id && myRole !== 'teacher') continue; // skip non-teacher host
-            const standing = standings.find(s => s.id === id);
-            try {
-                await sb.from('livebee_game_reviews').insert({
-                    room_id: room.id,
-                    user_id: id,
-                    room_code: room.code,
-                    host_name: players[room.host_id]?.name || 'Host',
-                    player_count: Object.keys(players).length - (room.host_id ? 1 : 0),
-                    my_rank: standing ? standing.rank : null,
-                    my_score: p.score,
-                    standings: JSON.stringify(standings.map(s => ({
-                        rank: s.rank, name: s.name, avatarId: s.avatarId, score: s.score
-                    }))),
-                    review: JSON.stringify(reviewPayload),
-                    summary: JSON.stringify(summary)
-                });
-            } catch { /* Review save is best-effort */ }
-        }
-
-        channel.send({ type: 'broadcast', event: 'game_end', payload: { review: reviewPayload } });
+        const scores = Object.fromEntries(Object.entries(players).map(([id, p]) => [
+            id, Math.max(0, Math.min(100000, Number(p.score) || 0))
+        ]));
+        const { error } = await sb.rpc('finish_bee_game', {
+            p_room_id: room.id,
+            p_scores: scores,
+            p_review: reviewPayload,
+            p_summary: summary,
+            p_host_name: players[room.host_id]?.name || 'Host'
+        });
+        if (error) { showAlert('Could not securely save the final game results.'); return; }
+        sendAuthority('game_end', { review: reviewPayload });
     }
 
     function broadcastScores() {
         const scores = {};
         Object.entries(players).forEach(([id, p]) => { scores[id] = p.score; });
-        channel.send({ type: 'broadcast', event: 'scores', payload: { scores } });
+        sendAuthority('scores', { scores });
     }
 
     // ==================== UI HELPERS ====================

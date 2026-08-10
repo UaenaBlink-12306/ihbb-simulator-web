@@ -4,7 +4,8 @@
   "description": "This repository provides a web-based IHBB practice simulator with: - A browser frontend (`index.html`, `app.js`, `styles.css`) for setup, practice, review, and library management. - A local Python server (`server.py`) that serves static files and provides answer grading APIs. - A data build pipeline (`cleanquestions.py`, `build_db.py`) that converts raw text into `questions.json`.",
   "main": "app.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "node --test tests/security-regression.test.js && python -m unittest discover -s tests -p \"test_*.py\"",
+    "test:security": "node --test tests/security-regression.test.js"
   },
   "repository": {
     "type": "git",

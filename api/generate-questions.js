@@ -228,10 +228,15 @@ async function validateGeneratedQuestion(item) {
   return { valid: true, reason: 'Validation call failed; accepted by default' };
 }
 
+const { requireAiAccess } = require('./_security');
+
 module.exports = async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
+
+  const access = await requireAiAccess(req, res, { endpoint: 'generate-questions', limit: 20, maxBodyBytes: 65536 });
+  if (!access) return;
 
   if (!process.env.DEEPSEEK_API_KEY) {
     return res.status(503).json({ error: 'DeepSeek API key not configured.' });

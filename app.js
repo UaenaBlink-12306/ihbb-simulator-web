@@ -215,7 +215,7 @@ const ASSISTANT_RESPONSE_DETAILS = new Set(['compact', 'detailed']);
 
 const App = {
   pool: [], order: [], i: 0, correct: 0, startTs: 0,
-  sessionBuzzTimes: [], resultsCorrect: [],
+  sessionBuzzTimes: [], resultsCorrect: [], submittedAnswers: [],
   curItem: null, phase: 'idle', // idle|reading|countdown|answering|done
   size: 10, mode: 'random', filters: { cat: '', cats: [], era: '', eras: [], src: '' },
   lastLines: [], readingAbort: false, buzzStart: 0, buzzAt: null,
@@ -1152,7 +1152,7 @@ function coachListHtml(items) {
 }
 function coachWikiHtml(coach) {
   const canonical = String(coach?.canonical_answer || '').trim();
-  const wikiLink = String(coach?.wiki_link || '').trim();
+  const wikiLink = IHBBSecurity.safeWikipediaUrl(coach?.wiki_link);
   if (!wikiLink) return '';
   const linkText = canonical || 'Wikipedia';
   return `<div class="coach-section"><b>Read More:</b> <a class="coach-link" href="${escHtml(wikiLink)}" target="_blank" rel="noopener noreferrer">${escHtml(linkText)}</a></div>`;
@@ -1214,7 +1214,7 @@ function normalizeCoach(coach, item, correct, reason) {
   ], 5);
   const relatedFacts = normalizeCoachList(c.related_facts, fallbackCoachFacts(region, era, topic), 5);
   const canonicalAnswer = canonicalAnswerText(c.canonical_answer || item?.answer || '');
-  const wikiLink = String(c.wiki_link || coachWikiLinkForAnswer(canonicalAnswer)).trim();
+  const wikiLink = IHBBSecurity.safeWikipediaUrl(c.wiki_link || coachWikiLinkForAnswer(canonicalAnswer));
   const confidence = ['high', 'medium', 'low'].includes(String(c.confidence || '').toLowerCase()) ? String(c.confidence).toLowerCase() : 'low';
   return {
     summary: String(c.summary || (correct ? 'Correct answer with good clue alignment.' : 'Answer not accepted; review clue disambiguation.')).trim(),
@@ -3016,7 +3016,7 @@ async function requestCoachChatReply(message, options = {}) {
     response_detail: normalizeAssistantResponseDetail(options.responseDetail || getCurrentAccountSettings().assistant_response_detail),
     user_role: await ensureCurrentProfileRole() || 'student'
   };
-  const response = await fetch('/api/coach-chat', {
+  const response = await IHBBSecurity.authenticatedFetch(sb, '/api/coach-chat', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload)
@@ -4226,7 +4226,7 @@ async function requestGeneratedQuestions(options = {}) {
     wrong_answer: String(options.wrongAnswer || '').trim(),
     avoid_answers: Array.isArray(options.avoidAnswers) ? options.avoidAnswers : collectAvoidAnswers(options)
   };
-  const res = await fetch('/api/generate-questions', {
+  const res = await IHBBSecurity.authenticatedFetch(sb, '/api/generate-questions', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload)
@@ -4950,7 +4950,7 @@ function startSession() {
     toast('Wrong bank empty');
     return;
   }
-  App.correct = 0; App.sessionBuzzTimes = []; App.resultsCorrect = []; App.i = 0; App.phase = 'idle'; App.curItem = null;
+  App.correct = 0; App.sessionBuzzTimes = []; App.resultsCorrect = []; App.submittedAnswers = []; App.i = 0; App.phase = 'idle'; App.curItem = null;
   App.sessionId = `sess_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
   App.submitBusy = false;
   clearCoachCard();
@@ -5560,7 +5560,20 @@ function renderWrongBank() {
     const dueTxt = rec.dueAt ? new Date(rec.dueAt).toLocaleDateString() : '—';
     const aliases = (rec.aliases?.length ? rec.aliases : (item?.aliases || []));
     const tr = document.createElement('tr');
-    tr.innerHTML = `<td>${ans}</td><td class='stat'>${rec.box || 1}</td><td>${dueTxt}</td><td>${(aliases || []).slice(0, 3).join(', ')}</td><td><button class='btn ghost' data-del='${id}'>Delete</button></td>`;
+    const values = [ans, rec.box || 1, dueTxt, (aliases || []).slice(0, 3).join(', ')];
+    values.forEach((value, index) => {
+      const td = document.createElement('td');
+      if (index === 1) td.className = 'stat';
+      td.textContent = String(value);
+      tr.appendChild(td);
+    });
+    const action = document.createElement('td');
+    const button = document.createElement('button');
+    button.className = 'btn ghost';
+    button.dataset.del = String(id);
+    button.textContent = 'Delete';
+    action.appendChild(button);
+    tr.appendChild(action);
     tb.appendChild(tr);
     mobileCards.push(mobileRecordCard({
       eyebrow: 'Wrong-bank item',
@@ -6480,7 +6493,7 @@ async function submitAnswer(auto = false) {
       correct = false;
       reason = 'No attempt submitted.';
     } else {
-      const res = await fetch('/api/grade', {
+      const res = await IHBBSecurity.authenticatedFetch(sb, '/api/grade', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           question: item.question,
@@ -6512,6 +6525,7 @@ async function submitAnswer(auto = false) {
     correct = basicMatch(userAns, item.answer, item.aliases);
   }
   const quickCoach = fallbackCoachForItem(item, correct, reason, userAns);
+  App.submittedAnswers.push(String(userAns || ''));
 
   // Reveal canonical answer and finalize
   const ansText = Settings.strict ? `标准答案：${item.answer}` : `标准答案：${item.answer}${(item.aliases?.length ? `  (aliases: ${item.aliases.slice(0, 3).join(', ')})` : '')}`;
@@ -6642,7 +6656,7 @@ async function submitAnswer(auto = false) {
         return;
       }
       try {
-        const coachRes = await fetch('/api/grade', {
+        const coachRes = await IHBBSecurity.authenticatedFetch(sb, '/api/grade', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -6807,27 +6821,14 @@ try {
         setTimeout(() => { window.location.href = 'student.html'; }, 2500);
         return;
       }
-      const { data: existing, error: existingError } = await window.supabaseClient
-        .from('assignment_submissions')
-        .select('assignment_id')
-        .eq('assignment_id', aId)
-        .eq('student_id', session.user.id)
-        .maybeSingle();
-      if (existingError) throw existingError;
-      if (existing) {
-        localStorage.removeItem(storageKey);
-        toast('Practice saved. Original assignment score was kept.');
-        setTimeout(() => { window.location.href = 'student.html'; }, 2500);
-        return;
-      }
-      const { error } = await window.supabaseClient
-        .from('assignment_submissions')
-        .insert({
-          assignment_id: aId,
-          student_id: session.user.id,
-          total: total,
-          correct: App.correct || 0
-        });
+      const attempts = App.order.map((poolIndex, index) => ({
+        question_id: String(App.pool[poolIndex]?.id || ''),
+        answer: String(App.submittedAnswers[index] || '')
+      }));
+      const { error } = await window.supabaseClient.rpc('submit_assignment_attempts', {
+        p_assignment_id: aId,
+        p_attempts: attempts
+      });
       if (error) throw error;
       localStorage.removeItem(storageKey);
       toast('Assignment score submitted. Returning to dashboard...');

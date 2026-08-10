@@ -1,4 +1,5 @@
 const crypto = require('crypto');
+const { clientIp, consumeRateLimit } = require('./_security');
 
 const {
   loadGeneratedModerationState,
@@ -515,8 +516,7 @@ module.exports = async function handler(req, res) {
       authenticated: Boolean(getAuthenticatedAdmin(req)),
       config: {
         admin_configured: adminConfigured(),
-        service_role_configured: Boolean(SUPABASE_SERVICE_ROLE_KEY),
-        admin_email: ADMIN_EMAIL
+        service_role_configured: Boolean(SUPABASE_SERVICE_ROLE_KEY)
       }
     });
   }
@@ -534,6 +534,17 @@ module.exports = async function handler(req, res) {
     }
     const email = stringValue(body.email).toLowerCase();
     const password = stringValue(body.password);
+    const subject = crypto
+      .createHmac('sha256', ADMIN_SESSION_SECRET)
+      .update(`${clientIp(req)}|${email || 'unknown'}`)
+      .digest('hex');
+    const throttle = await consumeRateLimit('admin-login', subject, 5, 15 * 60);
+    if (throttle.unavailable) {
+      return json(res, 503, { error: 'Admin login protection is unavailable.' });
+    }
+    if (!throttle.allowed) {
+      return json(res, 429, { error: 'Too many login attempts. Try again later.', retry_after_seconds: 900 });
+    }
     if (email !== ADMIN_EMAIL || !verifyPassword(password)) {
       return json(res, 401, { error: 'Invalid admin credentials.' });
     }

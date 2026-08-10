@@ -1,7 +1,12 @@
+const { requireAiAccess } = require('./_security');
+
 module.exports = async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
+
+  const access = await requireAiAccess(req, res, { endpoint: 'grade', limit: 180, maxBodyBytes: 65536 });
+  if (!access) return;
 
   try {
     const payload = req.body || {};

@@ -58,7 +58,7 @@ CREATE TABLE IF NOT EXISTS class_students (
 );
 
 ALTER TABLE class_students ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Students can join" ON class_students FOR INSERT WITH CHECK (auth.uid() = student_id);
+REVOKE INSERT, UPDATE ON class_students FROM anon, authenticated;
 CREATE POLICY "Members can read" ON class_students FOR SELECT USING (
   auth.uid() = student_id
   OR EXISTS (SELECT 1 FROM classes WHERE classes.id = class_students.class_id AND classes.teacher_id = auth.uid())
@@ -69,11 +69,12 @@ CREATE OR REPLACE FUNCTION join_class_by_code(p_code TEXT)
 RETURNS TABLE(id UUID, name TEXT, code VARCHAR)
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public
+SET search_path = ''
 AS $$
 DECLARE
   target_class public.classes%ROWTYPE;
 BEGIN
+  IF auth.uid() IS NULL THEN RAISE EXCEPTION 'Authentication required'; END IF;
   SELECT *
     INTO target_class
     FROM public.classes
@@ -93,6 +94,7 @@ BEGIN
 END;
 $$;
 
+REVOKE ALL ON FUNCTION join_class_by_code(TEXT) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION join_class_by_code(TEXT) TO authenticated;
 ```
 
@@ -119,7 +121,9 @@ CREATE TABLE IF NOT EXISTS assignments (
 );
 
 ALTER TABLE assignments ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Teachers create assignments" ON assignments FOR INSERT WITH CHECK (auth.uid() = teacher_id);
+CREATE POLICY "Teachers create assignments" ON assignments FOR INSERT WITH CHECK (
+  auth.uid() = teacher_id AND EXISTS (SELECT 1 FROM classes c WHERE c.id = class_id AND c.teacher_id = auth.uid())
+);
 CREATE POLICY "Teachers delete assignments" ON assignments FOR DELETE USING (auth.uid() = teacher_id);
 CREATE POLICY "Class members read assignments" ON assignments FOR SELECT USING (
   auth.uid() = teacher_id
@@ -199,8 +203,8 @@ CREATE TABLE IF NOT EXISTS assignment_submissions (
 );
 
 ALTER TABLE assignment_submissions ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Students submit" ON assignment_submissions FOR INSERT WITH CHECK (auth.uid() = student_id);
-CREATE POLICY "Students update own" ON assignment_submissions FOR UPDATE USING (auth.uid() = student_id);
+REVOKE INSERT, UPDATE ON assignment_submissions FROM anon, authenticated;
+-- Students submit answers through submit_assignment_attempts() from the security remediation migration.
 CREATE POLICY "Read own or teacher reads" ON assignment_submissions FOR SELECT USING (
   auth.uid() = student_id
   OR EXISTS (SELECT 1 FROM assignments a WHERE a.id = assignment_submissions.assignment_id AND a.teacher_id = auth.uid())
@@ -477,24 +481,21 @@ CREATE POLICY "Hosts and room members can read participants" ON bee_participants
   OR EXISTS (SELECT 1 FROM bee_rooms br WHERE br.id = bee_participants.room_id AND br.host_id = auth.uid())
   OR EXISTS (SELECT 1 FROM bee_participants me WHERE me.room_id = bee_participants.room_id AND me.user_id = auth.uid())
 );
-CREATE POLICY "Users join rooms" ON bee_participants FOR INSERT WITH CHECK (auth.uid() = user_id);
+REVOKE INSERT, UPDATE ON bee_participants FROM anon, authenticated;
 CREATE POLICY "Users leave rooms" ON bee_participants FOR DELETE USING (auth.uid() = user_id);
-CREATE POLICY "Host updates scores" ON bee_participants FOR UPDATE USING (
-  auth.uid() = user_id
-  OR EXISTS (SELECT 1 FROM bee_rooms WHERE bee_rooms.id = bee_participants.room_id AND bee_rooms.host_id = auth.uid())
-);
 
 CREATE OR REPLACE FUNCTION join_bee_room_by_code(p_code TEXT, p_display_name TEXT DEFAULT NULL)
 RETURNS TABLE(id UUID, code VARCHAR, host_id UUID, status VARCHAR, participant_count INTEGER)
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public
+SET search_path = ''
 AS $$
 DECLARE
   target_room public.bee_rooms%ROWTYPE;
   already_joined BOOLEAN;
   current_count INTEGER;
 BEGIN
+  IF auth.uid() IS NULL THEN RAISE EXCEPTION 'Authentication required'; END IF;
   SELECT *
     INTO target_room
     FROM public.bee_rooms
@@ -540,6 +541,7 @@ BEGIN
 END;
 $$;
 
+REVOKE ALL ON FUNCTION join_bee_room_by_code(TEXT, TEXT) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION join_bee_room_by_code(TEXT, TEXT) TO authenticated;
 ```
 
@@ -622,11 +624,13 @@ AS $$
   ORDER BY rank;
 $$;
 
+REVOKE ALL ON FUNCTION get_leaderboard_global() FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION get_leaderboard_class(UUID) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION get_leaderboard_global() TO authenticated;
 GRANT EXECUTE ON FUNCTION get_leaderboard_class(UUID) TO authenticated;
 ```
 
 ## 6. Next Steps
-1. Run all SQL above in Supabase SQL Editor.
+1. Run all SQL above in Supabase SQL Editor, then apply [`migrations/20260810023453_security_report_remediation.sql`](./migrations/20260810023453_security_report_remediation.sql). The app relies on its verified-write RPCs and private Realtime policies.
 2. Ensure `config.js` has your correct URL and Anon Key.
 3. Deploy to Vercel via GitHub push.

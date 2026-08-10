@@ -156,7 +156,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         return `<ul class="coach-inline-list">${list.map(item => `<li>${esc(item)}</li>`).join('')}</ul>`;
     };
     const coachWikiHtml = (coach) => {
-        const wiki = String(coach?.wiki_link || '').trim();
+        const wiki = IHBBSecurity.safeWikipediaUrl(coach?.wiki_link);
         if (!wiki) return '';
         const label = String(coach?.canonical_answer || 'Wikipedia').trim() || 'Wikipedia';
         return `<div><b>Read More:</b> <a class="coach-link" href="${esc(wiki)}" target="_blank" rel="noopener noreferrer">${esc(label)}</a></div>`;
@@ -2075,7 +2075,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             response_detail: normalizeAssistantResponseDetail(options.responseDetail || accountSettings.assistant_response_detail),
             user_role: 'student'
         };
-        const response = await fetch('/api/coach-chat', {
+        const response = await IHBBSecurity.authenticatedFetch(sb, '/api/coach-chat', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
@@ -5192,7 +5192,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         );
 
         try {
-            const response = await fetch('/api/analytics-insights', {
+            const response = await IHBBSecurity.authenticatedFetch(sb, '/api/analytics-insights', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(buildAnalyticsInsightPayload(analyticsSnapshotCurrent))
@@ -6423,7 +6423,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         preview.innerHTML = '<p class="muted">AI is drafting questions tailored to your focus...</p>';
 
         try {
-            const resp = await fetch('/api/generate-questions', {
+            const resp = await IHBBSecurity.authenticatedFetch(sb, '/api/generate-questions', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ topic, count, region, era })

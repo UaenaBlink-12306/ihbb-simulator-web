@@ -2132,7 +2132,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     ? sb.from('profiles').select('id, display_name, avatar_id').in('id', studentIds)
                     : Promise.resolve({ data: [] }),
                 assignmentIds.length
-                    ? sb.from('assignment_submissions').select('assignment_id, student_id, correct, total, submitted_at, created_at').in('assignment_id', assignmentIds)
+                    ? sb.from('assignment_submissions').select('assignment_id, student_id, correct, total, submitted_at, created_at').in('assignment_id', assignmentIds).eq('verified', true)
                     : Promise.resolve({ data: [] }),
                 studentIds.length
                     ? sb.from('user_drill_sessions').select('user_id, total, correct, dur, ts, buzz, items, results, meta, created_at').in('user_id', studentIds).gte('created_at', STUDY_DATA_RESET_CUTOFF_ISO)
@@ -2795,7 +2795,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     blindSpots: detail.snapshot?.blindSpots || [],
                 };
                 
-                const response = await fetch('/api/teacher-feedback', {
+                const response = await IHBBSecurity.authenticatedFetch(sb, '/api/teacher-feedback', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(payload)
@@ -3019,7 +3019,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const allStudentIds = (classStudents || []).map(s => s.student_id);
 
         // Get submissions
-        const { data: subs } = await sb.from('assignment_submissions').select('*').eq('assignment_id', assignId);
+        const { data: subs } = await sb.from('assignment_submissions').select('*').eq('assignment_id', assignId).eq('verified', true);
         const subMap = {};
         (subs || []).forEach(s => subMap[s.student_id] = s);
 
@@ -3325,7 +3325,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const count = Math.max(1, Math.min(12, Number.parseInt(String(document.getElementById('teacher-gen-count')?.value || '5'), 10) || 5));
         const avoidAnswers = allQuestions.map(q => String(q.answer || '').trim()).filter(Boolean).slice(0, 60);
 
-        const response = await fetch('/api/generate-questions', {
+        const response = await IHBBSecurity.authenticatedFetch(sb, '/api/generate-questions', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -4231,7 +4231,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             updateGeneratorStatus(`Draft Builder is reviewing ${rows.length} real question-bank candidate${rows.length === 1 ? '' : 's'} for this assignment action...`, 'muted');
         }
         try {
-            const response = await fetch('/api/coach-chat', {
+            const response = await IHBBSecurity.authenticatedFetch(sb, '/api/coach-chat', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -4959,16 +4959,16 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const hostLabel = game.host_name ? `Hosted by ${esc(game.host_name)}` : '';
                 const podium = Array.isArray(standings) ? standings.slice(0, 3).map((s, i) => {
                     const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : '🥉';
-                    return `<span class="game-history-podium-item">${medal} ${esc(s.name)} (${s.score})</span>`;
+                    return `<span class="game-history-podium-item">${medal} ${esc(s.name)} (${IHBBSecurity.finiteNumber(s.score)})</span>`;
                 }).join('') : '';
                 return `<div class="list-item"><div style="width:100%;">
                     <h3 style="margin:0 0 4px;">Room ${esc(game.room_code)} ${hostLabel}</h3>
-                    <div class="pill">${date} • ${game.player_count} players</div>
+                    <div class="pill">${esc(date)} • ${IHBBSecurity.finiteNumber(game.player_count)} players</div>
                     <p class="muted" style="margin:8px 0;">${podium || 'No podium data'}</p>
                     <div style="display:flex;gap:10px;flex-wrap:wrap;">
-                        <span class="pill pill-ok">${summary.solved || 0} solved</span>
-                        <span class="pill pill-warn">${summary.missed || 0} missed</span>
-                        <span class="pill">${summary.totalQuestions || 0} questions</span>
+                        <span class="pill pill-ok">${IHBBSecurity.finiteNumber(summary.solved)} solved</span>
+                        <span class="pill pill-warn">${IHBBSecurity.finiteNumber(summary.missed)} missed</span>
+                        <span class="pill">${IHBBSecurity.finiteNumber(summary.totalQuestions)} questions</span>
                     </div>
                 </div></div>`;
             }).join('');
@@ -5046,11 +5046,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         try { review = typeof game.review === 'string' ? JSON.parse(game.review) : game.review; } catch { review = []; }
 
         let csv = 'Rank,Player,Score\n';
-        (standings || []).forEach(s => { csv += `${s.rank},"${s.name}",${s.score}\n`; });
+        (standings || []).forEach(s => { csv += [s.rank, s.name, s.score].map(IHBBSecurity.csvCell).join(',') + '\n'; });
         csv += '\nQuestion #,Question,Answer,Status,Solved By\n';
         (review || []).forEach(r => {
             const status = r.solvedBy ? 'Solved' : (r.unanswered ? 'Unanswered' : 'Missed');
-            csv += `${r.number},"${(r.question || '').replace(/"/g, '""')}","${(r.answer || '').replace(/"/g, '""')}",${status},${r.solvedBy ? r.solvedBy.name : 'N/A'}\n`;
+            csv += [r.number, r.question, r.answer, status, r.solvedBy ? r.solvedBy.name : 'N/A'].map(IHBBSecurity.csvCell).join(',') + '\n';
         });
         downloadCSV(csv, `livebee_${game.room_code}_report.csv`);
     }
@@ -5058,7 +5058,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     async function exportAssignmentCSV(classId, assignId) {
         if (!assignId) return;
         const { data: assignment } = await sb.from('assignments').select('id, title').eq('id', assignId).single();
-        const { data: submissions } = await sb.from('assignment_submissions').select('student_id, total, correct').eq('assignment_id', assignId);
+        const { data: submissions } = await sb.from('assignment_submissions').select('student_id, total, correct').eq('assignment_id', assignId).eq('verified', true);
         const studentIds = (submissions || []).map(s => s.student_id);
         let profiles = [];
         if (studentIds.length) {
@@ -5068,11 +5068,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         const profileMap = {};
         profiles.forEach(p => { profileMap[p.id] = p.display_name || 'Unknown'; });
 
-        let csv = `Assignment: ${(assignment?.title || 'N/A')}\n\n`;
+        let csv = `Assignment:,${IHBBSecurity.csvCell(assignment?.title || 'N/A')}\n\n`;
         csv += 'Student,Questions Correct,Total Questions,Score %\n';
         (submissions || []).forEach(s => {
             const pct = s.total > 0 ? Math.round(s.correct / s.total * 100) : 0;
-            csv += `"${profileMap[s.student_id] || 'Unknown'}",${s.correct},${s.total},${pct}%\n`;
+            csv += [profileMap[s.student_id] || 'Unknown', s.correct, s.total, `${pct}%`].map(IHBBSecurity.csvCell).join(',') + '\n';
         });
         downloadCSV(csv, `assignment_${esc(assignment?.title || 'report').replace(/[^a-zA-Z0-9]/g, '_')}_report.csv`);
     }

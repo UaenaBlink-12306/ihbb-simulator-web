@@ -2139,48 +2139,30 @@ def generate_questions_with_deepseek(payload: Dict[str, Any]) -> Dict[str, Any]:
         if not items:
             return {"error": "DeepSeek returned no valid generated questions."}
 
-        # Validate each generated question with DeepSeek
-        skip_validation = bool(payload.get("skip_validation", False))
+        # Always validate generated questions. Callers cannot bypass this server-side gate.
         validated_items: List[Dict[str, Any]] = []
         validation_results: List[Dict[str, Any]] = []
         for item in items:
-            if skip_validation:
+            result = validate_generated_question(item)
+            validation_results.append(result)
+            if result.get("valid"):
                 validated_items.append(item)
-                validation_results.append({"valid": True, "reason": "Validation skipped"})
             else:
-                result = validate_generated_question(item)
-                validation_results.append(result)
-                if result.get("valid"):
-                    validated_items.append(item)
-                else:
-                    log.info(
-                        "Generated question rejected by validation: answer=%s reason=%s",
-                        string_value(item.get("answer", "")),
-                        result.get("reason", ""),
-                    )
+                log.info(
+                    "Generated question rejected by validation: answer=%s reason=%s",
+                    string_value(item.get("answer", "")),
+                    result.get("reason", ""),
+                )
 
         if not validated_items:
             return {"error": "All generated questions failed validation.", "validation_results": validation_results}
-
-        # Persist validated questions to shared bank + questions.json
-        persistence = {}
-        try:
-            persistence = persist_generated_items(validated_items)
-            log.info(
-                "Generated questions persisted: bank_added=%s, questions_json_added=%s",
-                persistence.get("shared_bank_added", 0),
-                persistence.get("questions_json_added", 0),
-            )
-        except Exception as exc:
-            log.warning("Generated questions persistence failed: %s", exc)
-            persistence = {"warning": f"Persistence failed: {exc}"}
 
         return {
             "source": "deepseek",
             "requested": count,
             "returned": len(validated_items),
             "items": validated_items,
-            "persistence": persistence,
+            "persistence": {"persisted": False, "review_required": True},
             "validated": len(validated_items),
             "rejected": len(items) - len(validated_items),
         }
@@ -3172,19 +3154,72 @@ def safe_join(base: str, *paths: str) -> str:
     # Prevent directory traversal; resolve final path and ensure it stays within base
     joined = os.path.join(base, *paths)
     norm = os.path.normpath(joined)
-    if not norm.startswith(os.path.abspath(base)):
+    if os.path.commonpath((os.path.abspath(base), os.path.abspath(norm))) != os.path.abspath(base):
         raise ValueError("Unsafe path")
     return norm
+
+
+PUBLIC_ROOT_FILES = {
+    "index.html", "student.html", "teacher.html", "livebee.html", "admin.html", "login.html",
+    "onboarding.html", "profile.html", "app.js", "student.js", "teacher.js", "livebee.js",
+    "admin.js", "login.js", "onboarding.js", "profile.js", "avatar-catalog.js", "config.js",
+    "dashboard-feedback.js", "set-builder-quality.js", "styles.css", "questions.json",
+    "favicon.ico", "favicon.svg", "manifest.json", "lib/client-security.js",
+}
+PUBLIC_ASSET_EXTENSIONS = {
+    ".css", ".js", ".mjs", ".svg", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".ico",
+    ".mp3", ".wav", ".ogg", ".woff", ".woff2", ".ttf", ".json",
+}
+
+
+def is_public_static_path(path: str) -> bool:
+    """Return whether a repository-relative path is intentionally web-visible."""
+    normalized = string_value(path).replace("\\", "/").strip("/")
+    if not normalized or normalized.startswith("../"):
+        return False
+    parts = normalized.split("/")
+    if any(not part or part in (".", "..") or part.startswith(".") for part in parts):
+        return False
+    if normalized in PUBLIC_ROOT_FILES:
+        return True
+    return parts[0] == "assets" and os.path.splitext(normalized)[1].lower() in PUBLIC_ASSET_EXTENSIONS
+
+
+def is_trusted_browser_origin(origin: str) -> bool:
+    """Only the loopback app origin may make browser requests to the local helper."""
+    value = string_value(origin)
+    if not value:
+        return True
+    try:
+        parsed = urlparse(value)
+        return parsed.scheme == "http" and parsed.hostname in ("127.0.0.1", "localhost") and parsed.port == PORT
+    except ValueError:
+        return False
+
+
+def consume_local_security_rate_limit(bucket: str, subject: str, maximum: int, window_seconds: int) -> Tuple[bool, int]:
+    result, _ = write_supabase_json("POST", "/rest/v1/rpc/consume_security_rate_limit", {
+        "p_bucket": bucket,
+        "p_subject": subject,
+        "p_limit": maximum,
+        "p_window_seconds": window_seconds,
+    })
+    row = result[0] if isinstance(result, list) and result else result
+    if not isinstance(row, dict):
+        raise RuntimeError("The security quota service returned an invalid response.")
+    return bool(row.get("allowed")), max(1, int(row.get("retry_after_seconds", 1) or 1))
 
 
 class Handler(BaseHTTPRequestHandler):
     def _set_headers(self, code=200, content_type="application/json", extra_headers: Dict[str, str] = None):
         self.send_response(code)
         self.send_header("Content-Type", content_type)
-        # CORS
-        self.send_header("Access-Control-Allow-Origin", "*")
+        origin = string_value(self.headers.get("Origin", ""))
+        if origin and is_trusted_browser_origin(origin):
+            self.send_header("Access-Control-Allow-Origin", origin)
+            self.send_header("Vary", "Origin")
         self.send_header("Access-Control-Allow-Methods", "POST, OPTIONS, GET")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
         for key, value in (extra_headers or {}).items():
             if value is not None:
                 self.send_header(key, value)
@@ -3199,6 +3234,8 @@ class Handler(BaseHTTPRequestHandler):
             length = int(self.headers.get("content-length", "0"))
         except Exception:
             length = 0
+        if length < 0 or length > 262144:
+            raise OverflowError("Request body is too large.")
         raw = self.rfile.read(length) if length else b"{}"
         try:
             return json.loads(raw.decode("utf-8") or "{}")
@@ -3217,12 +3254,13 @@ class Handler(BaseHTTPRequestHandler):
                 return True
             self._write_json(200, build_admin_data())
             return True
+        authenticated_email = get_authenticated_admin_email(self.headers)
         self._write_json(200, {
-            "authenticated": bool(get_authenticated_admin_email(self.headers)),
+            "authenticated": bool(authenticated_email),
             "config": {
                 "admin_configured": admin_configured(),
                 "service_role_configured": bool(SUPABASE_SERVICE_ROLE_KEY),
-                "admin_email": ADMIN_EMAIL,
+                **({"admin_email": authenticated_email} if authenticated_email else {}),
             }
         })
         return True
@@ -3238,6 +3276,20 @@ class Handler(BaseHTTPRequestHandler):
                 return True
             email = string_value(payload.get("email")).lower()
             password = string_value(payload.get("password"))
+            rate_subject = hashlib.sha256(
+                f"{self.client_address[0]}|{email}".encode("utf-8")
+            ).hexdigest()
+            try:
+                allowed, retry_after = consume_local_security_rate_limit("admin-login", rate_subject, 5, 900)
+            except Exception:
+                log.exception("Admin login rate limiter unavailable")
+                self._write_json(503, {"error": "Admin login protection is temporarily unavailable."})
+                return True
+            if not allowed:
+                self._write_json(429, {"error": "Too many login attempts. Try again later."}, {
+                    "Retry-After": str(retry_after),
+                })
+                return True
             if email != ADMIN_EMAIL or not verify_admin_password(password):
                 self._write_json(401, {"error": "Invalid admin credentials."})
                 return True
@@ -3348,9 +3400,15 @@ class Handler(BaseHTTPRequestHandler):
         return True
 
     def do_OPTIONS(self):
+        if not is_trusted_browser_origin(self.headers.get("Origin", "")):
+            self._write_json(403, {"error": "Origin is not allowed."})
+            return
         self._set_headers(204)
 
     def do_GET(self):
+        if not is_trusted_browser_origin(self.headers.get("Origin", "")):
+            self._write_json(403, {"error": "Origin is not allowed."})
+            return
         parsed = urlparse(self.path)
         # Health check
         if parsed.path == "/health":
@@ -3363,6 +3421,9 @@ class Handler(BaseHTTPRequestHandler):
         rel = parsed.path.lstrip("/")
         if not rel:
             rel = "index.html"
+        if not is_public_static_path(rel):
+            self._write_json(404, {})
+            return
         try:
             full = safe_join(BASE_DIR, rel)
         except ValueError:
@@ -3384,6 +3445,9 @@ class Handler(BaseHTTPRequestHandler):
             self._write_json(404, {})
 
     def do_POST(self):
+        if not is_trusted_browser_origin(self.headers.get("Origin", "")):
+            self._write_json(403, {"error": "Origin is not allowed."})
+            return
         parsed = urlparse(self.path)
         if parsed.path not in (
             "/grade",
@@ -3401,12 +3465,34 @@ class Handler(BaseHTTPRequestHandler):
         ):
             self._write_json(404, {})
             return
-        payload = self._read_json_body()
+        try:
+            payload = self._read_json_body()
+        except OverflowError as exc:
+            self._write_json(413, {"error": str(exc)})
+            return
         if parsed.path in ("/admin", "/api/admin"):
             self._handle_admin_post(payload)
             return
         if parsed.path in ("/feedback", "/api/feedback"):
             self._handle_feedback_post(payload)
+            return
+
+        try:
+            user_id = fetch_supabase_user_id_from_token(access_token_from_headers(self.headers))
+            endpoint = parsed.path.rsplit("/", 1)[-1]
+            maximum = {"grade": 180, "analytics-insights": 30, "coach-chat": 60, "generate-questions": 20}.get(endpoint, 20)
+            allowed, retry_after = consume_local_security_rate_limit(f"ai:{endpoint}", user_id, maximum, 3600)
+        except PermissionError as exc:
+            self._write_json(401, {"error": str(exc)})
+            return
+        except Exception:
+            log.exception("AI authentication or quota check failed")
+            self._write_json(503, {"error": "AI access protection is temporarily unavailable."})
+            return
+        if not allowed:
+            self._write_json(429, {"error": "AI request quota exceeded. Try again later."}, {
+                "Retry-After": str(retry_after),
+            })
             return
 
         if parsed.path in ("/grade", "/api/grade"):

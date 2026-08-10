@@ -996,10 +996,15 @@ function normalizeResponse(raw, payload) {
   }, payload);
 }
 
+const { requireAiAccess } = require('./_security');
+
 module.exports = async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
+
+  const access = await requireAiAccess(req, res, { endpoint: 'coach-chat', limit: 60, maxBodyBytes: 262144 });
+  if (!access) return;
 
   let payload = {};
   try {
