@@ -332,18 +332,55 @@
       .map(([label, count]) => {
         const display = title === 'Era Balance' && eraLabeler ? eraLabeler(label) : label;
         const pct = Math.round((count / safeTotal) * 100);
-        return `<div class="quality-bar-row"><span>${esc(display || 'Unknown')}</span><div class="quality-bar"><div class="quality-bar-fill" style="width:${pct}%"></div></div><span>${count}</span></div>`;
+        const safeDisplay = esc(display || 'Unknown');
+        return `
+          <div class="quality-bar-row">
+            <span class="quality-bar-label">${safeDisplay}</span>
+            <div class="quality-bar" role="progressbar" aria-label="${safeDisplay}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}">
+              <div class="quality-bar-fill" style="width:${pct}%"></div>
+            </div>
+            <span class="quality-bar-count">${count}</span>
+          </div>
+        `;
       }).join('');
-    return `<div><strong>${esc(title)}</strong>${body || '<p class="muted">No data</p>'}</div>`;
+    return `
+      <section class="quality-balance-card">
+        <div class="quality-balance-heading">
+          <h4>${esc(title)}</h4>
+          <span>${total || 0} total</span>
+        </div>
+        ${body || '<p class="muted quality-empty-copy">No data available</p>'}
+      </section>
+    `;
   }
 
   function warningBlock(title, rows, className = '') {
     if (!rows.length) return '';
     return `
       <div class="quality-warnings ${className}">
-        <strong>${esc(title)}</strong>
+        <div class="quality-warning-heading">
+          <span class="quality-warning-title"><span class="quality-warning-dot" aria-hidden="true"></span><strong>${esc(title)}</strong></span>
+          <span class="quality-warning-count">${rows.length}</span>
+        </div>
         <ul>${rows.map(row => `<li>${row}</li>`).join('')}</ul>
       </div>
+    `;
+  }
+
+  function statusIcon(statusClass) {
+    if (statusClass === 'quality-ok') {
+      return `
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <path d="M20 6 9 17l-5-5"></path>
+        </svg>
+      `;
+    }
+    return `
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <path d="M12 3 2.8 19a1.35 1.35 0 0 0 1.17 2h16.06a1.35 1.35 0 0 0 1.17-2L12 3Z"></path>
+        <path d="M12 9v4.5"></path>
+        <path d="M12 17h.01"></path>
+      </svg>
     `;
   }
 
@@ -408,31 +445,57 @@
     });
     const sourceChips = Object.entries(data.sources || {})
       .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
-      .map(([label, count]) => `<span class="quality-chip quality-chip-source">${esc(label)}: ${count}</span>`)
+      .map(([label, count]) => `<span class="quality-source-item"><span>${esc(label)}</span><strong>${count}</strong></span>`)
       .join('');
+    const reviewBlocks = [
+      warningBlock('Duplicate clue text', duplicateRows),
+      warningBlock('Repeated answers', overlapRows),
+      warningBlock('Too similar to another question', similarRows, 'quality-warnings-similar'),
+      warningBlock('Duplicate clue signals', clueRows, 'quality-warnings-clues'),
+      warningBlock('Answer-alias suggestions', aliasRows, 'quality-warnings-aliases')
+    ].join('');
+    const reviewCount = duplicateRows.length + overlapRows.length + similarRows.length + clueRows.length + aliasRows.length;
+    const totalLabel = data.total === 1 ? 'question' : 'questions';
 
     return `
-      <div class="quality-panel ${statusClass}">
-        <div class="quality-status">
-          <span><strong>${esc(options.title || 'Set Quality')}:</strong> ${esc(statusText)}</span>
+      <section class="quality-panel ${statusClass}" aria-label="${esc(options.title || 'Set Quality')}">
+        <header class="quality-status">
+          <span class="quality-status-icon">${statusIcon(statusClass)}</span>
+          <div class="quality-status-copy">
+            <h3>${esc(options.title || 'Set Quality')}</h3>
+            <p>${esc(statusText)}</p>
+          </div>
+          <div class="quality-total">
+            <strong>${data.total || 0}</strong>
+            <span>${totalLabel}</span>
+          </div>
+        </header>
+        <div class="quality-overview">
+          <div class="quality-overview-section">
+            <div class="quality-overview-heading">Difficulty mix</div>
+            <div class="quality-difficulty-list">
+              <div class="quality-difficulty-item quality-difficulty-easy"><span><i aria-hidden="true"></i>Easy</span><strong>${data.difficulty.Easy || 0}</strong></div>
+              <div class="quality-difficulty-item quality-difficulty-medium"><span><i aria-hidden="true"></i>Medium</span><strong>${data.difficulty.Medium || 0}</strong></div>
+              <div class="quality-difficulty-item quality-difficulty-hard"><span><i aria-hidden="true"></i>Hard</span><strong>${data.difficulty.Hard || 0}</strong></div>
+            </div>
+          </div>
+          <div class="quality-overview-section">
+            <div class="quality-overview-heading">Question sources</div>
+            <div class="quality-source-list">${sourceChips || '<span class="muted">No source data</span>'}</div>
+          </div>
         </div>
-        <div class="quality-detail">
-          <span class="quality-chip quality-chip-easy">Easy: ${data.difficulty.Easy || 0}</span>
-          <span class="quality-chip quality-chip-medium">Medium: ${data.difficulty.Medium || 0}</span>
-          <span class="quality-chip quality-chip-hard">Hard: ${data.difficulty.Hard || 0}</span>
-          ${sourceChips}
-          <span class="pill">${data.total || 0} total</span>
+        <div class="quality-review-section">
+          <div class="quality-section-heading">
+            <h4>Review items</h4>
+            <span>${reviewCount} ${reviewCount === 1 ? 'item' : 'items'}</span>
+          </div>
+          ${reviewBlocks || '<div class="quality-clear-state"><span class="quality-clear-dot" aria-hidden="true"></span><span>No review items found.</span></div>'}
         </div>
-        ${warningBlock('Duplicate clue text', duplicateRows)}
-        ${warningBlock('Repeated answers', overlapRows)}
-        ${warningBlock('Too similar to another question', similarRows, 'quality-warnings-similar')}
-        ${warningBlock('Duplicate clue signals', clueRows, 'quality-warnings-clues')}
-        ${warningBlock('Answer-alias suggestions', aliasRows, 'quality-warnings-aliases')}
         <div class="quality-balance-grid">
           ${barsHtml('Region Balance', data.balance.regions, data.total, options.eraLabeler)}
           ${barsHtml('Era Balance', data.balance.eras, data.total, options.eraLabeler)}
         </div>
-      </div>
+      </section>
     `;
   }
 
