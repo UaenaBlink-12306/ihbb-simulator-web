@@ -85,7 +85,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     let latestAssignments = [];
     let teacherAssignmentFilter = 'all';
     let myQuestionSets = [];
+    let ownedQuestionSets = [];
     let isCreatingSet = false;
+    let currentEditSetId = null;
     let currentMode = 'random';
     let selectedFilterCategories = [];
     let selectedFilterEras = [];
@@ -3106,7 +3108,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
         myQuestionSets = data || [];
         renderQuestionSets(myQuestionSets);
-        if (setVisibilityFilter === 'my') renderBuilderSavedSets(myQuestionSets);
+        if (setVisibilityFilter === 'my') {
+            ownedQuestionSets = [...myQuestionSets];
+            renderBuilderSavedSets(ownedQuestionSets);
+        }
     }
 
     function renderQuestionSets(list) {
@@ -3131,7 +3136,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                         <div class="list-item-meta">${count} questions • ${visibilityLabel} • By ${isMine ? 'Me' : (set.creator_role === 'teacher' ? 'Teacher' : 'Student')}</div>
                     </div>
                     <div class="list-item-actions">
-                        ${isMine ? `<button class="btn ghost" onclick="assignQuestionSet('${set.id}')">Assign to Class</button>` : ''}
+                        <button class="btn ghost" onclick="assignQuestionSet('${set.id}')">Assign to Class</button>
                         <button class="btn ghost" onclick="hostLiveBeeWithSet('${set.id}')">Host Live Bee</button>
                         ${isMine ? `
                             <button class="btn ghost" onclick="editQuestionSet('${set.id}')">Edit</button>
@@ -3175,17 +3180,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     });
 
-    window.hostLiveBeeWithSet = (setId) => {
-        window.location.href = `livebee.html?setId=${setId}`;
-    };
-
-    window.deleteQuestionSet = async (setId) => {
-        if (!confirm('Are you sure you want to delete this question set?')) return;
-        const { error } = await sb.from('question_sets').delete().eq('id', setId);
-        if (error) { showAlert('Failed to delete: ' + error.message); return; }
-        loadQuestionSets();
-    };
-
     function renderBuilderSavedSets(list) {
         const el = document.getElementById('builder-saved-sets-list');
         if (!el) return;
@@ -3210,22 +3204,48 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (!set) return;
         isCreatingSet = false;
         setSelectedQuestions(set.questions || []);
+        currentEditSetId = null;
         document.getElementById('assign-title').value = set.title;
         activateDashboardTab('create');
+        resetInlineAssignmentSetOption();
     };
+        showAlert(`Loaded "${set.title}". Choose a class and publish the assignment.`, 'success');
 
     window.hostLiveBeeWithSet = (setId) => {
         window.open(`livebee.html?set=${setId}`, '_blank');
     };
 
     window.deleteQuestionSet = async (id) => {
+    window.editQuestionSet = (setId) => {
+        const set = myQuestionSets.find(s => s.id === setId && s.creator_id === uid);
+        if (!set) {
+            showAlert('Only sets in My Sets can be edited.', 'error');
+            return;
+        }
+        isCreatingSet = true;
+        currentEditSetId = setId;
+        setSelectedQuestions(Array.isArray(set.questions) ? [...set.questions] : []);
+        document.getElementById('assign-title').value = set.title || '';
+        const visibilityEl = document.getElementById('assign-visibility');
+        if (visibilityEl) visibilityEl.value = set.visibility || 'private';
+        activateDashboardTab('create', { builderMode: 'set' });
+        toggleBuilderClassSelection(visibilityEl?.value || 'private');
+        const classEl = document.getElementById('set-share-class');
+        if (classEl) classEl.value = set.class_id || '';
+    };
+
         if (!confirm('Delete this question set?')) return;
-        await sb.from('question_sets').delete().eq('id', id);
+        const { error } = await sb.from('question_sets').delete().eq('id', id).eq('creator_id', uid);
+        if (error) {
+            showAlert('Failed to delete: ' + error.message, 'error');
+            return;
+        }
+        showAlert('Question set deleted.', 'success');
         loadQuestionSets();
     };
 
     window.loadSavedSetIntoBuilder = (setId) => {
-        const set = myQuestionSets.find(s => s.id === setId);
+        const set = ownedQuestionSets.find(s => s.id === setId);
         if (!set) return;
         setSelectedQuestions(set.questions || []);
         showAlert('Loaded questions from saved set.', 'success');
@@ -3234,11 +3254,13 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     document.getElementById('btn-create-question-set')?.addEventListener('click', () => {
         isCreatingSet = true;
-        selectedQuestions = [];
-        invalidateSelectedQuestionsQualityAnalysis();
-        updatePreview();
+        currentEditSetId = null;
+        setSelectedQuestions([]);
         document.getElementById('assign-title').value = '';
-        activateDashboardTab('create');
+        const visibilityEl = document.getElementById('assign-visibility');
+        if (visibilityEl) visibilityEl.value = 'private';
+        activateDashboardTab('create', { builderMode: 'set' });
+        toggleBuilderClassSelection('private');
     });
 
     // ========== CREATE ASSIGNMENT ==========
@@ -3388,7 +3410,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
             populateGeneratorControls();
             renderGeneratedDraftPreview();
-            updateGeneratorStatus(`Generated ${generatedDraftQuestions.length} AI question${generatedDraftQuestions.length === 1 ? '' : 's'}. Review them below, then add them to the assignment.${persistenceNote}`, 'muted');
+            updateGeneratorStatus(`Generated ${generatedDraftQuestions.length} AI question${generatedDraftQuestions.length === 1 ? '' : 's'}. Review them below, then add them to the ${isCreatingSet ? 'set' : 'assignment'}.${persistenceNote}`, 'muted');
         } catch (err) {
             generatedDraftQuestions = [];
             renderGeneratedDraftPreview();
@@ -3416,7 +3438,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             return;
         }
         setSelectedQuestions([...generatedDraftQuestions, ...selectedQuestions]);
-        showAlert(`${generatedDraftQuestions.length} AI-generated question${generatedDraftQuestions.length === 1 ? '' : 's'} added to the assignment.`, 'success');
+        showAlert(`${generatedDraftQuestions.length} AI-generated question${generatedDraftQuestions.length === 1 ? '' : 's'} added to the ${isCreatingSet ? 'set' : 'assignment'}.`, 'success');
     });
 
     function normalizeAssignmentAnswerForWarning(value) {
@@ -4427,9 +4449,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         const select = document.getElementById('set-share-class');
         if (!wrap || !select) return;
         
-        if (visibility === 'class') {
+        if (isCreatingSet && visibility === 'class') {
             wrap.classList.remove('hidden');
-            select.innerHTML = myClasses.map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join('');
+            select.innerHTML = myClasses.length
+                ? myClasses.map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join('')
+                : '<option value="">Create a class first</option>';
         } else {
             wrap.classList.add('hidden');
             select.innerHTML = '';
@@ -4437,9 +4461,88 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     document.getElementById('assign-visibility')?.addEventListener('change', (e) => {
+    function syncInlineAssignmentSetOptions() {
+        const checkbox = document.getElementById('save-assignment-as-set');
+        const options = document.getElementById('assignment-save-set-options');
+        const title = document.getElementById('assignment-set-title');
+        const visibility = document.getElementById('assignment-set-visibility');
+        const classNote = document.getElementById('assignment-set-class-note');
+        const enabled = Boolean(checkbox?.checked && !isCreatingSet);
+        options?.classList.toggle('hidden', !enabled);
+        classNote?.classList.toggle('hidden', !enabled || visibility?.value !== 'class');
+        if (enabled && title && !title.value.trim()) {
+            title.value = document.getElementById('assign-title')?.value.trim() || '';
+        }
+    }
+
+    function resetInlineAssignmentSetOption() {
+        const checkbox = document.getElementById('save-assignment-as-set');
+        const title = document.getElementById('assignment-set-title');
+        const visibility = document.getElementById('assignment-set-visibility');
+        if (checkbox) checkbox.checked = false;
+        if (title) title.value = '';
+        if (visibility) visibility.value = 'private';
+        syncInlineAssignmentSetOptions();
+    }
+
+    function syncTeacherBuilderModeUi() {
+        const setModeActive = Boolean(isCreatingSet);
+        const assignmentDisplay = setModeActive ? 'none' : '';
+        const setDisplay = setModeActive ? '' : 'none';
+        const builderTitle = document.getElementById('teacher-builder-title');
+        const reviewTitle = document.getElementById('teacher-builder-review-title');
+        const reviewSubtitle = document.getElementById('teacher-builder-review-subtitle');
+        const statusCopy = document.getElementById('teacher-builder-status-copy');
+        const introCopy = document.getElementById('teacher-builder-intro');
+        const sourceCopy = document.getElementById('teacher-builder-source-copy');
+        const sourceNoteCopy = document.getElementById('teacher-builder-source-note-copy');
+        const readyArtifact = document.getElementById('teacher-builder-ready-artifact');
+        const addDraftButton = document.getElementById('btn-teacher-add-draft');
+        const visibilityGroup = document.getElementById('question-set-visibility-group');
+        const inlineSetPanel = document.getElementById('assignment-save-set-panel');
+        const assignClassEl = document.getElementById('assign-class');
+        const assignDueEl = document.getElementById('assign-due');
+        const assignInstructionsEl = document.getElementById('assign-instructions');
+        const publishButton = document.getElementById('btn-create-assignment');
+
+        if (builderTitle) builderTitle.textContent = setModeActive
+            ? (currentEditSetId ? 'Edit Question Set' : 'Create Question Set')
+            : 'Build Assignment';
+        if (reviewTitle) reviewTitle.textContent = setModeActive ? 'Question Set Questions' : 'Assignment Questions';
+        if (reviewSubtitle) reviewSubtitle.textContent = setModeActive
+            ? 'Check the source mix before saving this reusable set.'
+            : 'Check the source mix before creating the assignment.';
+        if (statusCopy) statusCopy.textContent = setModeActive
+            ? 'Add a title and questions for the reusable set.'
+            : 'Add a title, class, and questions.';
+        if (introCopy) introCopy.textContent = setModeActive
+            ? 'Choose where your questions come from, then build and review the reusable set.'
+            : 'Choose where your questions come from, then build and review the assignment.';
+        if (sourceCopy) sourceCopy.textContent = setModeActive
+            ? 'Start with the curated bank or ask AI to write new questions. You can mix both in one set.'
+            : 'Start with the curated bank or ask AI to write new questions. You can mix both in one assignment.';
+        if (sourceNoteCopy) sourceNoteCopy.textContent = `Every selected question keeps its source label, including after you ${setModeActive ? 'save the set' : 'publish the assignment'}.`;
+        if (readyArtifact) readyArtifact.textContent = setModeActive ? 'set' : 'assignment';
+        if (addDraftButton) addDraftButton.textContent = setModeActive ? 'Add AI Questions to Set' : 'Add AI Questions to Assignment';
+        if (visibilityGroup) visibilityGroup.style.display = setDisplay;
+        if (inlineSetPanel) inlineSetPanel.style.display = assignmentDisplay;
+        if (assignClassEl) assignClassEl.closest('.input-group').style.display = assignmentDisplay;
+        if (assignDueEl) assignDueEl.closest('.input-group').style.display = assignmentDisplay;
+        if (assignInstructionsEl) assignInstructionsEl.closest('.input-group').style.display = assignmentDisplay;
+        if (publishButton) publishButton.textContent = setModeActive
+            ? (currentEditSetId ? 'Update Question Set' : 'Save Question Set')
+            : 'Create Assignment';
+
+        toggleBuilderClassSelection(document.getElementById('assign-visibility')?.value || 'private');
+        syncInlineAssignmentSetOptions();
+    }
+
         toggleBuilderClassSelection(e.target.value);
     });
 
+    document.getElementById('save-assignment-as-set')?.addEventListener('change', syncInlineAssignmentSetOptions);
+    document.getElementById('assignment-set-visibility')?.addEventListener('change', syncInlineAssignmentSetOptions);
+    document.getElementById('assign-class')?.addEventListener('change', syncInlineAssignmentSetOptions);
     // Create
     document.getElementById('btn-create-assignment').addEventListener('click', async () => {
         const title = document.getElementById('assign-title').value.trim();
@@ -4448,9 +4551,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         const instructions = document.getElementById('assign-instructions').value.trim();
         const visibility = document.getElementById('assign-visibility')?.value || 'private';
 
+        const setShareClassId = document.getElementById('set-share-class')?.value || null;
+        const saveAssignmentAsSet = Boolean(!isCreatingSet && document.getElementById('save-assignment-as-set')?.checked);
+        const assignmentSetTitle = document.getElementById('assignment-set-title')?.value.trim() || title;
+        const assignmentSetVisibility = document.getElementById('assignment-set-visibility')?.value || 'private';
         if (!title) return showAlert('Title is required.', 'error');
         if (!isCreatingSet && !classId) return showAlert('Select a class.', 'error');
         if (!selectedQuestions.length) return showAlert('Select some questions first.', 'error');
+        if (isCreatingSet && visibility === 'class' && !setShareClassId) return showAlert('Select a class to share this set with.', 'error');
         const qualitySummary = builderQuality?.qualityIssueSummary(getSelectedQuestionsQualityAnalysis()) || '';
         const duplicateGroups = builderQuality ? [] : assignmentDuplicateAnswerGroups();
         if (qualitySummary) {
@@ -4471,16 +4579,15 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         try {
             if (isCreatingSet) {
-                const shareClassId = document.getElementById('set-share-class')?.value || null;
                 const payload = {
                     title,
                     questions: selectedQuestions,
                     visibility,
-                    class_id: visibility === 'class' ? shareClassId : null
+                    class_id: visibility === 'class' ? setShareClassId : null
                 };
 
                 if (currentEditSetId) {
-                    const { error } = await sb.from('question_sets').update(payload).eq('id', currentEditSetId);
+                    const { error } = await sb.from('question_sets').update(payload).eq('id', currentEditSetId).eq('creator_id', uid);
                     if (error) throw error;
                     showAlert('Question set updated!', 'success');
                 } else {
@@ -4500,7 +4607,11 @@ document.addEventListener('DOMContentLoaded', async () => {
                 document.getElementById('assign-instructions').value = '';
                 isCreatingSet = false;
                 currentEditSetId = null;
-                loadQuestionSets();
+                setVisibilityFilter = 'my';
+                document.querySelectorAll('#set-visibility-filters .chip').forEach(chip => {
+                    chip.classList.toggle('active', chip.dataset.filter === 'my');
+                });
+                await loadQuestionSets();
                 activateDashboardTab('question-sets');
             } else {
                 const { data: assignment, error } = await sb.from('assignments').insert({
@@ -4527,19 +4638,45 @@ document.addEventListener('DOMContentLoaded', async () => {
                 }
                 if (questionInsertError) throw questionInsertError;
 
-                showAlert('Assignment created successfully!', 'success');
+                let inlineSetError = null;
+                if (saveAssignmentAsSet) {
+                    const { error } = await sb.from('question_sets').insert({
+                        creator_id: uid,
+                        title: assignmentSetTitle,
+                        questions: selectedQuestions,
+                        visibility: assignmentSetVisibility,
+                        class_id: assignmentSetVisibility === 'class' ? classId : null,
+                        creator_role: 'teacher'
+                    });
+                    inlineSetError = error || null;
+                }
+
+                if (inlineSetError) {
+                    showAlert(`Assignment created, but the reusable set could not be saved: ${inlineSetError.message}`, 'error');
+                } else if (saveAssignmentAsSet) {
+                    showAlert('Assignment created and its questions were saved to My Sets!', 'success');
+                    setVisibilityFilter = 'my';
+                    document.querySelectorAll('#set-visibility-filters .chip').forEach(chip => {
+                        chip.classList.toggle('active', chip.dataset.filter === 'my');
+                    });
+                    void loadQuestionSets();
+                } else {
+                    showAlert('Assignment created successfully!', 'success');
+                }
                 selectedQuestions = [];
                 invalidateSelectedQuestionsQualityAnalysis();
                 updatePreview();
                 document.getElementById('assign-title').value = '';
                 document.getElementById('assign-instructions').value = '';
                 loadAssignments();
+                resetInlineAssignmentSetOption();
                 activateDashboardTab('assignments');
             }
         } catch (e) {
             showAlert('Failed: ' + e.message, 'error');
         } finally {
-            btn.disabled = false; btn.textContent = isCreatingSet ? 'Save Question Set' : '📝 Create Assignment';
+            btn.disabled = false;
+            syncTeacherBuilderModeUi();
         }
     });
 
@@ -5099,7 +5236,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         URL.revokeObjectURL(url);
     }
 
-    function activateDashboardTab(tabName) {
+    function activateDashboardTab(tabName, options = {}) {
         const nextTab = normalizeTeacherDashboardTab(tabName);
         const nextView = document.getElementById('tab-' + nextTab);
         if (!nextView) return;
@@ -5109,15 +5246,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         document.querySelectorAll('.view').forEach(c => c.classList.remove('active'));
         nextView.classList.add('active');
         if (nextTab === 'create') {
-            const displayStyle = isCreatingSet ? 'none' : '';
-            const assignClassEl = document.getElementById('assign-class');
-            if (assignClassEl) assignClassEl.closest('.input-group').style.display = displayStyle;
-            const assignDueEl = document.getElementById('assign-due');
-            if (assignDueEl) assignDueEl.closest('.input-group').style.display = displayStyle;
-            const assignInstructionsEl = document.getElementById('assign-instructions');
-            if (assignInstructionsEl) assignInstructionsEl.closest('.input-group').style.display = displayStyle;
-            const btnCreate = document.getElementById('btn-create-assignment');
-            if (btnCreate) btnCreate.textContent = isCreatingSet ? 'Save Question Set' : 'Create Assignment';
+            syncTeacherBuilderModeUi();
             setMode(currentMode);
         }
         if (nextTab === 'analytics') {
@@ -5151,6 +5280,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     function setDashboardMenuOpen(group, isOpen) {
+        if (nextTab === 'create' && options.builderMode !== 'set') {
+            isCreatingSet = false;
+            currentEditSetId = null;
+        }
         if (!group) return;
         group.classList.toggle('open', Boolean(isOpen));
         group.querySelector('.dashboard-tab-group-trigger')?.setAttribute('aria-expanded', isOpen ? 'true' : 'false');

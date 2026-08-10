@@ -64,3 +64,18 @@ test('random Question Bank picks exclude selected and duplicate-content rows', (
   assert.match(read('student.html'), /id="btn-bank-random-pick"/);
   assert.match(read('student.js'), /randomUniqueQuestions\(candidates, requested, selectedQuestions\)/);
 });
+
+test('teacher workflows create, assign, edit, and inline-save reusable question sets', () => {
+  const html = read('teacher.html');
+  const teacher = read('teacher.js');
+
+  assert.match(html, /id="btn-create-question-set"/);
+  assert.match(html, /id="save-assignment-as-set"/);
+  assert.match(html, /id="assignment-set-title"/);
+  assert.match(html, /id="assignment-set-visibility"/);
+  assert.match(teacher, /let currentEditSetId = null/);
+  assert.match(teacher, /window\.editQuestionSet\s*=/);
+  assert.match(teacher, /onclick="assignQuestionSet\('\$\{set\.id\}'\)"/);
+  assert.match(teacher, /saveAssignmentAsSet[\s\S]*sb\.from\('question_sets'\)\.insert/);
+  assert.match(teacher, /Assignment created, but the reusable set could not be saved/);
+});
