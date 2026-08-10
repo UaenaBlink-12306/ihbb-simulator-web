@@ -338,7 +338,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const updateGeneratorStatus = (message, type = 'muted') => {
         const el = document.getElementById('teacher-gen-status');
         if (!el) return;
-        el.className = `section-subtitle ${type === 'error' ? 'text-bad' : ''}`.trim();
+        el.className = `builder-generation-status ${type === 'error' ? 'text-bad' : ''}`.trim();
         el.textContent = message;
     };
     const renderGeneratedDraftPreview = () => {
@@ -359,6 +359,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 <div class="generator-item-head">
                     <button class="library-answer-button assignment-question-view-btn" type="button" data-generated-index="${index}">${esc(q.answer || 'Answer')}</button>
                     <div style="display: flex; gap: 8px; align-items: center;">
+                        <span class="pill question-source-pill-ai">AI Generated</span>
                         <button class="btn ghost btn-delete-draft-q" data-index="${index}" style="padding: 2px 6px; min-height: 24px; font-size: 12px; height: 24px; line-height: 1;">Delete</button>
                     </div>
                 </div>
@@ -3325,24 +3326,31 @@ document.addEventListener('DOMContentLoaded', async () => {
         const count = Math.max(1, Math.min(12, Number.parseInt(String(document.getElementById('teacher-gen-count')?.value || '5'), 10) || 5));
         const avoidAnswers = allQuestions.map(q => String(q.answer || '').trim()).filter(Boolean).slice(0, 60);
 
-        const response = await IHBBSecurity.authenticatedFetch(sb, '/api/generate-questions', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                count,
-                region,
-                era,
-                topic,
-                creator_role: 'teacher',
-                created_from: 'teacher-assignment',
-                avoid_answers: avoidAnswers
-            })
-        });
-        const data = await response.json().catch(() => ({}));
-        if (!response.ok || data?.error) {
-            throw new Error(data?.error || `Question generation failed (${response.status})`);
+        const requestController = new AbortController();
+        const requestTimeout = setTimeout(() => requestController.abort(), 55000);
+        try {
+            const response = await IHBBSecurity.authenticatedFetch(sb, '/api/generate-questions', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    count,
+                    region,
+                    era,
+                    topic,
+                    creator_role: 'teacher',
+                    created_from: 'teacher-assignment',
+                    avoid_answers: avoidAnswers
+                }),
+                signal: requestController.signal
+            });
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok || data?.error) {
+                throw new Error(data?.error || `AI generation failed (${response.status}).`);
+            }
+            return (data.items || []).map(item => normalizeQuestionRecord(item)).filter(Boolean);
+        } finally {
+            clearTimeout(requestTimeout);
         }
-        return (data.items || []).map(item => normalizeQuestionRecord(item)).filter(Boolean);
     }
 
     document.getElementById('btn-teacher-generate')?.addEventListener('click', async () => {
@@ -3351,10 +3359,15 @@ document.addEventListener('DOMContentLoaded', async () => {
         btn.disabled = true;
         const originalText = btn.textContent;
         btn.textContent = 'Generating...';
-        updateGeneratorStatus('Draft Builder is creating a fresh assignment set...', 'muted');
+        generatedDraftQuestions = [];
+        renderGeneratedDraftPreview();
+        updateGeneratorStatus('Generating AI questions, then checking their IHBB format...', 'muted');
+        const progressUpdate = setTimeout(() => {
+            updateGeneratorStatus('Still working — AI questions are being checked for IHBB format.', 'muted');
+        }, 12000);
         try {
             const items = await requestGeneratedQuestions();
-            if (!items.length) throw new Error('No valid generated questions came back.');
+            if (!items.length) throw new Error('AI returned no usable questions. Try a broader topic or fewer filters.');
             generatedDraftQuestions = items.map(item => {
                 item.meta.source = item.meta.source || 'generated';
                 return item;
@@ -3371,16 +3384,26 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
             populateGeneratorControls();
             renderGeneratedDraftPreview();
-            updateGeneratorStatus(`Generated ${generatedDraftQuestions.length} draft question${generatedDraftQuestions.length === 1 ? '' : 's'}. Review them below, then add them into the assignment draft.${persistenceNote}`, 'muted');
+            updateGeneratorStatus(`Generated ${generatedDraftQuestions.length} AI question${generatedDraftQuestions.length === 1 ? '' : 's'}. Review them below, then add them to the assignment.${persistenceNote}`, 'muted');
         } catch (err) {
             generatedDraftQuestions = [];
             renderGeneratedDraftPreview();
-            updateGeneratorStatus(err?.message || 'Question generation failed.', 'error');
-            showAlert(err?.message || 'Question generation failed.', 'error');
+            const message = err?.name === 'AbortError'
+                ? 'AI generation took too long. Please try again with fewer questions.'
+                : (err?.message || 'AI generation failed.');
+            updateGeneratorStatus(message, 'error');
+            showAlert(message, 'error');
         } finally {
+            clearTimeout(progressUpdate);
             btn.disabled = false;
             btn.textContent = originalText;
         }
+    });
+
+    document.getElementById('btn-teacher-clear-draft')?.addEventListener('click', () => {
+        generatedDraftQuestions = [];
+        renderGeneratedDraftPreview();
+        updateGeneratorStatus('Ready to generate. Most drafts take under a minute.', 'muted');
     });
 
     document.getElementById('btn-teacher-add-draft')?.addEventListener('click', () => {
@@ -3389,7 +3412,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             return;
         }
         setSelectedQuestions([...generatedDraftQuestions, ...selectedQuestions]);
-        showAlert(`${generatedDraftQuestions.length} generated question${generatedDraftQuestions.length === 1 ? '' : 's'} added to the assignment draft.`, 'success');
+        showAlert(`${generatedDraftQuestions.length} AI-generated question${generatedDraftQuestions.length === 1 ? '' : 's'} added to the assignment.`, 'success');
     });
 
     function normalizeAssignmentAnswerForWarning(value) {
@@ -3733,6 +3756,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const count = document.getElementById('preview-count');
         const note = document.getElementById('preview-summary-note');
         setMetric('teacher-hero-selected', selectedQuestions.length);
+        window.SetBuilderSourceUI?.renderSummary(selectedQuestions);
         if (!selectedQuestions.length) {
             area.classList.add('hidden');
             if (note) note.textContent = 'Open the large review window to inspect, reorder, or remove selected questions.';

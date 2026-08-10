@@ -24,6 +24,7 @@
         }
     </style>
     <script src="set-builder-quality.js" defer></script>
+    <script src="set-builder-source.js" defer></script>
     <script src="student.js" defer></script>
     <script src="dashboard-feedback.js" defer></script>
 </head>
@@ -362,87 +363,136 @@
                     </div>
                 </div>
 
-                <div class="sep"></div>
+                <p class="builder-intro-copy">Choose where your questions come from, then build and review your set.</p>
 
-                <div class="section-head">
-                    <div>
-                        <h3 style="margin: 0;">Questions</h3>
+                <section class="builder-source-step" aria-labelledby="builder-source-heading">
+                    <div class="builder-step-heading">
+                        <h3 id="builder-source-heading">1. Choose a question source</h3>
+                        <p>Start with the curated bank or ask AI to write new questions. You can mix both in one set.</p>
                     </div>
-                </div>
+                    <div class="builder-source-options" role="group" aria-label="Question source">
+                        <button class="builder-source-option builder-source-bank is-active" type="button" data-builder-source="bank" aria-pressed="true" aria-controls="builder-bank-panel">
+                            <span class="builder-source-radio" aria-hidden="true"></span>
+                            <span class="builder-source-icon" aria-hidden="true">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7.5h16v12H4z"></path><path d="M6 4.5h12l2 3H4z"></path><path d="M9 11h6v4H9z"></path></svg>
+                            </span>
+                            <span class="builder-source-copy">
+                                <strong>Question Bank</strong>
+                                <span>Real questions from the curated IHBB library</span>
+                                <small>CURATED • EXISTING QUESTIONS</small>
+                            </span>
+                            <span class="builder-source-check" aria-hidden="true">✓</span>
+                        </button>
+                        <button class="builder-source-option builder-source-ai" type="button" data-builder-source="ai" aria-pressed="false" aria-controls="builder-ai-panel" tabindex="-1">
+                            <span class="builder-source-radio" aria-hidden="true"></span>
+                            <span class="builder-source-icon" aria-hidden="true">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l1.2 4.1L17 8l-3.8 1.9L12 14l-1.2-4.1L7 8l3.8-1.9L12 2z"></path><path d="M18.5 13l.8 2.7L22 17l-2.7 1.3-.8 2.7-.8-2.7L15 17l2.7-1.3.8-2.7z"></path></svg>
+                            </span>
+                            <span class="builder-source-copy">
+                                <strong>AI Generated</strong>
+                                <span>New questions written by AI for your topic</span>
+                                <small>AI-WRITTEN • REVIEW REQUIRED</small>
+                            </span>
+                            <span class="builder-source-check" aria-hidden="true">✓</span>
+                        </button>
+                    </div>
+                    <div class="builder-source-note">
+                        <span aria-hidden="true">i</span>
+                        Every selected question keeps its source label, including after you save the set.
+                    </div>
+                </section>
 
-                <div class="card-muted-box generator-card" style="margin-bottom: 18px;">
-                    <div class="section-head" style="margin-bottom: 12px;">
-                        <div>
-                            <h3 style="margin: 0;">Draft Builder</h3>
-                            <p id="teacher-gen-status" class="section-subtitle" style="margin: 0;">Targeted question drafting</p>
-                        </div>
-                        <div class="inline-actions">
-                            <button id="btn-teacher-generate" class="btn pri" type="button">Generate Draft</button>
-                            <button id="btn-teacher-clear-draft" class="btn bad" type="button" style="display: none;">Clear Draft</button>
-                            <button id="btn-teacher-add-draft" class="btn ghost" type="button" disabled>Add Draft to Assignment</button>
-                        </div>
-                    </div>
-                    <div class="setup-grid">
-                        <div class="input-group" style="margin: 0;">
-                            <label for="teacher-gen-topic">Focus Topic</label>
-                            <input type="text" id="teacher-gen-topic" placeholder="e.g. Meiji Japan, Cold War diplomacy">
-                        </div>
-                        <div class="input-group count-control" style="margin: 0;">
-                            <label for="teacher-gen-count">Count</label>
-                            <input type="number" id="teacher-gen-count" class="compact-number-input" value="5" min="1" max="12">
-                        </div>
-                        <div class="input-group" style="margin: 0;">
-                            <label for="teacher-gen-region">Region</label>
-                            <select id="teacher-gen-region"></select>
-                        </div>
-                        <div class="input-group" style="margin: 0;">
-                            <label for="teacher-gen-era">Era</label>
-                            <select id="teacher-gen-era"></select>
-                        </div>
-                    </div>
-                    <div id="teacher-gen-preview" class="generator-preview hidden"></div>
-                </div>
+                <div class="student-builder-workspace">
+                    <div class="builder-workflow-stack">
+                        <section id="builder-bank-panel" class="builder-workflow-panel" data-builder-source-panel="bank" aria-hidden="false">
+                            <div class="builder-workflow-head">
+                                <div>
+                                    <h3>2. Add real questions from the Question Bank</h3>
+                                    <div class="builder-provenance builder-provenance-bank">QUESTION BANK • CURATED</div>
+                                </div>
+                            </div>
+                            <div class="setup-grid builder-filter-grid">
+                                <div class="input-group">
+                                    <label for="bank-search">Keyword Search</label>
+                                    <input type="text" id="bank-search" placeholder="Search questions...">
+                                </div>
+                                <div class="input-group">
+                                    <label for="bank-category">Category</label>
+                                    <select id="bank-category"></select>
+                                </div>
+                                <div class="input-group">
+                                    <label for="bank-era">Era</label>
+                                    <select id="bank-era"></select>
+                                </div>
+                            </div>
+                            <div id="bank-list" class="list-container builder-question-list">
+                                <p class="muted">Search or filter to see questions...</p>
+                            </div>
+                        </section>
 
-                <div class="card-muted-box" style="margin-bottom: 18px; border: 1px solid var(--line);">
-                    <div class="section-head" style="margin-bottom: 12px;">
-                        <div>
-                            <h3 style="margin: 0;">Original Question Bank</h3>
-                            <p class="section-subtitle" style="margin: 0;">Real questions from the IHBB study guide. Select questions to include in your set.</p>
-                        </div>
+                        <section id="builder-ai-panel" class="builder-workflow-panel builder-workflow-ai hidden" data-builder-source-panel="ai" aria-hidden="true">
+                            <div class="builder-workflow-head">
+                                <div>
+                                    <h3>2. Generate new questions with AI</h3>
+                                    <div class="builder-provenance builder-provenance-ai">AI GENERATED • REVIEW REQUIRED</div>
+                                </div>
+                            </div>
+                            <div class="builder-ai-warning">
+                                <span aria-hidden="true">!</span>
+                                <p><strong>AI can make mistakes.</strong> Review every question before saving or assigning it.</p>
+                            </div>
+                            <div class="setup-grid builder-ai-grid">
+                                <div class="input-group">
+                                    <label for="teacher-gen-topic">Focus Topic</label>
+                                    <input type="text" id="teacher-gen-topic" placeholder="e.g. Meiji Japan, Cold War diplomacy">
+                                </div>
+                                <div class="input-group count-control">
+                                    <label for="teacher-gen-count">Count</label>
+                                    <input type="number" id="teacher-gen-count" class="compact-number-input" value="5" min="1" max="12">
+                                </div>
+                                <div class="input-group">
+                                    <label for="teacher-gen-region">Region</label>
+                                    <select id="teacher-gen-region"></select>
+                                </div>
+                                <div class="input-group">
+                                    <label for="teacher-gen-era">Era</label>
+                                    <select id="teacher-gen-era"></select>
+                                </div>
+                            </div>
+                            <div class="builder-generator-actions">
+                                <button id="btn-teacher-generate" class="btn builder-ai-primary" type="button">Generate AI Questions</button>
+                                <button id="btn-teacher-clear-draft" class="btn ghost" type="button" style="display: none;">Clear AI Draft</button>
+                                <button id="btn-teacher-add-draft" class="btn ghost" type="button" disabled>Add AI Questions to Set</button>
+                            </div>
+                            <div id="teacher-gen-status" class="builder-generation-status" role="status" aria-live="polite">Ready to generate. Most drafts take under a minute.</div>
+                            <div id="teacher-gen-preview" class="generator-preview hidden"></div>
+                        </section>
                     </div>
-                    <div class="setup-grid" style="margin-bottom: 16px;">
-                        <div class="input-group" style="margin: 0;">
-                            <label>Keyword Search</label>
-                            <input type="text" id="bank-search" placeholder="Search questions...">
-                        </div>
-                        <div class="input-group" style="margin: 0;">
-                            <label>Category</label>
-                            <select id="bank-category"></select>
-                        </div>
-                        <div class="input-group" style="margin: 0;">
-                            <label>Era</label>
-                            <select id="bank-era"></select>
-                        </div>
-                    </div>
-                    <div id="bank-list" class="list-container" style="max-height: 300px; overflow-y: auto;">
-                        <p class="muted">Search or filter to see questions...</p>
-                    </div>
-                </div>
 
-                <div class="section-head">
-                    <div>
-                        <h3 style="margin: 0;">Selected Questions (<span id="selected-count">0</span>)</h3>
-                    </div>
-                </div>
-                <div id="selected-list" class="list-container" style="margin-bottom: 24px;">
-                    <p class="muted">No questions selected yet.</p>
-                </div>
-
-                <div id="set-quality-panel" style="margin-bottom: 24px;"></div>
-
-                <div class="panel-actions">
-                    <button id="btn-create-assignment" class="btn pri">Save Question Set</button>
-                    <button id="btn-cancel-create" class="btn ghost">Cancel</button>
+                    <section class="builder-review-panel" aria-labelledby="builder-review-heading">
+                        <div class="builder-step-heading builder-review-heading">
+                            <h3 id="builder-review-heading">3. Review your set</h3>
+                            <p><span id="selected-count">0</span> questions selected</p>
+                        </div>
+                        <div class="builder-source-summary" aria-label="Selected question sources">
+                            <div class="builder-source-stat builder-source-stat-bank">
+                                <strong data-builder-source-count="bank">0</strong>
+                                <span>Question Bank</span>
+                            </div>
+                            <div class="builder-source-stat builder-source-stat-ai">
+                                <strong data-builder-source-count="ai">0</strong>
+                                <span>AI Generated</span>
+                            </div>
+                        </div>
+                        <div id="selected-list" class="list-container builder-selected-list">
+                            <p class="muted">No questions selected yet. Choose a source to begin.</p>
+                        </div>
+                        <div id="set-quality-panel"></div>
+                        <div class="panel-actions builder-save-actions">
+                            <button id="btn-create-assignment" class="btn pri">Save Question Set</button>
+                            <button id="btn-cancel-create" class="btn ghost">Cancel</button>
+                        </div>
+                    </section>
                 </div>
             </div>
         </section>
@@ -844,6 +894,13 @@
                 </div>
                 <div class="dashboard-split dashboard-split-solo">
                     <div class="list-container">
+                        <div class="list-item">
+                            <div>
+                                <h3 style="margin:0 0 4px;">Source-First Set Builder &amp; AI Generation Fix</h3>
+                                <div class="pill">August 10, 2026</div>
+                                <p class="muted" style="margin: 8px 0 0;">Set Builder now begins with a clear Question Bank or AI Generated choice, keeps the source visible on every selected question, and correctly loads successful AI-generated drafts.</p>
+                            </div>
+                        </div>
                         <div class="list-item">
                             <div>
                                 <h3 style="margin:0 0 4px;">AI Authentication Configuration Fix</h3>

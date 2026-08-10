@@ -1,9 +1,12 @@
 (function () {
   const SOURCE_LABELS = {
-    original: 'Original bank',
-    generated: 'Generated draft',
-    deepseek: 'DeepSeek',
-    fallback: 'Local fallback'
+    original: 'Question Bank',
+    bank: 'Question Bank',
+    generated: 'AI Generated',
+    deepseek: 'AI Generated',
+    ai: 'AI Generated',
+    'ai-generated': 'AI Generated',
+    fallback: 'Question Bank'
   };
 
   const STOP_WORDS = new Set(`
@@ -93,8 +96,12 @@
   function sourceLabel(question) {
     const raw = sourceValue(question);
     const key = raw.toLowerCase();
-    if (!key) return 'Unknown source';
+    if (!key) return 'Question Bank';
     return SOURCE_LABELS[key] || raw.replace(/[-_]+/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+  }
+
+  function sourceKind(question) {
+    return sourceLabel(question) === 'AI Generated' ? 'ai' : 'bank';
   }
 
   function provenanceParts(question) {
@@ -512,7 +519,10 @@
       parts.push(`<span class="pill">Region: ${esc(region)}</span>`);
       parts.push(`<span class="pill">Era: ${esc(eraLabel || 'Unknown')}</span>`);
     }
-    if (options.showSource !== false) parts.push(`<span class="pill">Source: ${esc(sourceLabel(question))}</span>`);
+    if (options.showSource !== false) {
+      const kind = sourceKind(question);
+      parts.push(`<span class="pill question-source-pill-${kind}">Source: ${esc(sourceLabel(question))}</span>`);
+    }
     if (options.showProvenance) {
       parts.push(`<span class="pill">Provenance: ${esc(provenanceParts(question).join(' / '))}</span>`);
     }
@@ -543,6 +553,7 @@
     questionMetaHtml,
     renderQualityPanel,
     sourceLabel,
+    sourceKind,
     provenanceParts,
     qualityIssueSummary
   };
