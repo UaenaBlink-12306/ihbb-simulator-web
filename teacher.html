@@ -78,6 +78,7 @@
     </style>
     <script src="set-builder-quality.js" defer></script>
     <script src="set-builder-source.js" defer></script>
+    <script src="coach-tab-ui.js" defer></script>
     <script src="teacher.js" defer></script>
     <script src="dashboard-feedback.js" defer></script>
 </head>
@@ -113,15 +114,6 @@
                 <a href="index.html?drill=1" class="btn pri hub-nav-button">Practice Hub</a>
                 <a href="livebee.html" class="btn ghost">Host Live Bee</a>
                 <a href="#" id="btn-logout" class="btn bad">Logout</a>
-                <button id="coach-chat-launcher" class="coach-chat-launcher" type="button" aria-controls="coach-chat-sidebar"
-                    aria-expanded="false" aria-label="Open Planning Coach" title="Open the planning coach for class-gap analysis, lesson prep, and assignment planning">
-                    <span class="coach-chat-launcher-icon">Co</span>
-                    <span class="coach-chat-launcher-copy">
-                        <span class="coach-chat-launcher-title">Planning Coach</span>
-                        <span id="coach-chat-launcher-note" class="coach-chat-launcher-note">Open planner</span>
-                    </span>
-                    <span id="coach-chat-launcher-count" class="coach-chat-launcher-count hidden">0</span>
-                </button>
             </div>
         </header>
 
@@ -135,6 +127,7 @@
                     <button class="dash-tab" type="button" data-tab="assignments" role="menuitem">Assignments</button>
                 </div>
             </div>
+            <button class="dash-tab coach-direct-tab" type="button" data-tab="coach" title="Plan class moves, lessons, and assignments">Coach</button>
             <div class="dashboard-tab-group" data-tabs="question-sets create">
                 <button class="dashboard-tab-group-trigger" type="button" data-default-tab="question-sets" aria-haspopup="true">Question Tools</button>
                 <div class="dashboard-tab-menu" role="menu">
@@ -521,6 +514,45 @@
             </div>
         </section>
 
+        <section id="tab-coach" class="view">
+            <div class="coach-tab-page">
+                <div id="coach-chat-sidebar" class="coach-tab-shell" data-chat-pristine="true" data-coach-surface="tab" data-coach-role="teacher">
+                    <header class="coach-tab-header">
+                        <div>
+                            <h2>Coach</h2>
+                            <p id="coach-chat-context-summary">Using your classes, assignments, and analytics</p>
+                        </div>
+                        <button id="coach-chat-new" class="coach-reset-button" type="button" hidden>Start over</button>
+                    </header>
+
+                    <div id="coach-chat-body" class="coach-tab-body">
+                        <div id="coach-chat-home" class="coach-home">
+                            <h3>What would help most?</h3>
+                            <div id="coach-chat-workspace" class="coach-chat-workspace"></div>
+                            <div id="coach-chat-starter-box" class="coach-chat-starter-block">
+                                <div id="coach-chat-starters" class="coach-chat-starters"></div>
+                            </div>
+                        </div>
+                        <div id="coach-chat-messages" class="coach-chat-messages" aria-live="polite"></div>
+                    </div>
+
+                    <button id="coach-chat-jump-latest" class="coach-chat-jump-latest" type="button" aria-label="Jump to latest answer" title="Jump to latest answer">
+                        <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><polyline points="19 12 12 19 5 12"></polyline></svg>
+                    </button>
+
+                    <form id="coach-chat-form" class="coach-chat-form">
+                        <label class="coach-chat-input-wrap" for="coach-chat-input">
+                            <textarea id="coach-chat-input" rows="1" placeholder="Ask about a class, assignment, lesson, or what to do next"></textarea>
+                            <button id="coach-chat-send" class="coach-send-button" type="submit" aria-label="Send question">
+                                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"></path></svg>
+                            </button>
+                        </label>
+                        <div id="coach-chat-hint" class="coach-composer-hint">Coach uses your current class data to personalize plans.</div>
+                    </form>
+                </div>
+            </div>
+        </section>
+
         <section id="tab-livebee" class="view">
             <div class="card section-card">
                 <div class="coming-soon">
@@ -876,6 +908,13 @@
                 </div>
                 <div class="dashboard-split dashboard-split-solo">
                     <div class="list-container">
+                        <div class="list-item">
+                            <div>
+                                <h3 style="margin:0 0 4px;">Simpler Coach Tab</h3>
+                                <div class="pill">August 10, 2026</div>
+                                <p class="muted" style="margin: 8px 0 0;">Coach now has its own full dashboard tab for class planning, assignments, and mini lessons, with cleaner answers and reviewable handoffs—without a sidebar or advanced layout controls.</p>
+                            </div>
+                        </div>
                         <div class="list-item">
                             <div>
                                 <h3 style="margin:0 0 4px;">Cleaner Mistakes Notebook Card Titles</h3>
@@ -1654,55 +1693,6 @@
         </div>
     </div>
 
-    <div id="coach-chat-backdrop" class="coach-chat-backdrop" hidden></div>
-    <aside id="coach-chat-sidebar" class="coach-chat-sidebar" aria-hidden="true">
-        <div class="coach-chat-panel">
-            <div class="coach-chat-head">
-                <div class="coach-chat-head-copy">
-                    <div class="eyebrow">Planning helper</div>
-                    <h2 class="card-title">Planning Coach</h2>
-                    <p id="coach-chat-context-summary" class="coach-chat-context-summary">Reviewing classes, assignments, analytics, and draft questions.</p>
-                </div>
-                <div class="coach-chat-head-actions">
-                    <button id="coach-chat-new" class="btn ghost coach-chat-utility-btn" type="button">New Chat</button>
-                    <button id="coach-chat-fullscreen" class="btn ghost coach-chat-utility-btn" type="button" aria-pressed="false">Full Screen</button>
-                    <button id="coach-chat-close" class="btn ghost coach-chat-close" type="button" aria-label="Close sidebar">×</button>
-                </div>
-            </div>
-
-            <div id="coach-chat-body" class="coach-chat-body">
-                <div id="coach-chat-status-pills" class="coach-chat-status-pills"></div>
-                <div class="coach-chat-section-block">
-                    <div class="coach-chat-section-label">Class planning shortcuts</div>
-                    <div id="coach-chat-workspace" class="coach-chat-workspace"></div>
-                </div>
-                <div id="coach-chat-messages" class="coach-chat-messages" aria-live="polite"></div>
-                <div id="coach-chat-starter-box" class="coach-chat-starter-block">
-                    <div class="coach-chat-section-label">Teacher prompts</div>
-                    <div id="coach-chat-starters" class="coach-chat-starters"></div>
-                </div>
-            </div>
-            <button id="coach-chat-jump-latest" class="coach-chat-jump-latest" type="button" aria-label="Jump to latest message" title="Jump to latest">
-                <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><polyline points="19 12 12 19 5 12"></polyline></svg>
-            </button>
-
-            <form id="coach-chat-form" class="coach-chat-form">
-                <div class="coach-chat-section-label">Ask a teaching question</div>
-                <label class="coach-chat-input-wrap" for="coach-chat-input">
-                    <textarea id="coach-chat-input" rows="2"
-                        placeholder="Ask for a class-gap plan, assignment idea, lesson brief, or teacher-ready topic explanation."></textarea>
-                </label>
-                <div class="coach-chat-form-utility">
-                    <button id="coach-chat-thinking-toggle" class="coach-chat-thinking-toggle" type="button" aria-pressed="false" title="Toggle detailed planning reasoning for more structured explanations.">Detailed Reasoning: Off</button>
-                </div>
-                <div class="coach-chat-form-actions">
-                    <div id="coach-chat-hint" class="muted">Teacher auto mode balances class-gap diagnosis, lesson prep, and assignment planning.</div>
-                    <button id="coach-chat-send" class="btn pri" type="submit">Send</button>
-                </div>
-            </form>
-        </div>
-        <div id="coach-chat-resize-handle" class="coach-chat-resize-handle" aria-hidden="true"></div>
-    </aside>
 </body>
 
 </html>

@@ -197,6 +197,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const TEACHER_DASHBOARD_TAB_LABELS = Object.freeze({
         classes: 'My Classes',
         assignments: 'Assignments',
+        coach: 'Coach',
         'question-sets': 'Browse Sets',
         create: 'Create Assignment',
         livebee: 'Live Bee Rooms',
@@ -5245,6 +5246,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         syncDashboardTabGroups(nextTab);
         document.querySelectorAll('.view').forEach(c => c.classList.remove('active'));
         nextView.classList.add('active');
+        dashboardChat.open = nextTab === 'coach';
         if (nextTab === 'create') {
             syncTeacherBuilderModeUi();
             setMode(currentMode);
@@ -5907,48 +5909,18 @@ document.addEventListener('DOMContentLoaded', async () => {
         const priority = snapshot?.priority_classes?.[0] || null;
         const assignment = snapshot?.assignments?.[0] || null;
         const className = selected?.name || priority?.name || 'my class';
-        const knowledgeTopic = assignment?.title || className || 'this topic';
-        if (dashboardChat.ui.mode === 'knowledge') {
-            return limitDashboardChatStarters([
-                { label: 'Teach it', prompt: `Explain ${knowledgeTopic} as a teacher-ready mini lesson with key clues and likely misconceptions.` },
-                { label: 'Discussion plan', prompt: `Give me a short discussion plan for teaching ${knowledgeTopic}.` },
-                { label: 'Common confusions', prompt: `What confusions should I warn students about when teaching ${knowledgeTopic}?` }
-            ]);
-        }
-        if (selected?.name) {
-            return limitDashboardChatStarters([
-                { label: 'Class next step', prompt: `What should I do next for ${selected.name} based on completion, scores, and practice activity?` },
-                { label: 'Assignment plan', prompt: `Build a short assignment plan for ${selected.name} that targets the biggest class gap.` },
-                { label: 'Intervention list', prompt: `Which students or groups in ${selected.name} need follow-up first?` }
-            ]);
-        }
-        if (priority?.name) {
-            return limitDashboardChatStarters([
-                { label: 'Watch class', prompt: `Why is ${priority.name} a priority, and what lesson or assignment should I prepare?` },
-                { label: 'Close gaps', prompt: `Give me a class-gap action plan for ${priority.name}.` },
-                { label: 'Homework idea', prompt: `Draft a homework plan for ${priority.name} using IHBB-style practice.` }
-            ]);
-        }
-        if ((snapshot?.active_draft_count || 0) > 0) {
-            return limitDashboardChatStarters([
-                { label: 'Polish draft', prompt: `I have ${snapshot.active_draft_count} drafted questions. How should I shape them into a balanced assignment?` },
-                { label: 'Add directions', prompt: 'Write concise assignment instructions for the questions I have drafted.' },
-                { label: 'Difficulty check', prompt: 'Review my draft assignment plan for pacing, difficulty, and coverage balance.' }
-            ]);
-        }
-        return limitDashboardChatStarters(DASHBOARD_CHAT_STARTERS);
+        const topic = assignment?.title || className || 'the topic my students most need';
+        return [
+            { label: 'Build an assignment', prompt: `Build a concise IHBB assignment for ${className} that targets the clearest class need and remains ready for teacher review.` },
+            { label: 'Prepare a mini lesson', prompt: `Prepare a teacher-ready mini lesson for ${topic}, including key facts, likely misconceptions, and one check for understanding.` }
+        ];
     }
 
     function renderDashboardChatStarters(snapshot) {
         const el = document.getElementById('coach-chat-starters');
         if (!el) return;
         dashboardChat.currentStarters = buildDashboardChatStarters(snapshot);
-        el.innerHTML = dashboardChat.currentStarters.map((starter, index) => `
-            <button class="coach-chat-starter" type="button" data-starter-index="${index}">
-                <span class="coach-chat-starter-label">${esc(starter.label || 'Suggested question')}</span>
-                <span class="coach-chat-starter-text">${esc(starter.prompt || '')}</span>
-            </button>
-        `).join('');
+        window.IHBBCoachTabUI?.renderStarterActions(el, dashboardChat.currentStarters, esc);
         syncDashboardChatStarterVisibility();
     }
 
@@ -5958,66 +5930,28 @@ document.addEventListener('DOMContentLoaded', async () => {
         const selected = snapshot?.selected_class || null;
         const priority = snapshot?.priority_classes?.[0] || null;
         const activeClass = selected || priority || null;
-        const lessonTopic = activeClass?.name || snapshot?.assignments?.[0]?.title || 'today\'s IHBB topic';
-        const lessonCard = {
-            kicker: 'Lesson prep',
-            title: 'Teacher brief',
-            copy: 'Frame content for class.',
-            action: {
-                kind: 'prompt',
-                label: 'Prep a lesson',
-                prompt: `Prepare a concise teacher lesson brief for ${lessonTopic}, including key facts, likely misconceptions, and one IHBB-style check for understanding.`
-            }
-        };
-        const primaryCard = activeClass
-            ? {
-                kicker: 'Class focus',
-                title: activeClass.name,
-                copy: Number.isFinite(activeClass.avg_assignment_score) ? `${activeClass.avg_assignment_score}% average` : 'Open class analytics',
-                action: { kind: 'action', id: 'open_review', label: 'Open Analytics' }
-            }
-            : {
-                kicker: 'Setup',
-                title: 'Create assignment',
-                copy: 'Build class practice.',
-                action: { kind: 'action', id: 'open_setup', label: 'Create Assignment' }
+        let primaryCard;
+        if (activeClass?.name) {
+            primaryCard = {
+                title: `Plan for ${activeClass.name}`,
+                copy: 'Use completion, scores, and practice activity to choose one clear next class move.',
+                action: { kind: 'prompt', prompt: `What should I do next for ${activeClass.name}? Use the available class analytics and give me one practical lesson or assignment plan.` }
             };
-        const assignmentCard = {
-            kicker: 'Assignment',
-            title: (snapshot?.active_draft_count || 0) > 0 ? `${snapshot.active_draft_count} drafted` : 'Build homework',
-            copy: (snapshot?.active_draft_count || 0) > 0 ? 'Polish current draft.' : 'Start from class needs.',
-            action: (snapshot?.active_draft_count || 0) > 0
-                ? { kind: 'prompt', label: 'Polish draft', prompt: `I have ${snapshot.active_draft_count} drafted questions. Help me turn them into a balanced assignment.` }
-                : { kind: 'action', id: 'open_setup', label: 'Create Assignment' }
-        };
-        const libraryCard = {
-            kicker: 'Question bank',
-            title: `${snapshot?.question_bank_size || 0} questions`,
-            copy: 'Find assignable material.',
-            action: { kind: 'action', id: 'open_library', label: 'Open Question Builder' }
-        };
-        const cards = isDashboardChatPristine()
-            ? [primaryCard, assignmentCard]
-            : [
-                primaryCard,
-                assignmentCard,
-                {
-                    kicker: 'Analytics',
-                    title: 'Class gaps',
-                    copy: `${snapshot?.analytics?.students || 0} students tracked`,
-                    action: { kind: 'action', id: 'open_review', label: 'Open Analytics' }
-                },
-                libraryCard,
-                lessonCard
-            ];
-        el.innerHTML = cards.map((card, index) => `
-            <button class="coach-chat-workspace-card" type="button" data-workspace-index="${index}">
-                <span class="coach-chat-workspace-kicker">${esc(card.kicker)}</span>
-                <span class="coach-chat-workspace-title">${esc(card.title)}</span>
-                <span class="coach-chat-workspace-copy">${esc(card.copy)}</span>
-            </button>
-        `).join('');
-        dashboardChat.workspaceCards = cards;
+        } else if ((snapshot?.active_draft_count || 0) > 0) {
+            primaryCard = {
+                title: 'Finish my assignment draft',
+                copy: `Turn ${snapshot.active_draft_count} drafted question${snapshot.active_draft_count === 1 ? '' : 's'} into a balanced, reviewable assignment.`,
+                action: { kind: 'prompt', prompt: `Help me turn my ${snapshot.active_draft_count} drafted questions into a balanced assignment with clear instructions.` }
+            };
+        } else {
+            primaryCard = {
+                title: 'Choose my next class move',
+                copy: 'Start with one useful lesson, assignment, or analytics check.',
+                action: { kind: 'prompt', prompt: 'Choose one useful next teaching move from my dashboard context and explain how to carry it out.' }
+            };
+        }
+        dashboardChat.workspaceCards = [primaryCard];
+        window.IHBBCoachTabUI?.renderPrimaryAction(el, primaryCard, esc);
     }
 
     function scrollDashboardChatToBottom() {
@@ -6039,6 +5973,23 @@ document.addEventListener('DOMContentLoaded', async () => {
     function renderDashboardChatMessages() {
         const el = document.getElementById('coach-chat-messages');
         if (!el) return;
+        if (window.IHBBCoachTabUI) {
+            window.IHBBCoachTabUI.renderMessages({
+                element: el,
+                messages: dashboardChat.messages,
+                busy: dashboardChat.busy,
+                role: 'teacher',
+                escapeHtml: esc,
+                isStreaming: isDashboardChatMessageStreaming,
+                visibleText: dashboardChatVisibleText,
+                renderText: (text, streaming) => `<p class="coach-chat-message-text">${esc(text || '')}${streaming ? dashboardChatStreamingCursorHtml() : ''}</p>`,
+                renderSectionBody: body => `<p>${esc(body || '')}</p>`,
+                busyText: 'Reviewing your classes, assignments, and analytics…'
+            });
+            window.IHBBCoachTabUI.syncState(document.getElementById('coach-chat-sidebar'), dashboardChat.messages, dashboardChat.busy);
+            scrollDashboardChatToBottom();
+            return;
+        }
         const messagesHtml = dashboardChat.messages.map((message, messageIndex) => `
             <div class="coach-chat-message ${message.role === 'user' ? 'user' : 'assistant'}">
                 <div class="coach-chat-message-meta">
@@ -6112,6 +6063,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         const launcher = document.getElementById('coach-chat-launcher');
         const sidebar = document.getElementById('coach-chat-sidebar');
         const backdrop = document.getElementById('coach-chat-backdrop');
+        if (sidebar?.dataset.coachSurface === 'tab') {
+            sidebar.classList.remove('open', 'fullscreen');
+            sidebar.removeAttribute('aria-hidden');
+            window.IHBBCoachTabUI?.syncState(sidebar, dashboardChat.messages, dashboardChat.busy);
+            document.body.classList.remove('coach-chat-open', 'coach-chat-resizing');
+            return;
+        }
         if (launcher) launcher.setAttribute('aria-expanded', dashboardChat.open ? 'true' : 'false');
         if (sidebar) {
             sidebar.classList.toggle('open', dashboardChat.open);
@@ -6136,7 +6094,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const fullBtn = document.getElementById('coach-chat-fullscreen');
         const thinkingBtn = document.getElementById('coach-chat-thinking-toggle');
 
-        if (summaryEl) summaryEl.textContent = buildDashboardChatSummary(snapshot);
+        if (summaryEl) summaryEl.textContent = 'Using your classes, assignments, and analytics';
         if (pillsEl) {
             const pills = [];
             if (dashboardChat.ui.thinkingEnabled) pills.push('Thinking model on');
@@ -6160,11 +6118,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             countEl.textContent = String(count || 0);
             countEl.classList.toggle('hidden', !count);
         }
-        if (hintEl) {
-            hintEl.textContent = dashboardChat.ui.thinkingEnabled
-                ? 'Thinking model is on. Answers may take longer but should synthesize class analytics, assignment drafts, and lesson needs.'
-                : 'Teacher auto mode balances lesson explanation, class-gap diagnosis, and assignment planning.';
-        }
+        if (hintEl) hintEl.textContent = 'Coach uses your class context to personalize plans.';
         if (sendBtn) sendBtn.disabled = !!dashboardChat.busy;
         sizeButtons.forEach(button => {
             const active = String(button.dataset.size || '') === dashboardChat.ui.size && !dashboardChat.ui.fullscreen;
@@ -6547,6 +6501,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     function openDashboardChat() {
         dashboardChat.suggestedReason = 'manual';
+        activateDashboardTab('coach');
         dashboardChat.open = true;
         renderDashboardChatChrome();
         restoreDashboardChatScroll();
@@ -6632,12 +6587,23 @@ document.addEventListener('DOMContentLoaded', async () => {
         const input = document.getElementById('coach-chat-input');
         const message = String(input?.value || '').trim();
         if (!message) return;
-        if (input) input.value = '';
+        if (input) {
+            input.value = '';
+            window.IHBBCoachTabUI?.autoGrow(input);
+        }
         void sendDashboardChatMessage(message);
     });
-    document.getElementById('coach-chat-input')?.addEventListener('input', syncDashboardChatStarterVisibility);
+    document.getElementById('coach-chat-input')?.addEventListener('input', (event) => {
+        window.IHBBCoachTabUI?.autoGrow(event.currentTarget);
+        syncDashboardChatStarterVisibility();
+    });
+    document.getElementById('coach-chat-input')?.addEventListener('keydown', (event) => {
+        if (!window.IHBBCoachTabUI?.isSendKey(event)) return;
+        event.preventDefault();
+        event.currentTarget.form?.requestSubmit();
+    });
     document.getElementById('coach-chat-workspace')?.addEventListener('click', (event) => {
-        const button = event.target.closest('.coach-chat-workspace-card');
+        const button = event.target.closest('[data-workspace-index]');
         if (!button) return;
         const card = dashboardChat.workspaceCards?.[Number(button.dataset.workspaceIndex) || 0];
         if (!card?.action) return;
@@ -6648,7 +6614,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         void runDashboardChatAction(card.action);
     });
     document.getElementById('coach-chat-starters')?.addEventListener('click', (event) => {
-        const button = event.target.closest('.coach-chat-starter');
+        const button = event.target.closest('[data-starter-index]');
         if (!button) return;
         const starter = dashboardChat.currentStarters?.[Number(button.dataset.starterIndex) || 0];
         if (!starter?.prompt) return;
@@ -6656,7 +6622,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         void sendDashboardChatMessage(starter.prompt);
     });
     document.getElementById('coach-chat-messages')?.addEventListener('click', (event) => {
-        const followUpButton = event.target.closest('.coach-chat-followup');
+        const followUpButton = event.target.closest('[data-followup-index]');
         if (followUpButton) {
             const messageIndex = Number(followUpButton.dataset.messageIndex);
             const followUpIndex = Number(followUpButton.dataset.followupIndex);
@@ -6664,13 +6630,18 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (followUp?.prompt) void sendDashboardChatMessage(followUp.prompt);
             return;
         }
-        const toolButton = event.target.closest('.coach-chat-tool');
+        const toolButton = event.target.closest('[data-tool]');
         if (toolButton) {
-            const messageIndex = Number(toolButton.dataset.messageIndex);
+            const indexedParent = toolButton.closest('[data-message-index]');
+            const messageIndex = Number(toolButton.dataset.messageIndex ?? indexedParent?.dataset.messageIndex);
             const message = dashboardChat.messages?.[messageIndex];
             const tool = String(toolButton.dataset.tool || '').trim();
-            if (tool === 'shorter' || tool === 'expand') {
-                rewriteDashboardChatMessage(messageIndex, tool);
+            if (tool === 'expand') {
+                rewriteDashboardChatMessage(messageIndex, 'expand');
+                return;
+            }
+            if (tool === 'ask') {
+                document.getElementById('coach-chat-input')?.focus();
                 return;
             }
             if (tool === 'send-class') {
@@ -6686,7 +6657,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
             return;
         }
-        const button = event.target.closest('.coach-chat-action');
+        const button = event.target.closest('.coach-answer-action');
         if (!button) return;
         const messageIndex = Number(button.dataset.messageIndex);
         const actionIndex = Number(button.dataset.actionIndex);

@@ -542,16 +542,16 @@ function coachChatRoleCopy() {
 }
 function syncCoachChatRoleChrome() {
   const copy = coachChatRoleCopy();
-  const sidebar = $('coach-chat-sidebar');
-  const eyebrow = sidebar?.querySelector('.coach-chat-head-copy .eyebrow');
-  const title = sidebar?.querySelector('.coach-chat-head-copy .card-title');
-  const labels = Array.from(sidebar?.querySelectorAll('.coach-chat-section-label') || []);
+  const surface = $('coach-chat-sidebar');
+  const title = surface?.querySelector('.coach-tab-header h2');
+  const summary = $('coach-chat-context-summary');
   const input = $('coach-chat-input');
-  if (eyebrow) eyebrow.textContent = copy.eyebrow;
-  if (title) title.textContent = copy.title;
-  if (labels[0]) labels[0].textContent = copy.shortcutLabel;
-  if (labels[1]) labels[1].textContent = copy.starterLabel;
-  if (labels[2]) labels[2].textContent = copy.askLabel;
+  if (title) title.textContent = 'Coach';
+  if (summary) {
+    summary.textContent = isCoachChatTeacherRole()
+      ? 'Using your classes, assignments, and analytics'
+      : 'Using your latest practice and Mistake Notebook';
+  }
   if (input) input.placeholder = copy.placeholder;
 }
 function normalizeAccountSettings(value, { includeLegacy = true, userId = StorageScopeUserId } = {}) {
@@ -1724,7 +1724,7 @@ function buildCoachChatStudyContext() {
 function buildCoachChatSummary(snapshot) {
   const recentIncorrect = snapshot?.recent_incorrect;
   const topFocus = snapshot?.coach_notebook?.top_focuses?.[0];
-  const topRecommendation = snapshot?.practice_recommendations?.[0] || null;
+  const primaryRecommendation = snapshot?.practice_recommendations?.[0] || null;
   if (isCoachChatTeacherRole()) {
     if (topFocus?.title) return `Teacher mode: turn ${topFocus.title} into class practice or a mini lesson.`;
     if (snapshot?.active_set?.name) return `Teacher mode: build assignments or lesson checks from ${snapshot.active_set.name}.`;
@@ -1765,7 +1765,11 @@ function updateCoachChatSourceLabel() {
 
 function renderCoachChatStatus(snapshot) {
   const summaryEl = $('coach-chat-context-summary');
-  if (summaryEl) summaryEl.textContent = buildCoachChatSummary(snapshot);
+  if (summaryEl) {
+    summaryEl.textContent = isCoachChatTeacherRole()
+      ? 'Using your classes, assignments, and analytics'
+      : 'Using your latest practice and Mistake Notebook';
+  }
 
   const pillsEl = $('coach-chat-status-pills');
   if (pillsEl) {
@@ -1836,12 +1840,29 @@ function limitCoachChatStarters(list = []) {
 }
 
 function buildCoachChatStarters(snapshot = buildCoachChatStudyContext()) {
+  const simpleTopic = String(
+    snapshot?.recent_incorrect?.title
+    || snapshot?.coach_notebook?.top_focuses?.[0]?.title
+    || snapshot?.active_set?.name
+    || 'the topic that needs the most attention'
+  ).trim();
+  if (isCoachChatTeacherRole()) {
+    return [
+      { label: 'Build an assignment', prompt: `Build a concise IHBB assignment for ${simpleTopic}, with clear instructions and a short teacher review checklist.` },
+      { label: 'Prepare a mini lesson', prompt: `Prepare a teacher-ready mini lesson for ${simpleTopic}, including key facts, likely misconceptions, and one check for understanding.` }
+    ];
+  }
+  return [
+    { label: 'Plan my next drill', prompt: `Plan one focused IHBB drill for ${simpleTopic} and explain why it is my best next step.` },
+    { label: 'Explain a history topic', prompt: `Explain ${simpleTopic} clearly, show the clue pattern I should remember, and give me one quick check for understanding.` }
+  ];
+  /* Legacy contextual starter variants remain below as a fallback reference. */
   const recent = snapshot?.recent_incorrect || null;
   const wrongDue = snapshot?.wrong_bank?.due_now || 0;
   const notebookOpen = snapshot?.coach_notebook?.open_lessons || 0;
   const topFocus = snapshot?.coach_notebook?.top_focuses?.[0] || null;
   const topFocusTitle = topFocus?.title || coachChatFocusTitle(topFocus);
-  const topRecommendation = snapshot?.practice_recommendations?.[0] || null;
+  const primaryRecommendation = snapshot?.practice_recommendations?.[0] || null;
   const recentTitle = String(recent?.title || '').trim();
   const knowledgeTopic = recentTitle || topFocusTitle || snapshot?.active_set?.name || 'this topic';
   if (isCoachChatTeacherRole()) {
@@ -1903,6 +1924,11 @@ function renderCoachChatStarters(snapshot) {
   const startersEl = $('coach-chat-starters');
   if (!startersEl) return;
   CoachChat.currentStarters = buildCoachChatStarters(snapshot);
+  if (window.IHBBCoachTabUI) {
+    window.IHBBCoachTabUI.renderStarterActions(startersEl, CoachChat.currentStarters, escHtml);
+    syncCoachChatStarterVisibility();
+    return;
+  }
   startersEl.innerHTML = CoachChat.currentStarters.map((starter, index) => `
     <button class="coach-chat-starter" type="button" data-starter-index="${index}">
       <span class="coach-chat-starter-label">${escHtml(starter.label || 'Suggested question')}</span>
@@ -1916,6 +1942,52 @@ function renderCoachChatWorkspace(snapshot) {
   const el = $('coach-chat-workspace');
   if (!el) return;
   const topFocus = snapshot?.coach_notebook?.top_focuses?.[0] || null;
+  const recent = snapshot?.recent_incorrect || null;
+  const primaryRecommendation = snapshot?.practice_recommendations?.[0] || null;
+  let simplePrimaryCard;
+  if (isCoachChatTeacherRole()) {
+    const topic = topFocus?.title || snapshot?.active_set?.name || 'your current question set';
+    simplePrimaryCard = {
+      title: `Plan from ${topic}`,
+      copy: 'Turn the current material into one clear lesson or assignment move.',
+      action: { kind: 'prompt', prompt: `Use ${topic} to recommend one practical class move, then outline the lesson or assignment so I can review it.` }
+    };
+  } else if (recent?.title) {
+    simplePrimaryCard = {
+      title: 'Review my last miss',
+      copy: 'See why the clue pointed to the answer and how to catch it next time.',
+      action: { kind: 'prompt', prompt: `Why did I miss ${recent.title}? Explain the clue I should have noticed and what I should do next.` }
+    };
+  } else if ((snapshot?.wrong_bank?.due_now || 0) > 0) {
+    simplePrimaryCard = {
+      title: `Plan my ${snapshot.wrong_bank.due_now}-card review`,
+      copy: 'Turn the due queue into one clear, manageable practice block.',
+      action: { kind: 'prompt', prompt: `Plan how I should review my ${snapshot.wrong_bank.due_now} due Wrong-bank cards and what to practice afterward.` }
+    };
+  } else if (topFocus?.title) {
+    simplePrimaryCard = {
+      title: `Work on ${topFocus.title}`,
+      copy: 'Use the strongest pattern from your saved mistake lessons.',
+      action: { kind: 'prompt', prompt: `Explain why ${topFocus.title} is my top focus and give me one focused practice plan.` }
+    };
+  } else if (primaryRecommendation?.title) {
+    simplePrimaryCard = {
+      title: primaryRecommendation.title,
+      copy: primaryRecommendation.reason || 'Start with the clearest recommendation from your recent practice.',
+      action: { kind: 'prompt', prompt: `Explain why "${primaryRecommendation.title}" is my best next step and turn it into a short practice plan.` }
+    };
+  } else {
+    simplePrimaryCard = {
+      title: 'Choose my first drill',
+      copy: 'Build a quick baseline so future advice can be more personal.',
+      action: { kind: 'prompt', prompt: 'Choose a short baseline IHBB drill for me and explain what it will measure.' }
+    };
+  }
+  CoachChat.workspaceCards = [simplePrimaryCard];
+  if (window.IHBBCoachTabUI) {
+    window.IHBBCoachTabUI.renderPrimaryAction(el, simplePrimaryCard, escHtml);
+    return;
+  }
   if (isCoachChatTeacherRole()) {
     const focusTitle = topFocus?.title || snapshot?.active_set?.name || 'current practice focus';
     const assignmentCard = {
@@ -2395,6 +2467,25 @@ function queueCoachChatScrollToBottom() {
 function renderCoachChatMessages() {
   const messagesEl = $('coach-chat-messages');
   if (!messagesEl) return;
+  if (window.IHBBCoachTabUI) {
+    window.IHBBCoachTabUI.renderMessages({
+      element: messagesEl,
+      messages: CoachChat.messages,
+      busy: CoachChat.busy,
+      role: isCoachChatTeacherRole() ? 'teacher' : 'student',
+      escapeHtml: escHtml,
+      isStreaming: isCoachChatMessageStreaming,
+      visibleText: coachChatVisibleText,
+      renderText: (text, streaming) => `<div class="coach-chat-markdown coach-chat-message-text">${coachChatMarkdownHtml(text || '')}${streaming ? coachChatStreamingCursorHtml() : ''}</div>`,
+      renderSectionBody: body => `<div class="coach-chat-markdown">${coachChatMarkdownHtml(body || '')}</div>`,
+      busyText: isCoachChatTeacherRole()
+        ? 'Reviewing your class and assignment context…'
+        : 'Reviewing your recent practice and Mistake Notebook…'
+    });
+    window.IHBBCoachTabUI.syncState($('coach-chat-sidebar'), CoachChat.messages, CoachChat.busy);
+    scrollCoachChatToBottom();
+    return;
+  }
   const html = CoachChat.messages.map((message, index) => coachChatMessageHtml(message, index)).join('');
   const busyHtml = CoachChat.busy ? `
     <div class="coach-chat-message assistant coach-chat-thinking">
@@ -2422,6 +2513,13 @@ function setCoachChatOpenState(open) {
   const launcher = $('coach-chat-launcher');
   const sidebar = $('coach-chat-sidebar');
   const backdrop = $('coach-chat-backdrop');
+  if (sidebar?.dataset.coachSurface === 'tab') {
+    sidebar.classList.remove('open', 'fullscreen');
+    sidebar.removeAttribute('aria-hidden');
+    window.IHBBCoachTabUI?.syncState(sidebar, CoachChat.messages, CoachChat.busy);
+    document.body.classList.remove('coach-chat-open', 'coach-chat-resizing');
+    return;
+  }
   if (launcher) launcher.setAttribute('aria-expanded', CoachChat.open ? 'true' : 'false');
   if (sidebar) {
     sidebar.classList.toggle('open', CoachChat.open);
@@ -2451,9 +2549,9 @@ function renderCoachChatChrome() {
   const thinkingBtn = $('coach-chat-thinking-toggle');
   if (sendBtn) sendBtn.disabled = !!CoachChat.busy;
   if (hintEl) {
-    hintEl.textContent = CoachChat.ui.thinkingEnabled
-      ? coachChatRoleCopy().thinkingHint
-      : coachChatRoleCopy().autoHint;
+    hintEl.textContent = isCoachChatTeacherRole()
+      ? 'Coach uses your class context to personalize plans.'
+      : 'Coach uses your recent practice to personalize answers.';
   }
   sizeButtons.forEach(button => {
     const active = String(button.dataset.size || '') === CoachChat.ui.size && !CoachChat.ui.fullscreen;
@@ -3159,7 +3257,11 @@ function openCoachChat(options = {}) {
   }
   CoachChat.suggestedReason = String(options.reason || 'manual').trim() || 'manual';
   CoachChat.open = true;
+  navSet('nav-coach');
+  SHOW('view-coach');
+  flushCoachPending();
   renderCoachChatChrome();
+  void refreshCoachNotebook(false);
   if (options.focusInput !== false) {
     setTimeout(() => $('coach-chat-input')?.focus(), 80);
   }
@@ -3174,21 +3276,18 @@ function closeCoachChat({ manual = true } = {}) {
 }
 
 function maybeAutoOpenCoachChat(reason = 'init') {
-  if (CoachChat.open || CoachChat.busy || isCoachChatAutoSuppressed() || CoachChat.autoReasons.has(reason)) return false;
-  if (reason === 'init' && isPracticeHubAutoOpenDisabled()) return false;
+  if (CoachChat.busy || CoachChat.autoReasons.has(reason)) return false;
   const snapshot = buildCoachChatStudyContext();
   if (reason === 'miss' && snapshot?.recent_incorrect?.title) {
     CoachChat.suggestedReason = 'miss';
-    renderCoachChatChrome();
-    return false;
   } else if ((snapshot?.wrong_bank?.due_now || 0) >= 3) {
+    CoachChat.suggestedReason = 'wrong-bank';
   } else if ((snapshot?.coach_notebook?.open_lessons || 0) >= 2 && snapshot?.coach_notebook?.top_focuses?.[0]?.title) {
-  } else {
-    return false;
+    CoachChat.suggestedReason = 'notebook';
   }
   CoachChat.autoReasons.add(reason);
-  openCoachChat({ auto: true, focusInput: false, reason, seed: false });
-  return true;
+  renderCoachChatChrome();
+  return false;
 }
 
 function resolveCoachChatActionFocus(action) {
@@ -3750,7 +3849,9 @@ function coachFocusFromAttemptId(attemptId) {
 async function showCoachView(forceCloud = true) {
   navSet('nav-coach');
   SHOW('view-coach');
+  CoachChat.open = true;
   flushCoachPending();
+  renderCoachChatChrome();
   await refreshCoachNotebook(forceCloud);
 }
 
@@ -6184,7 +6285,7 @@ $('openHelp')?.addEventListener('click', openHelp);
 $('closeHelp')?.addEventListener('click', () => { const ov = $('overlay'); if (ov) ov.classList.remove('show'); });
 $('overlay')?.addEventListener('click', (e) => { if (e.target && e.target.id === 'overlay') { const ov = $('overlay'); if (ov) ov.classList.remove('show'); } });
 
-// DeepSeek sidebar chat
+// Coach tab chat
 $('coach-chat-launcher')?.addEventListener('click', () => {
   openCoachChat({ auto: false, seed: false, reason: 'manual' });
 });
@@ -6216,12 +6317,23 @@ $('coach-chat-form')?.addEventListener('submit', (e) => {
   const input = $('coach-chat-input');
   const message = String(input?.value || '').trim();
   if (!message) return;
-  if (input) input.value = '';
+  if (input) {
+    input.value = '';
+    window.IHBBCoachTabUI?.autoGrow(input);
+  }
   void sendCoachChatMessage(message);
 });
-$('coach-chat-input')?.addEventListener('input', syncCoachChatStarterVisibility);
+$('coach-chat-input')?.addEventListener('input', (e) => {
+  window.IHBBCoachTabUI?.autoGrow(e.currentTarget);
+  syncCoachChatStarterVisibility();
+});
+$('coach-chat-input')?.addEventListener('keydown', (e) => {
+  if (!window.IHBBCoachTabUI?.isSendKey(e)) return;
+  e.preventDefault();
+  e.currentTarget.form?.requestSubmit();
+});
 $('coach-chat-workspace')?.addEventListener('click', (e) => {
-  const button = e.target.closest('.coach-chat-workspace-card');
+  const button = e.target.closest('[data-workspace-index]');
   if (!button) return;
   const card = CoachChat.workspaceCards?.[Number(button.dataset.workspaceIndex) || 0];
   if (!card?.action) return;
@@ -6232,7 +6344,7 @@ $('coach-chat-workspace')?.addEventListener('click', (e) => {
   void performCoachChatAction(card.action);
 });
 $('coach-chat-starters')?.addEventListener('click', (e) => {
-  const button = e.target.closest('.coach-chat-starter');
+  const button = e.target.closest('[data-starter-index]');
   if (!button) return;
   const starter = CoachChat.currentStarters?.[Number(button.dataset.starterIndex) || 0];
   if (!starter?.prompt) return;
@@ -6240,7 +6352,7 @@ $('coach-chat-starters')?.addEventListener('click', (e) => {
   void sendCoachChatMessage(starter.prompt);
 });
 $('coach-chat-messages')?.addEventListener('click', (e) => {
-  const followUpButton = e.target.closest('.coach-chat-followup');
+  const followUpButton = e.target.closest('[data-followup-index]');
   if (followUpButton) {
     const messageIndex = Number(followUpButton.dataset.messageIndex);
     const followUpIndex = Number(followUpButton.dataset.followupIndex);
@@ -6248,13 +6360,18 @@ $('coach-chat-messages')?.addEventListener('click', (e) => {
     if (followUp?.prompt) void sendCoachChatMessage(followUp.prompt);
     return;
   }
-  const toolButton = e.target.closest('.coach-chat-tool');
+  const toolButton = e.target.closest('[data-tool]');
   if (toolButton) {
-    const messageIndex = Number(toolButton.dataset.messageIndex);
+    const indexedParent = toolButton.closest('[data-message-index]');
+    const messageIndex = Number(toolButton.dataset.messageIndex ?? indexedParent?.dataset.messageIndex);
     const message = CoachChat.messages?.[messageIndex];
     const tool = String(toolButton.dataset.tool || '').trim();
-    if (tool === 'shorter' || tool === 'expand') {
-      rewriteCoachChatMessage(messageIndex, tool);
+    if (tool === 'expand') {
+      rewriteCoachChatMessage(messageIndex, 'expand');
+      return;
+    }
+    if (tool === 'ask') {
+      $('coach-chat-input')?.focus();
       return;
     }
     if (tool === 'save-notebook') {
@@ -6275,7 +6392,7 @@ $('coach-chat-messages')?.addEventListener('click', (e) => {
     }
     return;
   }
-  const button = e.target.closest('.coach-chat-action');
+  const button = e.target.closest('.coach-answer-action');
   if (!button) return;
   const messageIndex = Number(button.dataset.messageIndex);
   const actionIndex = Number(button.dataset.actionIndex);

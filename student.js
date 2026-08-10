@@ -750,6 +750,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         document.querySelectorAll('.view').forEach(c => c.classList.remove('active'));
         nextView.classList.add('active');
         if (nextTab === 'analytics') loadAnalytics();
+        dashboardChat.open = nextTab === 'coach';
         if (nextTab === 'coach') loadCoachWorkspace(false);
         if (nextTab === 'leaderboard') activateLeaderboardSubtab('global');
         if (nextTab === 'question-sets') loadQuestionSets();
@@ -1612,150 +1613,64 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     function buildDashboardChatStarters(snapshot = buildDashboardChatContext()) {
-        const recent = snapshot?.recent_incorrect || null;
-        const wrongDue = snapshot?.wrong_bank?.due_now || 0;
-        const notebookOpen = snapshot?.coach_notebook?.open_lessons || 0;
         const topFocus = snapshot?.coach_notebook?.top_focuses?.[0] || null;
         const topFocusTitle = coachChatFocusTitle(topFocus);
-        const topRecommendation = snapshot?.practice_recommendations?.[0] || null;
-        const recentTitle = String(recent?.title || '').trim();
-        const knowledgeTopic = recentTitle || topFocusTitle || 'this topic';
-        if (dashboardChat.ui.mode === 'knowledge') {
-            return limitDashboardChatStarters([
-                { label: 'Explain it', prompt: `Explain why ${knowledgeTopic} matters for IHBB clues.` },
-                { label: 'Diagnose mix-ups', prompt: `What mistakes or mix-ups should I watch for around ${knowledgeTopic}?` },
-                { label: 'Next practice', prompt: `What is one good practice step for ${knowledgeTopic}?` }
-            ]);
-        }
-        if (recentTitle) {
-            return limitDashboardChatStarters([
-                { label: 'Last miss', prompt: `Why did I miss ${recentTitle}, and what should I train next?` },
-                { label: 'Clue diagnosis', prompt: `Which clue should have pointed me toward ${recentTitle}?` },
-                { label: 'Corrective drill', prompt: `Recommend one corrective drill for ${recentTitle}.` }
-            ]);
-        }
-        if (wrongDue >= 3) {
-            return limitDashboardChatStarters([
-                { label: 'Wrong-bank first', prompt: `I have ${wrongDue} due wrong-bank cards. Should I clear those before anything else?` },
-                { label: 'After review', prompt: 'After my due wrong-bank review, what should I practice next from the dashboard?' },
-                { label: 'Fresh drill', prompt: topFocusTitle ? `After wrong-bank, should I turn ${topFocusTitle} into a fresh drill?` : 'What is the best fresh drill after my due wrong-bank review?' }
-            ]);
-        }
-        if ((dashboardChat.suggestedReason === 'notebook' || notebookOpen > 0) && topFocusTitle) {
-            return limitDashboardChatStarters([
-                { label: 'Notebook focus', prompt: `Which Mistake Notebook focus should I train next if ${topFocusTitle} keeps showing up?` },
-                { label: 'From lesson to drill', prompt: `How should I turn ${topFocusTitle} into actual practice?` },
-                { label: 'Next practice', prompt: `What is the single best next practice step for ${topFocusTitle}?` }
-            ]);
-        }
-        if (topRecommendation?.title) {
-            return limitDashboardChatStarters([
-                { label: 'Use recommendation', prompt: `Why is "${topRecommendation.title}" the best next practice step for me right now?` },
-                { label: 'Make it concrete', prompt: `Turn "${topRecommendation.title}" into a short practice plan I can follow now.` },
-                { label: 'Next step', prompt: 'Give me the single best next practice step from this recommendation.' }
-            ]);
-        }
-        return limitDashboardChatStarters(DASHBOARD_CHAT_STARTERS);
+        const recentTitle = String(snapshot?.recent_incorrect?.title || '').trim();
+        const topic = recentTitle || topFocusTitle || 'the topic I most need to improve';
+        return [
+            { label: 'Plan my next drill', prompt: `Plan one focused IHBB drill for ${topic} and explain why it is my best next step.` },
+            { label: 'Explain a history topic', prompt: `Explain ${topic} clearly, show the clue pattern I should remember, and give me one quick check for understanding.` }
+        ];
     }
 
     function renderDashboardChatStarters(snapshot) {
         const el = document.getElementById('coach-chat-starters');
         if (!el) return;
         dashboardChat.currentStarters = buildDashboardChatStarters(snapshot);
-        el.innerHTML = dashboardChat.currentStarters.map((starter, index) => `
-            <button class="coach-chat-starter" type="button" data-starter-index="${index}">
-                <span class="coach-chat-starter-label">${esc(starter.label || 'Suggested question')}</span>
-                <span class="coach-chat-starter-text">${esc(starter.prompt || '')}</span>
-            </button>
-        `).join('');
+        window.IHBBCoachTabUI?.renderStarterActions(el, dashboardChat.currentStarters, esc);
         syncDashboardChatStarterVisibility();
     }
 
     function renderDashboardChatWorkspace(snapshot) {
         const el = document.getElementById('coach-chat-workspace');
         if (!el) return;
+        const recent = snapshot?.recent_incorrect || null;
         const topFocus = snapshot?.coach_notebook?.top_focuses?.[0] || null;
         const topRecommendation = snapshot?.practice_recommendations?.[0] || null;
-        const knowledgeCard = {
-            kicker: 'Ask',
-            title: 'Explain a topic',
-            copy: 'Explanation, mistake diagnosis, and next step.',
-            action: {
-                kind: 'prompt',
-                label: 'Ask for context',
-                prompt: topFocus?.title
-                    ? `Explain ${topFocus.title}, diagnose why I might miss it, and give me one next practice step.`
-                    : 'Explain the most important missed topic, diagnose the likely mistake, and give me one next practice step.'
-            }
-        };
-        const recommendationCard = topRecommendation
-            ? {
-                kicker: topRecommendation.priority === 'high' ? 'Top recommendation' : 'Recommended',
+        let primaryCard;
+        if (recent?.title) {
+            primaryCard = {
+                title: 'Review my last miss',
+                copy: 'See why the clue pointed to the answer and how to catch it next time.',
+                action: { kind: 'prompt', prompt: `Why did I miss ${recent.title}? Explain the clue I should have noticed and what I should do next.` }
+            };
+        } else if ((snapshot?.wrong_bank?.due_now || 0) > 0) {
+            primaryCard = {
+                title: `Plan my ${snapshot.wrong_bank.due_now}-card review`,
+                copy: 'Turn the due queue into one clear, manageable practice block.',
+                action: { kind: 'prompt', prompt: `Plan how I should review my ${snapshot.wrong_bank.due_now} due Wrong-bank cards and what to practice afterward.` }
+            };
+        } else if (topFocus?.title) {
+            primaryCard = {
+                title: `Work on ${topFocus.title}`,
+                copy: 'Use the strongest pattern from your saved mistake lessons.',
+                action: { kind: 'prompt', prompt: `Explain why ${topFocus.title} is my top focus and give me one focused practice plan.` }
+            };
+        } else if (topRecommendation?.title) {
+            primaryCard = {
                 title: topRecommendation.title,
-                copy: topRecommendation.reason,
-                action: topRecommendation.action || {
-                    kind: 'prompt',
-                    label: 'Ask why',
-                    prompt: `Explain why ${topRecommendation.title} is the best next practice step for me.`
-                }
-            }
-            : null;
-        const primaryCard = recommendationCard || ((snapshot?.wrong_bank?.due_now || 0) > 0
-            ? {
-                kicker: 'Next step',
-                title: `Review ${snapshot.wrong_bank.due_now} due`,
-                copy: 'Clear the due queue first.',
-                action: { kind: 'action', id: 'practice_due_now', label: 'Start due review' }
-            }
-            : topFocus?.key
-                ? {
-                    kicker: 'Next step',
-                    title: topFocus.title,
-                    copy: 'Top saved focus.',
-                    action: { kind: 'action', id: 'apply_top_focus', focus_key: topFocus.key, label: `Apply ${topFocus.title}` }
-                }
-                : {
-                    kicker: 'Next step',
-                    title: 'Open Practice Hub',
-                    copy: 'Start a drill or search the library.',
-                    action: { kind: 'action', id: 'start_current_session', label: 'Open Practice Hub' }
-                });
-        const cards = isDashboardChatPristine()
-            ? [primaryCard, knowledgeCard]
-            : [
-                ...(recommendationCard ? [recommendationCard] : []),
-                {
-                    kicker: 'Wrong-bank',
-                    title: (snapshot?.wrong_bank?.due_now || 0) > 0 ? `Review ${snapshot.wrong_bank.due_now} due` : 'Wrong-bank',
-                    copy: (snapshot?.wrong_bank?.due_now || 0) > 0 ? 'Best next review block' : 'Use after new misses',
-                    action: (snapshot?.wrong_bank?.due_now || 0) > 0
-                        ? { kind: 'action', id: 'practice_due_now', label: 'Start due review' }
-                        : { kind: 'prompt', label: 'Ask when to use it', prompt: 'When is Wrong-bank better than a fresh drill?' }
-                },
-                {
-                    kicker: 'Mistake Notebook',
-                    title: topFocus?.title || 'Open Notebook',
-                    copy: topFocus?.title ? 'Top saved focus' : `${snapshot?.coach_notebook?.open_lessons || 0} open lesson${(snapshot?.coach_notebook?.open_lessons || 0) === 1 ? '' : 's'}`,
-                    action: topFocus?.key
-                        ? { kind: 'action', id: 'apply_top_focus', focus_key: topFocus.key, label: `Apply ${topFocus.title}` }
-                        : { kind: 'action', id: 'open_ai_notebook', label: 'Open Notebook' }
-                },
-                {
-                    kicker: 'Practice Hub',
-                    title: 'Open Practice Hub',
-                    copy: 'Start a drill or search the library',
-                    action: { kind: 'action', id: 'start_current_session', label: 'Open Practice Hub' }
-                },
-                knowledgeCard
-            ];
-        el.innerHTML = cards.map((card, index) => `
-            <button class="coach-chat-workspace-card" type="button" data-workspace-index="${index}">
-                <span class="coach-chat-workspace-kicker">${esc(card.kicker)}</span>
-                <span class="coach-chat-workspace-title">${esc(card.title)}</span>
-                <span class="coach-chat-workspace-copy">${esc(card.copy)}</span>
-            </button>
-        `).join('');
-        dashboardChat.workspaceCards = cards;
+                copy: topRecommendation.reason || 'Start with the clearest recommendation from your recent practice.',
+                action: { kind: 'prompt', prompt: `Explain why "${topRecommendation.title}" is my best next step and turn it into a short practice plan.` }
+            };
+        } else {
+            primaryCard = {
+                title: 'Choose my first drill',
+                copy: 'Build a quick baseline so future advice can be more personal.',
+                action: { kind: 'prompt', prompt: 'Choose a short baseline IHBB drill for me and explain what it will measure.' }
+            };
+        }
+        dashboardChat.workspaceCards = [primaryCard];
+        window.IHBBCoachTabUI?.renderPrimaryAction(el, primaryCard, esc);
     }
 
     function scrollDashboardChatToBottom() {
@@ -1777,6 +1692,23 @@ document.addEventListener('DOMContentLoaded', async () => {
     function renderDashboardChatMessages() {
         const el = document.getElementById('coach-chat-messages');
         if (!el) return;
+        if (window.IHBBCoachTabUI) {
+            window.IHBBCoachTabUI.renderMessages({
+                element: el,
+                messages: dashboardChat.messages,
+                busy: dashboardChat.busy,
+                role: 'student',
+                escapeHtml: esc,
+                isStreaming: isDashboardChatMessageStreaming,
+                visibleText: dashboardChatVisibleText,
+                renderText: (text, streaming) => `<p class="coach-chat-message-text">${esc(text || '')}${streaming ? dashboardChatStreamingCursorHtml() : ''}</p>`,
+                renderSectionBody: body => `<p>${esc(body || '')}</p>`,
+                busyText: 'Reviewing your recent practice and Mistake Notebook…'
+            });
+            window.IHBBCoachTabUI.syncState(document.getElementById('coach-chat-sidebar'), dashboardChat.messages, dashboardChat.busy);
+            scrollDashboardChatToBottom();
+            return;
+        }
         const messagesHtml = dashboardChat.messages.map((message, messageIndex) => `
             <div class="coach-chat-message ${message.role === 'user' ? 'user' : 'assistant'}">
                 <div class="coach-chat-message-meta">
@@ -1850,6 +1782,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         const launcher = document.getElementById('coach-chat-launcher');
         const sidebar = document.getElementById('coach-chat-sidebar');
         const backdrop = document.getElementById('coach-chat-backdrop');
+        if (sidebar?.dataset.coachSurface === 'tab') {
+            sidebar.classList.remove('open', 'fullscreen');
+            sidebar.removeAttribute('aria-hidden');
+            window.IHBBCoachTabUI?.syncState(sidebar, dashboardChat.messages, dashboardChat.busy);
+            document.body.classList.remove('coach-chat-open', 'coach-chat-resizing');
+            return;
+        }
         if (launcher) launcher.setAttribute('aria-expanded', dashboardChat.open ? 'true' : 'false');
         if (sidebar) {
             sidebar.classList.toggle('open', dashboardChat.open);
@@ -1874,7 +1813,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const fullBtn = document.getElementById('coach-chat-fullscreen');
         const thinkingBtn = document.getElementById('coach-chat-thinking-toggle');
 
-        if (summaryEl) summaryEl.textContent = buildDashboardChatSummary(snapshot);
+        if (summaryEl) summaryEl.textContent = 'Using your latest practice and Mistake Notebook';
         if (pillsEl) {
             const pills = [];
             if (dashboardChat.ui.thinkingEnabled) pills.push('Thinking model on');
@@ -1899,11 +1838,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             countEl.textContent = String(count || 0);
             countEl.classList.toggle('hidden', !count);
         }
-        if (hintEl) {
-            hintEl.textContent = dashboardChat.ui.thinkingEnabled
-                ? 'Detailed reasoning is on for deeper explanation and mistake diagnosis.'
-                : 'Coach answers stay focused on explanation, diagnosis, and next practice.';
-        }
+        if (hintEl) hintEl.textContent = 'Coach uses your recent practice to personalize answers.';
         if (sendBtn) sendBtn.disabled = !!dashboardChat.busy;
         sizeButtons.forEach(button => {
             const active = String(button.dataset.size || '') === dashboardChat.ui.size && !dashboardChat.ui.fullscreen;
@@ -2281,6 +2216,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     function openDashboardChat() {
         dashboardChat.suggestedReason = 'manual';
+        activateDashboardTab('coach');
         dashboardChat.open = true;
         renderDashboardChatChrome();
         restoreDashboardChatScroll();
@@ -2743,12 +2679,23 @@ document.addEventListener('DOMContentLoaded', async () => {
         const input = document.getElementById('coach-chat-input');
         const message = String(input?.value || '').trim();
         if (!message) return;
-        if (input) input.value = '';
+        if (input) {
+            input.value = '';
+            window.IHBBCoachTabUI?.autoGrow(input);
+        }
         void sendDashboardChatMessage(message);
     });
-    document.getElementById('coach-chat-input')?.addEventListener('input', syncDashboardChatStarterVisibility);
+    document.getElementById('coach-chat-input')?.addEventListener('input', (event) => {
+        window.IHBBCoachTabUI?.autoGrow(event.currentTarget);
+        syncDashboardChatStarterVisibility();
+    });
+    document.getElementById('coach-chat-input')?.addEventListener('keydown', (event) => {
+        if (!window.IHBBCoachTabUI?.isSendKey(event)) return;
+        event.preventDefault();
+        event.currentTarget.form?.requestSubmit();
+    });
     document.getElementById('coach-chat-workspace')?.addEventListener('click', (event) => {
-        const button = event.target.closest('.coach-chat-workspace-card');
+        const button = event.target.closest('[data-workspace-index]');
         if (!button) return;
         const card = dashboardChat.workspaceCards?.[Number(button.dataset.workspaceIndex) || 0];
         if (!card?.action) return;
@@ -2759,7 +2706,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         void runDashboardChatAction(card.action);
     });
     document.getElementById('coach-chat-starters')?.addEventListener('click', (event) => {
-        const button = event.target.closest('.coach-chat-starter');
+        const button = event.target.closest('[data-starter-index]');
         if (!button) return;
         const starter = dashboardChat.currentStarters?.[Number(button.dataset.starterIndex) || 0];
         if (!starter?.prompt) return;
@@ -2767,7 +2714,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         void sendDashboardChatMessage(starter.prompt);
     });
     document.getElementById('coach-chat-messages')?.addEventListener('click', (event) => {
-        const followUpButton = event.target.closest('.coach-chat-followup');
+        const followUpButton = event.target.closest('[data-followup-index]');
         if (followUpButton) {
             const messageIndex = Number(followUpButton.dataset.messageIndex);
             const followUpIndex = Number(followUpButton.dataset.followupIndex);
@@ -2775,13 +2722,18 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (followUp?.prompt) void sendDashboardChatMessage(followUp.prompt);
             return;
         }
-        const toolButton = event.target.closest('.coach-chat-tool');
+        const toolButton = event.target.closest('[data-tool]');
         if (toolButton) {
-            const messageIndex = Number(toolButton.dataset.messageIndex);
+            const indexedParent = toolButton.closest('[data-message-index]');
+            const messageIndex = Number(toolButton.dataset.messageIndex ?? indexedParent?.dataset.messageIndex);
             const message = dashboardChat.messages?.[messageIndex];
             const tool = String(toolButton.dataset.tool || '').trim();
-            if (tool === 'shorter' || tool === 'expand') {
-                rewriteDashboardChatMessage(messageIndex, tool);
+            if (tool === 'expand') {
+                rewriteDashboardChatMessage(messageIndex, 'expand');
+                return;
+            }
+            if (tool === 'ask') {
+                document.getElementById('coach-chat-input')?.focus();
                 return;
             }
             if (tool === 'save-notebook') {
@@ -2797,7 +2749,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
             return;
         }
-        const button = event.target.closest('.coach-chat-action');
+        const button = event.target.closest('.coach-answer-action');
         if (!button) return;
         const messageIndex = Number(button.dataset.messageIndex);
         const actionIndex = Number(button.dataset.actionIndex);
