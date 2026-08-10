@@ -4311,20 +4311,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
     document.addEventListener('click', handleAssignmentQualityAction);
 
-    // Templates
-    document.querySelectorAll('.template-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-            const template = btn.dataset.template;
-            const criteria = buildAssignmentSuggestionCriteria({ templateId: template });
-            applyAssignmentSuggestionFields(criteria, { replaceTitle: true });
-            const picked = applyAssignmentTemplateQuestions(template, criteria, { append: false });
-            generatedDraftQuestions = [];
-            renderGeneratedDraftPreview();
-            if (picked.length) {
-                updateGeneratorStatus(`Template loaded ${picked.length} curated question-bank pick${picked.length === 1 ? '' : 's'}. Use Generate Draft only if you want new AI-created questions.`, 'muted');
-            }
-        });
-    });
 
     // Random
     document.getElementById('btn-random-preview').addEventListener('click', () => {

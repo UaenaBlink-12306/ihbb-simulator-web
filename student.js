@@ -6518,34 +6518,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         activateDashboardTab('question-sets');
     });
 
-    // Templates (Simplified for Students)
-    document.querySelectorAll('.template-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-            const template = btn.dataset.template;
-            let topic = '', region = '', era = '';
-            if (template === 'silk-road') { topic = 'The Silk Road'; region = 'Central Asia'; }
-            if (template === 'us-presidents') { topic = 'US Presidents'; era = '05'; }
-            if (template === 'cold-war') { topic = 'The Cold War'; era = '06'; }
-            
-            document.getElementById('teacher-gen-topic').value = topic;
-            document.getElementById('teacher-gen-region').value = region;
-            document.getElementById('teacher-gen-era').value = era;
-            document.getElementById('assign-title').value = topic ? `${topic} Set` : 'New Question Set';
-            
-            // Auto-pick from bank
-            const picked = allQuestions.filter(q => {
-                if (region && (q.meta?.category || q.category) !== region) return false;
-                if (era && (q.meta?.era || q.era) !== era) return false;
-                if (topic && `${q.question} ${q.answer}`.toLowerCase().includes(topic.toLowerCase())) return false;
-                return true;
-            }).slice(0, 10);
-            
-            selectedQuestions = picked;
-            updatePreview();
-            renderQuestionBank();
-            showAlert(`Template loaded with ${picked.length} questions from the bank.`);
-        });
-    });
 
     // Search/Filter events
     document.getElementById('bank-search')?.addEventListener('input', renderQuestionBank);
