@@ -5376,7 +5376,7 @@ function renderCoachNotebook() {
           </div>
         </div>
         <details>
-          <summary>Answer: ${escHtml(r.expected_answer || '(answer unavailable)')}</summary>
+          <summary>${escHtml(r.expected_answer || '(answer unavailable)')}</summary>
           <div class="coach-note-body">
             <div><b>Question:</b> ${escHtml(r.question_text || '(question unavailable)')}</div>
             <div><b>Your answer:</b> ${escHtml(r.user_answer || '(blank)')}</div>
