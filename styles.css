@@ -3723,6 +3723,56 @@ tr:hover td {
   margin-top: 16px;
 }
 
+.builder-bank-random {
+  margin-bottom: 16px;
+  padding: 14px 15px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  border: 1px solid rgba(8, 123, 85, 0.18);
+  border-radius: 13px;
+  background: linear-gradient(135deg, rgba(240, 253, 250, 0.88), rgba(239, 246, 255, 0.72));
+}
+
+.builder-bank-random-copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.builder-bank-random-copy strong {
+  color: var(--ink);
+  font-size: 14px;
+}
+
+.builder-bank-random-copy span {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.builder-bank-random-actions {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: flex-end;
+  gap: 9px;
+}
+
+.builder-bank-random-actions .input-group {
+  width: 96px;
+  margin: 0;
+}
+
+.builder-bank-random-actions .input-group label {
+  font-size: 11px;
+}
+
+.builder-bank-random-actions .compact-number-input {
+  min-width: 0;
+}
+
 .builder-filter-grid,
 .builder-ai-grid {
   margin-bottom: 16px;
@@ -10031,5 +10081,16 @@ button.chip {
 
   .builder-source-note {
     align-items: flex-start;
+  }
+
+  .builder-bank-random,
+  .builder-bank-random-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .builder-bank-random-actions .input-group,
+  .builder-bank-random-actions .btn {
+    width: 100%;
   }
 }

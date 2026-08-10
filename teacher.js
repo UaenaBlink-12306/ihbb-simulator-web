@@ -145,6 +145,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         return String(a).localeCompare(String(b));
     });
     const questionKey = (q) => {
+        const bankKey = String(q?.meta?.bank_key || q?.bank_key || '').trim();
+        if (bankKey) return `bank:${bankKey}`;
         const explicit = String(q?.id || q?.question_id || '').trim();
         if (explicit) return explicit;
         const ans = String(q?.answer || q?.a || '').trim().toLowerCase();
@@ -315,7 +317,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             meta: {
                 category: String(raw.meta?.category || raw.category || '').trim(),
                 era: String(raw.meta?.era || raw.era || '').trim(),
-                source: String(raw.meta?.source || raw.source || '').trim()
+                source: String(raw.meta?.source || raw.source || '').trim(),
+                bank_key: String(raw.meta?.bank_key || raw.bank_key || '').trim()
             }
         };
     };
@@ -2225,8 +2228,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         allQuestions = (Array.isArray(json) ? json : (json.items || json.questions || json.sets?.[0]?.items || []))
             .map(item => normalizeQuestionRecord(item))
             .filter(Boolean)
-            .map(item => {
+            .map((item, index) => {
                 item.meta.source = item.meta.source || 'original';
+                item.meta.bank_key = item.meta.bank_key || `${String(item.id || 'row').trim() || 'row'}:${index}`;
                 return item;
             });
     } catch { console.warn('Could not load questions.json'); }

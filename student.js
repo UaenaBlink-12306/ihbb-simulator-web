@@ -69,11 +69,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         const json = await resp.json();
         allQuestions = (Array.isArray(json) ? json : (json.items || json.questions || json.sets?.[0]?.items || []))
             .filter(q => q && q.question && q.answer)
-            .map(q => ({
+            .map((q, index) => ({
                 ...q,
                 meta: {
                     ...(q.meta && typeof q.meta === 'object' ? q.meta : {}),
-                    source: q.meta?.source || q.source || 'original'
+                    source: q.meta?.source || q.source || 'original',
+                    bank_key: q.meta?.bank_key || `${String(q.id || q.question_id || 'row').trim() || 'row'}:${index}`
                 }
             }));
     } catch (e) {
@@ -5927,14 +5928,21 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     const getEraLabel = (era) => ERA_LABELS[era] || era;
     const builderQuality = window.SetBuilderQuality || null;
+    const builderSourceUi = window.SetBuilderSourceUI || null;
     const builderQuestionMetaHtml = (question, options = {}) => builderQuality
         ? builderQuality.questionMetaHtml(question, { eraLabeler: getEraLabel, ...options })
         : '';
     const questionKey = (q) => {
+        const sharedIdentity = builderSourceUi?.questionIdentity(q);
+        if (sharedIdentity) return sharedIdentity;
         if (!q) return '';
-        const raw = (q.question || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-        const ans = (q.answer || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-        return `${raw.slice(0, 30)}|${ans.slice(0, 20)}`;
+        const explicit = String(q.id || q.question_id || '').trim();
+        if (explicit) return `id:${explicit}`;
+        const raw = String(q.question || '').trim().toLowerCase();
+        const ans = String(q.answer || '').trim().toLowerCase();
+        const cat = String(q.meta?.category || q.category || '').trim().toLowerCase();
+        const era = String(q.meta?.era || q.era || '').trim().toLowerCase();
+        return `content:${ans}::${raw}::${cat}::${era}`;
     };
     const questionEra = (q) => {
         const era = q.meta?.era || q.era;
@@ -6152,6 +6160,22 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
+    function filteredQuestionBank() {
+        const search = document.getElementById('bank-search')?.value.toLowerCase().trim();
+        const cat = document.getElementById('bank-category')?.value;
+        const era = document.getElementById('bank-era')?.value;
+
+        return allQuestions.filter(q => {
+            if (cat && (q.meta?.category || q.category) !== cat) return false;
+            if (era && (q.meta?.era || q.era) !== era) return false;
+            if (search) {
+                const text = `${q.question} ${q.answer}`.toLowerCase();
+                if (!text.includes(search)) return false;
+            }
+            return true;
+        });
+    }
+
     function renderQuestionBank() {
         const el = document.getElementById('bank-list');
         if (!el) return;
@@ -6165,15 +6189,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             return;
         }
 
-        const matches = allQuestions.filter(q => {
-            if (cat && (q.meta?.category || q.category) !== cat) return false;
-            if (era && (q.meta?.era || q.era) !== era) return false;
-            if (search) {
-                const text = `${q.question} ${q.answer}`.toLowerCase();
-                if (!text.includes(search)) return false;
-            }
-            return true;
-        }).slice(0, 50);
+        const matches = filteredQuestionBank().slice(0, 50);
 
         if (!matches.length) {
             el.innerHTML = '<p class="muted">No matches found.</p>';
@@ -6564,6 +6580,20 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('bank-search')?.addEventListener('input', renderQuestionBank);
     document.getElementById('bank-category')?.addEventListener('change', renderQuestionBank);
     document.getElementById('bank-era')?.addEventListener('change', renderQuestionBank);
+    document.getElementById('btn-bank-random-pick')?.addEventListener('click', () => {
+        const requested = Math.max(1, Math.min(50, Number.parseInt(String(document.getElementById('bank-random-count')?.value || '10'), 10) || 10));
+        const candidates = filteredQuestionBank();
+        const picked = builderSourceUi?.randomUniqueQuestions(candidates, requested, selectedQuestions) || [];
+        if (!picked.length) {
+            showAlert('No new unique Question Bank questions are available with the current filters.');
+            return;
+        }
+        selectedQuestions = [...selectedQuestions, ...picked];
+        renderQuestionBank();
+        updatePreview();
+        const shortfall = picked.length < requested ? ` Only ${picked.length} unique question${picked.length === 1 ? ' was' : 's were'} available.` : '';
+        showAlert(`Added ${picked.length} random Question Bank question${picked.length === 1 ? '' : 's'} to your set.${shortfall}`, 'success');
+    });
 
     // ========== HELPERS ==========
     function showAlert(msg, type = 'error') {

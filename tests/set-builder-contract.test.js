@@ -37,3 +37,30 @@ test('source summary treats unlabeled legacy questions as Question Bank items', 
     {}
   ]), { bank: 2, ai: 2 });
 });
+
+test('identical Question Bank rows keep separate selection identities', () => {
+  const sourceUi = require(path.join(ROOT, 'set-builder-source.js'));
+  const first = { id: 'duplicate-source-id', question: 'Same clue', answer: 'Same answer', meta: { bank_key: 'duplicate-source-id:10' } };
+  const second = { id: 'duplicate-source-id', question: 'Same clue', answer: 'Same answer', meta: { bank_key: 'duplicate-source-id:11' } };
+
+  assert.notEqual(sourceUi.questionIdentity(first), sourceUi.questionIdentity(second));
+  assert.match(read('student.js'), /bank_key:[\s\S]*\$\{index\}/);
+  assert.match(read('teacher.js'), /item\.meta\.bank_key[\s\S]*\$\{index\}/);
+});
+
+test('random Question Bank picks exclude selected and duplicate-content rows', () => {
+  const sourceUi = require(path.join(ROOT, 'set-builder-source.js'));
+  const candidates = [
+    { id: 'a1', question: 'Repeated clue', answer: 'Repeated answer' },
+    { id: 'a2', question: 'Repeated clue', answer: 'Repeated answer' },
+    { id: 'b', question: 'Already selected clue', answer: 'Selected answer' },
+    { id: 'c', question: 'Fresh clue', answer: 'Fresh answer' }
+  ];
+  const picked = sourceUi.randomUniqueQuestions(candidates, 10, [candidates[2]], () => 0.5);
+
+  assert.equal(picked.length, 2);
+  assert.equal(new Set(picked.map(sourceUi.questionContentFingerprint)).size, 2);
+  assert.ok(!picked.some(question => question.id === 'b'));
+  assert.match(read('student.html'), /id="btn-bank-random-pick"/);
+  assert.match(read('student.js'), /randomUniqueQuestions\(candidates, requested, selectedQuestions\)/);
+});
