@@ -28,6 +28,14 @@ test('all paid AI handlers enforce authenticated quota access', () => {
   }
 });
 
+test('AI authentication retains the public Supabase deployment fallback', () => {
+  const source = read('api/_security.js');
+  assert.match(source, /DEFAULT_SUPABASE_URL\s*=\s*'https:\/\/laexxsgzldivvizwfjcn\.supabase\.co'/);
+  assert.match(source, /DEFAULT_SUPABASE_ANON_KEY\s*=\s*'eyJ/);
+  assert.match(source, /process\.env\.NEXT_PUBLIC_SUPABASE_URL[\s\S]{0,120}DEFAULT_SUPABASE_URL/);
+  assert.match(source, /process\.env\.SUPABASE_SERVICE_KEY[\s\S]{0,120}DEFAULT_SUPABASE_ANON_KEY/);
+});
+
 test('local server denies secret paths and untrusted browser origins', () => {
   const source = read('server.py');
   assert.match(source, /def is_public_static_path/);

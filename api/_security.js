@@ -1,6 +1,16 @@
 'use strict';
 
-const SUPABASE_URL = String(process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || '').trim().replace(/\/$/, '');
+// These are public browser credentials, not secrets. Keep them as deployment
+// fallbacks so API authentication does not depend on duplicating config.js in
+// every hosting environment.
+const DEFAULT_SUPABASE_URL = 'https://laexxsgzldivvizwfjcn.supabase.co';
+const DEFAULT_SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxhZXh4c2d6bGRpdnZpendmamNuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI0OTg0ODQsImV4cCI6MjA4ODA3NDQ4NH0.t5pMj7nrwqmIyhklkPQb8gyxdNl29LaEoBOdNJNaKZ4';
+
+const SUPABASE_URL = String(
+  process.env.SUPABASE_URL
+  || process.env.NEXT_PUBLIC_SUPABASE_URL
+  || DEFAULT_SUPABASE_URL
+).trim().replace(/\/$/, '');
 const SUPABASE_AUTH_KEY = String(
   process.env.SUPABASE_PUBLISHABLE_KEY
   || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
@@ -8,7 +18,7 @@ const SUPABASE_AUTH_KEY = String(
   || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
   || process.env.SUPABASE_SERVICE_ROLE_KEY
   || process.env.SUPABASE_SERVICE_KEY
-  || ''
+  || DEFAULT_SUPABASE_ANON_KEY
 ).trim();
 const SUPABASE_SERVICE_ROLE_KEY = String(process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY || '').trim();
 
