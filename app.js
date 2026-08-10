@@ -5376,8 +5376,9 @@ function renderCoachNotebook() {
           </div>
         </div>
         <details>
-          <summary>${escHtml((r.question_text || '').slice(0, 180))}${(r.question_text || '').length > 180 ? '…' : ''}</summary>
+          <summary>Answer: ${escHtml(r.expected_answer || '(answer unavailable)')}</summary>
           <div class="coach-note-body">
+            <div><b>Question:</b> ${escHtml(r.question_text || '(question unavailable)')}</div>
             <div><b>Your answer:</b> ${escHtml(r.user_answer || '(blank)')}</div>
             <div><b>Expected:</b> ${escHtml(r.expected_answer || '')}</div>
             <div><b>Summary:</b> ${escHtml(coach.summary || '')}</div>
