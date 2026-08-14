@@ -1226,7 +1226,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     function coachChatFocusTitle(focus) {
-        return [focus?.region, coachEraName(focus?.era), focus?.topic].filter(Boolean).join(' • ') || String(focus?.title || '').trim() || 'Top focus';
+        const structured = [focus?.region, coachEraName(focus?.era)].filter(Boolean).join(' • ');
+        return structured || String(focus?.title || focus?.topic || '').trim() || 'Top focus';
     }
 
     function buildDashboardPracticeRecommendations(options = {}) {
@@ -1257,7 +1258,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 title: `Recover from ${recent.title}`,
                 priority: 'high',
                 reason: 'Your latest Mistake Notebook lesson is the clearest thing to fix before starting more mixed work.',
-                evidence: recent.reason || [recent.region, recent.era, recent.topic].filter(Boolean).join(' • '),
+                evidence: recent.reason || (recent.topic ? `Recommended study area: ${recent.topic}` : coachChatFocusTitle(recent)),
                 action_label: 'Build corrective drill',
                 action: { kind: 'action', id: 'generate_focus_drill', focus_key: recent.key, label: `Generate ${recent.title}` }
             });
@@ -1361,9 +1362,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             : [];
         const recentIncorrect = recentRecord ? {
             key: [recentFocus.region, recentFocus.era, recentFocus.topic].filter(Boolean).join('|'),
-            title: coachChatFocusTitle({
-                title: [recentFocus.region, recentFocus.era, recentFocus.topic].filter(Boolean).join(' • ')
-            }),
+            title: coachChatFocusTitle(recentFocus),
             region: String(recentFocus.region || '').trim(),
             era: String(recentFocus.era || '').trim(),
             topic: String(recentFocus.topic || '').trim(),
@@ -4353,11 +4352,10 @@ document.addEventListener('DOMContentLoaded', async () => {
             .map(entry => {
                 const sample = entry.sample;
                 const recordFocus = coachFocusFromRecord(sample);
-                const titleParts = [recordFocus.region, recordFocus.era, recordFocus.topic].filter(Boolean);
                 const priority = entry.unresolved >= 3 || entry.incorrect >= 2 ? 'high' : (entry.unresolved >= 1 ? 'medium' : 'low');
                 return {
                     key: entry.key,
-                    title: titleParts.join(' • ') || 'Coach focus',
+                    title: coachChatFocusTitle(recordFocus),
                     region: recordFocus.region,
                     era: recordFocus.era,
                     topic: recordFocus.topic,
@@ -4430,7 +4428,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const priority = group.unresolved >= 3 || group.incorrect >= 2 ? 'high' : (group.unresolved >= 1 ? 'medium' : 'low');
         return {
             key: group.key,
-            title: [group.region, group.era, group.topic].filter(Boolean).join(' • ') || 'Saved lessons',
+            title: coachChatFocusTitle(group),
             region: group.region,
             era: group.era,
             topic: group.topic,
@@ -4471,7 +4469,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 era,
                 era_code: eraCode,
                 topic: target.topic || '',
-                title: [target.region, era, target.topic].filter(Boolean).join(' • ') || target.title || 'Coach focus',
+                title: coachChatFocusTitle({ ...target, era }),
                 reason: target.reason || '',
                 mode: effectiveMode,
                 source: target.source || 'student-dashboard',
@@ -4508,8 +4506,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                 <div class="coach-focus-tags">
                     ${focus.region ? `<span class="coach-focus-pill">Region: ${esc(focus.region)}</span>` : ''}
                     ${focus.era ? `<span class="coach-focus-pill">Era: ${esc(focus.era)}</span>` : ''}
-                    ${focus.topic ? `<span class="coach-focus-pill">Topic: ${esc(focus.topic)}</span>` : ''}
                 </div>
+                ${focus.topic ? `<div class="coach-focus-study-area"><b>Recommended study area:</b> ${esc(focus.topic)}</div>` : ''}
                 <div class="coach-focus-actions">
                     <button class="btn pri coach-focus-drill" type="button" data-focus-index="${index}">Guided Drill</button>
                     <button class="btn ghost coach-focus-generate" type="button" data-focus-index="${index}">Create Targeted Drill</button>
@@ -4554,7 +4552,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                     <div class="coach-note-icon">${esc(focus.icon || '📘')}</div>
                     <div class="coach-note-meta">
                         <div><b>${esc(statusLabel)}</b> • ${esc(created)}${record.mastered ? ' • <span class="coach-note-mastered-flag">Mastered</span>' : ''}</div>
-                        <div class="muted">${esc(focus.region || 'World')}${focus.era ? ' • ' + esc(focus.era) : ''}${focus.topic ? ' • ' + esc(focus.topic) : ''}</div>
+                        <div class="muted">${esc(coachChatFocusTitle(focus))}</div>
+                        ${focus.topic ? `<div class="coach-focus-study-area coach-focus-study-area-compact"><b>Recommended study area:</b> ${esc(focus.topic)}</div>` : ''}
                     </div>
                 </div>
                 <details>

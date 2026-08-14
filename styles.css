@@ -3399,6 +3399,25 @@ tr:hover td {
   font-weight: 700;
 }
 
+.coach-focus-study-area {
+  padding: 9px 11px;
+  border-left: 3px solid rgba(96, 165, 250, 0.7);
+  border-radius: 8px;
+  background: rgba(96, 165, 250, 0.08);
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.coach-focus-study-area b {
+  color: var(--text);
+}
+
+.coach-focus-study-area-compact {
+  margin-top: 4px;
+  padding: 4px 8px;
+}
+
 .coach-focus-actions {
   display: flex;
   flex-wrap: wrap;

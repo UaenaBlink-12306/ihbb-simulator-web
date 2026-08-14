@@ -1260,12 +1260,14 @@ function renderCoachCard(coach) {
     : 'introduce_topic';
   const diagnosisLabel = teachingApproach === 'diagnose_confusion' ? 'Confusion Check' : 'Topic Introduction';
   const overlapLabel = teachingApproach === 'diagnose_confusion' ? 'Key Distinction' : 'Why This Wasn\'t It';
+  const focusTitle = buildFocusTitle(focus);
   el.innerHTML = `
     <div class="coach-head">
       <div class="coach-icon">${escHtml(focus.icon || '📘')}</div>
       <div>
         <div class="coach-title">Coach</div>
-        <div class="coach-focus">${escHtml(focus.region || 'World')} ${focus.era ? '• ' + escHtml(focus.era) : ''} ${focus.topic ? '• ' + escHtml(focus.topic) : ''}</div>
+        <div class="coach-focus">${escHtml(focusTitle)}</div>
+        ${focus.topic ? `<div class="coach-focus-study-area coach-focus-study-area-compact"><b>Recommended study area:</b> ${escHtml(focus.topic)}</div>` : ''}
       </div>
       <div class="grow"></div>
       <div class="coach-confidence">${escHtml(String(coach.confidence || 'low').toUpperCase())}</div>
@@ -3485,13 +3487,13 @@ function buildCoachFocusSuggestions(records = CoachNotebook.records) {
   return Array.from(map.values())
     .sort((a, b) => (b.unresolved - a.unresolved) || (b.incorrect - a.incorrect) || (b.attempts - a.attempts) || (b.latestTs - a.latestTs))
     .map(entry => {
-      const title = [entry.region, entry.era, entry.topic].filter(Boolean).join(' • ') || 'Coach focus';
+      const title = buildFocusTitle(entry);
       const priority = entry.unresolved >= 3 || entry.incorrect >= 2 ? 'high' : (entry.unresolved >= 1 ? 'medium' : 'low');
       return {
         key: entry.key,
         title,
         region: entry.region,
-        era: entry.era,
+        era: getEraName(entry.era),
         topic: entry.topic,
         icon: entry.icon,
         meta: `${entry.unresolved} open lesson${entry.unresolved === 1 ? '' : 's'} • ${entry.incorrect} incorrect`,
@@ -3520,8 +3522,8 @@ function coachFocusCardHtml(focus, index, actionClass) {
       <div class="coach-focus-tags">
         ${focus.region ? `<span class="coach-focus-pill">Region: ${escHtml(focus.region)}</span>` : ''}
         ${focus.era ? `<span class="coach-focus-pill">Era: ${escHtml(focus.era)}</span>` : ''}
-        ${focus.topic ? `<span class="coach-focus-pill">Topic: ${escHtml(focus.topic)}</span>` : ''}
       </div>
+      ${focus.topic ? `<div class="coach-focus-study-area"><b>Recommended study area:</b> ${escHtml(focus.topic)}</div>` : ''}
       <div class="coach-focus-actions">
         <button class="btn pri ${actionClass}" type="button" data-focus-index="${index}" data-focus-scope="${scope}">Apply Focus</button>
         <button class="btn ghost coach-generate-focus" type="button" data-focus-index="${index}" data-focus-scope="${scope}">Create Targeted Drill</button>
@@ -3704,7 +3706,7 @@ function applyPendingCoachGuidedDrill() {
   const eraCode = coachEraToCode(pending.era_code || pending.era, getActiveSet());
   const era = getEraName(eraCode || pending.era || '');
   const focus = {
-    title: [pending.region, era, pending.topic].filter(Boolean).join(' • ') || String(pending.title || '').trim() || 'Coach focus',
+    title: buildFocusTitle({ region: pending.region, era, title: pending.title, topic: pending.topic }),
     region: String(pending.region || '').trim(),
     era,
     era_code: eraCode,
@@ -3845,7 +3847,7 @@ function coachFocusFromAttemptId(attemptId) {
   if (!record) return null;
   const focus = coachFocusFromRecord(record);
   return {
-    title: [focus.region, focus.era, focus.topic].filter(Boolean).join(' • ') || 'Coach focus',
+    title: buildFocusTitle(focus),
     region: focus.region,
     era: focus.era,
     topic: focus.topic,
@@ -4118,7 +4120,8 @@ const ERA_NAMES = window.IHBBCoachEra?.ERA_NAMES || {
 };
 
 function buildFocusTitle(focus) {
-  return [focus?.region, getEraName(focus?.era_code || focus?.era || ''), focus?.topic].filter(Boolean).join(' • ') || String(focus?.title || '').trim() || 'Targeted Focus';
+  const structured = [focus?.region, getEraName(focus?.era_code || focus?.era || '')].filter(Boolean).join(' • ');
+  return structured || String(focus?.title || focus?.topic || '').trim() || 'Targeted Focus';
 }
 
 function questionMergeKey(item) {
@@ -5487,7 +5490,8 @@ function renderCoachNotebook() {
           <div class="coach-note-icon">${escHtml(focus.icon || '📘')}</div>
           <div class="coach-note-meta">
             <div><b>${escHtml(statusLabel)}</b> • ${escHtml(created)}</div>
-            <div class="muted">${escHtml(focus.region || 'World')} ${focus.era ? '• ' + escHtml(focus.era) : ''} ${focus.topic ? '• ' + escHtml(focus.topic) : ''}</div>
+            <div class="muted">${escHtml(buildFocusTitle(focus))}</div>
+            ${focus.topic ? `<div class="coach-focus-study-area coach-focus-study-area-compact"><b>Recommended study area:</b> ${escHtml(focus.topic)}</div>` : ''}
           </div>
         </div>
         <details>
@@ -6759,7 +6763,7 @@ async function submitAnswer(auto = false) {
       upsertCoachLocal(coachRecord);
       syncCoachAttempt(coachRecord);
       const focus = finalCoach?.study_focus || {};
-      const recentTitle = [focus.region, focus.era, focus.topic].filter(Boolean).join(' • ') || coachChatFocusTitle(focus) || 'Recent miss';
+      const recentTitle = buildFocusTitle(focus) || 'Recent miss';
       CoachChat.recentIncorrect = {
         key: [focus.region, focus.era, focus.topic].filter(Boolean).join('|'),
         title: recentTitle,

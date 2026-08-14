@@ -541,8 +541,9 @@ function normalizeContext(payload) {
 
 function focusTitle(focus) {
   if (!focus || typeof focus !== 'object') return '';
-  return stringValue(focus.title)
-    || [stringValue(focus.region), stringValue(focus.era), stringValue(focus.topic)].filter(Boolean).join(' • ')
+  return [stringValue(focus.region), stringValue(focus.era)].filter(Boolean).join(' • ')
+    || stringValue(focus.title)
+    || stringValue(focus.topic)
     || 'your top focus';
 }
 
@@ -556,9 +557,11 @@ function buildContextBrief(context) {
 
   if (context.current_view) parts.push(`Current view: ${context.current_view}`);
   if (recentTitle) parts.push(`Latest miss: ${recentTitle}`);
+  if (context.recent_incorrect?.topic) parts.push(`Recommended study area for latest miss: ${context.recent_incorrect.topic}`);
   if (context.wrong_bank.due_now > 0) parts.push(`Wrong-bank due now: ${context.wrong_bank.due_now}`);
   if (context.coach_notebook.open_lessons > 0) parts.push(`Open notebook lessons: ${context.coach_notebook.open_lessons}`);
   if (topFocusTitle) parts.push(`Top notebook focus: ${topFocusTitle}`);
+  if (context.coach_notebook.top_focuses[0]?.topic) parts.push(`Recommended study area for top focus: ${context.coach_notebook.top_focuses[0].topic}`);
   if (context.session_history.total_sessions > 0) {
     parts.push(`Recent accuracy: ${context.session_history.recent_accuracy}% over ${context.session_history.total_sessions} sessions`);
   }

@@ -65,6 +65,20 @@ test('Coach era labels stay readable while Guided Drill keeps the bank code', ()
   assert.ok(practicePage.indexOf('coach-era.js') < practicePage.indexOf('app.js'));
 });
 
+test('Coach separates recommended study areas from region and readable era', () => {
+  const practice = read('app.js');
+  const student = read('student.js');
+  const api = read('api/coach-chat.js');
+
+  assert.match(practice, /const structured = \[focus\?\.region, getEraName\(focus\?\.era_code \|\| focus\?\.era \|\| ''\)\]/);
+  assert.match(student, /const structured = \[focus\?\.region, coachEraName\(focus\?\.era\)\]/);
+  assert.match(practice, /Recommended study area:<\/b>/);
+  assert.match(student, /Recommended study area:<\/b>/);
+  assert.doesNotMatch(practice, /\[entry\.region, entry\.era, entry\.topic\]/);
+  assert.doesNotMatch(student, /\[recordFocus\.region, recordFocus\.era, recordFocus\.topic\]/);
+  assert.match(api, /Recommended study area for top focus/);
+});
+
 test("student and teacher What's New sections describe the Coach redesign", () => {
   for (const page of ['student.html', 'teacher.html']) {
     const html = read(page);
