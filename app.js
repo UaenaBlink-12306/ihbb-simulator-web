@@ -1159,7 +1159,7 @@ function coachWikiHtml(coach) {
 }
 function fallbackCoachForItem(item, correct, reason, userAnswer = '') {
   const region = String(item?.meta?.category || 'World') || 'World';
-  const era = String(item?.meta?.era || '');
+  const era = getEraName(item?.meta?.era || '');
   const topic = topicFromQuestion(item?.question || '');
   const explanationBullets = [
     correct
@@ -1201,7 +1201,7 @@ function normalizeCoach(coach, item, correct, reason) {
   const c = (coach && typeof coach === 'object') ? coach : {};
   const sf = (c.study_focus && typeof c.study_focus === 'object') ? c.study_focus : {};
   const region = String(sf.region || item?.meta?.category || 'World').trim() || 'World';
-  const era = String(sf.era || item?.meta?.era || '').trim();
+  const era = getEraName(sf.era || item?.meta?.era || '');
   const topic = String(sf.topic || topicFromQuestion(item?.question || '')).trim() || 'General';
   const icon = String(sf.icon || iconForStudyFocus(region, topic)).trim() || iconForStudyFocus(region, topic);
   const clues = Array.isArray(c.key_clues) ? c.key_clues.map(x => String(x || '').trim()).filter(Boolean).slice(0, 4) : [];
@@ -3534,6 +3534,8 @@ function coachFocusCardHtml(focus, index, actionClass) {
 function coachEraToCode(rawEra, set) {
   const era = String(rawEra || '').trim();
   if (!era) return '';
+  const sharedCode = window.IHBBCoachEra?.toCode?.(era) || '';
+  if (sharedCode) return sharedCode;
   if (ERA_NAMES[era]) return era;
   const direct = Object.entries(ERA_NAMES).find(([, label]) => String(label).trim().toLowerCase() === era.toLowerCase());
   if (direct) return direct[0];
@@ -3545,7 +3547,7 @@ function coachEraToCode(rawEra, set) {
 function coachFocusMatchInSet(focus, set) {
   const categories = new Set((set?.items || []).map(it => String(it.meta?.category || '').trim()).filter(Boolean));
   const region = categories.has(String(focus?.region || '').trim()) ? String(focus.region).trim() : '';
-  const eraCode = coachEraToCode(focus?.era, set);
+  const eraCode = coachEraToCode(focus?.era_code || focus?.era, set);
   const score = (region ? 1 : 0) + (eraCode ? 1 : 0);
   return { region, eraCode, score };
 }
@@ -3699,10 +3701,13 @@ async function applyPendingCoachChatAction() {
 function applyPendingCoachGuidedDrill() {
   const pending = readPendingCoachDrill();
   if (!pending) return false;
+  const eraCode = coachEraToCode(pending.era_code || pending.era, getActiveSet());
+  const era = getEraName(eraCode || pending.era || '');
   const focus = {
-    title: String(pending.title || '').trim() || [pending.region, pending.era, pending.topic].filter(Boolean).join(' • ') || 'Coach focus',
+    title: [pending.region, era, pending.topic].filter(Boolean).join(' • ') || String(pending.title || '').trim() || 'Coach focus',
     region: String(pending.region || '').trim(),
-    era: String(pending.era || '').trim(),
+    era,
+    era_code: eraCode,
     topic: String(pending.topic || '').trim(),
     reference_question: String(pending.reference_question || '').trim(),
     reference_answer: String(pending.reference_answer || '').trim(),
@@ -4102,7 +4107,7 @@ function updateSetMeta() {
   applyPendingCoachGuidedDrill();
 }
 
-const ERA_NAMES = {
+const ERA_NAMES = window.IHBBCoachEra?.ERA_NAMES || {
   "01": "8000 BCE – 600 BCE",
   "02": "600 BCE – 600 CE",
   "03": "600 CE – 1450 CE",
@@ -4113,7 +4118,7 @@ const ERA_NAMES = {
 };
 
 function buildFocusTitle(focus) {
-  return [focus?.region, focus?.era, focus?.topic].filter(Boolean).join(' • ') || String(focus?.title || '').trim() || 'Targeted Focus';
+  return [focus?.region, getEraName(focus?.era_code || focus?.era || ''), focus?.topic].filter(Boolean).join(' • ') || String(focus?.title || '').trim() || 'Targeted Focus';
 }
 
 function questionMergeKey(item) {
@@ -4353,7 +4358,7 @@ async function startGeneratedFocusDrill(focus, options = {}) {
     return false;
   }
   const title = buildFocusTitle(focus);
-  const eraCode = String(coachEraToCode(focus.era, getActiveSet()) || focus.era || '').trim();
+  const eraCode = String(coachEraToCode(focus.era_code || focus.era, getActiveSet()) || focus.era_code || focus.era || '').trim();
   const creatorRole = String(options.creatorRole || await ensureCurrentProfileRole() || 'student').trim() || 'student';
   const count = Math.max(1, Math.min(12, Number.parseInt(String(options.count || 6), 10) || 6));
   try {
@@ -4393,7 +4398,7 @@ async function startGeneratedFocusDrill(focus, options = {}) {
 }
 
 function getEraName(code) {
-  return ERA_NAMES[code] || code;
+  return window.IHBBCoachEra?.toName?.(code) || ERA_NAMES[code] || String(code || '').trim();
 }
 
 function sortEraCodes(codes) {

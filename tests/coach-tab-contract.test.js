@@ -48,6 +48,23 @@ test('shared Coach UI supports the simplified interaction contract', () => {
   assert.equal(typeof ui.syncState, 'function');
 });
 
+test('Coach era labels stay readable while Guided Drill keeps the bank code', () => {
+  const era = require(path.join(root, 'coach-era.js'));
+  assert.equal(era.toName('07'), '1991 – Present');
+  assert.equal(era.toName('7'), '1991 – Present');
+  assert.equal(era.toCode('1991 – Present'), '07');
+  assert.equal(era.toCode('1991 - Present'), '07');
+
+  const student = read('student.js');
+  const practice = read('app.js');
+  const studentPage = read('student.html');
+  const practicePage = read('index.html');
+  assert.match(student, /era_code:\s*eraCode/);
+  assert.match(practice, /coachEraToCode\(pending\.era_code \|\| pending\.era/);
+  assert.ok(studentPage.indexOf('coach-era.js') < studentPage.indexOf('student.js'));
+  assert.ok(practicePage.indexOf('coach-era.js') < practicePage.indexOf('app.js'));
+});
+
 test("student and teacher What's New sections describe the Coach redesign", () => {
   for (const page of ['student.html', 'teacher.html']) {
     const html = read(page);

@@ -56,6 +56,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         'Africa', 'Central Asia', 'East Asia', 'Europe', 'Latin America',
         'Middle East', 'North America', 'Oceania', 'South Asia', 'Southeast Asia', 'World'
     ]);
+    const coachEra = window.IHBBCoachEra || {};
+    const coachEraName = (value) => typeof coachEra.toName === 'function'
+        ? coachEra.toName(value)
+        : String(value || '').trim();
+    const coachEraCode = (value) => typeof coachEra.toCode === 'function'
+        ? coachEra.toCode(value)
+        : String(value || '').trim();
     let coachShowMastered = false;
     let coachFocusGroupsCurrent = [];
     const avatarCatalog = window.AvatarCatalog || {};
@@ -1219,7 +1226,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     function coachChatFocusTitle(focus) {
-        return [focus?.region, focus?.era, focus?.topic].filter(Boolean).join(' • ') || String(focus?.title || '').trim() || 'Top focus';
+        return [focus?.region, coachEraName(focus?.era), focus?.topic].filter(Boolean).join(' • ') || String(focus?.title || '').trim() || 'Top focus';
     }
 
     function buildDashboardPracticeRecommendations(options = {}) {
@@ -4215,7 +4222,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 wiki_link: String(coach.wiki_link || coachWikiLink(coach.canonical_answer || source.expected_answer || '')).trim(),
                 study_focus: {
                     region: String(focus.region || source.category || '').trim(),
-                    era: String(focus.era || source.era || '').trim(),
+                    era: coachEraName(focus.era || source.era),
                     topic: String(focus.topic || source.focus_topic || '').trim(),
                     icon: String(focus.icon || '📘').trim() || '📘'
                 }
@@ -4266,7 +4273,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const topicRaw = String(focus.topic || record?.focus_topic || '').trim();
         return {
             region,
-            era: String(focus.era || record?.era || '').trim(),
+            era: coachEraName(focus.era || record?.era),
             topic: [strayRegion, topicRaw].filter(Boolean).join(' • '),
             icon: String(focus.icon || '📘').trim() || '📘'
         };
@@ -4298,7 +4305,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 key: `analytics-${index}-${parsed.dimension}-${parsed.value}`,
                 title: item.title,
                 region: parsed.dimension.toLowerCase() === 'region' ? parsed.value : '',
-                era: parsed.dimension.toLowerCase() === 'era' ? parsed.value : '',
+                era: parsed.dimension.toLowerCase() === 'era' ? coachEraName(parsed.value) : '',
                 topic: '',
                 icon: parsed.dimension.toLowerCase() === 'region' ? '🧭' : (parsed.dimension.toLowerCase() === 'era' ? '🕰️' : '📘'),
                 meta: String(item.evidence || '').trim(),
@@ -4457,11 +4464,14 @@ document.addEventListener('DOMContentLoaded', async () => {
             ? coachRecordsCurrent.find(item => String(item.client_attempt_id || '').trim() === String(target.attemptId || '').trim())
             : null) || null;
         try {
+            const era = coachEraName(target.era);
+            const eraCode = coachEraCode(target.era);
             localStorage.setItem(COACH_DRILL_STORAGE_KEY, JSON.stringify({
                 region: target.region || '',
-                era: target.era || '',
+                era,
+                era_code: eraCode,
                 topic: target.topic || '',
-                title: target.title || [target.region, target.era, target.topic].filter(Boolean).join(' • ') || 'Coach focus',
+                title: [target.region, era, target.topic].filter(Boolean).join(' • ') || target.title || 'Coach focus',
                 reason: target.reason || '',
                 mode: effectiveMode,
                 source: target.source || 'student-dashboard',
