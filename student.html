@@ -25,7 +25,6 @@
     </style>
     <script src="set-builder-quality.js" defer></script>
     <script src="set-builder-source.js" defer></script>
-    <script src="coach-tab-ui.js" defer></script>
     <script src="coach-era.js" defer></script>
     <script src="student.js" defer></script>
     <script src="dashboard-feedback.js" defer></script>
@@ -59,7 +58,7 @@
                         <div class="metric-note">Finished assignments you can revisit anytime.</div>
                     </div>
                     <div class="metric-card">
-                        <div class="metric-label">Coach notes</div>
+                        <div class="metric-label">Notebook lessons</div>
                         <div id="student-hero-coach" class="metric-value">0</div>
                         <div class="metric-note">Mistake lessons still worth reviewing.</div>
                     </div>
@@ -83,7 +82,7 @@
                     <button class="dash-tab" type="button" data-tab="classes" role="menuitem">My Classes</button>
                 </div>
             </div>
-            <button class="dash-tab coach-direct-tab" type="button" data-tab="coach" title="Get explanations and personalized next-practice guidance">Coach</button>
+            <button class="dash-tab coach-direct-tab" type="button" data-tab="coach" title="Review missed questions, saved lessons, and focused drills">Mistake Notebook</button>
             <div class="dashboard-tab-group" data-tabs="goals analytics leaderboard">
                 <button class="dashboard-tab-group-trigger" type="button" data-default-tab="goals" aria-haspopup="true">Practice</button>
                 <div class="dashboard-tab-menu" role="menu">
@@ -195,14 +194,14 @@
                             <div class="coach-brief-head">
                                 <div>
                                     <div class="eyebrow">Current focus</div>
-                                    <h3>Assignment Coach</h3>
+                                    <h3>Review focus</h3>
                                 </div>
                                 <div class="assignment-actions" style="margin-top: 10px;">
                                     <button id="btn-assignments-coach-drill" class="btn pri" type="button" title="Start a guided assignment practice hub">Guided Hub</button>
                                     <button id="btn-assignments-coach-tab" class="btn ghost" type="button" title="Open the Mistake Notebook to review lessons and focuses">Notebook</button>
                                 </div>
                             </div>
-                            <div id="assignments-coach-summary" class="coach-brief-copy muted">Coach focus will appear here.</div>
+                            <div id="assignments-coach-summary" class="coach-brief-copy muted">Your notebook focus will appear here.</div>
                             <div id="assignments-coach-focuses" class="coach-focus-grid"></div>
                         </div>
                     </aside>
@@ -232,87 +231,74 @@
         </section>
 
         <section id="tab-coach" class="view">
-            <div class="coach-tab-page">
-                <div id="coach-chat-sidebar" class="coach-tab-shell" data-chat-pristine="true" data-coach-surface="tab">
-                    <header class="coach-tab-header">
-                        <div class="coach-tab-brand">
-                            <span class="coach-tab-mark" aria-hidden="true">
-                                <svg viewBox="0 0 24 24"><path d="M12 3c.8 4.2 2.3 5.7 6.5 6.5-4.2.8-5.7 2.3-6.5 6.5-.8-4.2-2.3-5.7-6.5-6.5C9.7 8.7 11.2 7.2 12 3Z"></path><path d="M18.5 15.5c.4 1.9 1 2.5 3 3-2 .4-2.6 1-3 3-.4-2-1-2.6-3-3 2-.5 2.6-1.1 3-3Z"></path></svg>
-                            </span>
-                            <div class="coach-tab-brand-copy">
-                                <div class="coach-tab-title-row">
-                                    <h2>Coach</h2>
-                                    <span class="coach-tab-live"><span class="coach-tab-live-dot" aria-hidden="true"></span>Personalized</span>
+            <div class="mistake-notebook-page" data-notebook-surface="primary">
+                <div class="mistake-notebook-layout">
+                    <main class="mistake-notebook-surface">
+                        <header class="mistake-notebook-header">
+                            <div class="mistake-notebook-heading">
+                                <span class="mistake-notebook-icon" aria-hidden="true">
+                                    <svg viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2Z"></path></svg>
+                                </span>
+                                <div>
+                                    <h2>Mistake Notebook</h2>
+                                    <p>Turn missed questions into lessons you can review, drill, and master.</p>
                                 </div>
-                                <p id="coach-chat-context-summary">Using your latest practice and Mistake Notebook</p>
-                                <div id="coach-chat-status-pills" class="coach-chat-status-pills"></div>
                             </div>
-                        </div>
-                        <div class="coach-tab-header-actions">
-                            <span id="coach-chat-source" class="coach-chat-source-pill" role="status"></span>
-                            <button id="coach-chat-new" class="coach-reset-button" type="button" hidden>
-                                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 2.64-6.36L3 8"></path><path d="M3 3v5h5"></path></svg>
-                                Start over
-                            </button>
-                        </div>
-                    </header>
-
-                    <div id="coach-chat-box" class="coach-chat-box">
-                    <div id="coach-chat-body" class="coach-tab-body">
-                        <div id="coach-chat-home" class="coach-home">
-                            <p class="coach-home-kicker">Your personal study assistant</p>
-                            <h3>What would help most?</h3>
-                            <div id="coach-chat-workspace" class="coach-chat-workspace"></div>
-                            <div id="coach-chat-starter-box" class="coach-chat-starter-block">
-                                <div id="coach-chat-starters" class="coach-chat-starters"></div>
+                            <div class="mistake-notebook-header-actions">
+                                <span id="coach-workspace-badge" class="mistake-notebook-count" role="status">Loading</span>
+                                <button id="btn-coach-refresh" class="btn ghost" type="button">
+                                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8.1 8.1 0 0 0-14.9-4M4 4v5h5"></path><path d="M4 13a8.1 8.1 0 0 0 14.9 4M20 20v-5h-5"></path></svg>
+                                    Refresh
+                                </button>
                             </div>
-                        </div>
-                        <div id="coach-chat-messages" class="coach-chat-messages" aria-live="polite"></div>
-                    </div>
+                        </header>
 
-                    <button id="coach-chat-jump-latest" class="coach-chat-jump-latest" type="button" aria-label="Jump to latest answer" title="Jump to latest answer">
-                        <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><polyline points="19 12 12 19 5 12"></polyline></svg>
-                    </button>
-
-                    <form id="coach-chat-form" class="coach-chat-form">
-                        <label class="coach-chat-input-wrap" for="coach-chat-input">
-                            <textarea id="coach-chat-input" rows="1" placeholder="Ask about a miss, a topic, or what to do next"></textarea>
-                            <button id="coach-chat-send" class="coach-send-button" type="submit" aria-label="Send question">
-                                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5"></path><path d="m5 12 7-7 7 7"></path></svg>
-                            </button>
-                        </label>
-                        <div class="coach-chat-form-actions">
-                            <div id="coach-chat-hint" class="coach-composer-hint">Coach uses your recent practice to personalize answers.</div>
-                            <span class="coach-composer-keys" aria-hidden="true"><kbd>↵</kbd> send&ensp;·&ensp;<kbd>⇧</kbd>+<kbd>↵</kbd> new line</span>
-                        </div>
-                    </form>
-                    </div>
-                </div>
-
-                <details class="coach-notebook-details">
-                    <summary>
-                        <span class="coach-notebook-summary-icon" aria-hidden="true">
-                            <svg viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2Z"></path></svg>
-                        </span>
-                        <span class="coach-notebook-summary-copy">
-                            <strong>Mistake Notebook</strong>
-                            <small>Saved explanations and focus areas from your practice.</small>
-                        </span>
-                        <span class="coach-notebook-summary-action"><span id="coach-workspace-badge">Loading</span><b>View saved lessons <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg></b></span>
-                    </summary>
-                    <div class="coach-notebook-content">
-                        <div class="inline-actions">
-                            <button id="btn-coach-refresh" class="btn ghost" type="button">Refresh Coach</button>
-                        </div>
-                        <div id="coach-workspace-summary" class="coach-brief-copy muted">Loading focus...</div>
-                        <h3>Saved Lessons</h3>
-                        <div class="coach-note-toolbar">
-                            <span class="muted">Top focus areas come first — every lesson has its own drill and mastery controls.</span>
+                        <section class="mistake-notebook-focus" aria-labelledby="mistake-notebook-focus-title">
+                            <div>
+                                <span class="mistake-notebook-label">Current focus</span>
+                                <h3 id="mistake-notebook-focus-title">Your next review area</h3>
+                                <p id="coach-workspace-summary">Loading focus...</p>
+                            </div>
                             <button id="coach-show-mastered" class="btn ghost" type="button" hidden>Show mastered</button>
+                        </section>
+
+                        <section class="mistake-notebook-lessons" aria-labelledby="mistake-notebook-lessons-title">
+                            <div class="mistake-notebook-lessons-head">
+                                <div>
+                                    <h3 id="mistake-notebook-lessons-title">Saved lessons</h3>
+                                    <p>Top focus areas come first. Open any lesson for the question, explanation, and review actions.</p>
+                                </div>
+                            </div>
+                            <div id="coach-note-list" class="coach-list" aria-live="polite"></div>
+                        </section>
+                    </main>
+
+                    <aside class="mistake-notebook-future" aria-labelledby="future-coach-title">
+                        <div class="mistake-notebook-future-icon" aria-hidden="true">
+                            <svg viewBox="0 0 48 48"><circle cx="24" cy="24" r="18"></circle><path d="m30.5 17.5-4.3 8.7-8.7 4.3 4.3-8.7 8.7-4.3Z"></path><circle cx="24" cy="24" r="2.5"></circle><path d="M24 3v4M24 41v4M3 24h4M41 24h4"></path></svg>
                         </div>
-                        <div id="coach-note-list" class="coach-list"></div>
-                    </div>
-                </details>
+                        <div class="mistake-notebook-future-copy">
+                            <h2 id="future-coach-title">A smarter coach is coming</h2>
+                            <strong>Coming Soon</strong>
+                            <p>We’re rebuilding the assistant around better context and more reliable actions.</p>
+                        </div>
+                        <ul class="mistake-notebook-future-list">
+                            <li>
+                                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2Z"></path></svg>
+                                <span>Understands your notebook</span>
+                            </li>
+                            <li>
+                                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14.7 6.3 3-3a4.2 4.2 0 0 1 3 6l-3 3"></path><path d="m9.3 17.7-3 3a4.2 4.2 0 1 1-6-6l3-3"></path><path d="m8 16 8-8"></path></svg>
+                                <span>Uses the right practice tools</span>
+                            </li>
+                            <li>
+                                <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"></circle><circle cx="12" cy="12" r="3"></circle><path d="M12 2v3M12 19v3M2 12h3M19 12h3"></path></svg>
+                                <span>Keeps recommendations focused</span>
+                            </li>
+                        </ul>
+                        <p class="mistake-notebook-future-note">The notebook stays fully available while this space is rebuilt.</p>
+                    </aside>
+                </div>
             </div>
         </section>
 
@@ -844,7 +830,7 @@
                                         <select id="acc-student-default-tab">
                                             <option value="assignments">Assignments</option>
                                             <option value="classes">My Classes</option>
-                                            <option value="coach">Coach</option>
+                                            <option value="coach">Mistake Notebook</option>
                                             <option value="goals">Goals</option>
                                             <option value="analytics">Analytics</option>
                                             <option value="leaderboard">Leaderboard</option>
@@ -953,6 +939,13 @@
                 </div>
                 <div class="dashboard-split dashboard-split-solo">
                     <div class="list-container">
+                        <div class="list-item">
+                            <div>
+                                <h3 style="margin:0 0 4px;">Mistake Notebook Takes Center Stage</h3>
+                                <div class="pill">August 14, 2026</div>
+                                <p class="muted" style="margin: 8px 0 0;">The student Coach tab is now the Mistake Notebook. The unreliable chat has been removed, saved lessons stay fully available, and an elegant Coming Soon sidebar reserves space for a future assistant with better context and tool use.</p>
+                            </div>
+                        </div>
                         <div class="list-item">
                             <div>
                                 <h3 style="margin:0 0 4px;">Clearer Coach Study Areas</h3>
@@ -1724,8 +1717,8 @@
                     <p class="muted" style="margin: 0;">Sharpen your skills with endless practice questions. Track your progress to identify weaknesses.</p>
                 </div>
                 <div class="card-muted-box">
-                    <h4 style="margin: 0 0 4px;">Coach</h4>
-                    <p class="muted" style="margin: 0;">A focused helper for answer explanations, mistake diagnosis, and next-practice advice.</p>
+                    <h4 style="margin: 0 0 4px;">Mistake Notebook</h4>
+                    <p class="muted" style="margin: 0;">Review saved lessons from missed questions, start targeted drills, and mark topics mastered.</p>
                 </div>
                 <div class="card-muted-box">
                     <h4 style="margin: 0 0 4px;">Live Bee</h4>

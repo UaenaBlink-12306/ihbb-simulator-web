@@ -231,7 +231,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const STUDENT_DASHBOARD_TAB_LABELS = Object.freeze({
         assignments: 'Assignments',
         classes: 'My Classes',
-        coach: 'Coach',
+        coach: 'Mistake Notebook',
         goals: 'Goals',
         analytics: 'Analytics',
         leaderboard: 'Leaderboard',
@@ -4498,7 +4498,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 <div class="coach-focus-head">
                     <div>
                         <div class="coach-focus-title">${esc(focus.icon || '📘')} ${esc(focus.title)}</div>
-                        <div class="coach-focus-meta">${esc(focus.meta || 'Coach focus')}</div>
+                        <div class="coach-focus-meta">${esc(focus.meta || 'Notebook focus')}</div>
                     </div>
                     <span class="analytics-ai-priority ${esc(focus.priority || 'medium')}">${esc(focus.priority || 'medium')}</span>
                 </div>
@@ -4525,7 +4525,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const focuses = coachFocusSuggestionsCurrent.slice(0, 2);
         drillBtn.disabled = !focuses.length;
         if (!focuses.length) {
-            summaryEl.textContent = 'No coach focus yet.';
+            summaryEl.textContent = 'No notebook focus yet.';
             focusEl.innerHTML = '<div class="coach-empty">Complete a few drills to load a focus.</div>';
             renderDashboardChatChrome();
             return;
@@ -4596,7 +4596,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const lead = coachFocusSuggestionsCurrent[0];
                 summaryEl.textContent = `Top focus: ${lead.title} — ${lead.meta || 'kept open in your notebook'}.`;
             } else {
-                summaryEl.textContent = 'No coach focus yet.';
+                summaryEl.textContent = 'No notebook focus yet.';
             }
         }
 

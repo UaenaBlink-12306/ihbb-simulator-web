@@ -5,10 +5,10 @@ const path = require('node:path');
 
 const root = path.resolve(__dirname, '..');
 const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
-const pages = ['index.html', 'student.html', 'teacher.html'];
+const coachPages = ['index.html', 'teacher.html'];
 
-test('Coach is a full tab surface on every app entry point', () => {
-  for (const page of pages) {
+test('remaining Coach experiences stay full-tab surfaces', () => {
+  for (const page of coachPages) {
     const html = read(page);
     assert.match(html, /data-coach-surface="tab"/, `${page} should expose the Coach as a tab surface`);
     assert.match(html, /<script src="coach-tab-ui\.js"(?: defer)?><\/script>/, `${page} should load the shared Coach tab UI`);
@@ -18,18 +18,34 @@ test('Coach is a full tab surface on every app entry point', () => {
   }
 });
 
-test('Coach is directly reachable from student and teacher dashboard tabs', () => {
-  for (const page of ['student.html', 'teacher.html']) {
-    const html = read(page);
-    assert.match(html, /<button class="dash-tab coach-direct-tab"[^>]+data-tab="coach"[^>]*>Coach<\/button>/);
-    assert.match(html, /<section id="tab-coach" class="view">/);
-  }
+test('student dashboard exposes the Mistake Notebook while teacher Coach remains available', () => {
+  const student = read('student.html');
+  const teacher = read('teacher.html');
+  assert.match(student, /<button class="dash-tab coach-direct-tab"[^>]+data-tab="coach"[^>]*>Mistake Notebook<\/button>/);
+  assert.match(student, /<section id="tab-coach" class="view">/);
+  assert.match(student, /data-notebook-surface="primary"/);
+  assert.match(teacher, /<button class="dash-tab coach-direct-tab"[^>]+data-tab="coach"[^>]*>Coach<\/button>/);
+  assert.match(teacher, /<section id="tab-coach" class="view">/);
   assert.match(read('index.html'), /id="nav-coach"[^>]*>Coach<\/a>/);
   assert.match(read('index.html'), /<section id="view-coach" class="view">/);
 });
 
-test('Coach tab removes advanced drawer controls and keeps one simple composer', () => {
-  for (const page of pages) {
+test('student chat is removed and the future Coach rail is clearly inactive', () => {
+  const html = read('student.html');
+  assert.doesNotMatch(html, /id="coach-chat-form"/);
+  assert.doesNotMatch(html, /id="coach-chat-input"/);
+  assert.doesNotMatch(html, /id="coach-chat-send"/);
+  assert.doesNotMatch(html, /data-coach-surface="tab"/);
+  assert.doesNotMatch(html, /<script src="coach-tab-ui\.js"(?: defer)?><\/script>/);
+  assert.match(html, /<aside class="mistake-notebook-future"/);
+  assert.match(html, /<strong>Coming Soon<\/strong>/);
+  assert.match(html, /Understands your notebook/);
+  assert.match(html, /Uses the right practice tools/);
+  assert.match(html, /Keeps recommendations focused/);
+});
+
+test('remaining Coach tabs remove advanced drawer controls and keep one simple composer', () => {
+  for (const page of coachPages) {
     const html = read(page);
     assert.doesNotMatch(html, /id="coach-chat-fullscreen"/);
     assert.doesNotMatch(html, /id="coach-chat-resize-handle"/);
@@ -79,9 +95,7 @@ test('Coach separates recommended study areas from region and readable era', () 
   assert.match(api, /Recommended study area for top focus/);
 });
 
-test("student and teacher What's New sections describe the Coach redesign", () => {
-  for (const page of ['student.html', 'teacher.html']) {
-    const html = read(page);
-    assert.match(html, /<h3[^>]*>Simpler Coach Tab<\/h3>\s*<div class="pill">August 10, 2026<\/div>/);
-  }
+test("student and teacher What's New sections describe the Mistake Notebook rebrand", () => {
+  assert.match(read('student.html'), /<h3[^>]*>Mistake Notebook Takes Center Stage<\/h3>\s*<div class="pill">August 14, 2026<\/div>/);
+  assert.match(read('teacher.html'), /<h3[^>]*>Student Mistake Notebook Rebrand<\/h3>\s*<div class="pill">August 14, 2026<\/div>/);
 });

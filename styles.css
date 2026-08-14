@@ -7033,6 +7033,376 @@ input[type=datetime-local]:focus {
   }
 }
 
+/* ==========================================================================
+   Student Mistake Notebook — notebook-first replacement for Coach (2026-08-14)
+   ========================================================================== */
+
+.mistake-notebook-page {
+  --notebook-ink: #0a1c36;
+  --notebook-copy: #425b78;
+  --notebook-muted: #6c8099;
+  --notebook-line: rgba(20, 44, 74, 0.12);
+  --notebook-line-strong: rgba(31, 111, 255, 0.24);
+  --notebook-blue: #1f6fff;
+  --notebook-blue-deep: #0b5fd9;
+  width: 100%;
+  padding: clamp(20px, 3vw, 34px) 0 64px;
+  color: var(--notebook-ink);
+}
+
+.mistake-notebook-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(292px, 0.34fr);
+  gap: clamp(20px, 2.6vw, 32px);
+  align-items: start;
+}
+
+.mistake-notebook-surface,
+.mistake-notebook-future {
+  border: 1px solid var(--notebook-line);
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 26px 58px -38px rgba(12, 30, 56, 0.35);
+}
+
+.mistake-notebook-surface {
+  min-width: 0;
+  padding: clamp(22px, 3.4vw, 38px);
+  border-radius: 28px;
+}
+
+.mistake-notebook-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  padding-bottom: 28px;
+  border-bottom: 1px solid var(--notebook-line);
+}
+
+.mistake-notebook-heading {
+  display: flex;
+  align-items: flex-start;
+  gap: 17px;
+  min-width: 0;
+}
+
+.mistake-notebook-icon {
+  width: 54px;
+  height: 54px;
+  flex: 0 0 54px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(31, 111, 255, 0.17);
+  border-radius: 17px;
+  color: var(--notebook-blue-deep);
+  background: #eef5ff;
+}
+
+.mistake-notebook-icon svg,
+.mistake-notebook-header-actions .btn svg,
+.mistake-notebook-future svg {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.mistake-notebook-icon svg {
+  width: 26px;
+  height: 26px;
+}
+
+.mistake-notebook-heading h2 {
+  margin: 0;
+  color: var(--notebook-ink);
+  font: 830 clamp(30px, 3.3vw, 42px)/1.08 'Outfit', system-ui, sans-serif;
+  letter-spacing: -0.035em;
+}
+
+.mistake-notebook-heading p {
+  max-width: 620px;
+  margin: 8px 0 0;
+  color: var(--notebook-copy);
+  font-size: 15px;
+  line-height: 1.55;
+}
+
+.mistake-notebook-header-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.mistake-notebook-count {
+  display: inline-flex;
+  align-items: center;
+  min-height: 38px;
+  padding: 0 13px;
+  border: 1px solid rgba(31, 111, 255, 0.16);
+  border-radius: 11px;
+  color: var(--notebook-blue-deep);
+  background: #f3f7ff;
+  font: 760 12.5px/1 'Outfit', system-ui, sans-serif;
+  white-space: nowrap;
+}
+
+.mistake-notebook-header-actions .btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+}
+
+.mistake-notebook-header-actions .btn svg {
+  width: 17px;
+  height: 17px;
+}
+
+.mistake-notebook-focus {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  margin-top: 26px;
+  padding: 20px 22px;
+  border: 1px solid var(--notebook-line-strong);
+  border-radius: 18px;
+  background: linear-gradient(135deg, rgba(238, 245, 255, 0.95), rgba(248, 251, 255, 0.96));
+}
+
+.mistake-notebook-label {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--notebook-blue-deep);
+  font: 770 11px/1.2 'Outfit', system-ui, sans-serif;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.mistake-notebook-focus h3,
+.mistake-notebook-lessons h3 {
+  margin: 0;
+  color: var(--notebook-ink);
+  font: 800 20px/1.25 'Outfit', system-ui, sans-serif;
+}
+
+.mistake-notebook-focus p {
+  margin: 7px 0 0;
+  color: var(--notebook-copy);
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+
+.mistake-notebook-lessons {
+  display: grid;
+  gap: 17px;
+  margin-top: 30px;
+}
+
+.mistake-notebook-lessons-head p {
+  margin: 6px 0 0;
+  color: var(--notebook-muted);
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+
+.mistake-notebook-surface .coach-list {
+  gap: 12px;
+}
+
+.mistake-notebook-surface .coach-note-group {
+  padding: 18px;
+  border-color: var(--notebook-line);
+  border-radius: 18px;
+  background: #fbfdff;
+  box-shadow: none;
+}
+
+.mistake-notebook-surface .coach-note-group:first-child {
+  border-color: var(--notebook-line-strong);
+  background: #f6f9ff;
+}
+
+.mistake-notebook-surface .coach-note {
+  border: 1px solid var(--notebook-line);
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 12px 24px -24px rgba(12, 30, 56, 0.48);
+}
+
+.mistake-notebook-surface .coach-note.mastered {
+  opacity: 0.78;
+  background: #f4fbf8;
+}
+
+.mistake-notebook-future {
+  position: sticky;
+  top: 20px;
+  display: flex;
+  min-height: 590px;
+  flex-direction: column;
+  align-items: center;
+  padding: clamp(28px, 3vw, 38px) clamp(22px, 2.7vw, 30px);
+  border-color: rgba(31, 111, 255, 0.18);
+  border-radius: 28px;
+  overflow: hidden;
+  text-align: center;
+  background:
+    radial-gradient(circle at 50% 0%, rgba(31, 111, 255, 0.1), transparent 42%),
+    linear-gradient(180deg, #f8fbff 0%, #f1f6fd 100%);
+}
+
+.mistake-notebook-future::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+.mistake-notebook-future-icon {
+  width: 104px;
+  height: 104px;
+  display: grid;
+  place-items: center;
+  margin: 18px 0 24px;
+  border: 1px solid rgba(31, 111, 255, 0.18);
+  border-radius: 50%;
+  color: var(--notebook-blue-deep);
+  background: rgba(255, 255, 255, 0.72);
+  box-shadow: 0 18px 34px -28px rgba(11, 95, 217, 0.55);
+}
+
+.mistake-notebook-future-icon svg {
+  width: 68px;
+  height: 68px;
+  stroke-width: 1.45;
+}
+
+.mistake-notebook-future-copy h2 {
+  margin: 0;
+  color: var(--notebook-ink);
+  font: 760 15px/1.35 'Outfit', system-ui, sans-serif;
+}
+
+.mistake-notebook-future-copy strong {
+  display: block;
+  margin-top: 14px;
+  color: var(--notebook-ink);
+  font: 850 clamp(28px, 3vw, 36px)/1.08 'Outfit', system-ui, sans-serif;
+  letter-spacing: -0.03em;
+}
+
+.mistake-notebook-future-copy p {
+  margin: 17px auto 0;
+  color: var(--notebook-copy);
+  font-size: 14px;
+  line-height: 1.65;
+}
+
+.mistake-notebook-future-list {
+  width: 100%;
+  margin: 30px 0 0;
+  padding: 0;
+  list-style: none;
+  text-align: left;
+}
+
+.mistake-notebook-future-list li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 55px;
+  padding: 12px 2px;
+  border-top: 1px solid rgba(20, 44, 74, 0.1);
+  color: #294462;
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.mistake-notebook-future-list svg {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 20px;
+  color: var(--notebook-blue-deep);
+}
+
+.mistake-notebook-future-note {
+  margin: auto 0 0;
+  padding-top: 24px;
+  color: var(--notebook-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+@media (max-width: 1050px) {
+  .mistake-notebook-layout {
+    grid-template-columns: minmax(0, 1fr) 280px;
+  }
+
+  .mistake-notebook-header {
+    flex-direction: column;
+  }
+
+  .mistake-notebook-header-actions {
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 840px) {
+  .mistake-notebook-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .mistake-notebook-future {
+    position: relative;
+    top: auto;
+    min-height: 0;
+  }
+
+  .mistake-notebook-future-note {
+    margin-top: 18px;
+  }
+}
+
+@media (max-width: 620px) {
+  .mistake-notebook-surface,
+  .mistake-notebook-future {
+    padding: 20px;
+    border-radius: 22px;
+  }
+
+  .mistake-notebook-heading {
+    gap: 12px;
+  }
+
+  .mistake-notebook-icon {
+    width: 46px;
+    height: 46px;
+    flex-basis: 46px;
+    border-radius: 14px;
+  }
+
+  .mistake-notebook-heading h2 {
+    font-size: 29px;
+  }
+
+  .mistake-notebook-focus {
+    align-items: flex-start;
+    flex-direction: column;
+    padding: 18px;
+  }
+
+  .mistake-notebook-focus .btn,
+  .mistake-notebook-header-actions {
+    width: 100%;
+  }
+}
+
 .admin-shell {
   padding-bottom: 48px;
 }
