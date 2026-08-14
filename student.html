@@ -256,6 +256,7 @@
                         </div>
                     </header>
 
+                    <div id="coach-chat-box" class="coach-chat-box">
                     <div id="coach-chat-body" class="coach-tab-body">
                         <div id="coach-chat-home" class="coach-home">
                             <p class="coach-home-kicker">Your personal study assistant</p>
@@ -284,6 +285,7 @@
                             <span class="coach-composer-keys" aria-hidden="true"><kbd>↵</kbd> send&ensp;·&ensp;<kbd>⇧</kbd>+<kbd>↵</kbd> new line</span>
                         </div>
                     </form>
+                    </div>
                 </div>
 
                 <details class="coach-notebook-details">
@@ -302,9 +304,11 @@
                             <button id="btn-coach-refresh" class="btn ghost" type="button">Refresh Coach</button>
                         </div>
                         <div id="coach-workspace-summary" class="coach-brief-copy muted">Loading focus...</div>
-                        <div id="coach-focus-list" class="coach-focus-grid"></div>
-                        <div class="coach-notebook-divider"></div>
                         <h3>Saved Lessons</h3>
+                        <div class="coach-note-toolbar">
+                            <span class="muted">Top focus areas come first — every lesson has its own drill and mastery controls.</span>
+                            <button id="coach-show-mastered" class="btn ghost" type="button" hidden>Show mastered</button>
+                        </div>
                         <div id="coach-note-list" class="coach-list"></div>
                     </div>
                 </details>
@@ -948,6 +952,13 @@
                 </div>
                 <div class="dashboard-split dashboard-split-solo">
                     <div class="list-container">
+                        <div class="list-item">
+                            <div>
+                                <h3 style="margin:0 0 4px;">Contained Coach Chat &amp; Smarter Saved Lessons</h3>
+                                <div class="pill">August 14, 2026</div>
+                                <p class="muted" style="margin: 8px 0 0;">The Coach chat now lives in a contained scrollable box instead of stretching the whole page. Saved Lessons are grouped by top focus (most-missed areas first) with per-lesson Guided Drill, Create Targeted Drill, and Mark Mastered controls; mastered lessons hide but stay one tap away; lesson titles now show the correct answer; and coach focuses only use real question-bank categories, with other focus labels becoming topics so every drill lands on matching or freshly generated questions.</p>
+                            </div>
+                        </div>
                         <div class="list-item">
                             <div>
                                 <h3 style="margin:0 0 4px;">Coach Workspace Redesign</h3>

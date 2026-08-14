@@ -11993,6 +11993,134 @@ button.chip {
   font: 800 20px/1.3 'Outfit', system-ui, sans-serif;
 }
 
+/* ---------- contained chat box ---------- */
+
+.coach-chat-box {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 400px;
+  height: min(68vh, 700px);
+  border: 1px solid var(--coach-line-strong);
+  border-radius: 26px;
+  background: var(--coach-card);
+  box-shadow: var(--coach-shadow), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  overflow: hidden;
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+.coach-chat-box .coach-tab-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  align-content: start;
+  padding: clamp(20px, 3vw, 30px);
+  scrollbar-gutter: stable;
+}
+
+.coach-chat-box .coach-tab-body::-webkit-scrollbar {
+  width: 10px;
+}
+
+.coach-chat-box .coach-tab-body::-webkit-scrollbar-thumb {
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background: rgba(20, 44, 74, 0.18);
+  background-clip: padding-box;
+}
+
+.coach-chat-box .coach-tab-body::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.coach-chat-box .coach-chat-form {
+  flex: 0 0 auto;
+  border: 0;
+  border-top: 1px solid var(--coach-line);
+  border-radius: 0;
+  background: rgba(248, 250, 254, 0.94);
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+/* ---------- merged saved lessons ---------- */
+
+.coach-note-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.coach-note-group {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--coach-line);
+  border-radius: 18px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.78), rgba(247, 250, 255, 0.55));
+  box-shadow: 0 14px 30px -28px rgba(12, 30, 56, 0.35);
+}
+
+.coach-note-group:first-child {
+  border-color: rgba(31, 111, 255, 0.3);
+  background: linear-gradient(180deg, rgba(232, 241, 255, 0.55), rgba(247, 250, 255, 0.55));
+}
+
+.coach-note-group-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.coach-note-group-copy {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.coach-note-group-title {
+  color: #0a1c36;
+  font: 800 16px/1.35 'Outfit', system-ui, sans-serif;
+}
+
+.coach-note-group-meta {
+  color: var(--coach-muted);
+  font-size: 12.5px;
+}
+
+.coach-note-group-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.coach-note-group .coach-list {
+  gap: 8px;
+}
+
+.coach-notebook-details .coach-note {
+  border-color: var(--coach-line);
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 8px 18px -18px rgba(12, 30, 56, 0.4);
+}
+
+.coach-notebook-details .coach-note.mastered {
+  opacity: 0.8;
+  background: rgba(228, 250, 245, 0.55);
+}
+
+.coach-note-mastered-flag {
+  color: #047857;
+  font-weight: 700;
+}
+
 /* ---------- motion ---------- */
 
 @keyframes coachRise {
@@ -12115,6 +12243,16 @@ button.chip {
   .coach-tab-shell .coach-chat-form {
     padding: 10px;
     border-radius: 20px;
+  }
+
+  .coach-chat-box {
+    height: min(74vh, 560px);
+    min-height: 340px;
+    border-radius: 20px;
+  }
+
+  .coach-chat-box .coach-tab-body {
+    padding: 18px 14px;
   }
 
   .coach-chat-form-actions {

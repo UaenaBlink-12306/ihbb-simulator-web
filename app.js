@@ -3703,7 +3703,10 @@ function applyPendingCoachGuidedDrill() {
     title: String(pending.title || '').trim() || [pending.region, pending.era, pending.topic].filter(Boolean).join(' • ') || 'Coach focus',
     region: String(pending.region || '').trim(),
     era: String(pending.era || '').trim(),
-    topic: String(pending.topic || '').trim()
+    topic: String(pending.topic || '').trim(),
+    reference_question: String(pending.reference_question || '').trim(),
+    reference_answer: String(pending.reference_answer || '').trim(),
+    wrong_answer: String(pending.wrong_answer || '').trim()
   };
   const pendingMode = String(pending.mode || 'guided').trim() || 'guided';
   if (pendingMode === 'generate') {
@@ -3842,7 +3845,10 @@ function coachFocusFromAttemptId(attemptId) {
     era: focus.era,
     topic: focus.topic,
     icon: focus.icon,
-    attemptId: id
+    attemptId: id,
+    reference_question: String(record?.question_text || '').trim(),
+    reference_answer: String(record?.expected_answer || '').trim(),
+    wrong_answer: String(record?.user_answer || '').trim()
   };
 }
 
@@ -4360,6 +4366,9 @@ async function startGeneratedFocusDrill(focus, options = {}) {
       creatorRole,
       createdFrom: String(options.createdFrom || 'coach-focus').trim() || 'coach-focus',
       reason: String(focus.reason || options.reason || '').trim(),
+      referenceQuestion: String(options.referenceQuestion || focus.reference_question || '').trim(),
+      referenceAnswer: String(options.referenceAnswer || focus.reference_answer || '').trim(),
+      wrongAnswer: String(options.wrongAnswer || focus.wrong_answer || '').trim(),
       avoidAnswers: collectAvoidAnswers({ region: focus.region, era: eraCode, topic: focus.topic })
     });
     const items = generated.items || [];

@@ -421,9 +421,18 @@ def normalize_coach(raw: Any, payload: Dict[str, Any], correct: bool, reason: st
     rc = raw if isinstance(raw, dict) else {}
     meta = payload.get("meta", {}) if isinstance(payload.get("meta"), dict) else {}
     sf = rc.get("study_focus", {}) if isinstance(rc.get("study_focus"), dict) else {}
-    region = str(sf.get("region") or meta.get("category") or meta.get("region") or "World").strip() or "World"
+    meta_region = str(meta.get("category") or meta.get("region") or "").strip()
+    raw_region = str(sf.get("region") or "").strip()
+    region = normalize_region(raw_region) or normalize_region(meta_region)
+    if not region:
+        # The model proposed a focus label that is not one of the question bank's
+        # canonical regions. Leave region empty and fold that label into the topic
+        # so the coach never displays a category that does not exist in the bank.
+        region = ""
+    folded_region = raw_region if raw_region and region.lower() != raw_region.lower() else ""
+    raw_topic = str(sf.get("topic") or "").strip()
+    topic = " • ".join(part for part in (folded_region, raw_topic) if part) or guess_topic(str(payload.get("question", ""))) or "General"
     era = str(sf.get("era") or meta.get("era") or "").strip()
-    topic = str(sf.get("topic") or guess_topic(str(payload.get("question", "")))).strip() or "General"
     icon = str(sf.get("icon") or icon_for_focus(region, topic)).strip() or icon_for_focus(region, topic)
     key_clues = []
     if isinstance(rc.get("key_clues"), list):

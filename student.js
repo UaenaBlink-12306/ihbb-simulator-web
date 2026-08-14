@@ -49,6 +49,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     let coachCloudWarned = false;
     let coachRecordsCurrent = [];
     let coachFocusSuggestionsCurrent = [];
+    // Only these canonical question-bank regions may be shown as a coach "Region".
+    // Any other AI-produced focus label is folded into the topic so the coach never
+    // displays a category that does not exist in the bank.
+    const COACH_REGION_OPTIONS = Object.freeze([
+        'Africa', 'Central Asia', 'East Asia', 'Europe', 'Latin America',
+        'Middle East', 'North America', 'Oceania', 'South Asia', 'Southeast Asia', 'World'
+    ]);
+    let coachShowMastered = false;
+    let coachFocusGroupsCurrent = [];
     const avatarCatalog = window.AvatarCatalog || {};
     const avatarOptions = Array.isArray(avatarCatalog.AVATAR_OPTIONS) && avatarCatalog.AVATAR_OPTIONS.length
         ? avatarCatalog.AVATAR_OPTIONS
@@ -3367,19 +3376,32 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
-    document.getElementById('coach-focus-list')?.addEventListener('click', handleCoachFocusAction);
     document.getElementById('assignments-coach-focuses')?.addEventListener('click', handleCoachFocusAction);
     document.getElementById('coach-note-list')?.addEventListener('click', (event) => {
+        const groupDrillBtn = event.target.closest('.coach-group-drill');
+        if (groupDrillBtn) {
+            const group = coachFocusGroupsCurrent[Number(groupDrillBtn.dataset.focusIndex) || 0] || null;
+            if (group) launchCoachGuidedDrill(coachFocusFromGroup(group), 'guided');
+            return;
+        }
+        const groupGenerateBtn = event.target.closest('.coach-group-generate');
+        if (groupGenerateBtn) {
+            const group = coachFocusGroupsCurrent[Number(groupGenerateBtn.dataset.focusIndex) || 0] || null;
+            if (group) launchCoachGuidedDrill(coachFocusFromGroup(group), 'generate');
+            return;
+        }
         const drillBtn = event.target.closest('.coach-note-drill');
         if (drillBtn) {
             const attemptId = String(drillBtn.dataset.attempt || '').trim();
             const record = coachRecordsCurrent.find(item => item.client_attempt_id === attemptId);
-            launchCoachGuidedDrill(record ? {
-                ...coachFocusFromRecord(record),
-                title: [coachFocusFromRecord(record).region, coachFocusFromRecord(record).era, coachFocusFromRecord(record).topic].filter(Boolean).join(' • ') || 'Coach focus',
-                reason: record?.coach?.summary || record?.reason || '',
-                source: 'coach-note'
-            } : null);
+            launchCoachGuidedDrill(record ? coachFocusFromRecord(record) : null, 'guided', record);
+            return;
+        }
+        const generateBtn = event.target.closest('.coach-note-generate');
+        if (generateBtn) {
+            const attemptId = String(generateBtn.dataset.attempt || '').trim();
+            const record = coachRecordsCurrent.find(item => item.client_attempt_id === attemptId);
+            launchCoachGuidedDrill(record ? coachFocusFromRecord(record) : null, 'generate', record);
             return;
         }
         const toggleBtn = event.target.closest('.coach-toggle-mastered');
@@ -3387,6 +3409,11 @@ document.addEventListener('DOMContentLoaded', async () => {
             const current = (toggleBtn.dataset.mastered || '0') === '1';
             persistCoachMastered(toggleBtn.dataset.attempt || '', !current);
         }
+    });
+
+    document.getElementById('coach-show-mastered')?.addEventListener('click', () => {
+        coachShowMastered = !coachShowMastered;
+        renderCoachWorkspace();
     });
 
     // ========== ASSIGNMENTS ==========
@@ -4227,10 +4254,20 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     function coachFocusFromRecord(record) {
         const focus = record?.coach?.study_focus || {};
+        // Snap the focus region to the question bank's canonical categories. If the
+        // AI produced a label that is not a real bank category, fold it into the
+        // topic instead of showing a Region that does not exist anywhere.
+        const focusRegion = String(focus.region || '').trim();
+        const recordCategory = String(record?.category || '').trim();
+        const region = COACH_REGION_OPTIONS.includes(focusRegion)
+            ? focusRegion
+            : (COACH_REGION_OPTIONS.includes(recordCategory) ? recordCategory : '');
+        const strayRegion = (region === focusRegion || !focusRegion) ? '' : focusRegion;
+        const topicRaw = String(focus.topic || record?.focus_topic || '').trim();
         return {
-            region: String(focus.region || record?.category || '').trim(),
+            region,
             era: String(focus.era || record?.era || '').trim(),
-            topic: String(focus.topic || record?.focus_topic || '').trim(),
+            topic: [strayRegion, topicRaw].filter(Boolean).join(' • '),
             icon: String(focus.icon || '📘').trim() || '📘'
         };
     }
@@ -4341,21 +4378,98 @@ document.addEventListener('DOMContentLoaded', async () => {
         return coachFocusSuggestionsCurrent[0] || null;
     }
 
-    function launchCoachGuidedDrill(focus = null, mode = 'guided') {
+    function buildCoachFocusGroups() {
+        const map = new Map();
+        for (const record of coachRecordsCurrent) {
+            const focus = coachFocusFromRecord(record);
+            const key = [focus.region, focus.era, focus.topic].join('|');
+            if (!map.has(key)) {
+                map.set(key, {
+                    key,
+                    region: focus.region,
+                    era: focus.era,
+                    topic: focus.topic,
+                    icon: focus.icon,
+                    attempts: 0,
+                    incorrect: 0,
+                    unresolved: 0,
+                    latestTs: 0,
+                    sample: null,
+                    records: []
+                });
+            }
+            const group = map.get(key);
+            group.attempts += 1;
+            if (!record.correct) group.incorrect += 1;
+            if (!record.mastered) group.unresolved += 1;
+            const ts = record.created_at ? new Date(record.created_at).getTime() : 0;
+            if (!group.sample || ts >= group.latestTs) {
+                group.latestTs = ts;
+                group.sample = record;
+            }
+            group.records.push(record);
+        }
+        // Same ordering the Top Focus cards used: most open lessons first, then most
+        // incorrect, then most attempts, then most recent.
+        return Array.from(map.values()).sort((a, b) =>
+            (b.unresolved - a.unresolved)
+            || (b.incorrect - a.incorrect)
+            || (b.attempts - a.attempts)
+            || (b.latestTs - a.latestTs));
+    }
+
+    function coachFocusFromGroup(group) {
+        const sample = group.sample || (group.records && group.records[0]) || null;
+        const priority = group.unresolved >= 3 || group.incorrect >= 2 ? 'high' : (group.unresolved >= 1 ? 'medium' : 'low');
+        return {
+            key: group.key,
+            title: [group.region, group.era, group.topic].filter(Boolean).join(' • ') || 'Saved lessons',
+            region: group.region,
+            era: group.era,
+            topic: group.topic,
+            icon: group.icon,
+            meta: `${group.unresolved} open lesson${group.unresolved === 1 ? '' : 's'} • ${group.incorrect} incorrect`,
+            reason: sample?.coach?.summary || sample?.coach?.error_diagnosis || sample?.reason || 'The Coach highlighted this area repeatedly in your recent lessons.',
+            action: sample?.coach?.study_tip || sample?.coach?.key_clues?.[0] || 'Start a targeted drill around this focus.',
+            priority,
+            source: 'coach',
+            attemptId: sample?.client_attempt_id || '',
+            reference_question: String(sample?.question_text || '').trim(),
+            reference_answer: String(sample?.expected_answer || '').trim(),
+            wrong_answer: String(sample?.user_answer || '').trim()
+        };
+    }
+
+    function launchCoachGuidedDrill(focus = null, mode = 'guided', reference = null) {
         const target = focus || getTopCoachFocus();
         if (!target) {
             showAlert('No coach-guided focus is available yet.', 'error');
             return;
         }
+        const guidedMode = String(mode || 'guided').trim() || 'guided';
+        // If there is no canonical region or era to filter the bank with, a
+        // structured drill cannot guarantee matching questions, so route straight
+        // to targeted AI question generation instead.
+        const effectiveMode = (guidedMode === 'guided' && !String(target.region || '').trim() && !String(target.era || '').trim())
+            ? 'generate'
+            : guidedMode;
+        const ref = reference || (target.attemptId
+            ? coachRecordsCurrent.find(item => String(item.client_attempt_id || '').trim() === String(target.attemptId || '').trim())
+            : null) || null;
         try {
             localStorage.setItem(COACH_DRILL_STORAGE_KEY, JSON.stringify({
                 region: target.region || '',
                 era: target.era || '',
                 topic: target.topic || '',
-                title: target.title || '',
+                title: target.title || [target.region, target.era, target.topic].filter(Boolean).join(' • ') || 'Coach focus',
                 reason: target.reason || '',
-                mode: String(mode || 'guided').trim() || 'guided',
+                mode: effectiveMode,
                 source: target.source || 'student-dashboard',
+                // Anchor AI-generated questions to the actual missed question so the
+                // generated drill stays on the same subject matter.
+                reference_question: String(ref?.question_text || target.reference_question || '').trim(),
+                reference_answer: String(ref?.expected_answer || target.reference_answer || '').trim(),
+                wrong_answer: String(ref?.user_answer || target.wrong_answer || '').trim(),
                 ts: Date.now()
             }));
         } catch {
@@ -4414,6 +4528,50 @@ document.addEventListener('DOMContentLoaded', async () => {
         renderDashboardChatChrome();
     }
 
+    function coachNoteRowHtml(record) {
+        const focus = coachFocusFromRecord(record);
+        const coach = record.coach || {};
+        const teachingApproach = String(coach.teaching_approach || '').trim() === 'diagnose_confusion'
+            ? 'diagnose_confusion'
+            : 'introduce_topic';
+        const diagnosisLabel = teachingApproach === 'diagnose_confusion' ? 'Confusion Check' : 'Topic Introduction';
+        const overlapLabel = teachingApproach === 'diagnose_confusion' ? 'Key Distinction' : 'Why This Wasn\'t It';
+        const created = record.created_at ? new Date(record.created_at).toLocaleString() : '—';
+        const statusLabel = record.source === 'assistant-reply' ? 'Saved note' : (record.correct ? '✓ Correct' : '✗ Incorrect');
+        return `
+            <div class="coach-note ${record.mastered ? 'mastered' : ''}" data-attempt="${esc(record.client_attempt_id)}">
+                <div class="coach-note-head">
+                    <div class="coach-note-icon">${esc(focus.icon || '📘')}</div>
+                    <div class="coach-note-meta">
+                        <div><b>${esc(statusLabel)}</b> • ${esc(created)}${record.mastered ? ' • <span class="coach-note-mastered-flag">Mastered</span>' : ''}</div>
+                        <div class="muted">${esc(focus.region || 'World')}${focus.era ? ' • ' + esc(focus.era) : ''}${focus.topic ? ' • ' + esc(focus.topic) : ''}</div>
+                    </div>
+                </div>
+                <details>
+                    <summary>${esc(record.expected_answer || '(answer unavailable)')}</summary>
+                    <div class="coach-note-body">
+                        <div><b>Question:</b> ${esc(record.question_text || '(question unavailable)')}</div>
+                        <div><b>Your answer:</b> ${esc(record.user_answer || '(blank)')}</div>
+                        <div><b>Expected:</b> ${esc(record.expected_answer || '')}</div>
+                        <div><b>Summary:</b> ${esc(coach.summary || '')}</div>
+                        <div><b>${esc(diagnosisLabel)}:</b> ${esc(coach.error_diagnosis || '')}</div>
+                        <div><b>${esc(overlapLabel)}:</b> ${esc(coach.overlap_explainer || '')}</div>
+                        <div><b>Why This Answer Fits:</b>${coachListHtml(coach.explanation_bullets || [])}</div>
+                        <div><b>Key Clues:</b>${coachListHtml(coach.key_clues || [])}</div>
+                        <div><b>Related Facts:</b>${coachListHtml(coach.related_facts || [])}</div>
+                        <div><b>Study Tip:</b> ${esc(coach.study_tip || '')}</div>
+                        ${coachWikiHtml(coach)}
+                        <div class="coach-note-actions">
+                            <button class="btn pri coach-note-drill" type="button" data-attempt="${esc(record.client_attempt_id)}">Guided Drill</button>
+                            <button class="btn ghost coach-note-generate" type="button" data-attempt="${esc(record.client_attempt_id)}">Create Targeted Drill</button>
+                            <button class="btn ghost coach-toggle-mastered" type="button" data-attempt="${esc(record.client_attempt_id)}" data-mastered="${record.mastered ? '1' : '0'}">${record.mastered ? 'Unmark Mastered' : 'Mark Mastered'}</button>
+                        </div>
+                    </div>
+                </details>
+            </div>
+        `;
+    }
+
     function renderCoachWorkspace() {
         const unresolved = coachRecordsCurrent.filter(r => !r.mastered).length;
         setMetric('student-hero-coach', unresolved);
@@ -4427,59 +4585,53 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (summaryEl) {
             if (coachFocusSuggestionsCurrent.length) {
                 const lead = coachFocusSuggestionsCurrent[0];
-                summaryEl.textContent = `Top focus: ${lead.title}.`;
+                summaryEl.textContent = `Top focus: ${lead.title} — ${lead.meta || 'kept open in your notebook'}.`;
             } else {
                 summaryEl.textContent = 'No coach focus yet.';
             }
         }
 
-        renderCoachFocusCards('coach-focus-list', coachFocusSuggestionsCurrent, 'No coach focus yet.');
-
         if (noteEl) {
+            const masteredToggle = document.getElementById('coach-show-mastered');
             if (!coachRecordsCurrent.length) {
                 noteEl.innerHTML = '<div class="coach-empty">No saved lessons yet.</div>';
+                if (masteredToggle) masteredToggle.hidden = true;
             } else {
-                noteEl.innerHTML = coachRecordsCurrent.map(record => {
-                    const focus = coachFocusFromRecord(record);
-                    const coach = record.coach || {};
-                    const teachingApproach = String(coach.teaching_approach || '').trim() === 'diagnose_confusion'
-                        ? 'diagnose_confusion'
-                        : 'introduce_topic';
-                    const diagnosisLabel = teachingApproach === 'diagnose_confusion' ? 'Confusion Check' : 'Topic Introduction';
-                    const overlapLabel = teachingApproach === 'diagnose_confusion' ? 'Key Distinction' : 'Why This Wasn\'t It';
-                    const created = record.created_at ? new Date(record.created_at).toLocaleString() : '—';
-                    const statusLabel = record.source === 'assistant-reply' ? 'Saved note' : (record.correct ? '✓ Correct' : '✗ Incorrect');
-                    return `
-                        <div class="coach-note ${record.mastered ? 'mastered' : ''}" data-attempt="${esc(record.client_attempt_id)}">
-                            <div class="coach-note-head">
-                                <div class="coach-note-icon">${esc(focus.icon || '📘')}</div>
-                                <div class="coach-note-meta">
-                                    <div><b>${esc(statusLabel)}</b> • ${esc(created)}</div>
-                                    <div class="muted">${esc(focus.region || 'World')}${focus.era ? ' • ' + esc(focus.era) : ''}${focus.topic ? ' • ' + esc(focus.topic) : ''}</div>
-                                </div>
-                            </div>
-                            <details>
-                                <summary>${esc((record.question_text || '').slice(0, 180))}${(record.question_text || '').length > 180 ? '…' : ''}</summary>
-                                <div class="coach-note-body">
-                                    <div><b>Your answer:</b> ${esc(record.user_answer || '(blank)')}</div>
-                                    <div><b>Expected:</b> ${esc(record.expected_answer || '')}</div>
-                                    <div><b>Summary:</b> ${esc(coach.summary || '')}</div>
-                                    <div><b>${esc(diagnosisLabel)}:</b> ${esc(coach.error_diagnosis || '')}</div>
-                                    <div><b>${esc(overlapLabel)}:</b> ${esc(coach.overlap_explainer || '')}</div>
-                                    <div><b>Why This Answer Fits:</b>${coachListHtml(coach.explanation_bullets || [])}</div>
-                                    <div><b>Key Clues:</b>${coachListHtml(coach.key_clues || [])}</div>
-                                    <div><b>Related Facts:</b>${coachListHtml(coach.related_facts || [])}</div>
-                                    <div><b>Study Tip:</b> ${esc(coach.study_tip || '')}</div>
-                                    ${coachWikiHtml(coach)}
-                                    <div class="coach-note-actions">
-                                        <button class="btn pri coach-note-drill" type="button" data-attempt="${esc(record.client_attempt_id)}">Use in Guided Drill</button>
-                                        <button class="btn ghost coach-toggle-mastered" type="button" data-attempt="${esc(record.client_attempt_id)}" data-mastered="${record.mastered ? '1' : '0'}">${record.mastered ? 'Unmark Mastered' : 'Mark Mastered'}</button>
+                coachFocusGroupsCurrent = buildCoachFocusGroups();
+                const masteredTotal = coachRecordsCurrent.filter(record => record.mastered).length;
+                if (masteredToggle) {
+                    masteredToggle.hidden = masteredTotal === 0;
+                    masteredToggle.textContent = coachShowMastered
+                        ? `Hide mastered (${masteredTotal})`
+                        : `Show mastered (${masteredTotal})`;
+                }
+                const visibleGroups = coachFocusGroupsCurrent
+                    .map((group, index) => ({ group, index }))
+                    .filter(({ group }) => group.records.some(record => coachShowMastered || !record.mastered));
+                if (!visibleGroups.length) {
+                    noteEl.innerHTML = '<div class="coach-empty">Every lesson is mastered. Nice work!</div>';
+                } else {
+                    noteEl.innerHTML = visibleGroups.map(({ group, index }) => {
+                        const focus = coachFocusFromGroup(group);
+                        const records = group.records.slice().sort((a, b) =>
+                            (Number(Boolean(a.mastered)) - Number(Boolean(b.mastered)))
+                            || ((b.created_at ? new Date(b.created_at).getTime() : 0) - (a.created_at ? new Date(a.created_at).getTime() : 0)));
+                        return `
+                            <section class="coach-note-group" data-focus-index="${index}">
+                                <header class="coach-note-group-head">
+                                    <div class="coach-note-group-copy">
+                                        <div class="coach-note-group-title">${esc(focus.icon || '📘')} ${esc(focus.title || 'Saved lessons')}</div>
+                                        <div class="coach-note-group-meta">${esc(focus.meta || '')}</div>
                                     </div>
-                                </div>
-                            </details>
-                        </div>
-                    `;
-                }).join('');
+                                    <div class="coach-note-group-actions">
+                                        <button class="btn pri coach-group-drill" type="button" data-focus-index="${index}">Guided Drill</button>
+                                        <button class="btn ghost coach-group-generate" type="button" data-focus-index="${index}">Create Targeted Drill</button>
+                                    </div>
+                                </header>
+                                <div class="coach-list">${records.map(coachNoteRowHtml).join('')}</div>
+                            </section>`;
+                    }).join('');
+                }
             }
         }
 
