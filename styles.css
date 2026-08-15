@@ -7052,7 +7052,7 @@ input[type=datetime-local]:focus {
 
 .mistake-notebook-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(292px, 0.34fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: clamp(20px, 2.6vw, 32px);
   align-items: start;
 }
@@ -7239,10 +7239,7 @@ input[type=datetime-local]:focus {
 }
 
 .mistake-notebook-future {
-  position: sticky;
-  top: 20px;
   display: flex;
-  min-height: 590px;
   flex-direction: column;
   align-items: center;
   padding: clamp(28px, 3vw, 38px) clamp(22px, 2.7vw, 30px);
@@ -7340,10 +7337,6 @@ input[type=datetime-local]:focus {
 }
 
 @media (max-width: 1050px) {
-  .mistake-notebook-layout {
-    grid-template-columns: minmax(0, 1fr) 280px;
-  }
-
   .mistake-notebook-header {
     flex-direction: column;
   }
@@ -7353,25 +7346,8 @@ input[type=datetime-local]:focus {
   }
 }
 
-@media (max-width: 840px) {
-  .mistake-notebook-layout {
-    grid-template-columns: 1fr;
-  }
-
-  .mistake-notebook-future {
-    position: relative;
-    top: auto;
-    min-height: 0;
-  }
-
-  .mistake-notebook-future-note {
-    margin-top: 18px;
-  }
-}
-
 @media (max-width: 620px) {
-  .mistake-notebook-surface,
-  .mistake-notebook-future {
+  .mistake-notebook-surface {
     padding: 20px;
     border-radius: 22px;
   }
@@ -7400,6 +7376,140 @@ input[type=datetime-local]:focus {
   .mistake-notebook-focus .btn,
   .mistake-notebook-header-actions {
     width: 100%;
+  }
+}
+
+/* ---------- coach preview button + slide-in drawer (Coming Soon) ---------- */
+
+.coach-preview-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.coach-preview-btn svg {
+  width: 17px;
+  height: 17px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.coach-preview-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 20px;
+  padding: 2px 9px;
+  border: 1px solid rgba(96, 165, 250, 0.4);
+  border-radius: 999px;
+  color: var(--accent);
+  background: rgba(96, 165, 250, 0.12);
+  font: 800 10px/1.2 'Outfit', system-ui, sans-serif;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+@media (prefers-color-scheme: light) {
+  .coach-preview-pill {
+    border-color: rgba(37, 99, 235, 0.3);
+    color: #2563eb;
+    background: rgba(37, 99, 235, 0.09);
+  }
+}
+
+body.coach-preview-open {
+  overflow: hidden;
+}
+
+.coach-preview-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 950;
+  border: 0;
+  margin: 0;
+  padding: 0;
+  background: rgba(3, 6, 10, 0.55);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  opacity: 0;
+  transition: opacity 0.25s ease;
+}
+
+.coach-preview-backdrop[hidden] {
+  display: none;
+}
+
+.coach-preview-backdrop:not([hidden]) {
+  opacity: 1;
+}
+
+#coach-preview-drawer {
+  --notebook-ink: #0a1c36;
+  --notebook-copy: #425b78;
+  --notebook-muted: #6c8099;
+  --notebook-line: rgba(20, 44, 74, 0.12);
+  --notebook-line-strong: rgba(31, 111, 255, 0.24);
+  --notebook-blue: #1f6fff;
+  --notebook-blue-deep: #0b5fd9;
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 960;
+  width: min(440px, 94vw);
+  max-width: 100%;
+  margin: 0;
+  min-height: 0;
+  border-radius: 28px 0 0 28px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  transform: translateX(104%);
+  transition: transform 0.32s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+#coach-preview-drawer.open {
+  transform: translateX(0);
+}
+
+.coach-preview-close {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  z-index: 2;
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(20, 44, 74, 0.12);
+  border-radius: 50%;
+  color: var(--notebook-ink);
+  background: rgba(255, 255, 255, 0.82);
+  cursor: pointer;
+  transition: background 0.2s ease, transform 0.2s ease;
+}
+
+.coach-preview-close:hover {
+  background: #fff;
+  transform: scale(1.06);
+}
+
+.coach-preview-close svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #coach-preview-drawer {
+    transition: none;
   }
 }
 

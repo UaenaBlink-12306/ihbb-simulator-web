@@ -1813,7 +1813,11 @@ document.addEventListener('DOMContentLoaded', async () => {
             sidebar.style.setProperty('--coach-chat-width', `${clampDashboardChatWidth(dashboardChat.ui.width)}px`);
         }
         if (backdrop) backdrop.hidden = !dashboardChat.open;
-        document.body.classList.toggle('coach-chat-open', dashboardChat.open);
+        // The student dashboard no longer renders the floating Coach chat, so the
+        // Coach tab must keep page scrolling. Only lock body scroll when a chat
+        // surface actually exists on the page.
+        const hasChatSurface = !!(launcher || sidebar || backdrop);
+        document.body.classList.toggle('coach-chat-open', dashboardChat.open && hasChatSurface);
     }
 
     function renderDashboardChatChrome() {
@@ -2662,6 +2666,33 @@ document.addEventListener('DOMContentLoaded', async () => {
     // ========== LOGOUT ==========
     document.getElementById('btn-logout').addEventListener('click', async (e) => {
         e.preventDefault(); await sb.auth.signOut(); window.location.replace('login.html');
+    });
+
+    // ========== COACH PREVIEW DRAWER (Coming Soon) ==========
+    const coachPreviewBtn = document.getElementById('btn-coach-preview');
+    const coachPreviewDrawer = document.getElementById('coach-preview-drawer');
+    const coachPreviewBackdrop = document.getElementById('coach-preview-backdrop');
+    const coachPreviewClose = document.getElementById('coach-preview-close');
+
+    function setCoachPreviewOpen(open) {
+        if (!coachPreviewDrawer) return;
+        const isOpen = !!open;
+        coachPreviewDrawer.classList.toggle('open', isOpen);
+        coachPreviewDrawer.setAttribute('aria-hidden', isOpen ? 'false' : 'true');
+        coachPreviewBtn?.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+        if (coachPreviewBackdrop) coachPreviewBackdrop.hidden = !isOpen;
+        document.body.classList.toggle('coach-preview-open', isOpen);
+        if (isOpen) coachPreviewClose?.focus({ preventScroll: true });
+    }
+
+    coachPreviewBtn?.addEventListener('click', () => setCoachPreviewOpen(true));
+    coachPreviewClose?.addEventListener('click', () => setCoachPreviewOpen(false));
+    coachPreviewBackdrop?.addEventListener('click', () => setCoachPreviewOpen(false));
+    document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape' && coachPreviewDrawer?.classList.contains('open')) {
+            setCoachPreviewOpen(false);
+            coachPreviewBtn?.focus({ preventScroll: true });
+        }
     });
 
     document.getElementById('coach-chat-launcher')?.addEventListener('click', () => openDashboardChat());

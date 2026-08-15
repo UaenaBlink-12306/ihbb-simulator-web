@@ -68,6 +68,11 @@
                 <button id="btn-walkthrough" class="btn ghost">Help / Tour</button>
                 <a href="index.html?drill=1" class="btn pri hub-nav-button">Practice Hub</a>
                 <a href="livebee.html" class="btn ghost">Live Bee</a>
+                <button id="btn-coach-preview" class="btn ghost coach-preview-btn" type="button" title="A smarter coach is coming soon" aria-haspopup="dialog" aria-controls="coach-preview-drawer" aria-expanded="false">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3c.8 4.2 2.3 5.7 6.5 6.5-4.2.8-5.7 2.3-6.5 6.5-.8-4.2-2.3-5.7-6.5-6.5C9.7 8.7 11.2 7.2 12 3Z"></path><path d="M18.5 15.5c.4 1.9 1 2.5 3 3-2 .4-2.6 1-3 3-.4-2-1-2.6-3-3 2-.5 2.6-1.1 3-3Z"></path></svg>
+                    Coach Preview
+                    <span class="coach-preview-pill">Coming soon</span>
+                </button>
                 <a href="#" id="btn-logout" class="btn bad">Logout</a>
             </div>
         </header>
@@ -272,32 +277,6 @@
                             <div id="coach-note-list" class="coach-list" aria-live="polite"></div>
                         </section>
                     </main>
-
-                    <aside class="mistake-notebook-future" aria-labelledby="future-coach-title">
-                        <div class="mistake-notebook-future-icon" aria-hidden="true">
-                            <svg viewBox="0 0 48 48"><circle cx="24" cy="24" r="18"></circle><path d="m30.5 17.5-4.3 8.7-8.7 4.3 4.3-8.7 8.7-4.3Z"></path><circle cx="24" cy="24" r="2.5"></circle><path d="M24 3v4M24 41v4M3 24h4M41 24h4"></path></svg>
-                        </div>
-                        <div class="mistake-notebook-future-copy">
-                            <h2 id="future-coach-title">A smarter coach is coming</h2>
-                            <strong>Coming Soon</strong>
-                            <p>We’re rebuilding the assistant around better context and more reliable actions.</p>
-                        </div>
-                        <ul class="mistake-notebook-future-list">
-                            <li>
-                                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2Z"></path></svg>
-                                <span>Understands your notebook</span>
-                            </li>
-                            <li>
-                                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14.7 6.3 3-3a4.2 4.2 0 0 1 3 6l-3 3"></path><path d="m9.3 17.7-3 3a4.2 4.2 0 1 1-6-6l3-3"></path><path d="m8 16 8-8"></path></svg>
-                                <span>Uses the right practice tools</span>
-                            </li>
-                            <li>
-                                <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"></circle><circle cx="12" cy="12" r="3"></circle><path d="M12 2v3M12 19v3M2 12h3M19 12h3"></path></svg>
-                                <span>Keeps recommendations focused</span>
-                            </li>
-                        </ul>
-                        <p class="mistake-notebook-future-note">The notebook stays fully available while this space is rebuilt.</p>
-                    </aside>
                 </div>
             </div>
         </section>
@@ -939,6 +918,13 @@
                 </div>
                 <div class="dashboard-split dashboard-split-solo">
                     <div class="list-container">
+                        <div class="list-item">
+                            <div>
+                                <h3 style="margin:0 0 4px;">Notebook Scroll &amp; Coach Preview Drawer</h3>
+                                <div class="pill">August 15, 2026</div>
+                                <p class="muted" style="margin: 8px 0 0;">The Mistake Notebook page scrolls with your mouse wheel again, and the Coming Soon coach preview now lives behind a Coach Preview button in the top-right corner that slides open as a sidebar.</p>
+                            </div>
+                        </div>
                         <div class="list-item">
                             <div>
                                 <h3 style="margin:0 0 4px;">Mistake Notebook Takes Center Stage</h3>
@@ -1702,6 +1688,36 @@
             </div>
         </section>
     </div>
+
+    <div id="coach-preview-backdrop" class="coach-preview-backdrop" hidden></div>
+    <aside class="mistake-notebook-future" id="coach-preview-drawer" aria-labelledby="future-coach-title" aria-hidden="true">
+        <button id="coach-preview-close" class="coach-preview-close" type="button" aria-label="Close coach preview">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"></path></svg>
+        </button>
+        <div class="mistake-notebook-future-icon" aria-hidden="true">
+            <svg viewBox="0 0 48 48"><circle cx="24" cy="24" r="18"></circle><path d="m30.5 17.5-4.3 8.7-8.7 4.3 4.3-8.7 8.7-4.3Z"></path><circle cx="24" cy="24" r="2.5"></circle><path d="M24 3v4M24 41v4M3 24h4M41 24h4"></path></svg>
+        </div>
+        <div class="mistake-notebook-future-copy">
+            <h2 id="future-coach-title">A smarter coach is coming</h2>
+            <strong>Coming Soon</strong>
+            <p>We’re rebuilding the assistant around better context and more reliable actions.</p>
+        </div>
+        <ul class="mistake-notebook-future-list">
+            <li>
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2Z"></path></svg>
+                <span>Understands your notebook</span>
+            </li>
+            <li>
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14.7 6.3 3-3a4.2 4.2 0 0 1 3 6l-3 3"></path><path d="m9.3 17.7-3 3a4.2 4.2 0 1 1-6-6l3-3"></path><path d="m8 16 8-8"></path></svg>
+                <span>Uses the right practice tools</span>
+            </li>
+            <li>
+                <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"></circle><circle cx="12" cy="12" r="3"></circle><path d="M12 2v3M12 19v3M2 12h3M19 12h3"></path></svg>
+                <span>Keeps recommendations focused</span>
+            </li>
+        </ul>
+        <p class="mistake-notebook-future-note">The notebook stays fully available while this space is rebuilt.</p>
+    </aside>
 
     <div id="walkthrough-modal" class="modal-overlay hidden">
         <div class="modal-card card auth-modal-card" style="max-width: 500px;">
