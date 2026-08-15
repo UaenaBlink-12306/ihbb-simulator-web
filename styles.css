@@ -5785,7 +5785,23 @@ body::after {
 
 .dashboard-switcher-shell {
   position: relative;
-  width: min(100%, 430px);
+  width: min(100%, 240px);
+}
+
+@media (min-width: 1150px) {
+  .dashboard-tabs.grouped-dashboard-tabs {
+    flex-wrap: nowrap;
+  }
+
+  .dashboard-quick-switcher {
+    flex: 1 1 0%;
+    min-width: 120px;
+    max-width: 240px;
+  }
+
+  .dashboard-switcher-shell {
+    width: 100%;
+  }
 }
 
 .dashboard-switcher-input {
