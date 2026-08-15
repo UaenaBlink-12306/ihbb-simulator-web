@@ -138,6 +138,15 @@ test('stays readonly through click, unlocks for typing, and relocks after every 
   guard.flushTimers();
   assert.equal(field.hasAttribute('readonly'), false);
 
+  const firstClickName = field.getAttribute('name');
+  field.dispatch('pointerdown', { pointerType: 'mouse', button: 0 });
+  assert.equal(field.hasAttribute('readonly'), true, 'a second click must be locked before browser default handling');
+  assert.notEqual(field.getAttribute('name'), firstClickName);
+  field.dispatch('click');
+  assert.equal(field.hasAttribute('readonly'), true, 'the second click must stay locked through its click event');
+  guard.flushTimers();
+  assert.equal(field.hasAttribute('readonly'), false);
+
   guard.document.activeElement = null;
   field.dispatch('blur');
   assert.equal(field.hasAttribute('readonly'), true);
