@@ -3173,7 +3173,7 @@ PUBLIC_ROOT_FILES = {
     "onboarding.html", "profile.html", "app.js", "student.js", "teacher.js", "livebee.js",
     "admin.js", "login.js", "onboarding.js", "profile.js", "avatar-catalog.js", "config.js",
     "dashboard-feedback.js", "set-builder-quality.js", "styles.css", "questions.json",
-    "favicon.ico", "favicon.svg", "manifest.json", "lib/client-security.js",
+    "favicon.ico", "favicon.svg", "manifest.json", "lib/client-security.js", "lib/no-autofill.js",
 }
 PUBLIC_ASSET_EXTENSIONS = {
     ".css", ".js", ".mjs", ".svg", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".ico",

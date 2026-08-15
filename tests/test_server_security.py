@@ -11,7 +11,7 @@ class LocalServerSecurityTests(unittest.TestCase):
     def test_public_static_allowlist_blocks_repository_secrets(self):
         for path in ('.env', '.git/config', 'server.py', 'package.json', 'generated_questions_review.json', '../.env'):
             self.assertFalse(server.is_public_static_path(path), path)
-        for path in ('index.html', 'config.js', 'questions.json', 'lib/client-security.js', 'assets/avatars/penguin.png'):
+        for path in ('index.html', 'config.js', 'questions.json', 'lib/client-security.js', 'lib/no-autofill.js', 'assets/avatars/penguin.png'):
             self.assertTrue(server.is_public_static_path(path), path)
 
     def test_browser_origin_is_bound_to_local_helper(self):

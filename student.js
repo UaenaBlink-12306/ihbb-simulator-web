@@ -130,17 +130,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     };
     const joinCodeInput = document.getElementById('join-code');
     if (joinCodeInput) {
-        const unlockJoinCodeInput = () => joinCodeInput.removeAttribute('readonly');
         const clearInjectedJoinCode = () => {
             if (document.activeElement !== joinCodeInput) joinCodeInput.value = '';
         };
-        joinCodeInput.addEventListener('click', unlockJoinCodeInput, { once: true });
-        joinCodeInput.addEventListener('keydown', unlockJoinCodeInput, { once: true });
-        joinCodeInput.addEventListener('beforeinput', unlockJoinCodeInput, { once: true });
-        joinCodeInput.addEventListener('touchstart', unlockJoinCodeInput, { once: true, passive: true });
-        joinCodeInput.addEventListener('pointerdown', (e) => {
-            if (e.pointerType === 'touch' || e.pointerType === 'pen') unlockJoinCodeInput();
-        }, { once: true });
         window.addEventListener('pageshow', clearInjectedJoinCode);
         setTimeout(clearInjectedJoinCode, 100);
         setTimeout(clearInjectedJoinCode, 500);
@@ -1000,51 +992,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         navTab?.focus({ preventScroll: true });
     }
 
-    function hardenDashboardSwitcherAutofill(input) {
-        if (!input) return;
-        const attrs = {
-            autocomplete: 'off',
-            autocapitalize: 'none',
-            autocorrect: 'off',
-            spellcheck: 'false',
-            inputmode: 'search',
-            'data-lpignore': 'true',
-            'data-1p-ignore': 'true',
-            'data-bwignore': 'true',
-            'data-keeper-lock-ignore': 'true',
-            'data-form-type': 'other'
-        };
-        Object.entries(attrs).forEach(([key, value]) => input.setAttribute(key, value));
-        input.readOnly = true;
-        let userHasInteracted = false;
-        const unlockForUserInput = () => {
-            userHasInteracted = true;
-            input.readOnly = false;
-        };
-        const clearInjectedValue = () => {
-            if (userHasInteracted || document.activeElement === input || !input.value) return;
-            input.value = '';
-            input.dispatchEvent(new Event('input', { bubbles: true }));
-        };
-        input.addEventListener('click', unlockForUserInput, { once: true });
-        input.addEventListener('keydown', unlockForUserInput, { once: true });
-        input.addEventListener('beforeinput', unlockForUserInput, { once: true });
-        input.addEventListener('touchstart', unlockForUserInput, { once: true, passive: true });
-        input.addEventListener('pointerdown', (e) => {
-            if (e.pointerType === 'touch' || e.pointerType === 'pen') unlockForUserInput();
-        }, { once: true });
-        window.addEventListener('pageshow', clearInjectedValue);
-        setTimeout(clearInjectedValue, 100);
-        setTimeout(clearInjectedValue, 500);
-    }
-
     function wireDashboardQuickSwitcher(inputId, resultsId, extraTools = []) {
         const input = document.getElementById(inputId);
         const results = document.getElementById(resultsId);
         const wrap = input?.closest('.dashboard-switcher-shell');
         if (!input || !results || !wrap) return;
         const state = { input, results, wrap, extraTools, tools: [], matches: [], activeIndex: 0 };
-        hardenDashboardSwitcherAutofill(input);
         input.addEventListener('focus', () => renderDashboardSwitcherOptions(state));
         input.addEventListener('input', () => {
             state.activeIndex = 0;
@@ -3207,7 +3160,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
         if (previewButton) previewButton.textContent = 'Preview Class';
         if (focus && input) {
-            input.removeAttribute('readonly');
             input.focus();
             input.select();
         }
