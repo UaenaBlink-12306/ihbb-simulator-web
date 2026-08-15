@@ -5516,9 +5516,13 @@ document.addEventListener('DOMContentLoaded', async () => {
             input.value = '';
             input.dispatchEvent(new Event('input', { bubbles: true }));
         };
-        input.addEventListener('pointerdown', unlockForUserInput, { once: true });
+        input.addEventListener('click', unlockForUserInput, { once: true });
         input.addEventListener('keydown', unlockForUserInput, { once: true });
         input.addEventListener('beforeinput', unlockForUserInput, { once: true });
+        input.addEventListener('touchstart', unlockForUserInput, { once: true, passive: true });
+        input.addEventListener('pointerdown', (e) => {
+            if (e.pointerType === 'touch' || e.pointerType === 'pen') unlockForUserInput();
+        }, { once: true });
         window.addEventListener('pageshow', clearInjectedValue);
         setTimeout(clearInjectedValue, 100);
         setTimeout(clearInjectedValue, 500);

@@ -134,9 +134,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         const clearInjectedJoinCode = () => {
             if (document.activeElement !== joinCodeInput) joinCodeInput.value = '';
         };
-        joinCodeInput.addEventListener('focus', unlockJoinCodeInput, { once: true });
-        joinCodeInput.addEventListener('pointerdown', unlockJoinCodeInput, { once: true });
+        joinCodeInput.addEventListener('click', unlockJoinCodeInput, { once: true });
         joinCodeInput.addEventListener('keydown', unlockJoinCodeInput, { once: true });
+        joinCodeInput.addEventListener('beforeinput', unlockJoinCodeInput, { once: true });
+        joinCodeInput.addEventListener('touchstart', unlockJoinCodeInput, { once: true, passive: true });
+        joinCodeInput.addEventListener('pointerdown', (e) => {
+            if (e.pointerType === 'touch' || e.pointerType === 'pen') unlockJoinCodeInput();
+        }, { once: true });
         window.addEventListener('pageshow', clearInjectedJoinCode);
         setTimeout(clearInjectedJoinCode, 100);
         setTimeout(clearInjectedJoinCode, 500);
@@ -1022,9 +1026,13 @@ document.addEventListener('DOMContentLoaded', async () => {
             input.value = '';
             input.dispatchEvent(new Event('input', { bubbles: true }));
         };
-        input.addEventListener('pointerdown', unlockForUserInput, { once: true });
+        input.addEventListener('click', unlockForUserInput, { once: true });
         input.addEventListener('keydown', unlockForUserInput, { once: true });
         input.addEventListener('beforeinput', unlockForUserInput, { once: true });
+        input.addEventListener('touchstart', unlockForUserInput, { once: true, passive: true });
+        input.addEventListener('pointerdown', (e) => {
+            if (e.pointerType === 'touch' || e.pointerType === 'pen') unlockForUserInput();
+        }, { once: true });
         window.addEventListener('pageshow', clearInjectedValue);
         setTimeout(clearInjectedValue, 100);
         setTimeout(clearInjectedValue, 500);
