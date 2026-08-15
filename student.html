@@ -12,6 +12,8 @@
         href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@400;600;700;800;900&display=swap"
         rel="stylesheet">
     <link rel="stylesheet" href="styles.css">
+    <!-- Block autofill/password suggestions on every non-credential field -->
+    <script src="lib/no-autofill.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="config.js"></script>
     <script src="lib/client-security.js"></script>
@@ -918,6 +920,13 @@
                 </div>
                 <div class="dashboard-split dashboard-split-solo">
                     <div class="list-container">
+                        <div class="list-item">
+                            <div>
+                                <h3 style="margin:0 0 4px;">Autofill and Password Suggestion Blocking</h3>
+                                <div class="pill">August 15, 2026</div>
+                                <p class="muted" style="margin: 8px 0 0;">Search boxes and text fields across the app now block browser autofill and saved-password suggestion popups, so your saved logins only show up on the real email and password fields.</p>
+                            </div>
+                        </div>
                         <div class="list-item">
                             <div>
                                 <h3 style="margin:0 0 4px;">Dashboard Tabs Fit on One Line</h3>
