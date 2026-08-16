@@ -5176,7 +5176,7 @@ function showAnswer() {
     `标准答案：${item.answer}${(item.aliases?.length ? `  (aliases: ${item.aliases.slice(0, 3).join(' • ')})` : '')}`;
   const ans = $('answer'); if (ans) ans.textContent = ansText;
   playFeedbackCue('reveal');
-  speakOnce(`标准答案：${item.answer}`, curVoice(), rate(), 1.0, 12000);
+  speakOnce(`Standard answer: ${item.answer}`, curVoice(), rate(), 1.0, 12000);
   unlockPracticeAfterGrade();
   setPracticeButtons({ buzz: false, next: false, right: true, wrong: true, replay: true, alias: true, flag: true });
   const cp = $('btn-copy-answer'); if (cp) cp.disabled = false;
@@ -6721,7 +6721,7 @@ async function submitAnswer(auto = false) {
     }, item, correct, reason);
     renderCoachCard(loadingCoach);
   }
-  speakOnce(`标准答案：${item.answer}`, curVoice(), rate(), 1.0, 12000);
+  speakOnce(`Standard answer: ${item.answer}`, curVoice(), rate(), 1.0, 12000);
 
   if (correct) {
     playFeedbackCue('correct');
