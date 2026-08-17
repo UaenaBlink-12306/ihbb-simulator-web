@@ -3899,6 +3899,80 @@ function refreshAssignmentStorageState(userId = StorageScopeUserId) {
   try { HAS_ASSIGNMENT_PAYLOAD = !!localStorage.getItem(ASSIGNMENT_STORAGE_KEY); } catch { HAS_ASSIGNMENT_PAYLOAD = false; }
 }
 
+// Assignment launch plumbing. The student dashboard writes an assignment payload to
+// localStorage, then redirects here with ?assignment=<id>. Init applies the payload
+// AFTER it has restored the persisted library, so the injected volatile set can never
+// be wiped by loadAll() (which was leaving students stranded on the Setup view).
+let AssignmentLaunchResolve = null;
+const ASSIGNMENT_LAUNCH_READY = new Promise((resolve) => { AssignmentLaunchResolve = resolve; });
+
+async function applyPendingAssignmentLaunch() {
+  if (!ASSIGNMENT_ID) {
+    AssignmentLaunchResolve({ ok: false, reason: 'no-assignment-param' });
+    return;
+  }
+  await initStorageScope();
+  refreshAssignmentStorageState();
+  const storageKey = ASSIGNMENT_STORAGE_KEY || assignmentStorageKey(ASSIGNMENT_ID);
+  const raw = storageKey ? safeReadJson(storageKey, null) : null;
+  if (!raw || typeof raw !== 'object' || !Array.isArray(raw.questions)) {
+    AssignmentLaunchResolve({ ok: false, reason: 'no-payload', storageKey });
+    return;
+  }
+  try {
+    const retryMode = String(raw.retryMode || 'first').trim().toLowerCase();
+    let items = raw.questions.map(q => ({
+      id: q.question_id || q.id || uid(),
+      question: q.question_text || q.question || q.q || '',
+      answer: q.answer_text || q.answer || q.a || '',
+      aliases: Array.isArray(q.aliases) ? q.aliases : [],
+      meta: { category: q.category || '', era: q.era || '', source: q.source || 'assignment' }
+    })).filter((item) => item.id && item.question && item.answer);
+    if (retryMode === 'missed') {
+      const missedSet = new Set((Array.isArray(raw.missedIds) ? raw.missedIds : []).map(x => String(x || '').trim()).filter(Boolean));
+      if (missedSet.size) items = items.filter((item) => missedSet.has(String(item.id || '').trim()));
+    }
+    if (!items.length) {
+      AssignmentLaunchResolve({ ok: false, reason: 'no-items', storageKey });
+      return;
+    }
+
+    const title = String(raw.title || '').trim() || 'Assignment';
+    const titleSuffix = retryMode === 'missed' ? ' - missed-question retry' : (retryMode === 'all' ? ' - practice retry' : '');
+    const set = {
+      id: 'assignment_' + ASSIGNMENT_ID,
+      name: title + titleSuffix,
+      items,
+      volatile: true,
+      assignment: true
+    };
+    // Replace any stale set for this assignment, then put the fresh one first.
+    Library.sets = [set, ...(Array.isArray(Library.sets) ? Library.sets : []).filter(existing => String(existing?.id || '') !== set.id)];
+    Library.activeSetId = set.id;
+    renderLibrarySelectors();
+    updateSetMeta();
+
+    // Run exactly these items, in random order, ignoring filters and wrong-bank state.
+    App.sessionOverrideItems = items.slice();
+    App.size = 'all';
+    setPracticeWrongBank(false);
+    App.filters = { cat: '', cats: [], era: '', eras: [], src: '' };
+
+    AssignmentLaunchResolve({
+      ok: true,
+      storageKey,
+      assignId: ASSIGNMENT_ID,
+      title,
+      retryMode,
+      originalQuestionCount: Number(raw.originalQuestionCount) || items.length,
+      items
+    });
+  } catch (err) {
+    console.error('Assignment launch error:', err);
+    AssignmentLaunchResolve({ ok: false, reason: 'error', storageKey, error: err });
+  }
+}
+
 /********************* Voices *********************/
 const PREF = [/Microsoft .* Online .*Natural/i, /Google US English/i, /en[-_]?US/i, /en[-_]?GB/i];
 const englishOnly = (arr) => arr.filter(v => /^en(-|_)?/i.test(v.lang) || /English/i.test(v.name));
@@ -4106,7 +4180,7 @@ function updateSetMeta() {
   renderCategoryChips(cats);
   renderEraChips(eras);
   updateSetupOverview();
-  applyPendingCoachGuidedDrill();
+  if (!(ASSIGNMENT_ID && HAS_ASSIGNMENT_PAYLOAD)) applyPendingCoachGuidedDrill();
 }
 
 const ERA_NAMES = window.IHBBCoachEra?.ERA_NAMES || {
@@ -4133,9 +4207,9 @@ function questionMergeKey(item) {
 
 function findPrimaryQuestionSet() {
   const sets = Array.isArray(Library.sets) ? Library.sets : [];
-  return sets.find(set => /IHBB Questions/i.test(String(set?.name || '').trim()))
-    || sets.find(set => set?.volatile)
-    || sets[0]
+  return sets.find(set => !set?.assignment && /IHBB Questions/i.test(String(set?.name || '').trim()))
+    || sets.find(set => set?.volatile && !set?.assignment)
+    || sets.find(set => !set?.assignment)
     || null;
 }
 
@@ -5062,7 +5136,8 @@ function srsBuildPseudoItems(ids) { const s = getSRS(); return ids.map(id => ({ 
 function startSession() {
   const set = getActiveSet();
   const practicingWrongBank = isWrongBankPracticeEnabled();
-  if (!set && !practicingWrongBank) { toast('No active set'); return; }
+  const hasSessionOverride = Array.isArray(App.sessionOverrideItems) && App.sessionOverrideItems.length > 0;
+  if (!set && !practicingWrongBank && !hasSessionOverride) { toast('No active set'); return; }
   if (practicingWrongBank && !wrongRecords().length) {
     alert('Your wrong bank is empty.');
     toast('Wrong bank empty');
@@ -6520,6 +6595,7 @@ async function tryFetchDefault(force = false) {
   syncAccountSettingsToLegacyStorage();
   saveCoachChatUiPrefs();
   loadAll(); populateVoices();
+  await applyPendingAssignmentLaunch();
   migrateLibrarySources();
   const rr = $('rate'); if (rr) rr.value = Settings.rate || 1.0;
   const sm = $('strictMode'); if (sm) sm.checked = (Settings.strict ?? false);
@@ -6544,7 +6620,7 @@ async function tryFetchDefault(force = false) {
   applyPendingRemediationPack();
   updateSetupOverview();
   renderCoachChatChrome();
-  await applyPendingCoachChatAction();
+  if (!(ASSIGNMENT_ID && HAS_ASSIGNMENT_PAYLOAD)) await applyPendingCoachChatAction();
   setTimeout(() => { maybeAutoOpenCoachChat('init'); }, 500);
 })();
 
@@ -6841,71 +6917,42 @@ try {
 } catch { }
 
 /********************* Assignment Integration *********************/
-// When opened with ?assignment=<id>, load assignment questions from localStorage
-// and auto-start the practice session so the student goes straight to the buzz button.
+// When opened with ?assignment=<id>, wait for init to apply the assignment payload
+// (after the persisted library has loaded) and auto-start the practice session so the
+// student goes straight to the buzz button.
 (function assignmentHook() {
   const assignId = ASSIGNMENT_ID;
   if (!assignId) return;
   let activeAssignmentData = null;
+  let launchStorageKey = null;
 
   void (async () => {
-    await initStorageScope();
-    refreshAssignmentStorageState();
-    const storageKey = ASSIGNMENT_STORAGE_KEY || assignmentStorageKey(assignId);
-    const raw = storageKey ? localStorage.getItem(storageKey) : null;
-    if (!raw) return;
+    const launch = await ASSIGNMENT_LAUNCH_READY;
+    if (!launch || !launch.ok) return;
+    activeAssignmentData = {
+      title: launch.title,
+      retryMode: launch.retryMode,
+      originalQuestionCount: launch.originalQuestionCount
+    };
+    launchStorageKey = launch.storageKey;
 
-    try {
-      const assignData = JSON.parse(raw);
-      activeAssignmentData = assignData && typeof assignData === 'object' ? assignData : {};
-      const retryMode = String(activeAssignmentData.retryMode || 'first').trim().toLowerCase();
-      let items = (activeAssignmentData.questions || []).map(q => ({
-        id: q.question_id || q.id || uid(),
-        question: q.question_text || q.question || q.q || '',
-        answer: q.answer_text || q.answer || q.a || '',
-        aliases: Array.isArray(q.aliases) ? q.aliases : [],
-        meta: { category: q.category || '', era: q.era || '', source: q.source || '' }
-      }));
-      if (retryMode === 'missed') {
-        const missedSet = new Set((Array.isArray(activeAssignmentData.missedIds) ? activeAssignmentData.missedIds : []).map(x => String(x || '').trim()).filter(Boolean));
-        if (missedSet.size) items = items.filter((item) => missedSet.has(String(item.id || '').trim()));
+    // Auto-start the session after a short delay (DOM needs to be ready)
+    setTimeout(() => {
+      toast((launch.retryMode === 'first' ? 'Starting assignment: ' : 'Starting practice retry: ') + launch.title);
+      startSession();
+    }, 500);
+
+    // Monitor for session end (review view becomes active) and submit score.
+    // Session completion phase is "done" in this app.
+    const checkDone = setInterval(() => {
+      const reviewActive = document.getElementById('view-review')?.classList.contains('active');
+      const sessionComplete = App.phase === 'done' || (App.phase === 'idle' && App.i >= App.order.length);
+      if (reviewActive && sessionComplete) {
+        clearInterval(checkDone);
+        submitAssignmentScore(assignId, launch.items.length);
       }
+    }, 500);
 
-      if (!items.length) return;
-
-      // Inject as a volatile library set
-      const titleSuffix = retryMode === 'missed' ? ' - missed-question retry' : (retryMode === 'all' ? ' - practice retry' : '');
-      const set = { id: 'assignment_' + assignId, name: (activeAssignmentData.title || 'Assignment') + titleSuffix, items, volatile: true };
-      Library.sets.unshift(set);
-      Library.activeSetId = set.id;
-      renderLibrarySelectors();
-      updateSetMeta();
-
-      // Set session length to ALL questions in random order
-      App.size = 'all';
-      setPracticeWrongBank(false);
-      App.filters = { cat: '', cats: [], era: '', eras: [], src: '' };
-
-      // Auto-start the session after a short delay (DOM needs to be ready)
-      setTimeout(() => {
-        toast((retryMode === 'first' ? 'Starting assignment: ' : 'Starting practice retry: ') + (activeAssignmentData.title || 'Assignment'));
-        startSession();
-      }, 500);
-
-      // Monitor for session end (review view becomes active) and submit score.
-      // Session completion phase is "done" in this app.
-      const checkDone = setInterval(() => {
-        const reviewActive = document.getElementById('view-review')?.classList.contains('active');
-        const sessionComplete = App.phase === 'done' || (App.phase === 'idle' && App.i >= App.order.length);
-        if (reviewActive && sessionComplete) {
-          clearInterval(checkDone);
-          submitAssignmentScore(assignId, items.length);
-        }
-      }, 500);
-
-    } catch (e) {
-      console.error('Assignment hook error:', e);
-    }
   })();
 
   async function submitAssignmentScore(aId, total) {
@@ -6952,7 +6999,7 @@ try {
         });
       }
       if (retryMode !== 'first') {
-        localStorage.removeItem(storageKey);
+        if (launchStorageKey) localStorage.removeItem(launchStorageKey);
         toast('Practice retry saved. Your teacher still sees the original score.');
         setTimeout(() => { window.location.href = 'student.html'; }, 2500);
         return;
@@ -6966,7 +7013,7 @@ try {
         p_attempts: attempts
       });
       if (error) throw error;
-      localStorage.removeItem(storageKey);
+      if (launchStorageKey) localStorage.removeItem(launchStorageKey);
       toast('Assignment score submitted. Returning to dashboard...');
       setTimeout(() => { window.location.href = 'student.html'; }, 2500);
     } catch (e) {
