@@ -3316,16 +3316,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         renderAssignments(latestStudentAssignments, latestStudentSubmissions, { persist: false });
     });
 
-    document.getElementById('student-today-plan')?.addEventListener('click', (event) => {
-        const startButton = event.target.closest('[data-student-start-assignment]');
-        if (startButton) {
-            window.startAssignment?.(startButton.dataset.studentStartAssignment, startButton.dataset.studentStartTitle || 'Assignment');
-            return;
-        }
-        const tabButton = event.target.closest('[data-student-plan-tab]');
-        if (tabButton) activateDashboardTab(tabButton.dataset.studentPlanTab || 'coach');
-    });
-
     function handleStudentAssignmentListClick(event) {
         const startButton = event.target.closest('[data-student-start-assignment]');
         if (startButton) {
@@ -3344,36 +3334,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('student-assignments-todo')?.addEventListener('click', handleStudentAssignmentListClick);
     document.getElementById('student-assignments-completed')?.addEventListener('click', handleStudentAssignmentListClick);
 
-    document.getElementById('btn-assignments-coach-tab')?.addEventListener('click', () => activateDashboardTab('coach'));
-    document.getElementById('btn-assignments-coach-drill')?.addEventListener('click', () => launchCoachGuidedDrill());
     document.getElementById('btn-coach-refresh')?.addEventListener('click', async () => {
         await loadCoachWorkspace(true);
     });
 
-    function handleCoachFocusAction(event) {
-        const drillBtn = event.target.closest('.coach-focus-drill');
-        if (drillBtn) {
-            const focus = coachFocusSuggestionsCurrent[Number(drillBtn.dataset.focusIndex) || 0] || null;
-            launchCoachGuidedDrill(focus);
-            return;
-        }
-        const generateBtn = event.target.closest('.coach-focus-generate');
-        if (generateBtn) {
-            const focus = coachFocusSuggestionsCurrent[Number(generateBtn.dataset.focusIndex) || 0] || null;
-            launchCoachGuidedDrill(focus, 'generate');
-            return;
-        }
-        const masteredBtn = event.target.closest('.coach-focus-mastered');
-        if (masteredBtn) {
-            persistCoachMastered(masteredBtn.dataset.attempt || '', true);
-            return;
-        }
-        if (event.target.closest('.coach-focus-open-analytics')) {
-            activateDashboardTab('analytics');
-        }
-    }
-
-    document.getElementById('assignments-coach-focuses')?.addEventListener('click', handleCoachFocusAction);
     document.getElementById('coach-note-list')?.addEventListener('click', (event) => {
         const groupDrillBtn = event.target.closest('.coach-group-drill');
         if (groupDrillBtn) {
@@ -3581,52 +3545,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             return ['No date', 'No assignments without dates', 'Assignments without due dates will appear here.'];
         }
         return ['To do', 'All caught up', 'You do not have any pending assignments right now.'];
-    }
-
-    function renderStudentTodayPlan(todoList, doneList) {
-        const planEl = document.getElementById('student-today-plan');
-        if (!planEl) return;
-        const todos = Array.isArray(todoList) ? todoList : [];
-        const completed = Array.isArray(doneList) ? doneList : [];
-        const nowDate = new Date();
-        const withState = todos
-            .map((assignment) => ({ assignment, state: getAssignmentDueState(assignment, nowDate) }))
-            .sort((a, b) => a.state.sortTs - b.state.sortTs);
-        const urgent = withState.find((entry) => entry.state.reminder);
-        const next = urgent || withState[0] || null;
-        const overdueCount = withState.filter((entry) => entry.state.level === 'overdue').length;
-        const dueSoonCount = withState.filter((entry) => entry.state.reminder && entry.state.level !== 'overdue').length;
-
-        let title = 'Start with a short practice block';
-        let copy = 'You can practice freely while you wait for new class work.';
-        let actionHtml = '<a class="btn pri" href="index.html?drill=1">Open Practice Hub</a><button class="btn ghost" type="button" data-student-plan-tab="coach">Open Coach</button>';
-
-        if (!currentMemberships.length) {
-            title = 'Join a class or practice on your own';
-            copy = 'Enter a class code if your teacher gave you one, or keep using the Practice Hub independently.';
-            actionHtml = `${joinClassActionHtml('Enter class code')}<a class="btn ghost" href="index.html?drill=1">Practice on my own</a>`;
-        } else if (next) {
-            title = urgent ? `Start ${next.state.label.toLowerCase()}: ${next.assignment.title}` : `Next assignment: ${next.assignment.title}`;
-            copy = `${next.assignment.classes?.name ? `${next.assignment.classes.name} - ` : ''}${next.state.detail}`;
-            actionHtml = `<button class="btn pri" type="button" data-student-start-assignment="${esc(next.assignment.id)}" data-student-start-title="${esc(next.assignment.title)}">Start assignment</button><button class="btn ghost" type="button" data-student-plan-tab="coach">Ask Coach</button>`;
-        } else if (completed.length) {
-            title = 'All assigned work is done';
-            copy = 'Keep the habit going with a quick review or ask Coach what to sharpen next.';
-        }
-
-        planEl.innerHTML = `
-            <div class="simple-helper-copy">
-                <div class="empty-kicker">Today's plan</div>
-                <h3>${esc(title)}</h3>
-                <p>${esc(copy)}</p>
-            </div>
-            <div class="simple-helper-stats">
-                <span><strong>${overdueCount}</strong> overdue</span>
-                <span><strong>${dueSoonCount}</strong> due soon</span>
-                <span><strong>${completed.length}</strong> completed</span>
-            </div>
-            <div class="simple-helper-actions">${actionHtml}</div>
-        `;
     }
 
     function assignmentResultStorageKey(assignId) {
@@ -3928,7 +3846,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                 setMetric('student-hero-todo', 0);
                 setMetric('student-hero-done', 0);
                 renderAssignmentReminders([]);
-                renderStudentTodayPlan([], []);
                 syncStudentAssignmentFilterChips([]);
                 document.getElementById('student-assignments-todo').innerHTML = emptyStateHtml(
                     'Assignments',
@@ -3942,7 +3859,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                     'Finished assignments and redo links will appear here after you join a classroom.',
                     joinClassActionHtml()
                 );
-                renderAssignmentsCoachBrief();
                 return;
             }
             const classIds = memberships
@@ -3975,7 +3891,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             setMetric('student-hero-todo', 0);
             setMetric('student-hero-done', 0);
             renderAssignmentReminders([]);
-            renderStudentTodayPlan([], []);
             syncStudentAssignmentFilterChips([]);
             document.getElementById('student-assignments-todo').innerHTML = emptyStateHtml(
                 'Assignments',
@@ -3987,7 +3902,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                 'Completed work unavailable',
                 'We could not load your completed assignments right now. Try again in a moment.'
             );
-            renderAssignmentsCoachBrief();
         }
     }
 
@@ -4008,7 +3922,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         setMetric('student-hero-todo', todoList.length);
         setMetric('student-hero-done', doneList.length);
         renderAssignmentReminders(todoList);
-        renderStudentTodayPlan(todoList, doneList);
         syncStudentAssignmentFilterChips(todoList);
 
         const assignTab = document.querySelector('.dash-tab[data-tab="assignments"]');
@@ -4034,7 +3947,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                 if (t.dataset.sub === 'todo') t.textContent = 'To Do · 0';
                 if (t.dataset.sub === 'completed') t.textContent = 'Completed · 0';
             });
-            renderAssignmentsCoachBrief();
             return;
         }
 
@@ -4101,7 +4013,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (t.dataset.sub === 'todo') t.textContent = `To Do · ${todoList.length}`;
             if (t.dataset.sub === 'completed') t.textContent = `Completed · ${doneList.length}`;
         });
-        renderAssignmentsCoachBrief();
     }
 
     // ========== START ASSIGNMENT → PRACTICE HUB ==========
@@ -4477,56 +4388,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         window.location.href = 'index.html?drill=1&coach=1';
     }
 
-    function renderCoachFocusCards(containerId, focuses, emptyText) {
-        const el = document.getElementById(containerId);
-        if (!el) return;
-        if (!focuses.length) {
-            el.innerHTML = `<div class="coach-empty">${esc(emptyText)}</div>`;
-            return;
-        }
-        el.innerHTML = focuses.map((focus, index) => `
-            <div class="coach-focus-card">
-                <div class="coach-focus-head">
-                    <div>
-                        <div class="coach-focus-title">${esc(focus.icon || '📘')} ${esc(focus.title)}</div>
-                        <div class="coach-focus-meta">${esc(focus.meta || 'Notebook focus')}</div>
-                    </div>
-                    <span class="analytics-ai-priority ${esc(focus.priority || 'medium')}">${esc(focus.priority || 'medium')}</span>
-                </div>
-                <p class="coach-focus-reason">${esc(focus.reason || 'Best next target from recent work.')}</p>
-                <div class="coach-focus-tags">
-                    ${focus.region ? `<span class="coach-focus-pill">Region: ${esc(focus.region)}</span>` : ''}
-                    ${focus.era ? `<span class="coach-focus-pill">Era: ${esc(focus.era)}</span>` : ''}
-                </div>
-                ${focus.topic ? `<div class="coach-focus-study-area"><b>Recommended study area:</b> ${esc(focus.topic)}</div>` : ''}
-                <div class="coach-focus-actions">
-                    <button class="btn pri coach-focus-drill" type="button" data-focus-index="${index}">Guided Drill</button>
-                    <button class="btn ghost coach-focus-generate" type="button" data-focus-index="${index}">Create Targeted Drill</button>
-                    ${focus.attemptId ? `<button class="btn ghost coach-focus-mastered" type="button" data-attempt="${esc(focus.attemptId)}">Mark Top Lesson Mastered</button>` : `<button class="btn ghost coach-focus-open-analytics" type="button">View Analytics</button>`}
-                </div>
-            </div>
-        `).join('');
-    }
-
-    function renderAssignmentsCoachBrief() {
-        const summaryEl = document.getElementById('assignments-coach-summary');
-        const focusEl = document.getElementById('assignments-coach-focuses');
-        const drillBtn = document.getElementById('btn-assignments-coach-drill');
-        if (!summaryEl || !focusEl || !drillBtn) return;
-        const focuses = coachFocusSuggestionsCurrent.slice(0, 2);
-        drillBtn.disabled = !focuses.length;
-        if (!focuses.length) {
-            summaryEl.textContent = 'No notebook focus yet.';
-            focusEl.innerHTML = '<div class="coach-empty">Complete a few drills to load a focus.</div>';
-            renderDashboardChatChrome();
-            return;
-        }
-        const primary = focuses[0];
-        summaryEl.textContent = `Current priority: ${primary.title}.`;
-        renderCoachFocusCards('assignments-coach-focuses', focuses, 'No assignment focus yet.');
-        renderDashboardChatChrome();
-    }
-
     function coachNoteRowHtml(record) {
         const focus = coachFocusFromRecord(record);
         const coach = record.coach || {};
@@ -4635,7 +4496,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         }
 
-        renderAssignmentsCoachBrief();
         renderDashboardChatChrome();
     }
 
@@ -5279,7 +5139,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             'Ready',
             'Practice plan ready to refresh.'
         );
-        renderAssignmentsCoachBrief();
     }
 
     async function generateAnalyticsInsights(force = false) {

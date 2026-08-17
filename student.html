@@ -164,9 +164,8 @@
                     </div>
                 </div>
                 <div id="assignment-reminders" class="assignment-reminder-panel hidden" aria-live="polite"></div>
-                <div id="student-today-plan" class="simple-helper-panel" aria-live="polite"></div>
 
-                <div class="dashboard-split">
+                <div class="dashboard-split dashboard-split-solo">
                     <div class="panel-stack">
                         <div class="simple-filter-panel" aria-label="Assignment filters">
                             <div>
@@ -196,22 +195,6 @@
                             </div>
                         </div>
                     </div>
-                    <aside class="panel-stack">
-                        <div id="assignments-coach-brief" class="coach-brief-card sticky-card">
-                            <div class="coach-brief-head">
-                                <div>
-                                    <div class="eyebrow">Current focus</div>
-                                    <h3>Review focus</h3>
-                                </div>
-                                <div class="assignment-actions" style="margin-top: 10px;">
-                                    <button id="btn-assignments-coach-drill" class="btn pri" type="button" title="Start a guided assignment practice hub">Guided Hub</button>
-                                    <button id="btn-assignments-coach-tab" class="btn ghost" type="button" title="Open the Mistake Notebook to review lessons and focuses">Notebook</button>
-                                </div>
-                            </div>
-                            <div id="assignments-coach-summary" class="coach-brief-copy muted">Your notebook focus will appear here.</div>
-                            <div id="assignments-coach-focuses" class="coach-focus-grid"></div>
-                        </div>
-                    </aside>
                 </div>
             </div>
         </section>
@@ -922,6 +905,13 @@
                     <div class="list-container">
                         <div class="list-item">
                             <div>
+                                <h3 style="margin:0 0 4px;">Roomier Assignments List</h3>
+                                <div class="pill">August 17, 2026</div>
+                                <p class="muted" style="margin: 8px 0 0;">The Assignments section now uses the full width of the page. Today's Plan and the Review Focus / Guided Hub sidebar are gone, so your To Do and Completed lists get much more room.</p>
+                            </div>
+                        </div>
+                        <div class="list-item">
+                            <div>
                                 <h3 style="margin:0 0 4px;">Answer Reveal Read Aloud in English</h3>
                                 <div class="pill">August 16, 2026</div>
                                 <p class="muted" style="margin: 8px 0 0;">The read-aloud of revealed answers in practice now announces "Standard answer:" in English instead of Chinese, so the English voice reads the prefix clearly before the answer itself.</p>
@@ -967,6 +957,13 @@
                                 <h3 style="margin:0 0 4px;">Mistake Notebook Takes Center Stage</h3>
                                 <div class="pill">August 14, 2026</div>
                                 <p class="muted" style="margin: 8px 0 0;">The student Coach tab is now the Mistake Notebook. The unreliable chat has been removed, saved lessons stay fully available, and an elegant Coming Soon sidebar reserves space for a future assistant with better context and tool use.</p>
+                            </div>
+                        </div>
+                        <div class="list-item">
+                            <div>
+                                <h3 style="margin:0 0 4px;">Updated Project Guide</h3>
+                                <div class="pill">August 14, 2026</div>
+                                <p class="muted" style="margin: 8px 0 0;">The project README now links directly to the live IHBB Premium Drill site and gives a current, quick overview of student and teacher tools.</p>
                             </div>
                         </div>
                         <div class="list-item">
@@ -1092,14 +1089,6 @@
 
                         <div class="list-item">
                             <div>
-                                <h3 style="margin:0 0 4px;">Accepted Despite Typo Review Note</h3>
-                                <div class="pill">May 30, 2026</div>
-                                <p class="muted" style="margin: 8px 0 0;">Answer review now shows a short note when DeepSeek accepts a clearly intended answer despite small spelling slips, so students can see why a near-miss still counted.</p>
-                            </div>
-                        </div>
-
-                        <div class="list-item">
-                            <div>
                                 <h3 style="margin:0 0 4px;">Spelling Leniency Fix</h3>
                                 <div class="pill">May 30, 2026</div>
                                 <p class="muted" style="margin: 8px 0 0;">DeepSeek grading now accepts clearly intended answers even when they include small spelling slips or close phonetic spellings, so near-miss typos like names and titles are less likely to be marked wrong.</p>
@@ -1116,17 +1105,17 @@
 
                         <div class="list-item">
                             <div>
-                                <h3 style="margin:0 0 4px;">Teacher DeepSeek Planning Upgrade</h3>
-                                <div class="pill">May 16, 2026</div>
-                                <p class="muted" style="margin: 8px 0 0;">Teacher dashboards now have a finished DeepSeek planning assistant that uses class context, routes quick actions to teacher tools, and prepares reviewed class assignment drafts from assistant replies.</p>
+                                <h3 style="margin:0 0 4px;">Session Recovery Blank-Screen Fix</h3>
+                                <div class="pill">May 29, 2026</div>
+                                <p class="muted" style="margin: 8px 0 0;">Student sign-ins now recover cleanly when a saved Supabase session cannot refresh, so the app sends you back to login instead of leaving the dashboard on a blank screen.</p>
                             </div>
                         </div>
 
                         <div class="list-item">
                             <div>
-                                <h3 style="margin:0 0 4px;">Session Recovery Blank-Screen Fix</h3>
-                                <div class="pill">May 29, 2026</div>
-                                <p class="muted" style="margin: 8px 0 0;">Student sign-ins now recover cleanly when a saved Supabase session cannot refresh, so the app sends you back to login instead of leaving the dashboard on a blank screen.</p>
+                                <h3 style="margin:0 0 4px;">Teacher DeepSeek Planning Upgrade</h3>
+                                <div class="pill">May 16, 2026</div>
+                                <p class="muted" style="margin: 8px 0 0;">Teacher dashboards now have a finished DeepSeek planning assistant that uses class context, routes quick actions to teacher tools, and prepares reviewed class assignment drafts from assistant replies.</p>
                             </div>
                         </div>
 
