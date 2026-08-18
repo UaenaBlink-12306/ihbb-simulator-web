@@ -13176,3 +13176,313 @@ button.chip {
     transition: none;
   }
 }
+
+/* ===== Dark theme surface completion (2026-08-19) ===== */
+html[data-theme="dark"] .dashboard-tab-menu {
+  border-color: var(--line-strong);
+  background:
+    var(--glass-highlight-soft),
+    var(--glass-overlay-soft),
+    rgba(7, 13, 22, 0.97);
+  box-shadow:
+    var(--glass-border),
+    0 24px 54px -28px rgba(0, 0, 0, 0.88);
+}
+
+html[data-theme="dark"] .dashboard-tab-menu .dash-tab {
+  border-color: var(--glass-control-border);
+  background:
+    var(--glass-control-bg),
+    var(--glass-control-fill);
+  color: var(--ink);
+}
+
+html[data-theme="dark"] .dashboard-tab-menu .dash-tab:is(:hover, :focus-visible, .active) {
+  border-color: rgba(99, 168, 255, 0.42);
+  background:
+    var(--glass-highlight),
+    var(--glass-control-accent),
+    var(--surface-glass-strong);
+  color: var(--ink);
+}
+
+html[data-theme="dark"] .dashboard-switcher-input {
+  border-color: var(--glass-control-border);
+  background:
+    var(--glass-control-bg-strong),
+    var(--glass-control-fill-strong);
+  color: var(--ink);
+  caret-color: var(--accent);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    0 18px 34px -26px rgba(0, 0, 0, 0.82);
+}
+
+html[data-theme="dark"] .dashboard-switcher-input::placeholder {
+  color: var(--muted);
+  opacity: 1;
+}
+
+html[data-theme="dark"] .dashboard-switcher-input:focus {
+  border-color: rgba(99, 168, 255, 0.64);
+  background:
+    var(--glass-control-bg-strong),
+    rgba(10, 20, 35, 0.98);
+  box-shadow: 0 0 0 3px var(--ring), 0 20px 42px -28px rgba(0, 0, 0, 0.9);
+}
+
+html[data-theme="dark"] .dashboard-switcher-results {
+  border-color: var(--line-strong);
+  background:
+    var(--glass-highlight-soft),
+    var(--glass-overlay-soft),
+    rgba(7, 13, 22, 0.98);
+  box-shadow:
+    var(--glass-border),
+    0 28px 58px -30px rgba(0, 0, 0, 0.9);
+}
+
+html[data-theme="dark"] :is(.dashboard-switcher-option, .dashboard-switcher-empty) {
+  border-color: var(--line);
+  background: rgba(255, 255, 255, 0.045);
+  color: var(--ink);
+}
+
+html[data-theme="dark"] .dashboard-switcher-option:is(:hover, .active) {
+  border-color: rgba(99, 168, 255, 0.42);
+  background: rgba(99, 168, 255, 0.14);
+}
+
+html[data-theme="dark"] :is(.mistake-notebook-page, #coach-preview-drawer) {
+  --notebook-ink: #f5f9ff;
+  --notebook-copy: #b7c6d9;
+  --notebook-muted: #91a6bf;
+  --notebook-line: rgba(148, 163, 184, 0.2);
+  --notebook-line-strong: rgba(99, 168, 255, 0.38);
+  --notebook-blue: #63a8ff;
+  --notebook-blue-deep: #8bc0ff;
+}
+
+html[data-theme="dark"] .mistake-notebook-surface,
+html[data-theme="dark"] #coach-preview-drawer {
+  border-color: var(--notebook-line);
+  background:
+    radial-gradient(circle at top right, rgba(99, 168, 255, 0.12), transparent 34%),
+    linear-gradient(160deg, rgba(17, 29, 47, 0.98), rgba(8, 16, 28, 0.98));
+  box-shadow: 0 28px 62px -34px rgba(0, 0, 0, 0.9);
+}
+
+html[data-theme="dark"] :is(.mistake-notebook-icon, .mistake-notebook-count) {
+  border-color: rgba(99, 168, 255, 0.3);
+  background: rgba(99, 168, 255, 0.12);
+  color: var(--notebook-blue-deep);
+}
+
+html[data-theme="dark"] .mistake-notebook-focus {
+  border-color: var(--notebook-line-strong);
+  background:
+    radial-gradient(circle at top right, rgba(99, 168, 255, 0.14), transparent 40%),
+    linear-gradient(135deg, rgba(18, 33, 54, 0.98), rgba(11, 22, 38, 0.98));
+}
+
+html[data-theme="dark"] .mistake-notebook-surface .coach-note-group {
+  border-color: var(--notebook-line);
+  background: rgba(13, 24, 40, 0.9);
+  box-shadow: none;
+}
+
+html[data-theme="dark"] .mistake-notebook-surface .coach-note-group:first-child {
+  border-color: var(--notebook-line-strong);
+  background: rgba(17, 32, 53, 0.94);
+}
+
+html[data-theme="dark"] .mistake-notebook-surface .coach-note {
+  border-color: var(--notebook-line);
+  background: rgba(20, 34, 54, 0.94);
+  color: var(--notebook-ink);
+  box-shadow: 0 14px 26px -24px rgba(0, 0, 0, 0.86);
+}
+
+html[data-theme="dark"] .mistake-notebook-surface .coach-note.mastered {
+  background: rgba(13, 53, 47, 0.58);
+}
+
+html[data-theme="dark"] .mistake-notebook-surface :is(.coach-note-group-title, .coach-note-group-meta) {
+  color: var(--notebook-copy);
+}
+
+html[data-theme="dark"] #coach-preview-drawer::before {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+html[data-theme="dark"] #coach-preview-drawer .mistake-notebook-future-icon {
+  border-color: rgba(99, 168, 255, 0.3);
+  background: rgba(99, 168, 255, 0.12);
+  color: var(--notebook-blue-deep);
+  box-shadow: 0 20px 36px -28px rgba(0, 0, 0, 0.9);
+}
+
+html[data-theme="dark"] #coach-preview-drawer .mistake-notebook-future-list li {
+  border-color: var(--notebook-line);
+  color: var(--notebook-copy);
+}
+
+html[data-theme="dark"] #coach-preview-drawer .coach-preview-close {
+  border-color: var(--notebook-line);
+  background: rgba(20, 34, 54, 0.9);
+  color: var(--notebook-ink);
+}
+
+html[data-theme="dark"] #coach-preview-drawer .coach-preview-close:hover {
+  background: rgba(31, 50, 76, 0.98);
+}
+
+html[data-theme="dark"] #tab-create :is(.builder-source-option, .builder-workflow-panel, .builder-review-panel) {
+  border-color: var(--line);
+  background:
+    var(--glass-highlight-soft),
+    linear-gradient(150deg, rgba(20, 33, 53, 0.96), rgba(9, 18, 31, 0.98));
+  color: var(--ink);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.09), var(--panel-shadow-soft);
+}
+
+html[data-theme="dark"] #tab-create .builder-source-option:hover {
+  border-color: rgba(99, 168, 255, 0.46);
+  background:
+    var(--glass-highlight),
+    linear-gradient(150deg, rgba(24, 42, 67, 0.98), rgba(11, 22, 38, 0.98));
+}
+
+html[data-theme="dark"] #tab-create .builder-source-option.is-active {
+  border-color: var(--accent);
+  background:
+    radial-gradient(circle at top right, rgba(99, 168, 255, 0.16), transparent 42%),
+    linear-gradient(150deg, rgba(22, 43, 72, 0.98), rgba(11, 24, 42, 0.98));
+}
+
+html[data-theme="dark"] #tab-create .builder-source-ai.is-active {
+  border-color: #a78bfa;
+  background:
+    radial-gradient(circle at top right, rgba(167, 139, 250, 0.16), transparent 42%),
+    linear-gradient(150deg, rgba(39, 29, 68, 0.98), rgba(20, 17, 40, 0.98));
+}
+
+html[data-theme="dark"] #tab-create .builder-source-radio {
+  border-color: #7890aa;
+  background: #111f33;
+  box-shadow: inset 0 0 0 4px #111f33;
+}
+
+html[data-theme="dark"] #tab-create .builder-source-option.is-active .builder-source-radio {
+  border-color: var(--accent);
+  background: var(--accent);
+  box-shadow: inset 0 0 0 4px #111f33;
+}
+
+html[data-theme="dark"] #tab-create .builder-source-ai.is-active .builder-source-radio {
+  border-color: #a78bfa;
+  background: #a78bfa;
+}
+
+html[data-theme="dark"] #tab-create :is(.builder-source-icon, .builder-provenance-bank, .builder-source-copy small) {
+  color: #5eead4;
+}
+
+html[data-theme="dark"] #tab-create :is(.builder-source-ai .builder-source-icon, .builder-provenance-ai, .builder-source-ai .builder-source-copy small) {
+  color: #c4b5fd;
+}
+
+html[data-theme="dark"] #tab-create .builder-source-note {
+  border-color: rgba(99, 168, 255, 0.3);
+  background: rgba(99, 168, 255, 0.1);
+  color: var(--muted);
+}
+
+html[data-theme="dark"] #tab-create .builder-bank-random {
+  border-color: rgba(45, 212, 191, 0.28);
+  background: linear-gradient(135deg, rgba(13, 55, 50, 0.64), rgba(14, 34, 57, 0.8));
+}
+
+html[data-theme="dark"] #tab-create .builder-ai-warning {
+  border-color: rgba(251, 191, 36, 0.34);
+  background: rgba(83, 50, 8, 0.42);
+  color: #fde68a;
+}
+
+html[data-theme="dark"] #tab-create .builder-generation-status {
+  border-color: rgba(167, 139, 250, 0.28);
+  background: rgba(55, 36, 92, 0.46);
+  color: #ddd6fe;
+}
+
+html[data-theme="dark"] #tab-create .builder-generation-status.text-bad {
+  border-color: rgba(248, 113, 113, 0.32);
+  background: rgba(79, 24, 32, 0.5);
+  color: #fecaca;
+}
+
+html[data-theme="dark"] #tab-create .builder-workflow-ai .generator-item {
+  border-color: rgba(167, 139, 250, 0.24);
+  background: rgba(38, 28, 65, 0.62);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+html[data-theme="dark"] #tab-create .builder-source-summary {
+  border-color: var(--line);
+  background: rgba(10, 20, 34, 0.82);
+}
+
+html[data-theme="dark"] #tab-create :is(.card-muted-box, .preview-area, .assignment-review-item) {
+  border-color: var(--line);
+  background:
+    var(--glass-highlight-soft),
+    var(--glass-overlay-soft),
+    var(--surface-glass);
+}
+
+html[data-theme="dark"] #tab-create .question-source-pill-bank {
+  border-color: rgba(45, 212, 191, 0.28) !important;
+  background: rgba(13, 71, 62, 0.48) !important;
+  color: #99f6e4 !important;
+}
+
+html[data-theme="dark"] #tab-create .question-source-pill-ai {
+  border-color: rgba(167, 139, 250, 0.28) !important;
+  background: rgba(64, 42, 105, 0.5) !important;
+  color: #ddd6fe !important;
+}
+
+html[data-theme="dark"] #tab-create .quality-panel {
+  background:
+    radial-gradient(circle at 100% 0%, var(--quality-tint), transparent 32%),
+    var(--glass-overlay-soft),
+    var(--surface-glass-strong);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), var(--panel-shadow-soft);
+}
+
+html[data-theme="dark"] #tab-create .quality-overview {
+  background: rgba(10, 20, 34, 0.76);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+html[data-theme="dark"] #tab-create .quality-status-icon {
+  background: color-mix(in srgb, var(--quality-accent) 18%, rgba(10, 20, 34, 0.92));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+html[data-theme="dark"] #tab-create .quality-warning-count {
+  background: color-mix(in srgb, var(--quality-warning-accent) 20%, rgba(10, 20, 34, 0.92));
+}
+
+html[data-theme="dark"] #tab-create .quality-warnings {
+  background: rgba(17, 29, 47, 0.84);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07);
+}
+
+html[data-theme="dark"] #tab-create .quality-warnings li {
+  color: var(--muted);
+}
+
+html[data-theme="dark"] #tab-create .quality-action {
+  color: var(--ink);
+}

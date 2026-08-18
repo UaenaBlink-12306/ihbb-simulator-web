@@ -115,3 +115,26 @@ test('Student and teacher Account tabs expose all three choices and release note
     assert.match(html, /Light, Dark &amp; System Themes/);
   }
 });
+
+test('Dark mode has late overrides for every reported light-only surface', () => {
+  const styles = read('styles.css');
+  const marker = '/* ===== Dark theme surface completion (2026-08-19) ===== */';
+  const markerIndex = styles.lastIndexOf(marker);
+  assert.ok(markerIndex > styles.indexOf('/* ===== Light theme defaults ===== */'));
+
+  const darkPass = styles.slice(markerIndex);
+  for (const selector of [
+    /html\[data-theme="dark"\] \.dashboard-tab-menu \{/,
+    /html\[data-theme="dark"\] \.dashboard-switcher-input \{/,
+    /html\[data-theme="dark"\] :is\(\.mistake-notebook-page, #coach-preview-drawer\) \{/,
+    /html\[data-theme="dark"\] \.mistake-notebook-surface \.coach-note-group \{/,
+    /html\[data-theme="dark"\] #coach-preview-drawer \.coach-preview-close \{/,
+    /html\[data-theme="dark"\] #tab-create :is\(\.builder-source-option, \.builder-workflow-panel, \.builder-review-panel\) \{/,
+    /html\[data-theme="dark"\] #tab-create \.quality-overview \{/
+  ]) {
+    assert.match(darkPass, selector);
+  }
+
+  assert.match(read('student.html'), /Complete Dark Mode Coverage/);
+  assert.match(read('teacher.html'), /Complete Dark Mode Coverage/);
+});
