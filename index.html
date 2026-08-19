@@ -111,10 +111,9 @@
 
     <nav class="nav tab-strip">
       <a href="index.html" id="nav-setup" class="active">Setup</a>
-      <a href="#" id="nav-session">Session</a>
+      <a href="#" id="nav-session">Advanced Options</a>
       <a href="#" id="nav-practice">Practice</a>
       <a href="#" id="nav-review">Session Review</a>
-      <a href="#" id="nav-coach">Coach</a>
       <a href="#" id="nav-library">Library</a>
     </nav>
 
@@ -374,7 +373,7 @@
             <div class="grow"></div>
             <button id="btn-copy-answer" class="btn ghost" disabled>Copy answer</button>
             <button id="btn-alias" class="btn ghost" disabled>Add alias</button>
-            <button id="btn-bookmark" class="btn ghost" disabled>Study later</button>
+            <button id="btn-bookmark" class="btn ghost" disabled>Save to Study Later set</button>
             <button id="btn-flag" class="btn ghost" disabled>Flag</button>
           </div>
 
@@ -392,7 +391,7 @@
             <div>
               <div class="eyebrow">End-of-practice review</div>
               <h2 class="card-title">Session Review</h2>
-              <p class="section-subtitle">Score, misses, and the next useful drill from your latest run.</p>
+              <p class="section-subtitle">Score, misses, and review history from your latest run.</p>
             </div>
           </div>
           <div class="review-kpi-band">
@@ -414,33 +413,48 @@
             </div>
           </div>
           <div class="review-chart-stack">
-            <svg id="chart-buzz" class="chart" viewBox="0 0 640 180" aria-label="Time to buzz histogram"></svg>
-            <svg id="chart-acc-cat" class="chart" viewBox="0 0 640 180" aria-label="Accuracy by region"></svg>
+            <div class="review-chart-card">
+              <div class="empty-kicker">Accuracy by era</div>
+              <svg id="chart-acc-era" class="chart" viewBox="0 0 640 180" aria-label="Accuracy by era"></svg>
+            </div>
+            <div class="review-chart-card">
+              <div class="empty-kicker">Accuracy by region</div>
+              <svg id="chart-acc-cat" class="chart" viewBox="0 0 640 180" aria-label="Accuracy by region"></svg>
+            </div>
           </div>
           <div class="inline-actions">
             <button id="btn-review-misses" class="btn pri">Review Misses</button>
             <button id="btn-export-wrong" class="btn ghost">Export wrong.txt</button>
             <button id="btn-clear-wrong" class="btn ghost">Clear wrong bank</button>
           </div>
-          <div id="review-remediation-card" class="card-muted-box remediation-pack-card" style="margin-top:16px;"></div>
         </div>
 
         <div class="card section-card">
           <div class="section-head">
             <div>
-              <div class="eyebrow">Next practice</div>
-              <h2 class="card-title">Top Focus</h2>
-              <p class="section-subtitle">Built from the mistake notes saved during this session.</p>
+              <div class="eyebrow">Past runs</div>
+              <h2 class="card-title">History</h2>
+              <p class="section-subtitle">Recent sessions and exports.</p>
             </div>
           </div>
-          <div id="review-coach-summary" class="card-muted-box summary-note">
-            <div class="empty-kicker">Status</div>
-            <p id="review-coach-note" class="empty-copy">Finish a session to load coach notes.</p>
+          <div class="table-frame">
+            <table id="tbl-history">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Total</th>
+                  <th>Correct</th>
+                  <th>Accuracy</th>
+                  <th>Duration</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
           </div>
-          <div id="review-coach-focuses" class="coach-focus-grid" style="margin-top: 16px;"></div>
+          <div id="history-mobile-list" class="mobile-record-list" aria-live="polite"></div>
           <div class="inline-actions" style="margin-top: 16px;">
-            <button id="btn-review-coach-apply" class="btn pri" type="button">Practice Top Focus</button>
-            <button id="btn-review-coach-notebook" class="btn ghost" type="button">Open Mistake Notebook</button>
+            <button id="btn-clear-history" class="btn ghost">Clear history</button>
           </div>
         </div>
       </div>
@@ -479,146 +493,9 @@
           </div>
           <div id="wrong-mobile-list" class="mobile-record-list" aria-live="polite"></div>
         </div>
-
-        <div class="card section-card">
-          <div class="section-head">
-            <div>
-              <div class="eyebrow">Personal review</div>
-              <h2 class="card-title">Study Later</h2>
-              <p class="section-subtitle">Confusing questions you saved on purpose.</p>
-            </div>
-          </div>
-          <div class="inline-actions">
-            <div class="pill">Saved: <span id="study-bookmark-count">0</span></div>
-            <button id="btn-practice-bookmarks" class="btn ghost">Practice saved</button>
-          </div>
-          <div id="study-bookmark-list" class="study-bookmark-list"></div>
-        </div>
-
-        <div class="card section-card">
-          <div class="section-head">
-            <div>
-              <div class="eyebrow">Past runs</div>
-              <h2 class="card-title">History</h2>
-              <p class="section-subtitle">Recent sessions and exports.</p>
-            </div>
-          </div>
-          <div class="table-frame">
-            <table id="tbl-history">
-              <thead>
-                <tr>
-                  <th>Date</th>
-                  <th>Total</th>
-                  <th>Correct</th>
-                  <th>Accuracy</th>
-                  <th>Duration</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody></tbody>
-            </table>
-          </div>
-          <div id="history-mobile-list" class="mobile-record-list" aria-live="polite"></div>
-          <div class="inline-actions" style="margin-top: 16px;">
-            <button id="btn-clear-history" class="btn ghost">Clear history</button>
-          </div>
-        </div>
       </aside>
     </div>
   </section>
-
-    <section id="view-coach" class="view">
-      <div class="coach-tab-page">
-        <div id="coach-chat-sidebar" class="coach-tab-shell" data-chat-pristine="true" data-coach-surface="tab">
-          <header class="coach-tab-header">
-            <div class="coach-tab-brand">
-              <span class="coach-tab-mark" aria-hidden="true">
-                <svg viewBox="0 0 24 24"><path d="M12 3c.8 4.2 2.3 5.7 6.5 6.5-4.2.8-5.7 2.3-6.5 6.5-.8-4.2-2.3-5.7-6.5-6.5C9.7 8.7 11.2 7.2 12 3Z"></path><path d="M18.5 15.5c.4 1.9 1 2.5 3 3-2 .4-2.6 1-3 3-.4-2-1-2.6-3-3 2-.5 2.6-1.1 3-3Z"></path></svg>
-              </span>
-              <div class="coach-tab-brand-copy">
-                <div class="coach-tab-title-row">
-                  <h2>Coach</h2>
-                  <span class="coach-tab-live"><span class="coach-tab-live-dot" aria-hidden="true"></span>Personalized</span>
-                </div>
-                <p id="coach-chat-context-summary">Using your latest practice and Mistake Notebook</p>
-                <div id="coach-chat-status-pills" class="coach-chat-status-pills"></div>
-              </div>
-            </div>
-            <div class="coach-tab-header-actions">
-              <span id="coach-chat-source" class="coach-chat-source-pill" role="status"></span>
-              <button id="coach-chat-new" class="coach-reset-button" type="button" hidden>
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 2.64-6.36L3 8"></path><path d="M3 3v5h5"></path></svg>
-                Start over
-              </button>
-            </div>
-          </header>
-
-          <div id="coach-chat-body" class="coach-tab-body">
-            <div id="coach-chat-home" class="coach-home">
-              <p class="coach-home-kicker">Your personal study assistant</p>
-              <h3>What would help most?</h3>
-              <div id="coach-chat-workspace" class="coach-chat-workspace"></div>
-              <div id="coach-chat-starter-box" class="coach-chat-starter-block">
-                <div id="coach-chat-starters" class="coach-chat-starters"></div>
-              </div>
-            </div>
-            <div id="coach-chat-messages" class="coach-chat-messages" aria-live="polite"></div>
-          </div>
-
-          <button id="coach-chat-jump-latest" class="coach-chat-jump-latest" type="button" aria-label="Jump to latest answer" title="Jump to latest answer">
-            <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><polyline points="19 12 12 19 5 12"></polyline></svg>
-          </button>
-
-          <form id="coach-chat-form" class="coach-chat-form">
-            <label class="coach-chat-input-wrap" for="coach-chat-input">
-              <textarea id="coach-chat-input" rows="1" placeholder="Ask about a miss, a topic, or what to do next"></textarea>
-              <button id="coach-chat-send" class="coach-send-button" type="submit" aria-label="Send question">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5"></path><path d="m5 12 7-7 7 7"></path></svg>
-              </button>
-            </label>
-            <div class="coach-chat-form-actions">
-              <div id="coach-chat-hint" class="coach-composer-hint">Coach uses your recent practice to personalize answers.</div>
-              <span class="coach-composer-keys" aria-hidden="true"><kbd>↵</kbd> send&ensp;·&ensp;<kbd>⇧</kbd>+<kbd>↵</kbd> new line</span>
-            </div>
-          </form>
-        </div>
-
-        <details class="coach-notebook-details">
-          <summary>
-            <span class="coach-notebook-summary-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2Z"></path></svg>
-            </span>
-            <span class="coach-notebook-summary-copy">
-              <strong>Mistake Notebook</strong>
-              <small>Saved explanations and focus areas from your practice.</small>
-            </span>
-            <span class="coach-notebook-summary-action"><span><b id="coach-open-count">0</b> lessons to review</span><b>View saved lessons <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg></b></span>
-          </summary>
-          <div class="coach-notebook-content">
-            <div class="coach-notebook-stats">
-              <span>Saved lessons: <b id="coach-count">0</b></span>
-              <span>Mastered: <b id="coach-mastered-count">0</b></span>
-            </div>
-            <div class="inline-actions">
-              <button id="btn-coach-generate-weak" class="btn action" type="button">Create Targeted Drill</button>
-              <button id="btn-coach-apply-top" class="btn pri" type="button">Apply Top Focus</button>
-              <button id="btn-coach-clear" class="btn bad" type="button">Clear Notebook</button>
-              <button id="btn-coach-back-review" class="btn ghost" type="button">Back to Review</button>
-            </div>
-            <div class="coach-notebook-filters">
-              <select id="coach-filter">
-                <option value="all">All</option>
-                <option value="todo" selected>To Learn</option>
-                <option value="mastered">Mastered</option>
-              </select>
-              <input id="coach-search" type="text" placeholder="Search mistake notebook…" />
-              <button id="coach-refresh" class="btn ghost">Refresh</button>
-            </div>
-            <div id="coach-list" class="coach-list"></div>
-          </div>
-        </details>
-      </div>
-    </section>
 
   <!-- LIBRARY -->
   <section id="view-library" class="view">
@@ -628,7 +505,7 @@
           <div>
             <div class="eyebrow">Question bank</div>
             <h2 class="card-title">Library controls</h2>
-            <p class="section-subtitle">Set, filters, and bulk actions.</p>
+            <p class="section-subtitle">Set, filters, bulk actions, and questions saved automatically to your Study Later set.</p>
           </div>
           <div class="inline-actions">
             <button id="lib-new-set" class="btn ghost">New set from file</button>
@@ -680,7 +557,7 @@
                 <th>Region</th>
                 <th>Era</th>
                 <th>Source</th>
-                <th></th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody></tbody>
@@ -744,7 +621,6 @@
   <div id="toast" class="toast"></div>
 
   <!-- Your logic file -->
-  <script src="coach-tab-ui.js"></script>
   <script src="coach-era.js"></script>
   <script src="app.js"></script>
   <script src="dashboard-feedback.js"></script>

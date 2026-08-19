@@ -1831,6 +1831,20 @@ tr:hover td {
   display: block;
 }
 
+.review-chart-stack {
+  display: grid;
+  gap: 14px;
+  margin: 16px 0;
+}
+
+.review-chart-card {
+  min-width: 0;
+  padding: 14px 16px 4px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--surface);
+}
+
 /* Student analytics dashboard */
 .analytics-shell {
   display: flex;

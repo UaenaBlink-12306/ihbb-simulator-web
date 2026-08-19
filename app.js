@@ -91,6 +91,8 @@ const BASE_COACH_CHAT_UI_KEY = 'ihbb_v2_coach_chat_ui';
 const BASE_COACH_CHAT_SUPPRESS_KEY = 'ihbb_v2_coach_chat_suppressed';
 const BASE_TEACHER_CLASS_GUIDANCE_DRAFT = 'ihbb_teacher_class_guidance_draft';
 const BASE_KEY_STUDY_BOOKMARKS = 'ihbb_v2_study_bookmarks';
+const STUDY_LATER_SET_ID = 'study_later';
+const STUDY_LATER_SET_NAME = 'Study Later';
 const BASE_KEY_ASSIGNMENT_RESULTS = 'ihbb_assignment_result';
 const BASE_KEY_REMEDIATION_PACK = 'ihbb_v2_remediation_pack';
 const STUDY_DATA_RESET_CUTOFF_ISO = '2026-04-10T02:07:20Z';
@@ -681,7 +683,7 @@ function assignmentResultStorageKey(assignId, userId = StorageScopeUserId) {
   const scope = normalizeStorageScopeUserId(userId) || STORAGE_SCOPE_GUEST;
   return `${BASE_KEY_ASSIGNMENT_RESULTS}_${id}_${scope}`;
 }
-function normalizeStudyBookmarkItem(raw) {
+function normalizeStudyLaterItem(raw) {
   const id = normalizeQuestionId(raw?.id || raw?.question_id);
   const question = String(raw?.question || raw?.question_text || '').trim();
   const answer = String(raw?.answer || raw?.answer_text || '').trim();
@@ -700,109 +702,98 @@ function normalizeStudyBookmarkItem(raw) {
     savedAt: raw?.savedAt || raw?.saved_at || new Date().toISOString()
   };
 }
-function readStudyBookmarks() {
+function readLegacyStudyBookmarks() {
   const raw = safeReadJson(KEY_STUDY_BOOKMARKS, []);
   const seen = new Set();
-  const safe = (Array.isArray(raw) ? raw : []).map(normalizeStudyBookmarkItem).filter(Boolean).filter((item) => {
+  return (Array.isArray(raw) ? raw : []).map(normalizeStudyLaterItem).filter(Boolean).filter((item) => {
     if (seen.has(item.id)) return false;
     seen.add(item.id);
     return true;
   });
-  if (Array.isArray(raw) && safe.length !== raw.length) setJsonSafe(KEY_STUDY_BOOKMARKS, safe);
-  return safe;
 }
-function writeStudyBookmarks(items) {
-  setJsonSafe(KEY_STUDY_BOOKMARKS, (Array.isArray(items) ? items : []).map(normalizeStudyBookmarkItem).filter(Boolean).slice(0, 200));
+function getStudyLaterSet() {
+  return (Library.sets || []).find((set) => String(set?.id || '') === STUDY_LATER_SET_ID) || null;
 }
-function isQuestionBookmarked(item) {
+function ensureStudyLaterSet() {
+  let set = getStudyLaterSet();
+  if (set) {
+    set.name = STUDY_LATER_SET_NAME;
+    set.studyLater = true;
+    set.items = Array.isArray(set.items) ? set.items : [];
+    return set;
+  }
+  set = { id: STUDY_LATER_SET_ID, name: STUDY_LATER_SET_NAME, items: [], studyLater: true };
+  Library.sets = [set, ...(Array.isArray(Library.sets) ? Library.sets : [])];
+  return set;
+}
+function migrateLegacyStudyBookmarks() {
+  const legacy = readLegacyStudyBookmarks();
+  if (!legacy.length) return false;
+  const set = ensureStudyLaterSet();
+  const seen = new Set();
+  set.items = [...legacy, ...set.items]
+    .map(normalizeStudyLaterItem)
+    .filter(Boolean)
+    .filter((item) => {
+      if (seen.has(item.id)) return false;
+      seen.add(item.id);
+      return true;
+    })
+    .slice(0, 200);
+  if (!saveLibrarySafe('migrate Study Later bookmarks')) return false;
+  setJsonSafe(KEY_STUDY_BOOKMARKS, []);
+  return true;
+}
+function isQuestionInStudyLaterSet(item) {
   const id = normalizeQuestionId(item?.id);
   if (!id) return false;
-  return readStudyBookmarks().some((row) => row.id === id);
+  return (getStudyLaterSet()?.items || []).some((row) => normalizeQuestionId(row?.id) === id);
 }
-function syncBookmarkButton() {
+function syncStudyLaterButton() {
   const btn = $('btn-bookmark');
   if (!btn) return;
-  const hasItem = !!normalizeStudyBookmarkItem(App.curItem || {});
-  const saved = hasItem && isQuestionBookmarked(App.curItem);
+  const hasItem = !!normalizeStudyLaterItem(App.curItem || {});
+  const saved = hasItem && isQuestionInStudyLaterSet(App.curItem);
   btn.disabled = !hasItem;
-  btn.textContent = saved ? 'Saved for later' : 'Study later';
+  btn.textContent = saved ? 'Saved to Study Later set' : 'Save to Study Later set';
   btn.classList.toggle('is-saved', !!saved);
 }
-function saveQuestionBookmark(item, source = 'practice') {
-  const safe = normalizeStudyBookmarkItem(item);
+function saveQuestionToStudyLaterSet(item) {
+  const safe = normalizeStudyLaterItem(item);
   if (!safe) {
     toast('No question is available to save.');
     return false;
   }
-  const rows = readStudyBookmarks();
-  const existingIndex = rows.findIndex((row) => row.id === safe.id);
-  const next = { ...safe, savedAt: new Date().toISOString(), source };
-  if (existingIndex >= 0) rows.splice(existingIndex, 1);
-  rows.unshift(next);
-  writeStudyBookmarks(rows);
-  syncBookmarkButton();
-  renderStudyBookmarks();
+  const set = ensureStudyLaterSet();
+  const existingIndex = set.items.findIndex((row) => normalizeQuestionId(row?.id) === safe.id);
+  if (existingIndex >= 0) set.items.splice(existingIndex, 1);
+  set.items.unshift({ ...safe, savedAt: new Date().toISOString() });
+  set.items = set.items.slice(0, 200);
+  if (!saveLibrarySafe('save to Study Later set')) {
+    toast('Study Later could not be saved because local storage is full.');
+    return false;
+  }
+  syncStudyLaterButton();
+  renderLibrarySelectors();
   if ($('view-library')?.classList.contains('active')) renderLibraryTable();
   playFeedbackCue('mastered', { sound: false });
-  toast(existingIndex >= 0 ? 'Moved to the top of Study Later.' : 'Saved to Study Later.');
+  toast(existingIndex >= 0 ? 'Moved to the top of the Study Later set.' : 'Saved to the Study Later set.');
   return true;
 }
-function removeStudyBookmark(id) {
+function removeQuestionFromStudyLaterSet(id) {
   const qid = normalizeQuestionId(id);
   if (!qid) return;
-  writeStudyBookmarks(readStudyBookmarks().filter((row) => row.id !== qid));
-  syncBookmarkButton();
-  renderStudyBookmarks();
-  if ($('view-library')?.classList.contains('active')) renderLibraryTable();
-  toast('Removed from Study Later.');
-}
-function startBookmarkedStudySession() {
-  const items = readStudyBookmarks();
-  if (!items.length) {
-    toast('Study Later is empty.');
+  const set = getStudyLaterSet();
+  if (!set) return;
+  set.items = set.items.filter((row) => normalizeQuestionId(row?.id) !== qid);
+  if (!saveLibrarySafe('remove from Study Later set')) {
+    toast('The Study Later set could not be updated because local storage is full.');
     return;
   }
-  setPracticeWrongBank(false);
-  App.sessionOverrideItems = items.map((item) => ({
-    id: item.id,
-    question: item.question,
-    answer: item.answer,
-    aliases: item.aliases || [],
-    meta: item.meta || {}
-  }));
-  App.size = 'all';
-  startSession();
-}
-function renderStudyBookmarks() {
-  const countEl = $('study-bookmark-count');
-  const listEl = $('study-bookmark-list');
-  if (!listEl) return;
-  const rows = readStudyBookmarks();
-  if (countEl) countEl.textContent = String(rows.length);
-  if (!rows.length) {
-    listEl.innerHTML = '<p class="muted">Save any confusing question and it will wait here, even if you answered it correctly.</p>';
-    return;
-  }
-  listEl.innerHTML = rows.slice(0, 8).map((item) => {
-    const meta = [
-      item.meta?.category || '',
-      item.meta?.era ? getEraName(item.meta.era) : '',
-      item.savedAt ? `Saved ${new Date(item.savedAt).toLocaleDateString()}` : ''
-    ].filter(Boolean).join(' • ');
-    return `
-      <div class="study-bookmark-row">
-        <div class="item-copy">
-          <span class="item-title">${escHtml(item.answer)}</span>
-          <span class="item-meta">${escHtml(meta || 'Saved question')}</span>
-          <span class="study-bookmark-question">${escHtml(item.question)}</span>
-        </div>
-        <button class="btn ghost" type="button" data-study-remove="${escHtml(item.id)}">Remove</button>
-      </div>
-    `;
-  }).join('');
-  listEl.querySelectorAll('[data-study-remove]').forEach((button) => {
-    button.addEventListener('click', () => removeStudyBookmark(button.dataset.studyRemove));
-  });
+  syncStudyLaterButton();
+  renderLibrarySelectors();
+  renderLibraryTable();
+  toast('Removed from the Study Later set.');
 }
 
 function remediationItemKey(item) {
@@ -1037,45 +1028,6 @@ function applyPendingRemediationPack() {
   return startRemediationPack(pending, { clearPending: true });
 }
 
-function buildLastSessionRemediationPayload() {
-  const record = safeReadJson(KEY_SESS, [])[0];
-  if (!record) return null;
-  const missed = sessionMissedItems(record);
-  if (!missed.length) return null;
-  return {
-    title: 'Practice Hub remediation pack',
-    source: 'practice-hub',
-    missedItems: missed,
-    sessionRecord: record,
-    createdAt: Date.now()
-  };
-}
-
-function renderReviewRemediationCard() {
-  const el = $('review-remediation-card');
-  if (!el) return;
-  const payload = buildLastSessionRemediationPayload();
-  const pack = payload ? buildRemediationPack(payload) : null;
-  if (!pack) {
-    el.innerHTML = `
-      <div class="empty-kicker">Remediation pack</div>
-      <p class="empty-copy">Miss a question in a session to create a targeted mini drill from the same era, same region, related answers, and your wrong bank.</p>
-    `;
-    return;
-  }
-  el.innerHTML = `
-    <div class="remediation-pack-copy">
-      <div class="empty-kicker">Remediation pack</div>
-      <h3>${escHtml(pack.items.length)} question mini drill</h3>
-      <p class="empty-copy">${escHtml(pack.missedCount)} missed item${pack.missedCount === 1 ? '' : 's'} anchored this pack${pack.focusSummary ? ` around ${escHtml(pack.focusSummary)}` : ''}. Includes ${escHtml(String(pack.relatedCount))} related and ${escHtml(String(pack.wrongBankCount))} wrong-bank item${pack.wrongBankCount === 1 ? '' : 's'}.</p>
-    </div>
-    <button id="btn-review-remediation" class="btn pri" type="button">Generate mini drill</button>
-  `;
-  $('btn-review-remediation')?.addEventListener('click', () => {
-    startRemediationPack(buildLastSessionRemediationPayload());
-  });
-}
-
 function topicFromQuestion(q) {
   const t = String(q || '').toLowerCase();
   if (/(battle|war|campaign|siege|army|navy|admiral|military)/.test(t)) return 'Military';
@@ -1287,7 +1239,6 @@ function renderCoachCard(coach) {
 
 const CoachNotebook = { records: [], loaded: false };
 let CoachFocusSuggestions = [];
-let ReviewCoachFocusSuggestions = [];
 const COACH_CHAT_STARTERS = [
   { label: 'Explain a miss', prompt: 'Explain the most important missed topic from my recent practice.' },
   { label: 'Diagnose mistake', prompt: 'Diagnose the pattern behind my latest mistake and what clue I should have noticed.' },
@@ -3254,19 +3205,7 @@ function isCoachChatAutoSuppressed() {
 }
 
 function openCoachChat(options = {}) {
-  if (!options.auto) {
-    try { sessionStorage.removeItem(coachChatSuppressSessionKey()); } catch { /* noop */ }
-  }
-  CoachChat.suggestedReason = String(options.reason || 'manual').trim() || 'manual';
-  CoachChat.open = true;
-  navSet('nav-coach');
-  SHOW('view-coach');
-  flushCoachPending();
-  renderCoachChatChrome();
-  void refreshCoachNotebook(false);
-  if (options.focusInput !== false) {
-    setTimeout(() => $('coach-chat-input')?.focus(), 80);
-  }
+  return false;
 }
 
 function closeCoachChat({ manual = true } = {}) {
@@ -3315,7 +3254,7 @@ async function performCoachChatAction(action = {}) {
       reviewMissedNow();
       return;
     case 'open_ai_notebook':
-      await openCoachNotebook(getCoachChatRecentIncorrect()?.attemptId || '');
+      toast('Open Mistake Notebook from the student dashboard.');
       return;
     case 'apply_top_focus':
       if (!focus) { toast('No notebook focus is ready yet'); return; }
@@ -3508,7 +3447,6 @@ function buildCoachFocusSuggestions(records = CoachNotebook.records) {
 
 function coachFocusCardHtml(focus, index, actionClass) {
   if (!focus) return '';
-  const scope = actionClass === 'coach-review-focus' ? 'review' : 'setup';
   return `
     <div class="coach-focus-card">
       <div class="coach-focus-head">
@@ -3525,9 +3463,8 @@ function coachFocusCardHtml(focus, index, actionClass) {
       </div>
       ${focus.topic ? `<div class="coach-focus-study-area"><b>Recommended study area:</b> ${escHtml(focus.topic)}</div>` : ''}
       <div class="coach-focus-actions">
-        <button class="btn pri ${actionClass}" type="button" data-focus-index="${index}" data-focus-scope="${scope}">Apply Focus</button>
-        <button class="btn ghost coach-generate-focus" type="button" data-focus-index="${index}" data-focus-scope="${scope}">Create Targeted Drill</button>
-        ${focus.attemptId ? `<button class="btn ghost coach-jump-note" type="button" data-attempt="${escHtml(focus.attemptId)}">Open Lesson</button>` : `<button class="btn ghost coach-open-notebook" type="button">Open Mistake Notebook</button>`}
+        <button class="btn pri ${actionClass}" type="button" data-focus-index="${index}">Apply Focus</button>
+        <button class="btn ghost coach-generate-focus" type="button" data-focus-index="${index}">Create Targeted Drill</button>
       </div>
     </div>
   `;
@@ -3790,7 +3727,6 @@ async function clearCoachNotebook() {
   setCoachPending([]);
   clearPendingCoachDrill();
   renderCoachNotebook();
-  renderSessionCoachDebrief();
 
   let cloudCleared = false;
   if (CoachSync.enabled && window.supabaseClient) {
@@ -3814,32 +3750,6 @@ async function clearCoachNotebook() {
   toast(cloudCleared ? 'Mistake notebook cleared locally and in the cloud' : 'Mistake notebook cleared on this device');
 }
 
-function renderSessionCoachDebrief() {
-  const focusWrap = $('review-coach-focuses');
-  const noteEl = $('review-coach-note');
-  const applyBtn = $('btn-review-coach-apply');
-  if (!focusWrap || !noteEl || !applyBtn) return;
-  const lastSessionId = String(JSON.parse(localStorage.getItem(KEY_SESS) || '[]')?.[0]?.sid || '').trim();
-  const sessionRecords = lastSessionId
-    ? (CoachNotebook.records || []).filter(r => String(r?.client_session_id || '') === lastSessionId)
-    : [];
-  const sessionFocuses = buildCoachFocusSuggestions(sessionRecords);
-  const source = sessionFocuses.length ? sessionFocuses : CoachFocusSuggestions.slice(0, 2);
-  ReviewCoachFocusSuggestions = source.slice(0, 2);
-  applyBtn.disabled = !source.length;
-  if (!source.length) {
-    focusWrap.innerHTML = `<div class="coach-empty">Finish a session to load coach notes.</div>`;
-    noteEl.textContent = 'Finish a session to load coach notes.';
-    ReviewCoachFocusSuggestions = [];
-    return;
-  }
-  const lead = source[0];
-  noteEl.textContent = sessionFocuses.length
-    ? `Top session focus: ${lead.title}.`
-    : `Top coach focus: ${lead.title}.`;
-  focusWrap.innerHTML = ReviewCoachFocusSuggestions.map((focus, index) => coachFocusCardHtml(focus, index, 'coach-review-focus')).join('');
-}
-
 function coachFocusFromAttemptId(attemptId) {
   const id = String(attemptId || '').trim();
   if (!id) return null;
@@ -3857,27 +3767,6 @@ function coachFocusFromAttemptId(attemptId) {
     reference_answer: String(record?.expected_answer || '').trim(),
     wrong_answer: String(record?.user_answer || '').trim()
   };
-}
-
-async function showCoachView(forceCloud = true) {
-  navSet('nav-coach');
-  SHOW('view-coach');
-  CoachChat.open = true;
-  flushCoachPending();
-  renderCoachChatChrome();
-  await refreshCoachNotebook(forceCloud);
-}
-
-async function openCoachNotebook(attemptId = '') {
-  await showCoachView(true);
-  if (!attemptId) return;
-  setTimeout(() => {
-    const target = Array.from(document.querySelectorAll('.coach-note'))
-      .find(el => String(el.dataset.attempt || '') === String(attemptId));
-    const details = target?.querySelector('details');
-    if (details) details.open = true;
-    target?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  }, 40);
 }
 
 // Detect assignment launch early so init can avoid overriding the assignment set.
@@ -5153,7 +5042,7 @@ function startSession() {
   const bt = $('buzz-time'); if (bt) bt.textContent = '—';
   unlockPracticeAfterGrade();
   const cp = $('btn-copy-answer'); if (cp) cp.disabled = true;
-  syncBookmarkButton();
+  syncStudyLaterButton();
   if (App._cdIv) { clearInterval(App._cdIv); App._cdIv = null; }
 
   if (practicingWrongBank) {
@@ -5200,7 +5089,7 @@ async function nextQuestion(first = false) {
   updateHeader();
 
   const item = App.pool[App.order[App.i]]; App.curItem = item; App.phase = 'reading';
-  syncBookmarkButton();
+  syncStudyLaterButton();
   const st = $('status'); if (st) st.textContent = Settings.strict ? 'Reading… (strict mode)' : 'Reading…';
   setPracticeButtons({ buzz: true, next: true, right: false, wrong: false, replay: false, alias: false, flag: true });
   const nx = $('btn-next'); if (nx) nx.disabled = true;
@@ -5292,8 +5181,8 @@ function finishSession() {
   const st = $('status'); if (st) st.textContent = `Complete — ${correct}/${total} (${acc}%).`;
   setPracticeButtons({ buzz: false, next: false, right: false, wrong: false, replay: false, alias: false, flag: false });
   pushSession(total, correct, durSec, App.sessionBuzzTimes, App.pool, App.order, App.resultsCorrect, App.sessionId);
-  syncBookmarkButton();
-  navSet('nav-review'); SHOW('view-review'); renderHistory(); renderWrongBank(); renderStudyBookmarks(); drawCharts();
+  syncStudyLaterButton();
+  navSet('nav-review'); SHOW('view-review'); renderHistory(); renderWrongBank(); drawCharts();
   void refreshCoachNotebook(false).then(() => {
     renderCoachChatChrome();
     maybeAutoOpenCoachChat('review');
@@ -5550,7 +5439,6 @@ function renderCoachNotebook() {
   if (!rows.length) {
     listEl.innerHTML = `<div class="coach-empty">No coach lessons found.</div>`;
     renderSetupCoachGuide();
-    renderSessionCoachDebrief();
     renderCoachChatChrome();
     return;
   }
@@ -5593,7 +5481,6 @@ function renderCoachNotebook() {
     `;
   }).join('');
   renderSetupCoachGuide();
-  renderSessionCoachDebrief();
   renderCoachChatChrome();
 }
 
@@ -5720,7 +5607,6 @@ function renderHistory() {
   bindRepeatButtons(tb);
   renderMobileRecordList('history-mobile-list', mobileCards, 'No history yet', 'Complete a drill to store a replayable session here.');
   bindRepeatButtons($('history-mobile-list'));
-  renderReviewRemediationCard();
 }
 
 function repeatSession(ts) {
@@ -5817,7 +5703,7 @@ function exportWrong() {
 }
 
 /********************* Charts (SVG mini) *********************/
-function drawCharts() { drawBuzzChart(); drawAccByCat(); }
+function drawCharts() { drawAccByEra(); drawAccByCat(); }
 function svgEmpty(msg) { return `<text x='50%' y='50%' text-anchor='middle' dominant-baseline='middle' fill='currentColor' opacity='.55'>${msg}</text>`; }
 function barChart(vals, labels, percent = false) {
   const svgNS = 'http://www.w3.org/2000/svg'; const w = 640, h = 180, pad = 30;
@@ -5851,31 +5737,50 @@ function barChart(vals, labels, percent = false) {
   }
   svg.appendChild(g); return svg;
 }
-function drawBuzzChart() {
-  const svg = $('chart-buzz'); if (!svg) return; svg.innerHTML = '';
-  const arr = JSON.parse(localStorage.getItem(KEY_SESS) || '[]');
-  const buzz = (arr[0]?.buzz || []).filter(x => typeof x === 'number');
-  if (!buzz.length) { svg.innerHTML = svgEmpty('No buzz data'); return; }
-  const bins = [0, 0, 0, 0];
-  for (const t of buzz) { if (t < 3) bins[0]++; else if (t < 6) bins[1]++; else if (t < 9) bins[2]++; else bins[3]++; }
-  svg.appendChild(barChart(bins, ['0–3s', '3–6s', '6–9s', '9s+']));
+function latestSessionAccuracy(field) {
+  const record = safeReadJson(KEY_SESS, [])[0];
+  if (!record) return [];
+  const activeSet = getActiveSet();
+  const itemById = activeSet ? new Map(activeSet.items.map((item) => [String(item.id || ''), item])) : new Map();
+  const ids = Array.isArray(record.items) ? record.items : [];
+  const results = Array.isArray(record.results) ? record.results : [];
+  const storedMeta = Array.isArray(record.meta) ? record.meta : [];
+  const stats = new Map();
+  ids.forEach((id, index) => {
+    const meta = storedMeta[index] || itemById.get(String(id || ''))?.meta || {};
+    const key = String(meta?.[field] || '').trim();
+    if (!key) return;
+    const row = stats.get(key) || { total: 0, correct: 0 };
+    row.total += 1;
+    if (results[index]) row.correct += 1;
+    stats.set(key, row);
+  });
+  return Array.from(stats, ([key, row]) => ({
+    key,
+    accuracy: Math.round(row.correct * 100 / Math.max(1, row.total))
+  }));
+}
+function drawAccByEra() {
+  const svg = $('chart-acc-era'); if (!svg) return; svg.innerHTML = '';
+  const rowsByEra = new Map(latestSessionAccuracy('era').map((row) => [row.key, row]));
+  const rows = sortEraCodes(Array.from(rowsByEra.keys())).map((era) => rowsByEra.get(era));
+  if (!rows.length) { svg.innerHTML = svgEmpty('No era data'); return; }
+  const chartLabel = (era) => ({
+    '01': 'Pre-600 BCE',
+    '02': '600 BCE–600',
+    '03': '600–1450',
+    '04': '1450–1750',
+    '05': '1750–1914',
+    '06': '1914–1991',
+    '07': '1991–Now'
+  })[coachEraToCode(era)] || getEraName(era);
+  svg.appendChild(barChart(rows.map((row) => row.accuracy), rows.map((row) => chartLabel(row.key)), true));
 }
 function drawAccByCat() {
   const svg = $('chart-acc-cat'); if (!svg) return; svg.innerHTML = '';
-  const arr = JSON.parse(localStorage.getItem(KEY_SESS) || '[]'); if (!arr[0]) { svg.innerHTML = svgEmpty('No session'); return; }
-  const set = getActiveSet(); const id2item = set ? new Map(set.items.map(it => [it.id, it])) : new Map();
-  const ids = arr[0].items || []; const results = arr[0].results || [];
-  if (!ids.length || !set) { svg.innerHTML = svgEmpty('No regions'); return; }
-  const catStats = {};
-  ids.forEach((id, idx) => {
-    const it = id2item.get(id); if (!it) return;
-    const cat = (it.meta?.category) || '—';
-    if (!catStats[cat]) catStats[cat] = { n: 0, correct: 0 };
-    catStats[cat].n++; if (results[idx]) catStats[cat].correct++;
-  });
-  const cats = Object.keys(catStats); if (!cats.length) { svg.innerHTML = svgEmpty('No regions'); return; }
-  const vals = cats.map(c => Math.round(catStats[c].correct * 100 / (catStats[c].n || 1)));
-  svg.appendChild(barChart(vals, cats, true));
+  const rows = latestSessionAccuracy('category').sort((a, b) => a.key.localeCompare(b.key));
+  if (!rows.length) { svg.innerHTML = svgEmpty('No region data'); return; }
+  svg.appendChild(barChart(rows.map((row) => row.accuracy), rows.map((row) => row.key), true));
 }
 
 /********************* Event wiring *********************/
@@ -5912,15 +5817,9 @@ $('nav-review')?.addEventListener('click', async (e) => {
   SHOW('view-review');
   renderHistory();
   renderWrongBank();
-  renderStudyBookmarks();
   drawCharts();
   flushCoachPending();
   await refreshCoachNotebook(true);
-});
-$('nav-coach')?.addEventListener('click', async (e) => {
-  e.preventDefault();
-  playFeedbackCue('nav');
-  await showCoachView(true);
 });
 $('nav-library')?.addEventListener('click', (e) => { e.preventDefault(); playFeedbackCue('nav'); navSet('nav-library'); SHOW('view-library'); renderLibraryTable(); });
 window.addEventListener('resize', () => { schedulePracticeViewportFit(); });
@@ -6070,7 +5969,7 @@ $('btn-alias')?.addEventListener('click', () => {
   if (!App.curItem) return; const v = prompt('Add an alias (accepted form) for this answer:', '');
   if (!v) return; App.curItem.aliases = App.curItem.aliases || []; App.curItem.aliases.push(v.trim()); playFeedbackCue('mastered'); toast('Alias added (local)');
 });
-$('btn-bookmark')?.addEventListener('click', () => saveQuestionBookmark(App.curItem, 'practice'));
+$('btn-bookmark')?.addEventListener('click', () => saveQuestionToStudyLaterSet(App.curItem));
 $('btn-flag')?.addEventListener('click', () => { playFeedbackCue('tap', { sound: false }); toast('Flag noted (local only)'); });
 
 // Review actions
@@ -6084,7 +5983,6 @@ $('btn-clear-wrong')?.addEventListener('click', () => {
 });
 $('btn-review-misses')?.addEventListener('click', reviewMissedNow);
 $('btn-practice-due')?.addEventListener('click', reviewMissedNow);
-$('btn-practice-bookmarks')?.addEventListener('click', startBookmarkedStudySession);
 $('wrong-refresh')?.addEventListener('click', async () => {
   await initWrongBankSync();
   renderWrongBank();
@@ -6096,11 +5994,6 @@ $('coach-refresh')?.addEventListener('click', async () => {
   flushCoachPending();
   await refreshCoachNotebook(true);
 });
-$('btn-review-coach-apply')?.addEventListener('click', () => {
-  const focus = ReviewCoachFocusSuggestions[0] || CoachFocusSuggestions[0] || null;
-  void openCoachFocusDrill(focus, { createdFrom: 'review-top' });
-});
-$('btn-review-coach-notebook')?.addEventListener('click', () => openCoachNotebook());
 $('btn-coach-apply-top')?.addEventListener('click', () => {
   const focus = CoachFocusSuggestions[0] || null;
   void openCoachFocusDrill(focus, { createdFrom: 'notebook-top' });
@@ -6112,7 +6005,6 @@ $('btn-coach-back-review')?.addEventListener('click', async () => {
   SHOW('view-review');
   renderHistory();
   renderWrongBank();
-  renderStudyBookmarks();
   drawCharts();
   flushCoachPending();
   await refreshCoachNotebook(true);
@@ -6139,27 +6031,11 @@ document.addEventListener('click', (e) => {
     void openCoachFocusDrill(focus, { createdFrom: 'coach-card' });
     return;
   }
-  const reviewApplyBtn = e.target.closest('.coach-review-focus');
-  if (reviewApplyBtn) {
-    const focus = ReviewCoachFocusSuggestions[Number(reviewApplyBtn.dataset.focusIndex) || 0] || null;
-    void openCoachFocusDrill(focus, { createdFrom: 'review-card' });
-    return;
-  }
   const generateBtn = e.target.closest('.coach-generate-focus');
   if (generateBtn) {
-    const scope = String(generateBtn.dataset.focusScope || 'setup').trim();
-    const source = scope === 'review' ? ReviewCoachFocusSuggestions : CoachFocusSuggestions;
-    const focus = source[Number(generateBtn.dataset.focusIndex) || 0] || null;
+    const focus = CoachFocusSuggestions[Number(generateBtn.dataset.focusIndex) || 0] || null;
     void startGeneratedFocusDrill(focus, { count: 6, createdFrom: 'coach-card-generate' });
     return;
-  }
-  const noteBtn = e.target.closest('.coach-jump-note');
-  if (noteBtn) {
-    openCoachNotebook(noteBtn.dataset.attempt || '');
-    return;
-  }
-  if (e.target.closest('.coach-open-notebook')) {
-    openCoachNotebook();
   }
 });
 
@@ -6319,12 +6195,9 @@ document.addEventListener('click', (e) => {
     if (item) openLibraryQuestionModal(item, index);
     return;
   }
-  const bookmarkButton = e.target.closest?.('.study-bookmark-save');
-  if (bookmarkButton) {
-    const set = getActiveSet();
-    const index = Number(bookmarkButton.dataset.libraryIndex);
-    const item = Number.isInteger(index) ? set?.items?.[index] : null;
-    if (item) saveQuestionBookmark(item, 'library');
+  const studyLaterRemoveButton = e.target.closest?.('[data-study-later-remove]');
+  if (studyLaterRemoveButton) {
+    removeQuestionFromStudyLaterSet(studyLaterRemoveButton.dataset.studyLaterRemove);
     return;
   }
   if (e.target.closest?.('.library-question-modal-close') || e.target.id === 'library-question-modal') {
@@ -6346,14 +6219,17 @@ function renderLibraryTable() {
   const q = (($('lib-search') && $('lib-search').value) || '').toLowerCase();
   const fc = ($('lib-filter-cat') && $('lib-filter-cat').value) || '';
   const fe = ($('lib-filter-era') && $('lib-filter-era').value) || '';
+  const isStudyLaterSet = String(set.id || '') === STUDY_LATER_SET_ID;
   const mobileCards = [];
   set.items.forEach((it, idx) => {
     if (q && !it.answer.toLowerCase().includes(q) && !it.question.toLowerCase().includes(q)) return;
     if (fc && (it.meta?.category || '') !== fc) return;
     if (fe && (it.meta?.era || '') !== fe) return;
     const tr = document.createElement('tr');
-    const saved = isQuestionBookmarked(it);
-    tr.innerHTML = `<td class='stat'>${idx + 1}</td><td><button class="library-answer-button" type="button" data-library-index="${idx}">${escHtml(it.answer)}</button></td><td>${escHtml((it.aliases || []).slice(0, 3).join(', '))}</td><td>${escHtml(it.meta?.category || '')}</td><td>${escHtml(getEraName(it.meta?.era || ''))}</td><td>${escHtml(it.meta?.source || '')}</td><td><button class="btn ghost study-bookmark-save ${saved ? 'is-saved' : ''}" type="button" data-library-index="${idx}">${saved ? 'Saved' : 'Study later'}</button></td>`;
+    const removeAction = isStudyLaterSet
+      ? `<button class="btn ghost" type="button" data-study-later-remove="${escHtml(it.id)}">Remove</button>`
+      : '<span class="muted">—</span>';
+    tr.innerHTML = `<td class='stat'>${idx + 1}</td><td><button class="library-answer-button" type="button" data-library-index="${idx}">${escHtml(it.answer)}</button></td><td>${escHtml((it.aliases || []).slice(0, 3).join(', '))}</td><td>${escHtml(it.meta?.category || '')}</td><td>${escHtml(getEraName(it.meta?.era || ''))}</td><td>${escHtml(it.meta?.source || '')}</td><td>${removeAction}</td>`;
     tb.appendChild(tr);
     mobileCards.push(mobileRecordCard({
       eyebrow: `Question ${idx + 1}`,
@@ -6366,7 +6242,7 @@ function renderLibraryTable() {
         (it.aliases || []).length ? `Aliases: ${escHtml((it.aliases || []).slice(0, 3).join(', '))}` : 'Aliases: —',
         it.meta?.source ? `Source: ${escHtml(it.meta.source)}` : ''
       ],
-      actionHtml: `<button class="btn ghost library-answer-button" type="button" data-library-index="${idx}">View question</button><button class="btn ghost study-bookmark-save ${saved ? 'is-saved' : ''}" type="button" data-library-index="${idx}">${saved ? 'Saved' : 'Study later'}</button>`
+      actionHtml: `<button class="btn ghost library-answer-button" type="button" data-library-index="${idx}">View question</button>${isStudyLaterSet ? `<button class="btn ghost" type="button" data-study-later-remove="${escHtml(it.id)}">Remove</button>` : ''}`
     }));
   });
   renderMobileRecordList('lib-mobile-list', mobileCards, 'No questions match', 'Try broadening the search term or clearing one of the active filters.');
@@ -6594,7 +6470,9 @@ async function tryFetchDefault(force = false) {
   loadCoachChatUiPrefs();
   syncAccountSettingsToLegacyStorage();
   saveCoachChatUiPrefs();
-  loadAll(); populateVoices();
+  loadAll();
+  migrateLegacyStudyBookmarks();
+  populateVoices();
   await applyPendingAssignmentLaunch();
   migrateLibrarySources();
   const rr = $('rate'); if (rr) rr.value = Settings.rate || 1.0;

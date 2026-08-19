@@ -2834,7 +2834,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         return normalizeAccountSettings({
             ...accountSettings,
             student_dashboard_default_tab: document.getElementById('acc-student-default-tab')?.value,
-            practice_hub_auto_open: !!document.getElementById('acc-practice-hub-auto-open')?.checked,
+            practice_hub_auto_open: false,
             assistant_thinking_enabled: !!document.getElementById('acc-assistant-thinking')?.checked,
             assistant_show_starters: !!document.getElementById('acc-assistant-starters')?.checked,
             assistant_response_detail: document.getElementById('acc-assistant-response-detail')?.value,
@@ -2864,15 +2864,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                 ? 'Compact responses keep Coach answers shorter with fewer sections and quick actions.'
                 : 'Detailed responses include richer sections and follow-up prompts.';
         }
-        syncAccountToggle({
-            wrapId: 'acc-setting-practice-hub-auto-open',
-            inputId: 'acc-practice-hub-auto-open',
-            stateId: 'acc-practice-hub-auto-open-state',
-            hintId: 'acc-practice-hub-auto-open-hint',
-            enabled: accountSettings.practice_hub_auto_open,
-            enabledHint: 'Coach opens automatically when you enter Practice Hub. You can still launch it manually anytime.',
-            disabledHint: 'Coach stays closed when you enter Practice Hub. You can still launch it manually anytime.'
-        });
         syncAccountToggle({
             wrapId: 'acc-setting-assistant-thinking',
             inputId: 'acc-assistant-thinking',

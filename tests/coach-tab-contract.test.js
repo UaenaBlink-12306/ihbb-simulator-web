@@ -5,7 +5,7 @@ const path = require('node:path');
 
 const root = path.resolve(__dirname, '..');
 const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
-const coachPages = ['index.html', 'teacher.html'];
+const coachPages = ['teacher.html'];
 
 test('remaining Coach experiences stay full-tab surfaces', () => {
   for (const page of coachPages) {
@@ -18,16 +18,18 @@ test('remaining Coach experiences stay full-tab surfaces', () => {
   }
 });
 
-test('student dashboard exposes the Mistake Notebook while teacher Coach remains available', () => {
+test('dashboard Coach surfaces remain while the Practice Hub Coach tab is removed', () => {
   const student = read('student.html');
   const teacher = read('teacher.html');
+  const practice = read('index.html');
   assert.match(student, /<button class="dash-tab coach-direct-tab"[^>]+data-tab="coach"[^>]*>Mistake Notebook<\/button>/);
   assert.match(student, /<section id="tab-coach" class="view">/);
   assert.match(student, /data-notebook-surface="primary"/);
   assert.match(teacher, /<button class="dash-tab coach-direct-tab"[^>]+data-tab="coach"[^>]*>Coach<\/button>/);
   assert.match(teacher, /<section id="tab-coach" class="view">/);
-  assert.match(read('index.html'), /id="nav-coach"[^>]*>Coach<\/a>/);
-  assert.match(read('index.html'), /<section id="view-coach" class="view">/);
+  assert.doesNotMatch(practice, /id="nav-coach"/);
+  assert.doesNotMatch(practice, /id="view-coach"/);
+  assert.doesNotMatch(practice, /<script src="coach-tab-ui\.js"/);
 });
 
 test('student chat is removed and the future Coach rail opens from a top-right drawer', () => {
@@ -58,6 +60,23 @@ test('remaining Coach tabs remove advanced drawer controls and keep one simple c
     assert.equal((html.match(/id="coach-chat-form"/g) || []).length, 1, `${page} should have one Coach composer`);
     assert.equal((html.match(/id="coach-chat-input"/g) || []).length, 1, `${page} should have one Coach input`);
   }
+});
+
+test('Practice Hub review is simplified and Study Later is an automatic set', () => {
+  const html = read('index.html');
+  const practice = read('app.js');
+  assert.match(html, /id="nav-session">Advanced Options<\/a>/);
+  assert.doesNotMatch(html, />Top Focus</);
+  assert.doesNotMatch(html, /id="review-remediation-card"/);
+  assert.doesNotMatch(html, /<h2 class="card-title">Study Later<\/h2>/);
+  assert.match(html, /id="chart-acc-era"[^>]+aria-label="Accuracy by era"/);
+  assert.ok(html.indexOf('<h2 class="card-title">History</h2>') < html.indexOf('<h2 class="card-title">Wrong bank</h2>'));
+  assert.match(practice, /const STUDY_LATER_SET_ID = 'study_later'/);
+  assert.match(practice, /function migrateLegacyStudyBookmarks\(\)/);
+  assert.match(practice, /function saveQuestionToStudyLaterSet\(item\)/);
+  assert.match(practice, /function removeQuestionFromStudyLaterSet\(id\)/);
+  assert.doesNotMatch(practice, /study-bookmark-save/);
+  assert.doesNotMatch(read('student.html'), /id="acc-setting-practice-hub-auto-open"/);
 });
 
 test('shared Coach UI supports the simplified interaction contract', () => {
