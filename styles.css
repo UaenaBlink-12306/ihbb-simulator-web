@@ -6864,7 +6864,7 @@ input[type=datetime-local]:focus {
   }
 
   #view-setup {
-    padding-bottom: 170px;
+    padding-bottom: 160px;
   }
 
   .setup-mobile-dock {
@@ -6876,8 +6876,8 @@ input[type=datetime-local]:focus {
     display: flex;
     flex-direction: column;
     gap: 0;
-    padding: 16px;
-    border-radius: 24px;
+    padding: 12px;
+    border-radius: 20px;
     border: 1px solid rgba(255, 255, 255, 0.72);
     background:
       linear-gradient(135deg, rgba(31, 111, 255, 0.92), rgba(13, 154, 131, 0.8)),
@@ -6889,9 +6889,24 @@ input[type=datetime-local]:focus {
 
   .setup-mobile-dock .setup-mobile-mode-pill {
     align-self: flex-start;
+    padding: 6px 8px;
     border-color: rgba(255, 255, 255, 0.24);
     background: rgba(255, 255, 255, 0.14);
     color: #f7fbff;
+    font-size: 11px;
+  }
+
+  .setup-mobile-dock-head {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    gap: 8px;
+  }
+
+  .setup-mobile-dock-summary {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .setup-mobile-dock .btn.ghost {
@@ -6902,15 +6917,20 @@ input[type=datetime-local]:focus {
   }
 
   .setup-mobile-dock-actions {
-    gap: 10px;
+    gap: 0;
     flex-direction: row;
+    margin-top: 10px;
+  }
+
+  #startLastDock {
+    display: none;
   }
 
   .setup-mobile-dock-actions .btn {
-    width: auto;
+    width: 100%;
     flex: 1 1 0;
-    min-height: 54px;
-    padding: 14px 16px;
+    min-height: 48px;
+    padding: 11px 16px;
     font-size: 15px;
   }
 
@@ -9050,6 +9070,7 @@ body.coach-preview-open {
   .auth-stage,
   .profile-layout,
   .review-shell,
+  .setup-shell,
   .dashboard-split,
   .teacher-builder-shell,
   .admin-console-grid,

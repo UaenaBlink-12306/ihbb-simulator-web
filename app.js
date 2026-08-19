@@ -202,6 +202,8 @@ const Settings = {
   cueTicks: true, cueBeep: true, haptics: true
 };
 const Library = { sets: [], activeSetId: null };
+const SAVED_QUESTION_SET_PREFIX = 'saved-set:';
+const SavedQuestionSets = { loading: false, loaded: false, error: '' };
 let Presets = {};
 let CurrentProfileRole = '';
 let CurrentAccountSettings = null;
@@ -4015,24 +4017,62 @@ function saveLibrary() {
 function saveSettings() { localStorage.setItem(KEY_SETTINGS, JSON.stringify(Settings)); }
 function savePresets() { localStorage.setItem(KEY_PRESETS, JSON.stringify(Presets)); }
 
+function questionSetGroupLabel(set) {
+  if (set?.savedSet) return 'My saved sets';
+  if (String(set?.id || '') === STUDY_LATER_SET_ID) return 'Study Later';
+  if (set?.volatile || /IHBB Questions/i.test(String(set?.name || ''))) return 'IHBB question bank';
+  return 'Other sets';
+}
+
+function questionSetTypeLabel(set) {
+  if (set?.savedSet) return 'My saved set';
+  if (String(set?.id || '') === STUDY_LATER_SET_ID) return 'Study Later';
+  if (set?.volatile || /IHBB Questions/i.test(String(set?.name || ''))) return 'IHBB question bank';
+  return 'Saved on this device';
+}
+
+function fillQuestionSetSelector(select) {
+  if (!select) return;
+  select.innerHTML = '';
+  const groupOrder = ['IHBB question bank', 'My saved sets', 'Study Later', 'Other sets'];
+  const groups = new Map(groupOrder.map(label => [label, []]));
+  for (const set of Library.sets) {
+    const label = questionSetGroupLabel(set);
+    if (!groups.has(label)) groups.set(label, []);
+    groups.get(label).push(set);
+  }
+  for (const [label, sets] of groups) {
+    if (!sets.length) continue;
+    const group = document.createElement('optgroup');
+    group.label = label;
+    for (const set of sets) {
+      const option = document.createElement('option');
+      option.value = set.id;
+      option.textContent = set.name;
+      group.appendChild(option);
+    }
+    select.appendChild(group);
+  }
+}
+
 function renderLibrarySelectors() {
   const sel1 = $('qs-picker'); const sel2 = $('lib-set-sel'); if (!sel1 || !sel2) return;
-  sel1.innerHTML = ''; sel2.innerHTML = '';
   if (!Library.sets.length) {
-    const o = document.createElement('option'); o.value = ''; o.textContent = '(no sets — run build_db.py or import)';
+    sel1.innerHTML = ''; sel2.innerHTML = '';
+    const o = document.createElement('option'); o.value = ''; o.textContent = 'No question sets available';
     sel1.appendChild(o); sel2.appendChild(o.cloneNode(true));
-    const qm = $('qs-meta'); if (qm) qm.textContent = 'Run build_db.py to generate questions.json';
+    const qm = $('qs-meta'); if (qm) qm.textContent = SavedQuestionSets.loading ? 'Loading your question sets…' : 'Question sets are unavailable right now.';
     const lc = $('lib-count'); if (lc) lc.textContent = '0';
     const lca = $('lib-cats'); if (lca) lca.textContent = '—';
     const le = $('lib-eras'); if (le) le.textContent = '—';
     updateSetupOverview();
     return;
   }
-  for (const s of Library.sets) {
-    const o = document.createElement('option'); o.value = s.id; o.textContent = s.name;
-    sel1.appendChild(o); sel2.appendChild(o.cloneNode(true));
+  fillQuestionSetSelector(sel1);
+  fillQuestionSetSelector(sel2);
+  if (!Library.sets.some(set => set.id === Library.activeSetId)) {
+    Library.activeSetId = findPrimaryQuestionSet()?.id || Library.sets[0].id;
   }
-  if (!Library.activeSetId) Library.activeSetId = Library.sets[0].id;
   sel1.value = Library.activeSetId; sel2.value = Library.activeSetId;
   updateSetMeta();
 }
@@ -4040,7 +4080,10 @@ function getActiveSet() { return Library.sets.find(s => s.id === Library.activeS
 
 function updateSetMeta() {
   const set = getActiveSet();
-  const qm = $('qs-meta'); if (qm) qm.textContent = set ? `Items: ${set.items.length}` : '—';
+  const qm = $('qs-meta');
+  if (qm) qm.textContent = set
+    ? `${set.items.length} question${set.items.length === 1 ? '' : 's'} • ${questionSetTypeLabel(set)}`
+    : (SavedQuestionSets.loading ? 'Loading your question sets…' : 'Choose a question set to begin.');
   const lc = $('lib-count'); if (lc) lc.textContent = set ? String(set.items.length) : '0';
   const cats = set ? [...new Set(set.items.map(it => it.meta?.category || '').filter(Boolean))] : [];
   const eras = set ? sortEraCodes([...new Set(set.items.map(it => it.meta?.era || '').filter(Boolean))]) : [];
@@ -4070,6 +4113,58 @@ function updateSetMeta() {
   renderEraChips(eras);
   updateSetupOverview();
   if (!(ASSIGNMENT_ID && HAS_ASSIGNMENT_PAYLOAD)) applyPendingCoachGuidedDrill();
+}
+
+function normalizeSavedQuestionSet(row) {
+  let rawQuestions = row?.questions;
+  if (typeof rawQuestions === 'string') {
+    try { rawQuestions = JSON.parse(rawQuestions); } catch { rawQuestions = []; }
+  }
+  const items = normalizeJsonItems(rawQuestions);
+  if (!items.length) return null;
+  const set = {
+    id: `${SAVED_QUESTION_SET_PREFIX}${String(row.id || '').trim()}`,
+    savedSetId: String(row.id || '').trim(),
+    name: String(row.title || 'Untitled set').trim() || 'Untitled set',
+    items,
+    visibility: String(row.visibility || 'private').trim(),
+    savedSet: true,
+    volatile: true
+  };
+  ensureSetItemSources(set, inferSourceFallbackForSet(set) || 'original');
+  return set;
+}
+
+async function loadSavedQuestionSets(preferredSetId = '') {
+  if (!window.supabaseClient || !StorageScopeUserId) return [];
+  SavedQuestionSets.loading = true;
+  SavedQuestionSets.error = '';
+  try {
+    const { data, error } = await window.supabaseClient
+      .from('question_sets')
+      .select('id, title, questions, visibility, created_at')
+      .eq('creator_id', StorageScopeUserId)
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    const sets = (Array.isArray(data) ? data : []).map(normalizeSavedQuestionSet).filter(Boolean);
+    Library.sets = Library.sets.filter(set => !set?.savedSet).concat(sets);
+    SavedQuestionSets.loaded = true;
+    if (preferredSetId && Library.sets.some(set => set.id === preferredSetId)) {
+      Library.activeSetId = preferredSetId;
+    }
+    renderLibrarySelectors();
+    renderLibraryTable();
+    saveLibrarySafe('remember question set selection');
+    return sets;
+  } catch (error) {
+    SavedQuestionSets.error = String(error?.message || 'Unable to load saved sets');
+    console.warn('[Question Sets] Saved sets could not be loaded.', error);
+    toast('Your saved sets could not be loaded. The IHBB question bank is still available.');
+    return [];
+  } finally {
+    SavedQuestionSets.loading = false;
+    updateSetMeta();
+  }
 }
 
 const ERA_NAMES = window.IHBBCoachEra?.ERA_NAMES || {
@@ -4404,7 +4499,7 @@ function expandCategorySelection(selected) {
 function renderCategoryChips(cats) {
   const wrap = $('cat-chips'); if (!wrap) return;
   wrap.innerHTML = '';
-  if (!cats.length) { wrap.appendChild(document.createTextNode('(No categories — run build_db.py)')); updateSetupOverview(); return; }
+  if (!cats.length) { wrap.appendChild(document.createTextNode('No regions available for this set.')); updateSetupOverview(); return; }
   // All chip
   const all = document.createElement('div');
   all.className = 'chip' + ((Array.isArray(App.filters.cats) && App.filters.cats.length) ? '' : ' active');
@@ -4442,7 +4537,7 @@ function renderEraChips(eras) {
   const wrap = $('era-chips'); if (!wrap) return;
   const eraList = sortEraCodes((eras || []).slice());
   wrap.innerHTML = '';
-  if (!eraList.length) { wrap.appendChild(document.createTextNode('(No eras — run build_db.py)')); updateSetupOverview(); return; }
+  if (!eraList.length) { wrap.appendChild(document.createTextNode('No eras available for this set.')); updateSetupOverview(); return; }
 
   // Backward compatibility with old presets that stored only filters.era
   if (!Array.isArray(App.filters.eras)) App.filters.eras = [];
@@ -4480,10 +4575,7 @@ function renderEraChips(eras) {
   updateSetupOverview();
 }
 
-// Parser & Sanitizer
-function mkItem(q, a, meta = {}) {
-  return { id: uid(), question: q, answer: a, aliases: [], meta: { category: meta.category || '', era: meta.era || '', source: meta.source || '' } };
-}
+// Question normalization
 function sanitizeItem(it) {
   if (!it || typeof it !== 'object') return;
   if (!Array.isArray(it.aliases)) it.aliases = [];
@@ -4496,22 +4588,6 @@ function sanitizeItem(it) {
   ans = ans.replace(/(\d{4}.*)$/, '').trim();
   ans = ans.replace(/^"|"$/g, '').trim();
   it.answer = ans;
-}
-function parseQA(txt) {
-  const lines = txt.replace(/\r/g, '').split(/\n/);
-  let items = [], curQ = [], curA = [], meta = {}, stage = 'find';
-  function push() { if (curQ.length && curA.length) items.push(mkItem(curQ.join(' ').trim(), curA.join(' ').trim(), meta)); curQ = []; curA = []; meta = {}; }
-  for (const raw of lines) {
-    const line = raw.trim();
-    if (/^\d+\./.test(line) || /^Question\s*:/i.test(line)) { push(); stage = 'q'; const t = line.replace(/^\d+\.\s*/, '').replace(/^Question\s*:\s*/i, ''); curQ.push(t); continue; }
-    if (/^Answer\s*:/i.test(line)) { stage = 'a'; curA.push(line.replace(/^Answer\s*:\s*/i, '')); continue; }
-    if (!line) continue;
-    if (stage === 'q') curQ.push(line);
-    else if (stage === 'a') curA.push(line);
-  }
-  push();
-  for (const it of items) sanitizeItem(it);
-  return items;
 }
 function stringVal(v) {
   if (v === null || v === undefined) return '';
@@ -4635,58 +4711,6 @@ function parseJsonImport(obj, fallbackName = 'Imported JSON') {
   logImport('info', 'parseJsonImport: parsed single set', { itemCount: items.length });
   return { type: 'set', set: { id: stringVal(obj.id) || uid(), name: stringVal(obj.name) || fallbackName, items, volatile: fallbackName === 'IHBB Questions' } };
 }
-function importSetFromJsonObject(obj, fallbackName) {
-  logImport('info', 'importSetFromJsonObject: start', {
-    fallbackName,
-    rootIsArray: Array.isArray(obj),
-    keys: topKeys(obj)
-  });
-  const parsed = parseJsonImport(obj, fallbackName);
-  if (!parsed) {
-    logImport('error', 'importSetFromJsonObject: failed to parse JSON');
-    toast('Invalid JSON format: expected a question array, an object with items/questions, or a library with sets');
-    return false;
-  }
-  try {
-    if (parsed.type === 'library') {
-      Library.sets = parsed.sets;
-      Library.activeSetId = parsed.activeSetId || parsed.sets[0]?.id || null;
-      const persisted = saveLibrarySafe('library import');
-      renderLibrarySelectors(); renderLibraryTable(); updateSetMeta();
-      logImport('info', 'importSetFromJsonObject: library imported', {
-        setCount: parsed.sets.length,
-        activeSetId: Library.activeSetId,
-        persisted
-      });
-      toast(persisted ? `Imported library (${parsed.sets.length} sets)` : `Imported library (${parsed.sets.length} sets) - not saved (storage full)`);
-      return true;
-    }
-    const set = parsed.set;
-    Library.sets.unshift(set); Library.activeSetId = set.id;
-    const persisted = saveLibrarySafe('set import');
-    renderLibrarySelectors(); renderLibraryTable(); updateSetMeta();
-    logImport('info', 'importSetFromJsonObject: set imported', {
-      setName: set.name,
-      itemCount: set.items.length,
-      activeSetId: Library.activeSetId,
-      persisted
-    });
-    toast(persisted ? `Imported ${set.items.length} questions from JSON` : `Imported ${set.items.length} questions - not saved (storage full)`);
-    return true;
-  } catch (err) {
-    logImport('error', `importSetFromJsonObject: runtime failure: ${(err && err.name) || 'Error'}: ${(err && err.message) || String(err)}`, err);
-    toast('Import failed. Check Console [IHBB Import]');
-    return false;
-  }
-}
-function importSetFromText(name, txt) {
-  const items = parseQA(txt);
-  if (!items.length) { toast('No questions detected'); return null; }
-  const set = { id: uid(), name: name || `Imported ${new Date().toLocaleString()}`, items };
-  Library.sets.unshift(set); Library.activeSetId = set.id; saveLibrary(); renderLibrarySelectors(); renderLibraryTable(); toast(`Loaded ${items.length} items`);
-  return set;
-}
-
 /********************* Presets *********************/
 function renderPresets() {
   const sel = $('presetSel'); if (!sel) return;
@@ -5825,39 +5849,11 @@ $('nav-library')?.addEventListener('click', (e) => { e.preventDefault(); playFee
 window.addEventListener('resize', () => { schedulePracticeViewportFit(); });
 
 // Setup events
-$('fileInput')?.addEventListener('change', async (e) => {
-  const f = e.target.files?.[0]; if (!f) return;
-  logImport('info', 'manual upload selected', {
-    name: f.name,
-    size: f.size,
-    type: f.type || '(empty)'
-  });
-  const txt = await f.text();
-  logImport('info', 'manual upload read complete', { chars: txt.length });
-  let obj;
-  try {
-    obj = JSON.parse(txt);
-  } catch (err) {
-    logImport('error', `manual upload JSON.parse failed: ${(err && err.name) || 'Error'}: ${(err && err.message) || String(err)}`, err);
-    toast('Invalid JSON');
-    e.target.value = '';
-    return;
-  }
-  logImport('info', 'manual upload JSON.parse success', {
-    rootIsArray: Array.isArray(obj),
-    keys: topKeys(obj)
-  });
-  const ok = importSetFromJsonObject(obj, f.name.replace(/\.[^.]+$/, ''));
-  if (!ok) logImport('error', 'manual upload failed after parse (see previous [IHBB Import] error)');
-  e.target.value = '';
-});
 $('qs-preview')?.addEventListener('click', () => {
   const set = getActiveSet(); if (!set) { toast('No set'); return; }
   const samp = set.items.slice(0, 5).map((it, i) => `${i + 1}. ${it.question.slice(0, 100)}…\nAnswer: ${it.answer}`).join('\n\n'); alert(samp);
 });
-$('qs-picker')?.addEventListener('change', (e) => { Library.activeSetId = e.target.value || null; saveLibrary(); updateSetMeta(); updateSetupOverview(); });
-$('btn-upload-json')?.addEventListener('click', () => { const fi = $('fileInput'); if (fi) fi.click(); });
-$('btn-demo-fetch')?.addEventListener('click', () => { tryFetchDefault(true); });
+$('qs-picker')?.addEventListener('change', (e) => { Library.activeSetId = e.target.value || null; saveLibrarySafe('remember question set selection'); updateSetMeta(); updateSetupOverview(); });
 
 // Wrong-bank toggle
 $('practice-wrong-bank-toggle')?.addEventListener('change', (e) => {
@@ -6040,17 +6036,7 @@ document.addEventListener('click', (e) => {
 });
 
 // Library actions
-$('lib-set-sel')?.addEventListener('change', (e) => { Library.activeSetId = e.target.value || null; saveLibrary(); renderLibrarySelectors(); renderLibraryTable(); });
-$('lib-new-set')?.addEventListener('click', () => { const fi = $('fileInput'); if (fi) fi.click(); });
-$('lib-sanitize-all')?.addEventListener('click', () => {
-  const set = getActiveSet(); if (!set) { toast('No set'); return; }
-  for (const it of set.items) sanitizeItem(it); saveLibrary(); renderLibraryTable(); toast('Sanitized');
-});
-$('lib-export-json')?.addEventListener('click', () => {
-  const set = getActiveSet(); if (!set) { toast('No set'); return; }
-  const blob = new Blob([JSON.stringify(set, null, 2)], { type: 'application/json' });
-  const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `${set.name}.json`; a.click(); URL.revokeObjectURL(url);
-});
+$('lib-set-sel')?.addEventListener('change', (e) => { Library.activeSetId = e.target.value || null; saveLibrarySafe('remember question set selection'); renderLibrarySelectors(); renderLibraryTable(); });
 $('lib-search')?.addEventListener('input', renderLibraryTable);
 // Keep Library region filter in sync with Setup filter and App.filters
 $('lib-filter-cat')?.addEventListener('change', (e) => {
@@ -6086,63 +6072,6 @@ $('lib-practice-filtered')?.addEventListener('click', () => {
   navSet('nav-setup'); SHOW('view-setup');
   toast(rc ? `Region set to ${rc}` : 'All regions selected');
 });
-
-// Import JSON (full library or single set)
-$('lib-import-btn')?.addEventListener('click', () => { const fi = $('lib-import-json'); if (fi) fi.click(); });
-$('lib-import-json')?.addEventListener('change', async (e) => {
-  const f = e.target.files?.[0]; if (!f) return;
-  logImport('info', 'library import selected', {
-    name: f.name,
-    size: f.size,
-    type: f.type || '(empty)'
-  });
-  const txt = await f.text();
-  logImport('info', 'library import read complete', { chars: txt.length });
-  let obj;
-  try {
-    obj = JSON.parse(txt);
-  } catch (err) {
-    logImport('error', `library import JSON.parse failed: ${(err && err.name) || 'Error'}: ${(err && err.message) || String(err)}`, err);
-    toast('Invalid JSON');
-    e.target.value = '';
-    return;
-  }
-  logImport('info', 'library import JSON.parse success', {
-    rootIsArray: Array.isArray(obj),
-    keys: topKeys(obj)
-  });
-  const ok = importSetFromJsonObject(obj, f.name.replace(/\.[^.]+$/, ''));
-  if (!ok) logImport('error', 'library import failed after parse (see previous [IHBB Import] error)');
-  e.target.value = '';
-});
-
-// Export all sets
-$('lib-export-all')?.addEventListener('click', () => {
-  const blob = new Blob([JSON.stringify(Library, null, 2)], { type: 'application/json' });
-  const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = 'library.json'; a.click(); URL.revokeObjectURL(url);
-});
-
-// Merge duplicates by normalized answer
-function normalizeAnswerKey(s) { return (s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim(); }
-function mergeDuplicatesInActiveSet() {
-  const set = getActiveSet(); if (!set) { toast('No set'); return; }
-  const keyToItem = new Map(); const removed = [];
-  const merged = [];
-  for (const it of set.items) {
-    const k = normalizeAnswerKey(it.answer);
-    const ex = keyToItem.get(k);
-    if (!ex) { keyToItem.set(k, it); merged.push(it); }
-    else {
-      const alias = new Set([...(ex.aliases || []), ...(it.aliases || [])]);
-      ex.aliases = Array.from(alias);
-      if ((it.question || '').length && (it.question || '').length < (ex.question || '').length) ex.question = it.question;
-      removed.push(it.id);
-    }
-  }
-  set.items = merged; saveLibrary(); renderLibrarySelectors(); renderLibraryTable();
-  toast(`Merged duplicates: ${removed.length}`);
-}
-$('lib-merge-dupes')?.addEventListener('click', mergeDuplicatesInActiveSet);
 
 function closeLibraryQuestionModal() {
   const modal = $('library-question-modal');
@@ -6213,7 +6142,7 @@ function renderLibraryTable() {
   const set = getActiveSet(); const tb = document.querySelector('#tbl-lib tbody'); if (!tb) return;
   tb.innerHTML = '';
   if (!set) {
-    renderMobileRecordList('lib-mobile-list', [], 'No set loaded', 'Load or import a question set to browse the library.');
+    renderMobileRecordList('lib-mobile-list', [], 'No set selected', 'Choose a question set above to browse its questions.');
     return;
   }
   const q = (($('lib-search') && $('lib-search').value) || '').toLowerCase();
@@ -6409,10 +6338,10 @@ window.addEventListener('resize', () => {
   }, 120);
 });
 
-/********************* Default fetch — loads categorized JSON only *********************/
-async function tryFetchDefault(force = false) {
+/********************* Main IHBB question bank *********************/
+async function tryFetchDefault() {
   // Ensure the default volatile questions exist in memory on startup.
-  if (!force && Array.isArray(Library.sets)) {
+  if (Array.isArray(Library.sets)) {
     if (Library.sets.some(s => s.volatile || s.name?.includes('IHBB Questions'))) {
       logImport('info', 'startup default load skipped because default set is already loaded', { localSetCount: Library.sets.length });
       return false;
@@ -6420,25 +6349,24 @@ async function tryFetchDefault(force = false) {
   }
 
   if (typeof location !== 'undefined' && !location.protocol.startsWith('http')) {
-    if (!force) return false;
     logImport('warn', 'default fetch blocked by non-http protocol', { protocol: location.protocol });
-    toast('Open via http(s) or run a local server to load questions.json');
     return false;
   }
   try {
-    logImport('info', 'fetching questions.json', { force });
+    logImport('info', 'fetching the built-in question bank');
     const rj = await fetch('./questions.json', { cache: 'no-cache' });
     logImport('info', 'questions.json fetch response', { ok: rj.ok, status: rj.status });
     if (rj.ok) {
       const obj = await rj.json();
       const parsed = parseJsonImport(obj, 'IHBB Questions');
-      if (!parsed) { toast('questions.json format is invalid'); return false; }
+      if (!parsed) { toast('The IHBB question bank could not be loaded.'); return false; }
       if (parsed.type === 'library') {
         (parsed.sets || []).forEach(set => ensureSetItemSources(set, 'original'));
-        Library.sets = parsed.sets; Library.activeSetId = parsed.activeSetId || (parsed.sets[0]?.id || null);
+        const retainedSets = Library.sets.filter(set => !set?.volatile && !/IHBB Questions/i.test(String(set?.name || '')));
+        Library.sets = [...parsed.sets, ...retainedSets];
+        Library.activeSetId = parsed.activeSetId || (parsed.sets[0]?.id || null);
         saveLibrary(); renderLibrarySelectors(); renderLibraryTable(); updateSetMeta();
         renderWrongBank();
-        toast(`Loaded questions.json (${parsed.sets.length} sets)`);
         return true;
       }
       const set = parsed.set;
@@ -6446,8 +6374,6 @@ async function tryFetchDefault(force = false) {
       Library.sets.unshift(set); Library.activeSetId = set.id;
       saveLibrary(); renderLibrarySelectors(); renderLibraryTable(); updateSetMeta();
       renderWrongBank();
-      const catCount = new Set(set.items.map(it => it.meta?.category || '').filter(Boolean)).size;
-      toast(`Loaded ${set.items.length} questions${catCount ? ` • ${catCount} categories` : ''}`);
       return true;
     }
   } catch (err) {
@@ -6457,7 +6383,7 @@ async function tryFetchDefault(force = false) {
       stack: err?.stack
     });
   }
-  toast('No questions.json found. Run: python build_db.py');
+  toast('The IHBB question bank is unavailable. Refresh the page to try again.');
   return false;
 }
 
@@ -6471,6 +6397,7 @@ async function tryFetchDefault(force = false) {
   syncAccountSettingsToLegacyStorage();
   saveCoachChatUiPrefs();
   loadAll();
+  const preferredQuestionSetId = Library.activeSetId;
   migrateLegacyStudyBookmarks();
   populateVoices();
   await applyPendingAssignmentLaunch();
@@ -6489,10 +6416,11 @@ async function tryFetchDefault(force = false) {
   backfillLocalSessionsToCloud();
   flushCoachPending();
   await refreshCoachNotebook(false);
-  // Auto-load questions.json on startup (from build_db.py)
+  // Load the built-in bank and the current user's dashboard question sets.
   if (!(ASSIGNMENT_ID && HAS_ASSIGNMENT_PAYLOAD)) {
-    await tryFetchDefault(false);
+    await tryFetchDefault();
   }
+  await loadSavedQuestionSets(preferredQuestionSetId);
   await hydratePrivateGeneratedQuestions(false);
   await hydrateSharedGeneratedQuestions();
   applyPendingRemediationPack();

@@ -79,3 +79,29 @@ test('teacher workflows create, assign, edit, and inline-save reusable question 
   assert.match(teacher, /saveAssignmentAsSet[\s\S]*sb\.from\('question_sets'\)\.insert/);
   assert.match(teacher, /Assignment created, but the reusable set could not be saved/);
 });
+
+test('Practice Hub uses account question sets without exposing developer file controls', () => {
+  const html = read('index.html');
+  const practice = read('app.js');
+  const styles = read('styles.css');
+
+  assert.match(html, /id="qs-picker"/);
+  assert.match(html, /a set you created or copied to My Sets/);
+  for (const removedId of [
+    'btn-upload-json', 'btn-demo-fetch', 'fileInput', 'lib-new-set', 'lib-sanitize-all',
+    'lib-import-btn', 'lib-import-json', 'lib-export-all', 'lib-export-json', 'lib-merge-dupes'
+  ]) {
+    assert.doesNotMatch(html, new RegExp(`id="${removedId}"`));
+  }
+
+  assert.match(practice, /const SAVED_QUESTION_SET_PREFIX = 'saved-set:'/);
+  assert.match(practice, /function normalizeSavedQuestionSet\(row\)[\s\S]*normalizeJsonItems\(rawQuestions\)/);
+  assert.match(practice, /async function loadSavedQuestionSets\(preferredSetId = ''\)/);
+  assert.match(practice, /\.from\('question_sets'\)[\s\S]*\.select\('id, title, questions, visibility, created_at'\)[\s\S]*\.eq\('creator_id', StorageScopeUserId\)/);
+  assert.match(practice, /if \(set\?\.savedSet\) return 'My saved sets'/);
+  assert.match(practice, /await loadSavedQuestionSets\(preferredQuestionSetId\)/);
+  assert.doesNotMatch(practice, /manual upload selected|library import selected/);
+  assert.match(styles, /@media \(max-width: 1180px\)[\s\S]*?\.setup-shell,[\s\S]*?grid-template-columns: 1fr/);
+  assert.match(read('student.html'), /Simpler Practice Hub &amp; My Sets/);
+  assert.match(read('teacher.html'), /Simpler Practice Hub &amp; Saved Sets/);
+});

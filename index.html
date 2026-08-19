@@ -132,15 +132,15 @@
               <div class="card-muted-box">
                 <div class="setup-grid">
                   <div class="input-group" style="margin: 0;">
-                    <label class="muted">Question set</label>
-                    <select id="qs-picker"></select>
-                    <div class="muted" id="qs-meta">—</div>
+                    <label class="muted" for="qs-picker">Question set</label>
+                    <select id="qs-picker">
+                      <option value="">Loading question sets…</option>
+                    </select>
+                    <div class="muted" id="qs-meta" aria-live="polite">Loading your saved sets…</div>
+                    <p class="muted" style="margin: 0; line-height: 1.55;">Choose the full IHBB bank, your Study Later set, or a set you created or copied to My Sets.</p>
                   </div>
-                  <div class="stack">
-                    <button class="btn ghost" id="qs-preview">Preview 5</button>
-                    <button id="btn-upload-json" class="btn ghost">Upload questions.json</button>
-                    <button id="btn-demo-fetch" class="btn ghost">Reload questions.json</button>
-                    <input id="fileInput" type="file" accept=".json,application/json,text/json" style="display:none" />
+                  <div class="stack" style="justify-content: flex-end;">
+                    <button class="btn ghost" id="qs-preview">Preview questions</button>
                   </div>
                 </div>
               </div>
@@ -503,27 +503,19 @@
       <div class="card section-card">
         <div class="section-head">
           <div>
-            <div class="eyebrow">Question bank</div>
-            <h2 class="card-title">Library controls</h2>
-            <p class="section-subtitle">Set, filters, bulk actions, and questions saved automatically to your Study Later set.</p>
-          </div>
-          <div class="inline-actions">
-            <button id="lib-new-set" class="btn ghost">New set from file</button>
-            <button id="lib-sanitize-all" class="btn ghost">Sanitize current set</button>
-            <button id="lib-import-btn" class="btn ghost">Import JSON</button>
-            <button id="lib-export-all" class="btn ghost">Export all sets</button>
-            <button id="lib-merge-dupes" class="btn ghost">Merge duplicates</button>
+            <div class="eyebrow">Question library</div>
+            <h2 class="card-title">Browse questions</h2>
+            <p class="section-subtitle">Choose a set, find the questions you want, and start a focused practice session.</p>
           </div>
         </div>
 
         <div class="library-toolbar-grid">
           <div class="inline-form">
             <select id="lib-set-sel" style="min-width:260px"></select>
-            <button id="lib-export-json" class="btn ghost">Export JSON</button>
           </div>
           <div class="inline-actions">
             <div class="pill">Items: <span id="lib-count">0</span></div>
-            <div class="pill">Categories: <span id="lib-cats">—</span></div>
+            <div class="pill">Regions: <span id="lib-cats">—</span></div>
             <div class="pill">Eras: <span id="lib-eras">—</span></div>
           </div>
           <div class="inline-form">
@@ -568,9 +560,6 @@
     </div>
   </section>
   </div>
-
-  <!-- Hidden inputs -->
-  <input id="lib-import-json" type="file" accept=".json,application/json,text/json" style="display:none">
 
   <!-- Help Overlay -->
   <div id="overlay" class="overlay" role="dialog" aria-modal="true">
