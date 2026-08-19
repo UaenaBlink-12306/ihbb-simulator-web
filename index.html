@@ -129,19 +129,17 @@
             </div>
 
             <div class="stack">
-              <div class="card-muted-box">
-                <div class="setup-grid">
-                  <div class="input-group" style="margin: 0;">
-                    <label class="muted" for="qs-picker">Question set</label>
+              <div class="card-muted-box setup-question-set-box">
+                <div class="input-group setup-question-set-control" style="margin: 0;">
+                  <label class="muted" for="qs-picker">Question set</label>
+                  <div class="setup-question-set-actions">
                     <select id="qs-picker">
                       <option value="">Loading question sets…</option>
                     </select>
-                    <div class="muted" id="qs-meta" aria-live="polite">Loading your saved sets…</div>
-                    <p class="muted" style="margin: 0; line-height: 1.55;">Choose the full IHBB bank, your Study Later set, or a set you created or copied to My Sets.</p>
-                  </div>
-                  <div class="stack" style="justify-content: flex-end;">
                     <button class="btn ghost" id="qs-preview">Preview questions</button>
                   </div>
+                  <div class="muted" id="qs-meta" aria-live="polite">Loading your saved sets…</div>
+                  <p class="muted" style="margin: 0; line-height: 1.55;">Choose the IHBB Question Bank, Study Later, or a set you created or copied to My Sets.</p>
                 </div>
               </div>
 

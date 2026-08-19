@@ -4020,38 +4020,43 @@ function savePresets() { localStorage.setItem(KEY_PRESETS, JSON.stringify(Preset
 function questionSetGroupLabel(set) {
   if (set?.savedSet) return 'My saved sets';
   if (String(set?.id || '') === STUDY_LATER_SET_ID) return 'Study Later';
-  if (set?.volatile || /IHBB Questions/i.test(String(set?.name || ''))) return 'IHBB question bank';
+  if (set?.volatile || /IHBB Questions/i.test(String(set?.name || ''))) return 'IHBB Question Bank';
   return 'Other sets';
+}
+
+function questionSetDisplayName(set) {
+  if (set?.savedSet) return String(set?.name || 'Untitled set').trim() || 'Untitled set';
+  if (String(set?.id || '') === STUDY_LATER_SET_ID) return 'Study Later';
+  if (set?.volatile || /IHBB Questions/i.test(String(set?.name || ''))) return 'IHBB Question Bank';
+  return String(set?.name || 'Untitled set').trim() || 'Untitled set';
+}
+
+function questionSetSelectorRank(set) {
+  if (!set?.savedSet && (set?.volatile || /IHBB Questions/i.test(String(set?.name || '')))) return 0;
+  if (String(set?.id || '') === STUDY_LATER_SET_ID) return 1;
+  if (set?.savedSet) return 2;
+  return 3;
 }
 
 function questionSetTypeLabel(set) {
   if (set?.savedSet) return 'My saved set';
   if (String(set?.id || '') === STUDY_LATER_SET_ID) return 'Study Later';
-  if (set?.volatile || /IHBB Questions/i.test(String(set?.name || ''))) return 'IHBB question bank';
+  if (set?.volatile || /IHBB Questions/i.test(String(set?.name || ''))) return 'IHBB Question Bank';
   return 'Saved on this device';
 }
 
 function fillQuestionSetSelector(select) {
   if (!select) return;
   select.innerHTML = '';
-  const groupOrder = ['IHBB question bank', 'My saved sets', 'Study Later', 'Other sets'];
-  const groups = new Map(groupOrder.map(label => [label, []]));
-  for (const set of Library.sets) {
-    const label = questionSetGroupLabel(set);
-    if (!groups.has(label)) groups.set(label, []);
-    groups.get(label).push(set);
-  }
-  for (const [label, sets] of groups) {
-    if (!sets.length) continue;
-    const group = document.createElement('optgroup');
-    group.label = label;
-    for (const set of sets) {
-      const option = document.createElement('option');
-      option.value = set.id;
-      option.textContent = set.name;
-      group.appendChild(option);
-    }
-    select.appendChild(group);
+  const orderedSets = Library.sets
+    .map((set, index) => ({ set, index }))
+    .sort((left, right) => questionSetSelectorRank(left.set) - questionSetSelectorRank(right.set) || left.index - right.index)
+    .map(({ set }) => set);
+  for (const set of orderedSets) {
+    const option = document.createElement('option');
+    option.value = set.id;
+    option.textContent = questionSetDisplayName(set);
+    select.appendChild(option);
   }
 }
 
@@ -4841,7 +4846,7 @@ function updateSetupOverview() {
     : buildFilteredPoolFromSet(set).length;
   const cats = Array.isArray(App.filters.cats) ? App.filters.cats.filter(Boolean) : [];
   const eras = Array.isArray(App.filters.eras) ? App.filters.eras.filter(Boolean) : [];
-  const setText = set ? `${set.name} (${set.items.length} items)` : 'No set loaded';
+  const setText = set ? `${questionSetDisplayName(set)} (${set.items.length} items)` : 'No set loaded';
   const filterDetails = getSetupFilterDetails();
   const filterCats = formatDetailedFilterSelection('Regions', filterDetails.selectedRegions, 'All regions');
   const filterEras = formatDetailedFilterSelection('Eras', filterDetails.selectedEras, 'All eras');
@@ -6124,6 +6129,16 @@ document.addEventListener('click', (e) => {
     if (item) openLibraryQuestionModal(item, index);
     return;
   }
+  const studyLaterToggleButton = e.target.closest?.('[data-study-later-toggle]');
+  if (studyLaterToggleButton) {
+    const set = getActiveSet();
+    const index = Number(studyLaterToggleButton.dataset.libraryIndex);
+    const item = Number.isInteger(index) ? set?.items?.[index] : null;
+    if (!item) return;
+    if (isQuestionInStudyLaterSet(item)) removeQuestionFromStudyLaterSet(item.id);
+    else saveQuestionToStudyLaterSet(item);
+    return;
+  }
   const studyLaterRemoveButton = e.target.closest?.('[data-study-later-remove]');
   if (studyLaterRemoveButton) {
     removeQuestionFromStudyLaterSet(studyLaterRemoveButton.dataset.studyLaterRemove);
@@ -6155,10 +6170,9 @@ function renderLibraryTable() {
     if (fc && (it.meta?.category || '') !== fc) return;
     if (fe && (it.meta?.era || '') !== fe) return;
     const tr = document.createElement('tr');
-    const removeAction = isStudyLaterSet
-      ? `<button class="btn ghost" type="button" data-study-later-remove="${escHtml(it.id)}">Remove</button>`
-      : '<span class="muted">—</span>';
-    tr.innerHTML = `<td class='stat'>${idx + 1}</td><td><button class="library-answer-button" type="button" data-library-index="${idx}">${escHtml(it.answer)}</button></td><td>${escHtml((it.aliases || []).slice(0, 3).join(', '))}</td><td>${escHtml(it.meta?.category || '')}</td><td>${escHtml(getEraName(it.meta?.era || ''))}</td><td>${escHtml(it.meta?.source || '')}</td><td>${removeAction}</td>`;
+    const savedForLater = isQuestionInStudyLaterSet(it);
+    const studyLaterAction = `<button class="btn ghost library-study-later-toggle${savedForLater ? ' is-saved' : ''}" type="button" data-library-index="${idx}" data-study-later-toggle="${escHtml(it.id)}" aria-pressed="${savedForLater}">${savedForLater ? (isStudyLaterSet ? 'Remove' : 'Remove from Study Later') : 'Study Later'}</button>`;
+    tr.innerHTML = `<td class='stat'>${idx + 1}</td><td><button class="library-answer-button" type="button" data-library-index="${idx}">${escHtml(it.answer)}</button></td><td>${escHtml((it.aliases || []).slice(0, 3).join(', '))}</td><td>${escHtml(it.meta?.category || '')}</td><td>${escHtml(getEraName(it.meta?.era || ''))}</td><td>${escHtml(it.meta?.source || '')}</td><td>${studyLaterAction}</td>`;
     tb.appendChild(tr);
     mobileCards.push(mobileRecordCard({
       eyebrow: `Question ${idx + 1}`,
@@ -6171,7 +6185,7 @@ function renderLibraryTable() {
         (it.aliases || []).length ? `Aliases: ${escHtml((it.aliases || []).slice(0, 3).join(', '))}` : 'Aliases: —',
         it.meta?.source ? `Source: ${escHtml(it.meta.source)}` : ''
       ],
-      actionHtml: `<button class="btn ghost library-answer-button" type="button" data-library-index="${idx}">View question</button>${isStudyLaterSet ? `<button class="btn ghost" type="button" data-study-later-remove="${escHtml(it.id)}">Remove</button>` : ''}`
+      actionHtml: `<button class="btn ghost library-answer-button" type="button" data-library-index="${idx}">View question</button>${studyLaterAction}`
     }));
   });
   renderMobileRecordList('lib-mobile-list', mobileCards, 'No questions match', 'Try broadening the search term or clearing one of the active filters.');
@@ -6399,6 +6413,9 @@ async function tryFetchDefault() {
   loadAll();
   const preferredQuestionSetId = Library.activeSetId;
   migrateLegacyStudyBookmarks();
+  const hadStudyLaterSet = !!getStudyLaterSet();
+  ensureStudyLaterSet();
+  if (!hadStudyLaterSet) saveLibrarySafe('ensure Study Later set');
   populateVoices();
   await applyPendingAssignmentLaunch();
   migrateLibrarySources();

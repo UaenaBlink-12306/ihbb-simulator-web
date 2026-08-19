@@ -6158,6 +6158,26 @@ input[type=datetime-local]:focus {
   gap: 10px;
 }
 
+.setup-question-set-control {
+  gap: 10px;
+}
+
+.setup-question-set-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.setup-question-set-actions select {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.setup-question-set-actions .btn {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
 .setup-mobile-quick {
   display: none;
 }
@@ -6845,6 +6865,15 @@ input[type=datetime-local]:focus {
 
   .setup-mobile-quick {
     display: block;
+  }
+
+  .setup-question-set-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .setup-question-set-actions .btn {
+    width: 100%;
   }
 
   .setup-run-actions {
@@ -8765,6 +8794,11 @@ body.coach-preview-open {
   color: inherit;
   text-decoration: none;
   outline: none;
+}
+
+.library-study-later-toggle.is-saved {
+  border-color: rgba(13, 154, 131, 0.38);
+  color: var(--accent-2, #0d9a83);
 }
 
 .library-question-modal-card {

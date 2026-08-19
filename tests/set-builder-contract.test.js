@@ -105,3 +105,19 @@ test('Practice Hub uses account question sets without exposing developer file co
   assert.match(read('student.html'), /Simpler Practice Hub &amp; My Sets/);
   assert.match(read('teacher.html'), /Simpler Practice Hub &amp; Saved Sets/);
 });
+
+test('Practice Hub keeps question-set choices flat and exposes Library Study Later actions', () => {
+  const html = read('index.html');
+  const practice = read('app.js');
+  const styles = read('styles.css');
+
+  assert.match(html, /class="card-muted-box setup-question-set-box"/);
+  assert.match(html, /class="setup-question-set-actions"[\s\S]*id="qs-picker"[\s\S]*id="qs-preview"/);
+  assert.match(html, /Choose the IHBB Question Bank, Study Later/);
+  assert.match(practice, /function questionSetDisplayName\(set\)/);
+  assert.match(practice, /return 'IHBB Question Bank';/);
+  assert.doesNotMatch(practice, /document\.createElement\('optgroup'\)/);
+  assert.match(practice, /data-study-later-toggle/);
+  assert.match(practice, /saveQuestionToStudyLaterSet\(item\)/);
+  assert.match(styles, /\.setup-question-set-actions/);
+});
