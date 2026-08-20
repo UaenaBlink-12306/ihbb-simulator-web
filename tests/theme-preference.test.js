@@ -138,3 +138,25 @@ test('Dark mode has late overrides for every reported light-only surface', () =>
   assert.match(read('student.html'), /Complete Dark Mode Coverage/);
   assert.match(read('teacher.html'), /Complete Dark Mode Coverage/);
 });
+
+test('Light mode has a late liquid-glass surface pass', () => {
+  const styles = read('styles.css');
+  const marker = '/* ===== Liquid glass light theme (2026-08-20) ===== */';
+  const markerIndex = styles.lastIndexOf(marker);
+  assert.ok(markerIndex > styles.indexOf('/* ===== Dark theme surface completion (2026-08-19) ===== */'));
+
+  const lightPass = styles.slice(markerIndex);
+  for (const selector of [
+    /html\[data-theme="light"\] body \{/,
+    /html\[data-theme="light"\] :is\(\.page-hero,/,
+    /html\[data-theme="light"\] :is\(\.dashboard-tab-menu, \.dashboard-switcher-results, \.coach-answer-more-menu\) \{/,
+    /html\[data-theme="light"\] \.mistake-notebook-surface,/,
+    /html\[data-theme="light"\] #tab-create :is\(\.builder-source-option, \.builder-workflow-panel, \.builder-review-panel\) \{/,
+    /backdrop-filter: blur\(var\(--glass-blur\)\) saturate\(170%\);/
+  ]) {
+    assert.match(lightPass, selector);
+  }
+
+  assert.match(read('student.html'), /Liquid Glass Light Mode[\s\S]*August 20, 2026/);
+  assert.match(read('teacher.html'), /Liquid Glass Light Mode[\s\S]*August 20, 2026/);
+});
