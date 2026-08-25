@@ -1483,7 +1483,7 @@ def fallback_coach_chat(payload: Dict[str, Any]) -> Dict[str, Any]:
         return apply_coach_chat_response_detail(reply, payload)
 
     if wrong_due > 0:
-        highlights.append(f"{wrong_due} due in Wrong-bank")
+        highlights.append(f"{wrong_due} due in Mistake Notebook")
     if notebook_open > 0:
         highlights.append(f"{notebook_open} notebook lesson{'s' if notebook_open != 1 else ''} open")
     if context["session_history"]["recent_accuracy"] > 0:
@@ -1491,34 +1491,34 @@ def fallback_coach_chat(payload: Dict[str, Any]) -> Dict[str, Any]:
     if context["setup"]["mode"]:
         highlights.append(context["setup"]["mode"])
 
-    if "wrong bank" in user_message or "srs" in user_message:
-        title = "Clear the due review loop first" if wrong_due > 0 else "Wrong-bank is not the blocker right now"
+    if "wrong bank" in user_message or "srs" in user_message or "due mistake" in user_message or "mistake notebook card" in user_message:
+        title = "Clear the due review loop first" if wrong_due > 0 else "The Mistake Notebook is not the blocker right now"
         if wrong_due > 0:
             message = (
-                f"Wrong-bank is the right tool when you want spaced repetition on misses instead of fresh coverage. "
+                f"Mistake Notebook review is the right tool when you want spaced repetition on misses instead of fresh coverage. "
                 f"You currently have {wrong_due} due card{'s' if wrong_due != 1 else ''} out of {wrong_total} tracked."
             )
             actions.append(coach_chat_action("practice_due_now", f"Practice {wrong_due} due card{'s' if wrong_due != 1 else ''}", "Start the due SRS queue immediately."))
             if focus_key:
                 actions.append(coach_chat_action("generate_focus_drill", f"Generate {focus_title}", "Follow due review with a short fresh drill in the same lane.", focus_key))
             sections = [
-                {"heading": "Why this tool fits", "body": "Wrong-bank is for repetition on misses you have already created, not for brand-new coverage."},
+                {"heading": "Why this tool fits", "body": "Mistake Notebook review is for repetition on misses you have already created, not for brand-new coverage."},
                 {"heading": "Best next move", "body": f"Clear the {wrong_due} due card{'s' if wrong_due != 1 else ''} first, then decide whether you still need a fresh focused drill."},
                 {"heading": "Do this after review", "body": f"If {focus_title} still feels shaky, generate a short corrective set before returning to mixed practice." if focus_key else "If something still feels shaky after review, switch to a short focused drill before returning to mixed practice."},
             ]
         else:
-            message = "Wrong-bank works best after you build up misses in regular drills. Right now nothing is due, so a fresh targeted session is the better move."
+            message = "Mistake Notebook review works best after you build up misses in regular drills. Right now nothing is due, so a fresh targeted session is the better move."
             if focus_key:
                 actions.append(coach_chat_action("generate_focus_drill", f"Generate {focus_title}", "Create fresh questions around the recurring blind spot.", focus_key))
-            actions.append(coach_chat_action("open_review", "Open Review", "Check your wrong-bank status and recent session debrief."))
+            actions.append(coach_chat_action("open_review", "Open Review", "Check your mistake notebook status and recent session debrief."))
             sections = [
-                {"heading": "Why not Wrong-bank", "body": "There is nothing due right now, so SRS will not give you enough reps to move the needle."},
+                {"heading": "Why not the Mistake Notebook", "body": "There is nothing due right now, so SRS will not give you enough reps to move the needle."},
                 {"heading": "Better option", "body": f"Use {focus_title} for a short targeted block." if focus_key else "Use a short targeted or mixed block to create new evidence."},
-                {"heading": "When to return", "body": "Come back to Wrong-bank after you create a few new misses and the queue starts to mature."},
+                {"heading": "When to return", "body": "Come back to the Mistake Notebook after you create a few new misses and the queue starts to mature."},
             ]
         follow_ups = [
-            {"label": "When should I use Wrong-bank?", "prompt": "When is Wrong-bank better than a fresh drill?"},
-            {"label": "What after review?", "prompt": "After I finish my due wrong-bank cards, what should I do next?"},
+            {"label": "When should I use the Mistake Notebook?", "prompt": "When is due mistake review better than a fresh drill?"},
+            {"label": "What after review?", "prompt": "After I finish my due mistake cards, what should I do next?"},
             {"label": "Build a corrective block", "prompt": "Turn my current weak spot into a short corrective practice block."},
         ]
     elif "notebook" in user_message or "ai notebook" in user_message or "lesson" in user_message or "coach" in user_message:
@@ -1539,7 +1539,7 @@ def fallback_coach_chat(payload: Dict[str, Any]) -> Dict[str, Any]:
         ]
         follow_ups = [
             {"label": "Turn a lesson into practice", "prompt": f"How should I turn {focus_title} from AI Notebook into actual practice?" if focus_key else "How should I turn an AI Notebook lesson into actual practice?"},
-            {"label": "Notebook or Wrong-bank?", "prompt": "When is AI Notebook better than Wrong-bank?"},
+            {"label": "Notebook or Mistake Notebook?", "prompt": "When is AI Notebook better than Mistake Notebook review?"},
             {"label": "Best focus next", "prompt": "Which notebook focus should I train next?"},
         ]
     elif top_recommendation and "recommend" in user_message:
@@ -1549,7 +1549,7 @@ def fallback_coach_chat(payload: Dict[str, Any]) -> Dict[str, Any]:
             + (" " + string_value(top_recommendation.get("evidence")) if string_value(top_recommendation.get("evidence")) else "")
         ).strip()
         if not message:
-            message = "This is the strongest next step from the current dashboard, notebook, wrong-bank, and session context."
+            message = "This is the strongest next step from the current dashboard, saved lessons, mistake cards, and session context."
         rec_action = top_recommendation.get("action") if isinstance(top_recommendation.get("action"), dict) else {}
         rec_action_id = string_value(rec_action.get("id"))
         if rec_action_id:
@@ -1564,12 +1564,12 @@ def fallback_coach_chat(payload: Dict[str, Any]) -> Dict[str, Any]:
             actions.append(coach_chat_action("generate_focus_drill", f"Generate {focus_title}", "Create fresh questions in the same lane.", focus_key))
         sections = [
             {"heading": "Why this recommendation", "body": string_value(top_recommendation.get("reason")) or "It is the strongest signal from the current study context."},
-            {"heading": "Evidence", "body": string_value(top_recommendation.get("evidence")) or "The assistant weighed wrong-bank, notebook, analytics, and session history."},
+            {"heading": "Evidence", "body": string_value(top_recommendation.get("evidence")) or "The assistant weighed your mistake notebook, analytics, and session history."},
             {"heading": "Best next move", "body": string_value(top_recommendation.get("action_label")) or "Use the suggested action, then review the result after your next session."},
         ]
         follow_ups = [
             {"label": "Make this concrete", "prompt": f"Turn {title} into a short practice plan I can follow now."},
-            {"label": "Compare options", "prompt": "Compare my top recommendation with Wrong-bank, AI Notebook, and a mixed drill."},
+            {"label": "Compare options", "prompt": "Compare my top recommendation with due Mistake Notebook cards, AI Notebook, and a mixed drill."},
             {"label": "Why this first?", "prompt": f"Why should I do {title} before other practice options?"},
         ]
     elif recent_focus_key:
@@ -1594,7 +1594,7 @@ def fallback_coach_chat(payload: Dict[str, Any]) -> Dict[str, Any]:
     elif wrong_due >= 3:
         title = "Close the due queue before adding new volume"
         message = (
-            f"You have {wrong_due} due wrong-bank card{'s' if wrong_due != 1 else ''}. "
+            f"You have {wrong_due} due mistake card{'s' if wrong_due != 1 else ''}. "
             "That is the cleanest next move because it closes the loop on known misses before you add more volume."
         )
         actions.append(coach_chat_action("practice_due_now", f"Practice {wrong_due} due card{'s' if wrong_due != 1 else ''}", "Start the due SRS queue now."))
@@ -1606,8 +1606,8 @@ def fallback_coach_chat(payload: Dict[str, Any]) -> Dict[str, Any]:
             {"heading": "What after that", "body": f"If {focus_title} still looks shaky, run a short focused drill next." if focus_key else "If you still feel shaky after the due queue, add one short focused block."},
         ]
         follow_ups = [
-            {"label": "After due cards", "prompt": "After I finish my due wrong-bank cards, what should I practice next?"},
-            {"label": "Use my top focus", "prompt": f"How should I train {focus_title} after wrong-bank?" if focus_key else "How should I train my top weak area after wrong-bank?"},
+            {"label": "After due cards", "prompt": "After I finish my due mistake cards, what should I practice next?"},
+            {"label": "Use my top focus", "prompt": f"How should I train {focus_title} after clearing my due Mistake Notebook cards?" if focus_key else "How should I train my top weak area after clearing my due Mistake Notebook cards?"},
             {"label": "Build a short plan", "prompt": "Build me a 15-minute practice plan from my current state."},
         ]
     elif focus_key and (notebook_open > 0 or recent_accuracy < 70):
@@ -1633,14 +1633,14 @@ def fallback_coach_chat(payload: Dict[str, Any]) -> Dict[str, Any]:
         title = "Get one clean baseline session first"
         message = (
             "Start with one normal mixed drill to create enough evidence for better recommendations. "
-            "Once you miss a few questions, Wrong-bank and AI Notebook become much more valuable."
+            "Once you miss a few questions, the Mistake Notebook and AI Notebook become much more valuable."
         )
         actions.append(coach_chat_action("start_current_session", "Start current session", "Begin the drill you have configured now."))
         actions.append(coach_chat_action("open_setup", "Open setup", "Tune region, era, and mode before starting."))
         sections = [
             {"heading": "Why start simple", "body": "The assistant gets much better once it can see what you actually miss and how you perform in a real session."},
             {"heading": "Best next move", "body": "Run one normal mixed drill from your current setup and let the data come in."},
-            {"heading": "What the assistant will use later", "body": "Recent misses feed AI Notebook, repeated misses feed Wrong-bank, and session history makes later recommendations sharper."},
+            {"heading": "What the assistant will use later", "body": "Recent misses feed AI Notebook, repeated misses feed the Mistake Notebook, and session history makes later recommendations sharper."},
         ]
         follow_ups = [
             {"label": "Design my first drill", "prompt": "Help me set up the best first practice drill."},
@@ -1662,11 +1662,11 @@ def fallback_coach_chat(payload: Dict[str, Any]) -> Dict[str, Any]:
         if focus_key:
             actions.append(coach_chat_action("apply_top_focus", f"Apply {focus_title}", "Set up a targeted block first.", focus_key))
         actions.append(coach_chat_action("start_current_session", "Start current session", "Run the current practice setup."))
-        actions.append(coach_chat_action("open_review", "Open Review", "Check wrong-bank and session debrief before deciding."))
+        actions.append(coach_chat_action("open_review", "Open Review", "Check your mistake notebook and session debrief before deciding."))
         sections = [
             {"heading": "Why this structure works", "body": "A targeted block fixes one weak lane while a mixed block checks whether the improvement transfers under wider pressure."},
             {"heading": "Best next move", "body": f"Use {focus_title} first, then finish with a mixed round." if focus_key else "Start a short mixed round and watch what the next weak lane turns out to be."},
-            {"heading": "What to inspect after", "body": "Check review data, wrong-bank status, and notebook patterns before choosing the following session."},
+            {"heading": "What to inspect after", "body": "Check review data, mistake notebook status, and notebook patterns before choosing the following session."},
         ]
         follow_ups = [
             {"label": "Make this a 20-minute plan", "prompt": "Turn my current study state into a 20-minute practice plan."},
@@ -1833,7 +1833,7 @@ def coach_chat_with_deepseek(payload: Dict[str, Any]) -> Dict[str, Any]:
         "Respect the requested assistant_mode when it is coach or knowledge. If it is auto, choose the best mode.\n"
         "You, not the app, choose quick_actions for DeepSeek replies. The app only validates action ids and focus keys.\n"
         "Available app actions and surfaces:\n"
-        "- Wrong-bank (SRS) practices previously missed questions that are due.\n"
+        "- Mistake Notebook (SRS) practices previously missed questions that are due.\n"
         "- AI Notebook stores DeepSeek lessons from incorrect answers.\n"
         "- Apply Top Focus loads a recurring notebook focus into the practice builder.\n"
         "- Generate Focus Drill creates fresh generated questions for a focus.\n"

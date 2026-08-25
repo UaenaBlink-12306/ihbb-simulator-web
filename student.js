@@ -1228,7 +1228,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (wrongBank.dueNow > 0) {
             pushRecommendation({
                 id: 'clear-due-wrong-bank',
-                title: `Clear ${wrongBank.dueNow} due Wrong-bank card${wrongBank.dueNow === 1 ? '' : 's'}`,
+                title: `Clear ${wrongBank.dueNow} due mistake card${wrongBank.dueNow === 1 ? '' : 's'}`,
                 priority: wrongBank.dueNow >= 3 ? 'high' : 'medium',
                 reason: 'Due SRS cards are already scheduled for reinforcement and should come before new volume.',
                 evidence: `${wrongBank.dueNow} due now out of ${wrongBank.total} tracked.`,
@@ -1385,7 +1385,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const topFocus = snapshot?.coach_notebook?.top_focuses?.[0];
         const topRecommendation = snapshot?.practice_recommendations?.[0] || null;
         if (recent?.title) return `Last miss: ${recent.title}.`;
-        if ((snapshot?.wrong_bank?.due_now || 0) > 0) return `${snapshot.wrong_bank.due_now} wrong-bank card${snapshot.wrong_bank.due_now === 1 ? '' : 's'} due now.`;
+        if ((snapshot?.wrong_bank?.due_now || 0) > 0) return `${snapshot.wrong_bank.due_now} mistake card${snapshot.wrong_bank.due_now === 1 ? '' : 's'} due now.`;
         if (topFocus?.title) return `Top coach focus: ${topFocus.title}.`;
         if (topRecommendation?.title) return `Recommended: ${topRecommendation.title}.`;
         if ((snapshot?.session_history?.total_sessions || 0) <= 0) return 'No recent practice history yet.';
@@ -1624,7 +1624,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             primaryCard = {
                 title: `Plan my ${snapshot.wrong_bank.due_now}-card review`,
                 copy: 'Turn the due queue into one clear, manageable practice block.',
-                action: { kind: 'prompt', prompt: `Plan how I should review my ${snapshot.wrong_bank.due_now} due Wrong-bank cards and what to practice afterward.` }
+                action: { kind: 'prompt', prompt: `Plan how I should review my ${snapshot.wrong_bank.due_now} due Mistake Notebook cards and what to practice afterward.` }
             };
         } else if (topFocus?.title) {
             primaryCard = {
@@ -1740,7 +1740,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 </div>
                     <div class="coach-chat-thinking-bubble">
                         <div class="coach-chat-thinking-dots" aria-hidden="true"><span></span><span></span><span></span></div>
-                        <div class="coach-chat-loading">${dashboardChat.ui.thinkingEnabled ? 'Coach is synthesizing your practice history, Wrong-bank, Mistake Notebook, and next steps.' : 'Coach is reviewing your practice history, Wrong-bank, Mistake Notebook, and dashboard context.'}</div>
+                        <div class="coach-chat-loading">${dashboardChat.ui.thinkingEnabled ? 'Coach is synthesizing your practice history, Mistake Notebook, and next steps.' : 'Coach is reviewing your practice history, Mistake Notebook, and dashboard context.'}</div>
                     </div>
                 </div>
             ` : '';
@@ -1798,7 +1798,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             const pills = [];
             if (dashboardChat.ui.thinkingEnabled) pills.push('Thinking model on');
             pills.push(`${assistantResponseDetailLabel(accountSettings.assistant_response_detail)} responses`);
-            if ((snapshot?.wrong_bank?.due_now || 0) > 0) pills.push(`Wrong-bank due ${snapshot.wrong_bank.due_now}`);
+            if ((snapshot?.wrong_bank?.due_now || 0) > 0) pills.push(`Mistakes due ${snapshot.wrong_bank.due_now}`);
             if ((snapshot?.coach_notebook?.open_lessons || 0) > 0) pills.push(`Notebook open ${snapshot.coach_notebook.open_lessons}`);
             if ((snapshot?.session_history?.recent_accuracy || 0) > 0) pills.push(`Recent accuracy ${snapshot.session_history.recent_accuracy}%`);
             if (snapshot?.practice_recommendations?.[0]?.priority) pills.push(`Recommendation ${snapshot.practice_recommendations[0].priority}`);
@@ -1809,7 +1809,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
         if (noteEl) {
             if (snapshot?.recent_incorrect?.title) noteEl.textContent = 'Fix the last miss';
-            else if ((snapshot?.wrong_bank?.due_now || 0) > 0) noteEl.textContent = `${snapshot.wrong_bank.due_now} due in Wrong-bank`;
+            else if ((snapshot?.wrong_bank?.due_now || 0) > 0) noteEl.textContent = `${snapshot.wrong_bank.due_now} due in Mistake Notebook`;
             else if ((snapshot?.coach_notebook?.open_lessons || 0) > 0) noteEl.textContent = `${snapshot.coach_notebook.open_lessons} coach lesson${snapshot.coach_notebook.open_lessons === 1 ? '' : 's'}`;
             else noteEl.textContent = 'Ask for context or next steps';
         }
@@ -1906,11 +1906,11 @@ document.addEventListener('DOMContentLoaded', async () => {
             };
         }
 
-        if (prompt.includes('wrong-bank') || prompt.includes('wrong bank') || prompt.includes('srs')) {
-            title = wrongDue > 0 ? 'Clear due review first' : 'Wrong-bank is not the blocker right now';
+        if (prompt.includes('wrong-bank') || prompt.includes('wrong bank') || prompt.includes('srs') || prompt.includes('due mistake') || prompt.includes('mistake notebook card')) {
+            title = wrongDue > 0 ? 'Clear due review first' : 'The Mistake Notebook is not the blocker right now';
             reply = wrongDue > 0
-                ? `Wrong-bank is useful now because ${wrongDue} card${wrongDue === 1 ? '' : 's'} are due. Use the Practice Hub to clear those before adding more mixed volume.`
-                : 'Wrong-bank is best after you build up misses in regular drills. Nothing is due yet, so a focused coach drill is the better move.';
+                ? `Mistake Notebook review is useful now because ${wrongDue} card${wrongDue === 1 ? '' : 's'} are due. Use the Practice Hub to clear those before adding more mixed volume.`
+                : 'Mistake Notebook review is best after you build up misses in regular drills. Nothing is due yet, so a focused coach drill is the better move.';
             if (wrongDue > 0) actions.push({ id: 'practice_due_now', label: `Practice ${wrongDue} due card${wrongDue === 1 ? '' : 's'}`, reason: 'Open the Practice Hub and start due-card review.' });
             else if (topFocusKey) actions.push({ id: 'generate_focus_drill', label: `Generate ${topFocusTitle}`, reason: 'Turn the top notebook focus into a fresh drill.', focus_key: topFocusKey });
         } else if (prompt.includes('notebook') || prompt.includes('lesson') || prompt.includes('coach')) {
@@ -1955,7 +1955,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             title,
             topic: recent?.title || topFocusTitle || topic,
             message: reply,
-            highlights: [wrongDue > 0 ? `${wrongDue} due in Wrong-bank` : '', notebookOpen > 0 ? `${notebookOpen} lesson${notebookOpen === 1 ? '' : 's'} open` : ''].filter(Boolean),
+            highlights: [wrongDue > 0 ? `${wrongDue} due in Mistake Notebook` : '', notebookOpen > 0 ? `${notebookOpen} lesson${notebookOpen === 1 ? '' : 's'} open` : ''].filter(Boolean),
             sections: [
                 { heading: 'Best next move', body: reply },
                 ...(topRecommendation?.title ? [{ heading: 'Recommendation signal', body: `${topRecommendation.title}: ${topRecommendation.reason}` }] : []),
@@ -6575,7 +6575,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     // Init
-    const initialDashboardTab = normalizeStudentDashboardTab(accountSettings.student_dashboard_default_tab);
+    // Allow deep links like student.html?tab=coach (used by the Practice Hub
+    // Session Review "Open Mistake Notebook" button) to pick the landing tab.
+    const requestedTabParam = String(new URLSearchParams(window.location.search).get('tab') || '').trim().toLowerCase();
+    const initialDashboardTab = STUDENT_DASHBOARD_TABS.has(requestedTabParam)
+        ? requestedTabParam
+        : normalizeStudentDashboardTab(accountSettings.student_dashboard_default_tab);
     activateDashboardTab(initialDashboardTab);
     loadClasses();
     loadAssignments();

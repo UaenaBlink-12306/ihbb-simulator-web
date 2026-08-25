@@ -152,7 +152,7 @@
                 <div class="setup-group">
                   <div id="setup-setting-practice-wrong-bank" class="practice-hub-toggle-setting" data-enabled="false">
                     <div class="practice-hub-toggle-card">
-                      <p class="practice-hub-toggle-summary">Practice Wrong Bank</p>
+                      <p class="practice-hub-toggle-summary">Practice Mistake Notebook</p>
                       <label class="practice-hub-switch" for="practice-wrong-bank-toggle">
                         <input id="practice-wrong-bank-toggle" type="checkbox" role="switch">
                         <span class="practice-hub-switch-track" aria-hidden="true">
@@ -183,7 +183,7 @@
                     <div class="empty-kicker">Quick start</div>
                     <p id="setup-mobile-summary" class="setup-mobile-summary">10 questions • All regions • All sources</p>
                   </div>
-                  <div class="setup-mobile-mode-pill" id="setup-mobile-wrong-bank">Wrong bank: No</div>
+                  <div class="setup-mobile-mode-pill" id="setup-mobile-wrong-bank">Mistake notebook: No</div>
                 </div>
                 <div class="form-actions setup-mobile-run-actions">
                   <button id="startSessionMobile" class="btn pri">Start Session</button>
@@ -237,7 +237,7 @@
                 <strong id="setup-summary-set">No set loaded</strong>
               </div>
               <div class="summary-item">
-                <span>Wrong bank</span>
+                <span>Mistake notebook</span>
                 <strong id="setup-summary-wrong-bank">No</strong>
               </div>
               <div class="summary-item">
@@ -269,7 +269,7 @@
 
     <div id="setup-mobile-dock" class="setup-mobile-dock" hidden aria-live="polite">
       <div class="setup-mobile-dock-head">
-        <div class="setup-mobile-mode-pill" id="setup-mobile-dock-wrong-bank">Wrong bank: No</div>
+        <div class="setup-mobile-mode-pill" id="setup-mobile-dock-wrong-bank">Mistake notebook: No</div>
         <p id="setup-mobile-dock-summary" class="setup-mobile-dock-summary">10 questions • All regions • All sources</p>
       </div>
       <div class="form-actions setup-mobile-dock-actions">
@@ -423,7 +423,7 @@
           <div class="inline-actions">
             <button id="btn-review-misses" class="btn pri">Review Misses</button>
             <button id="btn-export-wrong" class="btn ghost">Export wrong.txt</button>
-            <button id="btn-clear-wrong" class="btn ghost">Clear wrong bank</button>
+            <button id="btn-clear-wrong" class="btn ghost">Clear mistake notebook</button>
           </div>
         </div>
 
@@ -462,7 +462,7 @@
           <div class="section-head">
             <div>
               <div class="eyebrow">Spaced repetition</div>
-              <h2 class="card-title">Wrong bank</h2>
+              <h2 class="card-title">Mistake Notebook</h2>
               <p class="section-subtitle">Due items and tracked misses.</p>
             </div>
           </div>
@@ -470,9 +470,10 @@
             <div class="pill">Due today: <span id="due-today">0</span></div>
             <div class="pill">Total tracked: <span id="wrong-count">0</span></div>
             <button id="btn-practice-due" class="btn ghost">Practice due now</button>
+            <a href="student.html?tab=coach" class="btn pri">Open Mistake Notebook</a>
           </div>
           <div class="inline-form review-toolbar">
-            <input id="wrong-search" type="text" placeholder="Search in wrong bank…" style="flex:1 1 auto">
+            <input id="wrong-search" type="text" placeholder="Search in Mistake Notebook…" style="flex:1 1 auto">
             <button id="wrong-refresh" class="btn ghost">Refresh</button>
           </div>
           <div class="table-frame">

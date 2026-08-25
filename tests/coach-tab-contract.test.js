@@ -70,7 +70,7 @@ test('Practice Hub review is simplified and Study Later is an automatic set', ()
   assert.doesNotMatch(html, /id="review-remediation-card"/);
   assert.doesNotMatch(html, /<h2 class="card-title">Study Later<\/h2>/);
   assert.match(html, /id="chart-acc-era"[^>]+aria-label="Accuracy by era"/);
-  assert.ok(html.indexOf('<h2 class="card-title">History</h2>') < html.indexOf('<h2 class="card-title">Wrong bank</h2>'));
+  assert.ok(html.indexOf('<h2 class="card-title">History</h2>') < html.indexOf('<h2 class="card-title">Mistake Notebook</h2>'));
   assert.match(practice, /const STUDY_LATER_SET_ID = 'study_later'/);
   assert.match(practice, /function migrateLegacyStudyBookmarks\(\)/);
   assert.match(practice, /function saveQuestionToStudyLaterSet\(item\)/);

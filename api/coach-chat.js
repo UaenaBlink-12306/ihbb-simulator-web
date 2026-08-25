@@ -558,7 +558,7 @@ function buildContextBrief(context) {
   if (context.current_view) parts.push(`Current view: ${context.current_view}`);
   if (recentTitle) parts.push(`Latest miss: ${recentTitle}`);
   if (context.recent_incorrect?.topic) parts.push(`Recommended study area for latest miss: ${context.recent_incorrect.topic}`);
-  if (context.wrong_bank.due_now > 0) parts.push(`Wrong-bank due now: ${context.wrong_bank.due_now}`);
+  if (context.wrong_bank.due_now > 0) parts.push(`Mistake Notebook due now: ${context.wrong_bank.due_now}`);
   if (context.coach_notebook.open_lessons > 0) parts.push(`Open notebook lessons: ${context.coach_notebook.open_lessons}`);
   if (topFocusTitle) parts.push(`Top notebook focus: ${topFocusTitle}`);
   if (context.coach_notebook.top_focuses[0]?.topic) parts.push(`Recommended study area for top focus: ${context.coach_notebook.top_focuses[0].topic}`);
@@ -722,35 +722,35 @@ function buildCoachFallback(payload, context = normalizeContext(payload)) {
   let sections = [];
   let followUps = [];
 
-  if (wrongDue > 0) highlights.push(`${wrongDue} due in Wrong-bank`);
+  if (wrongDue > 0) highlights.push(`${wrongDue} due in Mistake Notebook`);
   if (notebookOpen > 0) highlights.push(`${notebookOpen} notebook lesson${notebookOpen === 1 ? '' : 's'} open`);
   if (context.session_history.recent_accuracy > 0) highlights.push(`Recent accuracy ${context.session_history.recent_accuracy}%`);
   if (context.setup.mode) highlights.push(context.setup.mode);
 
-  if (userMessage.includes('wrong bank') || userMessage.includes('srs')) {
-    title = wrongDue > 0 ? 'Clear the due review loop first' : 'Wrong-bank is not the blocker right now';
+  if (userMessage.includes('wrong bank') || userMessage.includes('srs') || userMessage.includes('due mistake') || userMessage.includes('mistake notebook card')) {
+    title = wrongDue > 0 ? 'Clear the due review loop first' : 'The Mistake Notebook is not the blocker right now';
     if (wrongDue > 0) {
-      message = `Wrong-bank is the right tool when you want spaced repetition on misses instead of fresh coverage. You currently have ${wrongDue} due card${wrongDue === 1 ? '' : 's'} out of ${wrongTotal} tracked.`;
+      message = `Mistake Notebook review is the right tool when you want spaced repetition on misses instead of fresh coverage. You currently have ${wrongDue} due card${wrongDue === 1 ? '' : 's'} out of ${wrongTotal} tracked.`;
       actions.push(makeAction('practice_due_now', `Practice ${wrongDue} due card${wrongDue === 1 ? '' : 's'}`, 'Start the due SRS queue immediately.'));
       if (topFocusKey) actions.push(makeAction('generate_focus_drill', `Generate ${topFocusTitle}`, 'Follow due review with a short fresh drill in the same lane.', { focus_key: topFocusKey }));
       sections = [
-        { heading: 'Why this tool fits', body: 'Wrong-bank is for repetition on misses you have already created, not for brand-new coverage.' },
+        { heading: 'Why this tool fits', body: 'Mistake Notebook review is for repetition on misses you have already created, not for brand-new coverage.' },
         { heading: 'Best next move', body: `Clear the ${wrongDue} due card${wrongDue === 1 ? '' : 's'} first, then decide whether you still need a fresh focused drill.` },
         { heading: 'Do this after review', body: topFocusKey ? `If ${topFocusTitle} still feels shaky, generate a short corrective set before returning to mixed practice.` : 'If something still feels shaky after review, switch to a short focused drill before returning to mixed practice.' }
       ];
     } else {
-      message = 'Wrong-bank works best after you build up misses in regular drills. Right now nothing is due, so a fresh targeted session is the better move.';
+      message = 'Mistake Notebook review works best after you build up misses in regular drills. Right now nothing is due, so a fresh targeted session is the better move.';
       if (topFocusKey) actions.push(makeAction('generate_focus_drill', `Generate ${topFocusTitle}`, 'Create fresh questions around the recurring blind spot.', { focus_key: topFocusKey }));
-      actions.push(makeAction('open_review', 'Open Review', 'Check your wrong-bank status and recent session debrief.'));
+      actions.push(makeAction('open_review', 'Open Review', 'Check your mistake notebook status and recent session debrief.'));
       sections = [
-        { heading: 'Why not Wrong-bank', body: 'There is nothing due right now, so SRS will not give you enough reps to move the needle.' },
+        { heading: 'Why not the Mistake Notebook', body: 'There is nothing due right now, so SRS will not give you enough reps to move the needle.' },
         { heading: 'Better option', body: topFocusKey ? `Use ${topFocusTitle} for a short targeted block.` : 'Use a short targeted or mixed block to create new evidence.' },
-        { heading: 'When to return', body: 'Come back to Wrong-bank after you create a few new misses and the queue starts to mature.' }
+        { heading: 'When to return', body: 'Come back to the Mistake Notebook after you create a few new misses and the queue starts to mature.' }
       ];
     }
     followUps = [
-      { label: 'When should I use Wrong-bank?', prompt: 'When is Wrong-bank better than a fresh drill?' },
-      { label: 'What after review?', prompt: 'After I finish my due wrong-bank cards, what should I do next?' },
+      { label: 'When should I use the Mistake Notebook?', prompt: 'When is due mistake review better than a fresh drill?' },
+      { label: 'What after review?', prompt: 'After I finish my due mistake cards, what should I do next?' },
       { label: 'Build a corrective block', prompt: 'Turn my current weak spot into a short corrective practice block.' }
     ];
   } else if (userMessage.includes('notebook') || userMessage.includes('ai notebook') || userMessage.includes('lesson') || userMessage.includes('coach')) {
@@ -768,7 +768,7 @@ function buildCoachFallback(payload, context = normalizeContext(payload)) {
     ];
     followUps = [
       { label: 'Turn a lesson into practice', prompt: topFocusKey ? `How should I turn ${topFocusTitle} from AI Notebook into actual practice?` : 'How should I turn an AI Notebook lesson into actual practice?' },
-      { label: 'Notebook or Wrong-bank?', prompt: 'When is AI Notebook better than Wrong-bank?' },
+      { label: 'Notebook or Mistake Notebook?', prompt: 'When is AI Notebook better than Mistake Notebook review?' },
       { label: 'Best focus next', prompt: 'Which notebook focus should I train next?' }
     ];
   } else if (recentFocusKey) {
@@ -789,7 +789,7 @@ function buildCoachFallback(payload, context = normalizeContext(payload)) {
     ];
   } else if (wrongDue >= 3) {
     title = 'Close the due queue before adding new volume';
-    message = `You have ${wrongDue} due wrong-bank cards. That is the cleanest next move because it closes the loop on known misses before you add more volume.`;
+    message = `You have ${wrongDue} due mistake cards. That is the cleanest next move because it closes the loop on known misses before you add more volume.`;
     actions.push(makeAction('practice_due_now', `Practice ${wrongDue} due card${wrongDue === 1 ? '' : 's'}`, 'Start the due SRS queue now.'));
     if (topFocusKey) actions.push(makeAction('generate_focus_drill', `Generate ${topFocusTitle}`, 'Follow SRS with a short fresh drill in the same lane.', { focus_key: topFocusKey }));
     sections = [
@@ -798,8 +798,8 @@ function buildCoachFallback(payload, context = normalizeContext(payload)) {
       { heading: 'What after that', body: topFocusKey ? `If ${topFocusTitle} still looks shaky, run a short focused drill next.` : 'If you still feel shaky after the due queue, add one short focused block.' }
     ];
     followUps = [
-      { label: 'After due cards', prompt: 'After I finish my due wrong-bank cards, what should I practice next?' },
-      { label: 'Use my top focus', prompt: topFocusKey ? `How should I train ${topFocusTitle} after wrong-bank?` : 'How should I train my top weak area after wrong-bank?' },
+      { label: 'After due cards', prompt: 'After I finish my due mistake cards, what should I practice next?' },
+      { label: 'Use my top focus', prompt: topFocusKey ? `How should I train ${topFocusTitle} after clearing my due Mistake Notebook cards?` : 'How should I train my top weak area after clearing my due Mistake Notebook cards?' },
       { label: 'Build a short plan', prompt: 'Build me a 15-minute practice plan from my current state.' }
     ];
   } else if (topFocusKey && (notebookOpen > 0 || recentAccuracy < 70)) {
@@ -820,13 +820,13 @@ function buildCoachFallback(payload, context = normalizeContext(payload)) {
     ];
   } else if (totalSessions <= 0) {
     title = 'Get one clean baseline session first';
-    message = 'Start with one normal mixed drill to create enough evidence for better recommendations. Once you miss a few questions, Wrong-bank and AI Notebook become much more valuable.';
+    message = 'Start with one normal mixed drill to create enough evidence for better recommendations. Once you miss a few questions, the Mistake Notebook and AI Notebook become much more valuable.';
     actions.push(makeAction('start_current_session', 'Start current session', 'Begin the drill you have configured now.'));
     actions.push(makeAction('open_setup', 'Open setup', 'Tune region, era, and mode before starting.'));
     sections = [
       { heading: 'Why start simple', body: 'The assistant gets much better once it can see what you actually miss and how you perform in a real session.' },
       { heading: 'Best next move', body: 'Run one normal mixed drill from your current setup and let the data come in.' },
-      { heading: 'What the assistant will use later', body: 'Recent misses feed AI Notebook, repeated misses feed Wrong-bank, and session history makes later recommendations sharper.' }
+      { heading: 'What the assistant will use later', body: 'Recent misses feed AI Notebook, repeated misses feed the Mistake Notebook, and session history makes later recommendations sharper.' }
     ];
     followUps = [
       { label: 'Design my first drill', prompt: 'Help me set up the best first practice drill.' },
@@ -841,11 +841,11 @@ function buildCoachFallback(payload, context = normalizeContext(payload)) {
     message = `${freshness}The best structure is one targeted block for a weak lane and one mixed block to test transfer. ${topFocusKey ? `Right now ${topFocusTitle} is the clearest place to focus first.` : 'Right now a short mixed drill is enough to keep momentum.'}`;
     if (topFocusKey) actions.push(makeAction('apply_top_focus', `Apply ${topFocusTitle}`, 'Set up a targeted block first.', { focus_key: topFocusKey }));
     actions.push(makeAction('start_current_session', 'Start current session', 'Run the current practice setup.'));
-    actions.push(makeAction('open_review', 'Open Review', 'Check wrong-bank and session debrief before deciding.'));
+    actions.push(makeAction('open_review', 'Open Review', 'Check your mistake notebook and session debrief before deciding.'));
     sections = [
       { heading: 'Why this structure works', body: 'A targeted block fixes one weak lane while a mixed block checks whether the improvement transfers under wider pressure.' },
       { heading: 'Best next move', body: topFocusKey ? `Use ${topFocusTitle} first, then finish with a mixed round.` : 'Start a short mixed round and watch what the next weak lane turns out to be.' },
-      { heading: 'What to inspect after', body: 'Check review data, wrong-bank status, and notebook patterns before choosing the following session.' }
+      { heading: 'What to inspect after', body: 'Check review data, mistake notebook status, and notebook patterns before choosing the following session.' }
     ];
     followUps = [
       { label: 'Make this a 20-minute plan', prompt: 'Turn my current study state into a 20-minute practice plan.' },
@@ -1063,13 +1063,13 @@ module.exports = async function handler(req, res) {
       'Coaching-first replies should spend most of the space on practical next actions and only include brief background unless the user explicitly asked for depth.',
       'In knowledge mode, let the sections carry the explanation. Do not let quick actions crowd out the historical content.',
       'In coach mode, prefer sections like Best Next Move, Why This Tool Fits, and What To Do After.',
-      `Use the whole study_context, not just the user message. Synthesize recent misses, wrong-bank status, notebook patterns, session history, current setup, active set, and analytics when present. ${isTeacher ? 'If available, use class-level performance gaps to drive assignments.' : ''}`,
+      `Use the whole study_context, not just the user message. Synthesize recent misses, mistake notebook status, notebook patterns, session history, current setup, active set, and analytics when present. ${isTeacher ? 'If available, use class-level performance gaps to drive assignments.' : ''}`,
       isTeacher ? 'When teacher_context is provided, prioritize class names, assignment drafts, completion, scores, priority classes, and question-bank context over student self-study advice.' : '',
       'When the user asks a broad question, take initiative: infer the most helpful framing from the context and give a satisfying answer without forcing the user to pick a mode.',
       'If the user seems to want both understanding and action, answer the knowledge need first and then give a concise next-step plan.',
       'If the user asks for study guidance, make the plan sequenced, concrete, and grounded in the app surfaces that actually exist.',
       'Available app actions and surfaces:',
-      '- Wrong-bank (SRS) practices previously missed questions that are due.',
+      '- Mistake Notebook (SRS) practices previously missed questions that are due.',
       '- AI Notebook stores DeepSeek lessons from incorrect answers.',
       '- Apply Top Focus loads a recurring notebook focus into the practice builder.',
       '- Generate Focus Drill creates fresh generated questions for a focus.',

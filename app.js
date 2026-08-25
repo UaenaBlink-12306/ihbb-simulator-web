@@ -314,7 +314,7 @@ function handleWrongSyncError(err) {
   WrongSync.enabled = false;
   if (WrongSync.warned) return;
   WrongSync.warned = true;
-  if (isWrongSyncSchemaIssue(err)) toast('Cloud wrong-bank sync unavailable (setup missing). Using local only.');
+  if (isWrongSyncSchemaIssue(err)) toast('Cloud mistake notebook sync unavailable (setup missing). Using local only.');
 }
 function queueWrongSync(task) {
   if (!WrongSync.enabled || !WrongSync.userId || !window.supabaseClient) return;
@@ -540,7 +540,7 @@ function coachChatRoleCopy() {
         autoHint: 'Coach answers are limited to explanation, mistake diagnosis, and next practice.',
         emptyTitle: 'Ask about a miss or next practice.',
         emptyText: 'Pick a prompt or ask why an answer fits, why you missed, or what to practice next.',
-        loadingFast: 'Coach is reviewing your wrong-bank, mistake notebook, setup, and recent practice.',
+        loadingFast: 'Coach is reviewing your Mistake Notebook, setup, and recent practice.',
         loadingThinking: 'Coach is synthesizing your practice history, mistake notebook, and next steps.'
       };
 }
@@ -1493,7 +1493,7 @@ function buildCoachChatSetupFilterText() {
   if (isWrongBankPracticeEnabled()) {
     const dueNow = srsDueList().length;
     const tracked = wrongRecords().length;
-    return `Wrong-bank queue • Due now ${dueNow} • Total tracked ${tracked}`;
+    return `Mistake Notebook review • Due now ${dueNow} • Total tracked ${tracked}`;
   }
   const cats = Array.isArray(App.filters.cats) ? App.filters.cats.filter(Boolean) : [];
   const eras = Array.isArray(App.filters.eras) ? App.filters.eras.filter(Boolean) : [];
@@ -1547,7 +1547,7 @@ function buildCoachChatPracticeRecommendations(options = {}) {
   if (wrongDue > 0) {
     pushRecommendation({
       id: 'clear-due-wrong-bank',
-      title: `Clear ${wrongDue} due Wrong-bank card${wrongDue === 1 ? '' : 's'}`,
+      title: `Clear ${wrongDue} due mistake card${wrongDue === 1 ? '' : 's'}`,
       priority: wrongDue >= 3 ? 'high' : 'medium',
       reason: 'Due SRS cards are already scheduled for reinforcement, so they should come before adding more misses.',
       evidence: `${wrongDue} due now out of ${wrongTotal} tracked.`,
@@ -1692,7 +1692,7 @@ function buildCoachChatSummary(snapshot) {
     return `Last miss: ${recentIncorrect.title}.`;
   }
   if ((snapshot?.wrong_bank?.due_now || 0) > 0) {
-    return `${snapshot.wrong_bank.due_now} wrong-bank card${snapshot.wrong_bank.due_now === 1 ? '' : 's'} due now.`;
+    return `${snapshot.wrong_bank.due_now} mistake card${snapshot.wrong_bank.due_now === 1 ? '' : 's'} due now.`;
   }
   if (topFocus?.title) {
     return `Top notebook focus: ${topFocus.title}.`;
@@ -1705,7 +1705,7 @@ function buildCoachChatSummary(snapshot) {
   }
   return CoachChat.ui.mode === 'auto'
     ? 'Ask for background on a topic or what to practice next. Auto will detect the better answer style.'
-    : `Current setup: ${snapshot?.setup?.question_order || 'Random'} • Wrong bank ${snapshot?.setup?.wrong_bank || 'No'} • ${snapshot?.setup?.filters || 'All filters'}`;
+    : `Current setup: ${snapshot?.setup?.question_order || 'Random'} • Mistake notebook ${snapshot?.setup?.wrong_bank || 'No'} • ${snapshot?.setup?.filters || 'All filters'}`;
 }
 
 function updateCoachChatSourceLabel() {
@@ -1731,7 +1731,7 @@ function renderCoachChatStatus(snapshot) {
     const pills = [];
     if (CoachChat.ui.thinkingEnabled) pills.push('Thinking model on');
     pills.push(`${assistantResponseDetailLabel(getCurrentAccountSettings().assistant_response_detail)} responses`);
-    if ((snapshot?.wrong_bank?.due_now || 0) > 0) pills.push(`Wrong-bank due ${snapshot.wrong_bank.due_now}`);
+    if ((snapshot?.wrong_bank?.due_now || 0) > 0) pills.push(`Mistakes due ${snapshot.wrong_bank.due_now}`);
     if ((snapshot?.coach_notebook?.open_lessons || 0) > 0) pills.push(`Notebook open ${snapshot.coach_notebook.open_lessons}`);
     if ((snapshot?.session_history?.recent_accuracy || 0) > 0) pills.push(`Recent accuracy ${snapshot.session_history.recent_accuracy}%`);
     if (snapshot?.practice_recommendations?.[0]?.priority) pills.push(`Recommendation ${snapshot.practice_recommendations[0].priority}`);
@@ -1745,7 +1745,7 @@ function renderCoachChatStatus(snapshot) {
   const countEl = $('coach-chat-launcher-count');
   if (noteEl) {
     if (snapshot?.recent_incorrect?.title) noteEl.textContent = 'Fix the last miss';
-    else if ((snapshot?.wrong_bank?.due_now || 0) > 0) noteEl.textContent = `${snapshot.wrong_bank.due_now} due in Wrong-bank`;
+    else if ((snapshot?.wrong_bank?.due_now || 0) > 0) noteEl.textContent = `${snapshot.wrong_bank.due_now} due in Mistake Notebook`;
     else if ((snapshot?.coach_notebook?.open_lessons || 0) > 0) noteEl.textContent = `${snapshot.coach_notebook.open_lessons} notebook lesson${snapshot.coach_notebook.open_lessons === 1 ? '' : 's'}`;
     else noteEl.textContent = 'Ask for context or next steps';
   }
@@ -1853,9 +1853,9 @@ function buildCoachChatStarters(snapshot = buildCoachChatStudyContext()) {
   }
   if (wrongDue >= 3) {
     return limitCoachChatStarters([
-      { label: 'Wrong-bank first', prompt: `I have ${wrongDue} due wrong-bank cards. Should I clear those before anything else?` },
-      { label: 'After SRS', prompt: 'After I finish my due wrong-bank cards, what should I train next?' },
-      { label: 'Fresh drill', prompt: topFocusTitle ? `Turn ${topFocusTitle} into a fresh drill after my due review.` : 'Recommend the best fresh drill after my due wrong-bank review.' }
+      { label: 'Mistake review first', prompt: `I have ${wrongDue} due mistake cards. Should I clear those before anything else?` },
+      { label: 'After SRS', prompt: 'After I finish my due mistake cards, what should I train next?' },
+      { label: 'Fresh drill', prompt: topFocusTitle ? `Turn ${topFocusTitle} into a fresh drill after my due review.` : 'Recommend the best fresh drill after my due mistake review.' }
     ]);
   }
   if ((CoachChat.suggestedReason === 'notebook' || notebookOpen > 0) && topFocusTitle) {
@@ -1917,7 +1917,7 @@ function renderCoachChatWorkspace(snapshot) {
     simplePrimaryCard = {
       title: `Plan my ${snapshot.wrong_bank.due_now}-card review`,
       copy: 'Turn the due queue into one clear, manageable practice block.',
-      action: { kind: 'prompt', prompt: `Plan how I should review my ${snapshot.wrong_bank.due_now} due Wrong-bank cards and what to practice afterward.` }
+      action: { kind: 'prompt', prompt: `Plan how I should review my ${snapshot.wrong_bank.due_now} due Mistake Notebook cards and what to practice afterward.` }
     };
   } else if (topFocus?.title) {
     simplePrimaryCard = {
@@ -2032,15 +2032,15 @@ function renderCoachChatWorkspace(snapshot) {
     : [
       ...(recommendationCard ? [recommendationCard] : []),
       {
-        kicker: 'Wrong-bank',
-        title: (snapshot?.wrong_bank?.due_now || 0) > 0 ? `Review ${snapshot.wrong_bank.due_now} due` : 'Wrong-bank',
+        kicker: 'Mistake Notebook',
+        title: (snapshot?.wrong_bank?.due_now || 0) > 0 ? `Review ${snapshot.wrong_bank.due_now} due` : 'Mistake Notebook',
         copy: (snapshot?.wrong_bank?.due_now || 0) > 0 ? 'Best next review block' : 'Use after new misses',
         action: (snapshot?.wrong_bank?.due_now || 0) > 0
           ? { kind: 'action', id: 'practice_due_now', label: 'Start due review' }
-          : { kind: 'prompt', label: 'Ask when to use it', prompt: 'When is Wrong-bank better than a fresh drill?' }
+          : { kind: 'prompt', label: 'Ask when to use it', prompt: 'When is due mistake review better than a fresh drill?' }
       },
       {
-        kicker: 'Mistake Notebook',
+        kicker: 'Saved lessons',
         title: topFocus?.title || 'Open Notebook',
         copy: topFocus?.title ? 'Top saved focus' : `${snapshot?.coach_notebook?.open_lessons || 0} open lesson${(snapshot?.coach_notebook?.open_lessons || 0) === 1 ? '' : 's'}`,
         action: topFocus?.key
@@ -2902,21 +2902,21 @@ function buildLocalCoachChatReply(message, snapshot = buildCoachChatStudyContext
     };
   }
 
-  if (prompt.includes('wrong-bank') || prompt.includes('wrong bank') || prompt.includes('srs')) {
-    title = wrongDue > 0 ? 'Clear the due review loop first' : 'Wrong-bank is not the blocker right now';
+  if (prompt.includes('wrong-bank') || prompt.includes('wrong bank') || prompt.includes('srs') || prompt.includes('due mistake') || prompt.includes('mistake notebook card')) {
+    title = wrongDue > 0 ? 'Clear the due review loop first' : 'The Mistake Notebook is not the blocker right now';
     if (wrongDue > 0) {
-      reply = `Wrong-bank is the right tool when you want spaced repetition on misses instead of fresh coverage. You have ${wrongDue} due card${wrongDue === 1 ? '' : 's'} out of ${wrongTotal} tracked right now.`;
+      reply = `Mistake Notebook review is the right tool when you want spaced repetition on misses instead of fresh coverage. You have ${wrongDue} due card${wrongDue === 1 ? '' : 's'} out of ${wrongTotal} tracked right now.`;
       actions.push(coachChatAction('practice_due_now', `Practice ${wrongDue} due card${wrongDue === 1 ? '' : 's'}`, 'Start the due SRS queue immediately.'));
       sections = [
-        { heading: 'Why this tool fits', body: 'Wrong-bank is for repetition on misses you have already created, not for brand-new coverage.' },
+        { heading: 'Why this tool fits', body: 'Mistake Notebook review is for repetition on misses you have already created, not for brand-new coverage.' },
         { heading: 'Best next move', body: `Clear the ${wrongDue} due card${wrongDue === 1 ? '' : 's'} first, then decide whether you still need a fresh focused drill.` }
       ];
     } else {
-      reply = 'Wrong-bank works best after regular drills create misses to revisit. Nothing is due right now, so a fresh targeted block is the better move.';
+      reply = 'Mistake Notebook review works best after regular drills create misses to revisit. Nothing is due right now, so a fresh targeted block is the better move.';
       if (topFocusKey) actions.push(coachChatAction('generate_focus_drill', `Generate ${topFocusTitle}`, 'Create fresh questions around the recurring blind spot.', { focus_key: topFocusKey }));
       actions.push(coachChatAction('open_review', 'Open Review', 'Check your review state before deciding.'));
       sections = [
-        { heading: 'Why not Wrong-bank', body: 'There is nothing due right now, so SRS will not give you enough reps to move the needle.' },
+        { heading: 'Why not the Mistake Notebook', body: 'There is nothing due right now, so SRS will not give you enough reps to move the needle.' },
         { heading: 'Better option', body: topFocusKey ? `Use ${topFocusTitle} for a short targeted block.` : 'Use a short targeted or mixed block to create new evidence.' }
       ];
     }
@@ -2944,7 +2944,7 @@ function buildLocalCoachChatReply(message, snapshot = buildCoachChatStudyContext
     ];
   } else if (wrongDue >= 3) {
     title = 'Close the due queue before adding new volume';
-    reply = `You have ${wrongDue} due wrong-bank cards. That is the cleanest next move because it closes the loop on known misses before you add more volume.`;
+    reply = `You have ${wrongDue} due mistake cards. That is the cleanest next move because it closes the loop on known misses before you add more volume.`;
     actions.push(coachChatAction('practice_due_now', `Practice ${wrongDue} due card${wrongDue === 1 ? '' : 's'}`, 'Start the due SRS queue now.'));
     if (topFocusKey) actions.push(coachChatAction('generate_focus_drill', `Generate ${topFocusTitle}`, 'Follow SRS with a short fresh drill in the same lane.', { focus_key: topFocusKey }));
   } else if (topFocusKey && (notebookOpen > 0 || recentAccuracy < 70)) {
@@ -2955,7 +2955,7 @@ function buildLocalCoachChatReply(message, snapshot = buildCoachChatStudyContext
     actions.push(coachChatAction('open_ai_notebook', 'Open Mistake Notebook', 'Review the supporting explanations first.'));
   } else if (totalSessions <= 0) {
     title = 'Get one clean baseline session first';
-    reply = 'Start with one normal mixed drill to create enough evidence for stronger recommendations. Once you miss a few questions, Wrong-bank and the Mistake Notebook become much more useful.';
+    reply = 'Start with one normal mixed drill to create enough evidence for stronger recommendations. Once you miss a few questions, the Mistake Notebook becomes much more useful.';
     actions.push(coachChatAction('start_current_session', 'Start current session', 'Begin the drill you have configured now.'));
     actions.push(coachChatAction('open_setup', 'Open setup', 'Tune region, era, and mode before starting.'));
   } else if (topRecommendation?.title && prompt.includes('recommend')) {
@@ -2976,7 +2976,7 @@ function buildLocalCoachChatReply(message, snapshot = buildCoachChatStudyContext
     actions.push(coachChatAction('start_current_session', 'Start current session', 'Run practice once the recommended setup is ready.'));
     sections = [
       { heading: 'Why this recommendation', body: topRecommendation.reason || 'It is the strongest signal from your current study state.' },
-      { heading: 'Evidence', body: topRecommendation.evidence || 'The recommendation is based on wrong-bank, notebook, session, and setup context.' },
+      { heading: 'Evidence', body: topRecommendation.evidence || 'The recommendation is based on your mistake notebook, session, and setup context.' },
       { heading: 'Best next move', body: topRecommendation.action_label || 'Use the suggested action, then check review data after the session.' }
     ];
   } else {
@@ -2987,10 +2987,10 @@ function buildLocalCoachChatReply(message, snapshot = buildCoachChatStudyContext
     title = topFocusKey ? `Use ${topFocusTitle} as the next smart block` : 'Keep momentum with one targeted block and one mixed block';
     if (topFocusKey) actions.push(coachChatAction('apply_top_focus', `Apply ${topFocusTitle}`, 'Set up a targeted block first.', { focus_key: topFocusKey }));
     actions.push(coachChatAction('start_current_session', 'Start current session', 'Run the current practice setup.'));
-    actions.push(coachChatAction('open_review', 'Open Session Review', 'Check wrong-bank and the latest session focus before deciding.'));
+    actions.push(coachChatAction('open_review', 'Open Session Review', 'Check your mistake notebook and the latest session focus before deciding.'));
   }
 
-  if (wrongDue > 0) highlights.push(`${wrongDue} due in Wrong-bank`);
+  if (wrongDue > 0) highlights.push(`${wrongDue} due in Mistake Notebook`);
   if (notebookOpen > 0) highlights.push(`${notebookOpen} notebook lesson${notebookOpen === 1 ? '' : 's'} open`);
   if (recentAccuracy > 0) highlights.push(`Recent accuracy ${recentAccuracy}%`);
   followUps = followUps.length ? followUps : [
@@ -3190,7 +3190,7 @@ function coachChatPromptForReason(reason = 'manual') {
     return 'I just missed a question. Diagnose the mistake and give me one next practice step.';
   }
   if (reason === 'wrong-bank') {
-    return 'What should I do with my due wrong-bank cards right now?';
+    return 'What should I do with my due mistake cards right now?';
   }
   if (reason === 'notebook') {
     return 'Which Mistake Notebook focus should I train next?';
@@ -3607,7 +3607,7 @@ async function applyPendingCoachChatAction() {
     if (wrongRecords().length) {
       reviewMissedNow();
     } else {
-      toast('Wrong bank empty');
+      toast('Mistake Notebook empty');
     }
     return true;
   }
@@ -4880,11 +4880,11 @@ function updateSetupOverview() {
   let nextText = 'Pick a set to start.';
   if (nextEl) {
     if (wrongBankEnabled && !wrongBankCount) {
-      nextText = 'No wrong-bank items yet.';
+      nextText = 'No mistake notebook items yet.';
     } else if (!set && !wrongBankEnabled) {
       nextText = 'Load a question set.';
     } else if (wrongBankEnabled) {
-      nextText = 'Wrong-bank queue ready.';
+      nextText = 'Mistake Notebook review ready.';
     } else if (cats.length || App.filters.cat || eras.length || App.filters.era || App.filters.src) {
       nextText = 'Session ready.';
     }
@@ -4897,9 +4897,9 @@ function updateSetupOverview() {
       ? `${lengthText} • Regions: ${filterDetails.regionSummary} • Eras: ${filterDetails.eraSummary} • Source: ${filterDetails.sourceSummary}`
       : 'Load a question set.';
   }
-  const mobileWrongBankEl = $('setup-mobile-wrong-bank'); if (mobileWrongBankEl) mobileWrongBankEl.textContent = `Wrong bank: ${practiceWrongBankLabel(wrongBankEnabled)}`;
+  const mobileWrongBankEl = $('setup-mobile-wrong-bank'); if (mobileWrongBankEl) mobileWrongBankEl.textContent = `Mistake notebook: ${practiceWrongBankLabel(wrongBankEnabled)}`;
   const mobileNextEl = $('setup-mobile-next'); if (mobileNextEl) mobileNextEl.textContent = nextText;
-  const mobileDockWrongBankEl = $('setup-mobile-dock-wrong-bank'); if (mobileDockWrongBankEl) mobileDockWrongBankEl.textContent = `Wrong bank: ${practiceWrongBankLabel(wrongBankEnabled)}`;
+  const mobileDockWrongBankEl = $('setup-mobile-dock-wrong-bank'); if (mobileDockWrongBankEl) mobileDockWrongBankEl.textContent = `Mistake notebook: ${practiceWrongBankLabel(wrongBankEnabled)}`;
   const mobileDockSummaryEl = $('setup-mobile-dock-summary');
   if (mobileDockSummaryEl) {
     mobileDockSummaryEl.textContent = (set || wrongBankEnabled)
@@ -5057,8 +5057,8 @@ function startSession() {
   const hasSessionOverride = Array.isArray(App.sessionOverrideItems) && App.sessionOverrideItems.length > 0;
   if (!set && !practicingWrongBank && !hasSessionOverride) { toast('No active set'); return; }
   if (practicingWrongBank && !wrongRecords().length) {
-    alert('Your wrong bank is empty.');
-    toast('Wrong bank empty');
+    alert('Your mistake notebook is empty.');
+    toast('Mistake Notebook empty');
     return;
   }
   App.correct = 0; App.sessionBuzzTimes = []; App.resultsCorrect = []; App.submittedAnswers = []; App.i = 0; App.phase = 'idle'; App.curItem = null;
@@ -5081,7 +5081,7 @@ function startSession() {
     const missingIds = dueIds.filter(id => !map.has(id));
     pool = pool.concat(srsBuildPseudoItems(missingIds));
     if (!pool.length) {
-      const s = getSRS(); const allIds = Object.keys(s); if (!allIds.length) { toast('Wrong bank empty'); return; }
+      const s = getSRS(); const allIds = Object.keys(s); if (!allIds.length) { toast('Mistake Notebook empty'); return; }
       const found = allIds.map(id => map.get(id) || null).filter(Boolean);
       const miss = allIds.filter(id => !map.has(id));
       pool = found.concat(srsBuildPseudoItems(miss));
@@ -5544,7 +5544,7 @@ function toggleCoachMastered(attemptId, mastered) {
   syncCoachAttempt(updated);
 }
 
-/********************* Review & Wrong bank *********************/
+/********************* Review & Mistake notebook *********************/
 function shouldRenderMobileRecordLists() {
   return !!(window.matchMedia && window.matchMedia('(max-width: 760px)').matches);
 }
@@ -5686,7 +5686,7 @@ function renderWrongBank() {
     tr.appendChild(action);
     tb.appendChild(tr);
     mobileCards.push(mobileRecordCard({
-      eyebrow: 'Wrong-bank item',
+      eyebrow: 'Mistake notebook item',
       title: ans,
       pills: [
         ['Box', rec.box || 1],
@@ -5710,14 +5710,14 @@ function renderWrongBank() {
     });
   };
   bindDeleteButtons(tb);
-  renderMobileRecordList('wrong-mobile-list', mobileCards, 'Wrong-bank is empty', 'Miss a question in practice and it will show up here for spaced repetition.');
+  renderMobileRecordList('wrong-mobile-list', mobileCards, 'Mistake Notebook is empty', 'Miss a question in practice and it will show up here for spaced repetition.');
   bindDeleteButtons($('wrong-mobile-list'));
   renderCoachChatChrome();
 }
 
 function reviewMissedNow() {
   const recs = wrongRecords().sort((a, b) => (a.rec.dueAt || 0) - (b.rec.dueAt || 0));
-  if (!recs.length) { toast('Wrong bank empty'); return; }
+  if (!recs.length) { toast('Mistake Notebook empty'); return; }
   setPracticeWrongBank(true);
   updateSetupOverview();
   startSession();
@@ -5980,7 +5980,7 @@ $('btn-clear-wrong')?.addEventListener('click', () => {
   syncWrongIdsClearAll();
   playFeedbackCue('unmastered');
   renderWrongBank();
-  toast('Wrong bank cleared');
+  toast('Mistake Notebook cleared');
 });
 $('btn-review-misses')?.addEventListener('click', reviewMissedNow);
 $('btn-practice-due')?.addEventListener('click', reviewMissedNow);
