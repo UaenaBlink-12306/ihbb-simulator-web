@@ -700,16 +700,11 @@
                 <div class="dashboard-split dashboard-split-solo">
                     <div class="panel-stack">
                         <div class="tab-strip subtab-strip">
-                            <button class="leaderboard-sub-tab active" data-sub="global">Global Top 100</button>
-                            <button class="leaderboard-sub-tab" data-sub="class">Class</button>
+                            <button class="leaderboard-sub-tab active" data-sub="class">Class</button>
+                            <button class="leaderboard-sub-tab" data-sub="global">Global Top 100</button>
                         </div>
 
-                        <div id="leaderboard-view-global" class="leaderboard-panel" style="margin-top: 18px;">
-                            <div id="leaderboard-list-global" class="list-container">
-                                <p class="muted">Loading global rankings...</p>
-                            </div>
-                        </div>
-                        <div id="leaderboard-view-class" class="leaderboard-panel hidden" style="margin-top: 18px;">
+                        <div id="leaderboard-view-class" class="leaderboard-panel" style="margin-top: 18px;">
                             <div class="card-muted-box" style="margin-bottom: 16px;">
                                 <div class="input-group" style="margin: 0;">
                                     <label for="leaderboard-class-select" style="display: none;">Select a class</label>
@@ -720,6 +715,11 @@
                             </div>
                             <div id="leaderboard-list-class" class="list-container">
                                 <p class="muted">Select a class to view rankings.</p>
+                            </div>
+                        </div>
+                        <div id="leaderboard-view-global" class="leaderboard-panel hidden" style="margin-top: 18px;">
+                            <div id="leaderboard-list-global" class="list-container">
+                                <p class="muted">Loading global rankings...</p>
                             </div>
                         </div>
                     </div>
@@ -932,6 +932,13 @@
                 </div>
                 <div class="dashboard-split dashboard-split-solo">
                     <div class="list-container">
+                        <div class="list-item">
+                            <div>
+                                <h3 style="margin:0 0 4px;">Leaderboard Fix &amp; Class Rankings First</h3>
+                                <div class="pill">August 25, 2026</div>
+                                <p class="muted" style="margin: 8px 0 0;">The Leaderboard tab loads correctly again after a database permissions repair on the Global Top 100 and Class ranking feeds. The tab now opens on your Class rankings first, with Global Top 100 one click away.</p>
+                            </div>
+                        </div>
                         <div class="list-item">
                             <div>
                                 <h3 style="margin:0 0 4px;">Session Review Now Opens the Mistake Notebook</h3>

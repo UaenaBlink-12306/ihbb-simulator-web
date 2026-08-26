@@ -39,6 +39,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const ASSIGNMENT_REMINDER_WINDOW_MS = ASSIGNMENT_REMINDER_WINDOW_DAYS * DAY_MS;
     let userEmail = String(session.user?.email || '').trim();
     let currentMemberships = [];
+    let studentClassesLoadedOnce = false;
     let latestStudentAssignments = [];
     let latestStudentSubmissions = {};
     let studentAssignmentFilter = 'all';
@@ -764,7 +765,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (nextTab === 'analytics') loadAnalytics();
         dashboardChat.open = nextTab === 'coach';
         if (nextTab === 'coach') loadCoachWorkspace(false);
-        if (nextTab === 'leaderboard') activateLeaderboardSubtab('global');
+        if (nextTab === 'leaderboard') {
+            const firstSub = document.querySelector('.leaderboard-sub-tab');
+            activateLeaderboardSubtab(firstSub?.dataset.sub || 'class');
+        }
         if (nextTab === 'question-sets') loadQuestionSets();
         if (nextTab === 'create') setupBuilder();
         if (nextTab === 'game-history') {
@@ -3063,6 +3067,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     async function loadClasses() {
         try {
             currentMemberships = await fetchStudentMemberships({ includeClassDetails: true });
+            studentClassesLoadedOnce = true;
             renderClasses(currentMemberships);
             return currentMemberships;
         } catch (error) {
@@ -5829,11 +5834,18 @@ document.addEventListener('DOMContentLoaded', async () => {
         renderLeaderboardNodes('leaderboard-list-global', data, 'pts');
     }
 
-    function refreshLeaderboardClassSelect() {
+    async function refreshLeaderboardClassSelect() {
         const select = document.getElementById('leaderboard-class-select');
         const container = document.getElementById('leaderboard-list-class');
         if (!select || !container) return;
-        
+
+        // The Leaderboard tab can open before loadClasses() finishes; wait for
+        // the first load so the default Class view never flashes "You need a
+        // class" while memberships are still loading.
+        if (!studentClassesLoadedOnce) {
+            try { await loadClasses(); } catch (error) { console.warn('[Leaderboard] class list unavailable:', error); }
+        }
+
         if (!currentMemberships || currentMemberships.length === 0) {
             select.innerHTML = '<option value="">No classes found.</option>';
             select.disabled = true;

@@ -632,5 +632,6 @@ GRANT EXECUTE ON FUNCTION get_leaderboard_class(UUID) TO authenticated;
 
 ## 6. Next Steps
 1. Run all SQL above in Supabase SQL Editor, then apply [`migrations/20260810023453_security_report_remediation.sql`](./migrations/20260810023453_security_report_remediation.sql). The app relies on its verified-write RPCs and private Realtime policies.
-2. Ensure `config.js` has your correct URL and Anon Key.
-3. Deploy to Vercel via GitHub push.
+2. If the student Leaderboard tab shows "Failed to load leaderboard rankings.", apply [`migrations/20260825_leaderboard_repair.sql`](./migrations/20260825_leaderboard_repair.sql) — it restores the two ranking RPCs and their `authenticated` EXECUTE grants in one transaction and is safe to re-run.
+3. Ensure `config.js` has your correct URL and Anon Key.
+4. Deploy to Vercel via GitHub push.
