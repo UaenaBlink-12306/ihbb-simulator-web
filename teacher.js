@@ -415,6 +415,14 @@ document.addEventListener('DOMContentLoaded', async () => {
             <p class="empty-copy">${esc(copy)}</p>
         </div>
     `;
+    const dataLoadErrorHtml = (title, error, retryLabel) => `
+        <div class="empty-state data-load-error" role="alert">
+            <div class="empty-kicker">Could not load</div>
+            <h3 class="empty-title">${esc(title)}</h3>
+            <p class="empty-copy">${esc(error?.message || 'The dashboard could not reach Supabase. Please try again.')}</p>
+            <button class="btn ghost" type="button" data-dashboard-retry="${esc(retryLabel)}">Try Again</button>
+        </div>
+    `;
     const teacherAnalyticsState = {
         loading: false,
         error: '',
@@ -2151,6 +2159,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                     ? sb.from('user_coach_attempts').select('user_id, question_text, expected_answer, user_answer, correct, reason, coach, category, era, source, focus_topic, created_at').in('user_id', studentIds).gte('created_at', STUDY_DATA_RESET_CUTOFF_ISO)
                     : Promise.resolve({ data: [] })
             ]);
+            const analyticsResponses = [rosterRes, assignmentRes, profileRes, submissionRes, sessionRes, wrongRes, coachRes];
+            const analyticsError = analyticsResponses.find(result => result?.error)?.error;
+            if (analyticsError) throw analyticsError;
             if (version !== teacherAnalyticsLoadVersion) return;
             const analytics = normalizeTeacherAnalyticsClassRows(
                 myClasses,
@@ -2604,15 +2615,24 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // ========== CLASSES ==========
     async function loadClasses() {
-        const { data, error } = await sb.from('classes').select('*').eq('teacher_id', uid).order('created_at', { ascending: false });
-        myClasses = data || [];
-        renderClasses();
-        populateClassDropdown();
-        syncAccountSettingsInputs();
-        applyAccountSettingsLocally();
-        renderTeacherClassLaunchpad();
-        void applyPendingAssistantClassGuidanceDraft({ notify: window.location.hash === '#assistant-class-draft' });
-        void loadTeacherAnalytics();
+        const listEl = document.getElementById('classes-list');
+        if (listEl) listEl.innerHTML = '<p class="muted">Loading classes...</p>';
+        try {
+            const { data, error } = await sb.from('classes').select('*').eq('teacher_id', uid).order('created_at', { ascending: false });
+            if (error) throw error;
+            myClasses = data || [];
+            renderClasses();
+            populateClassDropdown();
+            syncAccountSettingsInputs();
+            applyAccountSettingsLocally();
+            renderTeacherClassLaunchpad();
+            void applyPendingAssistantClassGuidanceDraft({ notify: window.location.hash === '#assistant-class-draft' });
+            void loadTeacherAnalytics();
+        } catch (error) {
+            console.warn('[Teacher Classes] unavailable', error);
+            if (listEl) listEl.innerHTML = dataLoadErrorHtml('Classes are unavailable', error, 'classes');
+            showAlert(`Classes could not be loaded: ${error?.message || error}`, 'error');
+        }
     }
 
     function renderClasses() {
@@ -2868,34 +2888,46 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
 
     window.viewStudents = async (classId) => {
-        const { data } = await sb.from('class_students').select('student_id, joined_at').eq('class_id', classId);
-        if (!data || !data.length) { showModal('Enrolled Students', '<p class="muted">No students enrolled yet.</p>'); return; }
-        const ids = data.map(s => s.student_id);
-        const { data: profiles } = await sb.from('profiles').select('id, display_name, avatar_id').in('id', ids);
-        const profileMap = {};
-        (profiles || []).forEach((p) => {
-            profileMap[p.id] = {
-                name: p.display_name || 'Unnamed',
-                avatarId: normalizeAvatarId(p.avatar_id)
-            };
-        });
-        const html = data.map(s => `
-            <div class="list-item">
-                ${userAvatarHtml(profileMap[s.student_id]?.avatarId, profileMap[s.student_id]?.name || 'Unnamed')}
-                <div class="item-copy">
-                    <span class="item-title">${esc(profileMap[s.student_id]?.name || 'Unnamed')}</span>
-                    <span class="item-meta">Joined ${new Date(s.joined_at).toLocaleDateString()}</span>
+        try {
+            const { data, error } = await sb.from('class_students').select('student_id, joined_at').eq('class_id', classId);
+            if (error) throw error;
+            if (!data || !data.length) { showModal('Enrolled Students', '<p class="muted">No students enrolled yet.</p>'); return; }
+            const ids = data.map(s => s.student_id);
+            const { data: profiles, error: profileError } = await sb.from('profiles').select('id, display_name, avatar_id').in('id', ids);
+            if (profileError) throw profileError;
+            const profileMap = {};
+            (profiles || []).forEach((p) => {
+                profileMap[p.id] = {
+                    name: p.display_name || 'Unnamed',
+                    avatarId: normalizeAvatarId(p.avatar_id)
+                };
+            });
+            const html = data.map(s => `
+                <div class="list-item">
+                    ${userAvatarHtml(profileMap[s.student_id]?.avatarId, profileMap[s.student_id]?.name || 'Unnamed')}
+                    <div class="item-copy">
+                        <span class="item-title">${esc(profileMap[s.student_id]?.name || 'Unnamed')}</span>
+                        <span class="item-meta">Joined ${new Date(s.joined_at).toLocaleDateString()}</span>
+                    </div>
+                    <a class="btn ghost" href="profile.html?user=${encodeURIComponent(s.student_id)}">Profile</a>
                 </div>
-                <a class="btn ghost" href="profile.html?user=${encodeURIComponent(s.student_id)}">Profile</a>
-            </div>
-        `).join('');
-        showModal(`Enrolled Students (${data.length})`, html);
+            `).join('');
+            showModal(`Enrolled Students (${data.length})`, html);
+        } catch (error) {
+            showAlert(`Students could not be loaded: ${error?.message || error}`, 'error');
+        }
     };
 
     window.deleteClass = async (id) => {
         if (!confirm('Delete this class? All its assignments will also be deleted.')) return;
-        await sb.from('classes').delete().eq('id', id);
-        loadClasses(); loadAssignments();
+        try {
+            const { error } = await sb.from('classes').delete().eq('id', id).eq('teacher_id', uid);
+            if (error) throw error;
+            showAlert('Class deleted.', 'success');
+            await Promise.all([loadClasses(), loadAssignments()]);
+        } catch (error) {
+            showAlert(`Class could not be deleted: ${error?.message || error}`, 'error');
+        }
     };
 
     document.getElementById('analytics-class-select')?.addEventListener('change', (event) => {
@@ -2953,13 +2985,24 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('btn-save-class').addEventListener('click', async () => {
         const name = document.getElementById('new-class-name').value.trim();
         if (!name) return;
+        const button = document.getElementById('btn-save-class');
+        button.disabled = true;
+        const previousLabel = button.textContent;
+        button.textContent = 'Creating...';
         const code = Math.random().toString(36).substring(2, 8).toUpperCase();
-        const { error } = await sb.from('classes').insert({ teacher_id: uid, name, code });
-        if (error) { showAlert(error.message, 'error'); return; }
-        document.getElementById('new-class-form').classList.add('hidden');
-        document.getElementById('new-class-name').value = '';
-        showAlert('Class created with code: ' + code, 'success');
-        loadClasses();
+        try {
+            const { error } = await sb.from('classes').insert({ teacher_id: uid, name, code });
+            if (error) throw error;
+            document.getElementById('new-class-form').classList.add('hidden');
+            document.getElementById('new-class-name').value = '';
+            showAlert('Class created with code: ' + code, 'success');
+            await loadClasses();
+        } catch (error) {
+            showAlert(`Class could not be created: ${error?.message || error}`, 'error');
+        } finally {
+            button.disabled = false;
+            button.textContent = previousLabel;
+        }
     });
 
     function populateClassDropdown() {
@@ -2976,12 +3019,28 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // ========== ASSIGNMENTS ==========
     async function loadAssignments() {
-        const { data } = await sb.from('assignments').select('*, classes(name, code)').eq('teacher_id', uid).order('created_at', { ascending: false });
-        latestAssignments = data || [];
-        renderAssignments(latestAssignments);
-        renderTeacherClassLaunchpad();
-        void loadTeacherAnalytics();
+        const listEl = document.getElementById('assignments-list');
+        if (listEl) listEl.innerHTML = '<p class="muted">Loading assignments...</p>';
+        try {
+            const { data, error } = await sb.from('assignments').select('*, classes(name, code)').eq('teacher_id', uid).order('created_at', { ascending: false });
+            if (error) throw error;
+            latestAssignments = data || [];
+            renderAssignments(latestAssignments);
+            renderTeacherClassLaunchpad();
+            void loadTeacherAnalytics();
+        } catch (error) {
+            console.warn('[Teacher Assignments] unavailable', error);
+            if (listEl) listEl.innerHTML = dataLoadErrorHtml('Assignments are unavailable', error, 'assignments');
+            showAlert(`Assignments could not be loaded: ${error?.message || error}`, 'error');
+        }
     }
+
+    document.getElementById('classes-list')?.addEventListener('click', (event) => {
+        if (event.target.closest('[data-dashboard-retry="classes"]')) void loadClasses();
+    });
+    document.getElementById('assignments-list')?.addEventListener('click', (event) => {
+        if (event.target.closest('[data-dashboard-retry="assignments"]')) void loadAssignments();
+    });
 
     function renderAssignments(list = latestAssignments) {
         const el = document.getElementById('assignments-list');
@@ -3020,19 +3079,27 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     window.viewScores = async (assignId) => {
+        try {
         // Get the assignment to find its class
-        const { data: assign } = await sb.from('assignments').select('class_id').eq('id', assignId).single();
+        const { data: assign, error: assignmentError } = await sb.from('assignments').select('class_id').eq('id', assignId).single();
+        if (assignmentError) throw assignmentError;
         // Get all students in the class
-        const { data: classStudents } = await sb.from('class_students').select('student_id').eq('class_id', assign?.class_id);
+        const { data: classStudents, error: rosterError } = await sb.from('class_students').select('student_id').eq('class_id', assign?.class_id);
+        if (rosterError) throw rosterError;
         const allStudentIds = (classStudents || []).map(s => s.student_id);
 
         // Get submissions
-        const { data: subs } = await sb.from('assignment_submissions').select('*').eq('assignment_id', assignId).eq('verified', true);
+        const { data: subs, error: submissionError } = await sb.from('assignment_submissions').select('*').eq('assignment_id', assignId).eq('verified', true);
+        if (submissionError) throw submissionError;
         const subMap = {};
         (subs || []).forEach(s => subMap[s.student_id] = s);
 
         // Fetch display names for all class students
-        const { data: profiles } = await sb.from('profiles').select('id, display_name, avatar_id').in('id', allStudentIds);
+        const profileResult = allStudentIds.length
+            ? await sb.from('profiles').select('id, display_name, avatar_id').in('id', allStudentIds)
+            : { data: [], error: null };
+        if (profileResult.error) throw profileResult.error;
+        const profiles = profileResult.data;
         const profileMap = {};
         (profiles || []).forEach((p) => {
             profileMap[p.id] = {
@@ -3073,12 +3140,21 @@ document.addEventListener('DOMContentLoaded', async () => {
         }).join('');
         const doneCount = Object.keys(subMap).length;
         showModal(`Submissions (${doneCount}/${allStudentIds.length} completed)`, html);
+        } catch (error) {
+            showAlert(`Scores could not be loaded: ${error?.message || error}`, 'error');
+        }
     };
 
     window.deleteAssignment = async (id) => {
         if (!confirm('Delete this assignment?')) return;
-        await sb.from('assignments').delete().eq('id', id);
-        loadAssignments();
+        try {
+            const { error } = await sb.from('assignments').delete().eq('id', id).eq('teacher_id', uid);
+            if (error) throw error;
+            showAlert('Assignment deleted.', 'success');
+            await loadAssignments();
+        } catch (error) {
+            showAlert(`Assignment could not be deleted: ${error?.message || error}`, 'error');
+        }
     };
 
     // ========== QUESTION SETS ==========
@@ -4637,7 +4713,10 @@ document.addEventListener('DOMContentLoaded', async () => {
                     const { error: legacyError } = await sb.from('assignment_questions').insert(legacyRows);
                     questionInsertError = legacyError || null;
                 }
-                if (questionInsertError) throw questionInsertError;
+                if (questionInsertError) {
+                    await sb.from('assignments').delete().eq('id', assignment.id).eq('teacher_id', uid);
+                    throw questionInsertError;
+                }
 
                 let inlineSetError = null;
                 if (saveAssignmentAsSet) {
@@ -5241,6 +5320,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         const nextTab = normalizeTeacherDashboardTab(tabName);
         const nextView = document.getElementById('tab-' + nextTab);
         if (!nextView) return;
+        if (nextTab === 'create' && options.builderMode !== 'set') {
+            isCreatingSet = false;
+            currentEditSetId = null;
+        }
         const navTab = nextTab === 'peer-comparison' ? 'analytics' : nextTab;
         document.querySelectorAll('.dash-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === navTab));
         syncDashboardTabGroups(nextTab);
@@ -5282,10 +5365,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     function setDashboardMenuOpen(group, isOpen) {
-        if (nextTab === 'create' && options.builderMode !== 'set') {
-            isCreatingSet = false;
-            currentEditSetId = null;
-        }
         if (!group) return;
         group.classList.toggle('open', Boolean(isOpen));
         group.querySelector('.dashboard-tab-group-trigger')?.setAttribute('aria-expanded', isOpen ? 'true' : 'false');

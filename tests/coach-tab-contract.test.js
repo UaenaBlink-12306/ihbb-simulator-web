@@ -5,28 +5,16 @@ const path = require('node:path');
 
 const root = path.resolve(__dirname, '..');
 const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
-const coachPages = ['teacher.html'];
-
-test('remaining Coach experiences stay full-tab surfaces', () => {
-  for (const page of coachPages) {
-    const html = read(page);
-    assert.match(html, /data-coach-surface="tab"/, `${page} should expose the Coach as a tab surface`);
-    assert.match(html, /<script src="coach-tab-ui\.js"(?: defer)?><\/script>/, `${page} should load the shared Coach tab UI`);
-    assert.doesNotMatch(html, /id="coach-chat-launcher"/, `${page} should not expose a floating Coach launcher`);
-    assert.doesNotMatch(html, /id="coach-chat-backdrop"/, `${page} should not use an overlay backdrop`);
-    assert.doesNotMatch(html, /<aside[^>]+id="coach-chat-sidebar"/, `${page} should not render Coach as an aside`);
-  }
-});
-
-test('dashboard Coach surfaces remain while the Practice Hub Coach tab is removed', () => {
+test('student notebook remains while teacher and Practice Hub Coach tabs are removed', () => {
   const student = read('student.html');
   const teacher = read('teacher.html');
   const practice = read('index.html');
   assert.match(student, /<button class="dash-tab coach-direct-tab"[^>]+data-tab="coach"[^>]*>Mistake Notebook<\/button>/);
   assert.match(student, /<section id="tab-coach" class="view">/);
   assert.match(student, /data-notebook-surface="primary"/);
-  assert.match(teacher, /<button class="dash-tab coach-direct-tab"[^>]+data-tab="coach"[^>]*>Coach<\/button>/);
-  assert.match(teacher, /<section id="tab-coach" class="view">/);
+  assert.doesNotMatch(teacher, /data-tab="coach"/);
+  assert.doesNotMatch(teacher, /<section id="tab-coach"/);
+  assert.doesNotMatch(teacher, /<script src="coach-tab-ui\.js"/);
   assert.doesNotMatch(practice, /id="nav-coach"/);
   assert.doesNotMatch(practice, /id="view-coach"/);
   assert.doesNotMatch(practice, /<script src="coach-tab-ui\.js"/);
@@ -49,17 +37,6 @@ test('student chat is removed and the future Coach rail opens from a top-right d
   // The Coming Soon rail must live outside the notebook tab, not inside it.
   assert.doesNotMatch(html, /<section id="tab-coach"[\s\S]*?<\/aside>[\s\S]*?<\/section>/);
   assert.match(read('student.js'), /hasChatSurface/);
-});
-
-test('remaining Coach tabs remove advanced drawer controls and keep one simple composer', () => {
-  for (const page of coachPages) {
-    const html = read(page);
-    assert.doesNotMatch(html, /id="coach-chat-fullscreen"/);
-    assert.doesNotMatch(html, /id="coach-chat-resize-handle"/);
-    assert.doesNotMatch(html, /id="coach-chat-thinking-toggle"/);
-    assert.equal((html.match(/id="coach-chat-form"/g) || []).length, 1, `${page} should have one Coach composer`);
-    assert.equal((html.match(/id="coach-chat-input"/g) || []).length, 1, `${page} should have one Coach input`);
-  }
 });
 
 test('Practice Hub review is simplified and Study Later is an automatic set', () => {

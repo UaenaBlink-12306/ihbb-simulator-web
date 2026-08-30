@@ -81,7 +81,6 @@
     </style>
     <script src="set-builder-quality.js" defer></script>
     <script src="set-builder-source.js" defer></script>
-    <script src="coach-tab-ui.js" defer></script>
     <script src="teacher.js" defer></script>
     <script src="dashboard-feedback.js" defer></script>
 </head>
@@ -131,7 +130,6 @@
                     <button class="dash-tab" type="button" data-tab="assignments" role="menuitem">Assignments</button>
                 </div>
             </div>
-            <button class="dash-tab coach-direct-tab" type="button" data-tab="coach" title="Plan class moves, lessons, and assignments">Coach</button>
             <div class="dashboard-tab-group" data-tabs="question-sets create">
                 <button class="dashboard-tab-group-trigger" type="button" data-default-tab="question-sets" aria-haspopup="true">Question Tools</button>
                 <div class="dashboard-tab-menu" role="menu">
@@ -515,66 +513,6 @@
                         <button id="btn-create-assignment" class="btn pri auth-option">Create Assignment</button>
                     </div>
                 </aside>
-            </div>
-        </section>
-
-        <section id="tab-coach" class="view">
-            <div class="coach-tab-page">
-                <div id="coach-chat-sidebar" class="coach-tab-shell" data-chat-pristine="true" data-coach-surface="tab" data-coach-role="teacher">
-                    <header class="coach-tab-header">
-                        <div class="coach-tab-brand">
-                            <span class="coach-tab-mark" aria-hidden="true">
-                                <svg viewBox="0 0 24 24"><path d="M12 3c.8 4.2 2.3 5.7 6.5 6.5-4.2.8-5.7 2.3-6.5 6.5-.8-4.2-2.3-5.7-6.5-6.5C9.7 8.7 11.2 7.2 12 3Z"></path><path d="M18.5 15.5c.4 1.9 1 2.5 3 3-2 .4-2.6 1-3 3-.4-2-1-2.6-3-3 2-.5 2.6-1.1 3-3Z"></path></svg>
-                            </span>
-                            <div class="coach-tab-brand-copy">
-                                <div class="coach-tab-title-row">
-                                    <h2>Coach</h2>
-                                    <span class="coach-tab-live"><span class="coach-tab-live-dot" aria-hidden="true"></span>Class planner</span>
-                                </div>
-                                <p id="coach-chat-context-summary">Using your classes, assignments, and analytics</p>
-                                <div id="coach-chat-status-pills" class="coach-chat-status-pills"></div>
-                            </div>
-                        </div>
-                        <div class="coach-tab-header-actions">
-                            <span id="coach-chat-source" class="coach-chat-source-pill" role="status"></span>
-                            <button id="coach-chat-new" class="coach-reset-button" type="button" hidden>
-                                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 2.64-6.36L3 8"></path><path d="M3 3v5h5"></path></svg>
-                                Start over
-                            </button>
-                        </div>
-                    </header>
-
-                    <div id="coach-chat-box" class="coach-chat-box">
-                    <div id="coach-chat-body" class="coach-tab-body">
-                        <div id="coach-chat-home" class="coach-home">
-                            <p class="coach-home-kicker">Plan lessons, assignments, and class moves</p>
-                            <h3>What would help most?</h3>
-                            <div id="coach-chat-workspace" class="coach-chat-workspace"></div>
-                            <div id="coach-chat-starter-box" class="coach-chat-starter-block">
-                                <div id="coach-chat-starters" class="coach-chat-starters"></div>
-                            </div>
-                        </div>
-                        <div id="coach-chat-messages" class="coach-chat-messages" aria-live="polite"></div>
-                    </div>
-
-                    <button id="coach-chat-jump-latest" class="coach-chat-jump-latest" type="button" aria-label="Jump to latest answer" title="Jump to latest answer">
-                        <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><polyline points="19 12 12 19 5 12"></polyline></svg>
-                    </button>
-
-                    <form id="coach-chat-form" class="coach-chat-form">
-                        <label class="coach-chat-input-wrap" for="coach-chat-input">
-                            <textarea id="coach-chat-input" rows="1" placeholder="Ask about a class, assignment, lesson, or what to do next"></textarea>
-                            <button id="coach-chat-send" class="coach-send-button" type="submit" aria-label="Send question">
-                                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5"></path><path d="m5 12 7-7 7 7"></path></svg>
-                            </button>
-                        </label>
-                        <div class="coach-chat-form-actions">
-                            <div id="coach-chat-hint" class="coach-composer-hint">Coach uses your current class data to personalize plans.</div>
-                            <span class="coach-composer-keys" aria-hidden="true"><kbd>↵</kbd> send&ensp;·&ensp;<kbd>⇧</kbd>+<kbd>↵</kbd> new line</span>
-                        </div>
-                    </form>
-                    </div>
-                </div>
             </div>
         </section>
 
@@ -969,6 +907,13 @@
                 </div>
                 <div class="dashboard-split dashboard-split-solo">
                     <div class="list-container">
+                        <div class="list-item">
+                            <div>
+                                <h3 style="margin:0 0 4px;">Teacher Coursework &amp; Analytics Repair</h3>
+                                <div class="pill">August 30, 2026</div>
+                                <p class="muted" style="margin: 8px 0 0;">The teacher dashboard now reports class and assignment loading failures clearly, restores authorized class analytics from enrolled students' activity, and removes the teacher Coach tab to keep coursework and reports focused.</p>
+                            </div>
+                        </div>
                         <div class="list-item">
                             <div>
                                 <h3 style="margin:0 0 4px;">Expanded Official Question Bank</h3>
