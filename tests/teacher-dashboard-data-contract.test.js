@@ -22,6 +22,18 @@ test('teacher dashboard surfaces Supabase read and mutation failures', () => {
   assert.doesNotMatch(menuHelper, /\bnextTab\b|\boptions\.builderMode\b/);
 });
 
+test('teacher coursework loads before the large question bank and cannot spin forever', () => {
+  const source = read('teacher.js');
+  const earlyCourseworkLoad = source.indexOf('await Promise.allSettled([loadClasses(), loadAssignments()])');
+  const questionBankLoad = source.indexOf("await fetch('questions.json')");
+  assert.ok(earlyCourseworkLoad > 0, 'coursework loading should be started explicitly');
+  assert.ok(questionBankLoad > earlyCourseworkLoad, 'coursework must load before the question bank');
+  assert.equal((source.match(/await Promise\.allSettled\(\[loadClasses\(\), loadAssignments\(\)\]\)/g) || []).length, 1);
+  assert.match(source, /const teacherDataAbortSignal = \(timeoutMs = 12000\)/);
+  assert.match(source, /from\('classes'\)[\s\S]*?abortSignal\(teacherDataAbortSignal\(\)\)/);
+  assert.match(source, /from\('assignments'\)[\s\S]*?abortSignal\(teacherDataAbortSignal\(\)\)/);
+});
+
 test('teacher analytics migration grants only enrolled-student reads', () => {
   const migration = read('migrations/20260830130350_repair_teacher_dashboard_access.sql');
   for (const table of ['user_drill_sessions', 'user_wrong_questions', 'user_coach_attempts']) {

@@ -197,7 +197,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     const TEACHER_DASHBOARD_TAB_LABELS = Object.freeze({
         classes: 'My Classes',
         assignments: 'Assignments',
-        coach: 'Coach',
         'question-sets': 'Browse Sets',
         create: 'Create Assignment',
         livebee: 'Live Bee Rooms',
@@ -423,6 +422,14 @@ document.addEventListener('DOMContentLoaded', async () => {
             <button class="btn ghost" type="button" data-dashboard-retry="${esc(retryLabel)}">Try Again</button>
         </div>
     `;
+    const teacherDataAbortSignal = (timeoutMs = 12000) => {
+        if (typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function') {
+            return AbortSignal.timeout(timeoutMs);
+        }
+        const controller = new AbortController();
+        window.setTimeout(() => controller.abort(), timeoutMs);
+        return controller.signal;
+    };
     const teacherAnalyticsState = {
         loading: false,
         error: '',
@@ -2131,10 +2138,10 @@ document.addEventListener('DOMContentLoaded', async () => {
             const classIds = myClasses.map((row) => String(row.id || '')).filter(Boolean);
             const [rosterRes, assignmentRes] = await Promise.all([
                 classIds.length
-                    ? sb.from('class_students').select('class_id, student_id, joined_at').in('class_id', classIds)
+                    ? sb.from('class_students').select('class_id, student_id, joined_at').in('class_id', classIds).abortSignal(teacherDataAbortSignal())
                     : Promise.resolve({ data: [] }),
                 classIds.length
-                    ? sb.from('assignments').select('id, class_id, title, due_date, created_at').in('class_id', classIds)
+                    ? sb.from('assignments').select('id, class_id, title, due_date, created_at').in('class_id', classIds).abortSignal(teacherDataAbortSignal())
                     : Promise.resolve({ data: [] })
             ]);
             if (version !== teacherAnalyticsLoadVersion) return;
@@ -2144,19 +2151,19 @@ document.addEventListener('DOMContentLoaded', async () => {
             const assignmentIds = uniqueValues(assignmentRows.map((row) => String(row.id || '')));
             const [profileRes, submissionRes, sessionRes, wrongRes, coachRes] = await Promise.all([
                 studentIds.length
-                    ? sb.from('profiles').select('id, display_name, avatar_id').in('id', studentIds)
+                    ? sb.from('profiles').select('id, display_name, avatar_id').in('id', studentIds).abortSignal(teacherDataAbortSignal())
                     : Promise.resolve({ data: [] }),
                 assignmentIds.length
-                    ? sb.from('assignment_submissions').select('assignment_id, student_id, correct, total, submitted_at, created_at').in('assignment_id', assignmentIds).eq('verified', true)
+                    ? sb.from('assignment_submissions').select('assignment_id, student_id, correct, total, submitted_at, created_at').in('assignment_id', assignmentIds).eq('verified', true).abortSignal(teacherDataAbortSignal())
                     : Promise.resolve({ data: [] }),
                 studentIds.length
-                    ? sb.from('user_drill_sessions').select('user_id, total, correct, dur, ts, buzz, items, results, meta, created_at').in('user_id', studentIds).gte('created_at', STUDY_DATA_RESET_CUTOFF_ISO)
+                    ? sb.from('user_drill_sessions').select('user_id, total, correct, dur, ts, buzz, items, results, meta, created_at').in('user_id', studentIds).gte('created_at', STUDY_DATA_RESET_CUTOFF_ISO).abortSignal(teacherDataAbortSignal())
                     : Promise.resolve({ data: [] }),
                 studentIds.length
-                    ? sb.from('user_wrong_questions').select('user_id, created_at').in('user_id', studentIds).gte('created_at', STUDY_DATA_RESET_CUTOFF_ISO)
+                    ? sb.from('user_wrong_questions').select('user_id, created_at').in('user_id', studentIds).gte('created_at', STUDY_DATA_RESET_CUTOFF_ISO).abortSignal(teacherDataAbortSignal())
                     : Promise.resolve({ data: [] }),
                 studentIds.length
-                    ? sb.from('user_coach_attempts').select('user_id, question_text, expected_answer, user_answer, correct, reason, coach, category, era, source, focus_topic, created_at').in('user_id', studentIds).gte('created_at', STUDY_DATA_RESET_CUTOFF_ISO)
+                    ? sb.from('user_coach_attempts').select('user_id, question_text, expected_answer, user_answer, correct, reason, coach, category, era, source, focus_topic, created_at').in('user_id', studentIds).gte('created_at', STUDY_DATA_RESET_CUTOFF_ISO).abortSignal(teacherDataAbortSignal())
                     : Promise.resolve({ data: [] })
             ]);
             const analyticsResponses = [rosterRes, assignmentRes, profileRes, submissionRes, sessionRes, wrongRes, coachRes];
@@ -2234,6 +2241,10 @@ document.addEventListener('DOMContentLoaded', async () => {
             renderClasses();
         }
     }
+
+    // Coursework must become usable before the large built-in question bank finishes loading.
+    // Otherwise classes, assignments, and the analytics class picker remain on their HTML placeholders.
+    await Promise.allSettled([loadClasses(), loadAssignments()]);
 
     // Load questions from questions.json
     try {
@@ -2618,7 +2629,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const listEl = document.getElementById('classes-list');
         if (listEl) listEl.innerHTML = '<p class="muted">Loading classes...</p>';
         try {
-            const { data, error } = await sb.from('classes').select('*').eq('teacher_id', uid).order('created_at', { ascending: false });
+            const { data, error } = await sb.from('classes').select('*').eq('teacher_id', uid).order('created_at', { ascending: false }).abortSignal(teacherDataAbortSignal());
             if (error) throw error;
             myClasses = data || [];
             renderClasses();
@@ -3022,7 +3033,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const listEl = document.getElementById('assignments-list');
         if (listEl) listEl.innerHTML = '<p class="muted">Loading assignments...</p>';
         try {
-            const { data, error } = await sb.from('assignments').select('*, classes(name, code)').eq('teacher_id', uid).order('created_at', { ascending: false });
+            const { data, error } = await sb.from('assignments').select('*, classes(name, code)').eq('teacher_id', uid).order('created_at', { ascending: false }).abortSignal(teacherDataAbortSignal());
             if (error) throw error;
             latestAssignments = data || [];
             renderAssignments(latestAssignments);
@@ -6740,8 +6751,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Init
     setMode(normalizeTeacherBuilderMode(accountSettings.teacher_builder_default_mode || modeButtons.find(b => b.classList.contains('active'))?.dataset.mode || 'random'));
-    loadClasses();
-    loadAssignments();
     loadQuestionSets();
     checkNewTeacherGameHistory();
     renderDashboardChatChrome();
