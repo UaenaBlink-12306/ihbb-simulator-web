@@ -6041,10 +6041,14 @@ document.addEventListener('click', (e) => {
 });
 
 // Library actions
-$('lib-set-sel')?.addEventListener('change', (e) => { Library.activeSetId = e.target.value || null; saveLibrarySafe('remember question set selection'); renderLibrarySelectors(); renderLibraryTable(); });
-$('lib-search')?.addEventListener('input', renderLibraryTable);
+const LIBRARY_PAGE_SIZE = 100;
+let LibraryPage = 1;
+function resetLibraryPage() { LibraryPage = 1; }
+$('lib-set-sel')?.addEventListener('change', (e) => { Library.activeSetId = e.target.value || null; resetLibraryPage(); saveLibrarySafe('remember question set selection'); renderLibrarySelectors(); renderLibraryTable(); });
+$('lib-search')?.addEventListener('input', () => { resetLibraryPage(); renderLibraryTable(); });
 // Keep Library region filter in sync with Setup filter and App.filters
 $('lib-filter-cat')?.addEventListener('change', (e) => {
+  resetLibraryPage();
   renderLibraryTable();
   const v = e.target.value || '';
   const fc = $('filter-cat'); if (fc) fc.value = v;
@@ -6057,7 +6061,18 @@ $('lib-filter-cat')?.addEventListener('change', (e) => {
     renderCategoryChips(cats);
   } catch { }
 });
-$('lib-filter-era')?.addEventListener('change', renderLibraryTable);
+$('lib-filter-era')?.addEventListener('change', () => { resetLibraryPage(); renderLibraryTable(); });
+$('lib-page-prev')?.addEventListener('click', () => {
+  if (LibraryPage <= 1) return;
+  LibraryPage -= 1;
+  renderLibraryTable();
+  $('lib-pagination')?.scrollIntoView({ block: 'nearest' });
+});
+$('lib-page-next')?.addEventListener('click', () => {
+  LibraryPage += 1;
+  renderLibraryTable();
+  $('lib-pagination')?.scrollIntoView({ block: 'nearest' });
+});
 
 // Quick-start practice with current Library filters
 $('lib-practice-filtered')?.addEventListener('click', () => {
@@ -6157,6 +6172,10 @@ function renderLibraryTable() {
   const set = getActiveSet(); const tb = document.querySelector('#tbl-lib tbody'); if (!tb) return;
   tb.innerHTML = '';
   if (!set) {
+    const summary = $('lib-pagination-summary'); if (summary) summary.textContent = 'Showing 0 questions';
+    const status = $('lib-page-status'); if (status) status.textContent = 'Page 1 of 1';
+    const prev = $('lib-page-prev'); if (prev) prev.disabled = true;
+    const next = $('lib-page-next'); if (next) next.disabled = true;
     renderMobileRecordList('lib-mobile-list', [], 'No set selected', 'Choose a question set above to browse its questions.');
     return;
   }
@@ -6165,10 +6184,18 @@ function renderLibraryTable() {
   const fe = ($('lib-filter-era') && $('lib-filter-era').value) || '';
   const isStudyLaterSet = String(set.id || '') === STUDY_LATER_SET_ID;
   const mobileCards = [];
+  const matchingEntries = [];
   set.items.forEach((it, idx) => {
     if (q && !it.answer.toLowerCase().includes(q) && !it.question.toLowerCase().includes(q)) return;
     if (fc && (it.meta?.category || '') !== fc) return;
     if (fe && (it.meta?.era || '') !== fe) return;
+    matchingEntries.push({ it, idx });
+  });
+  const pageCount = Math.max(1, Math.ceil(matchingEntries.length / LIBRARY_PAGE_SIZE));
+  LibraryPage = Math.max(1, Math.min(LibraryPage, pageCount));
+  const pageStart = (LibraryPage - 1) * LIBRARY_PAGE_SIZE;
+  const pageEntries = matchingEntries.slice(pageStart, pageStart + LIBRARY_PAGE_SIZE);
+  pageEntries.forEach(({ it, idx }) => {
     const tr = document.createElement('tr');
     const savedForLater = isQuestionInStudyLaterSet(it);
     const studyLaterAction = `<button class="btn ghost library-study-later-toggle${savedForLater ? ' is-saved' : ''}" type="button" data-library-index="${idx}" data-study-later-toggle="${escHtml(it.id)}" aria-pressed="${savedForLater}">${savedForLater ? (isStudyLaterSet ? 'Remove' : 'Remove from Study Later') : 'Study Later'}</button>`;
@@ -6188,6 +6215,13 @@ function renderLibraryTable() {
       actionHtml: `<button class="btn ghost library-answer-button" type="button" data-library-index="${idx}">View question</button>${studyLaterAction}`
     }));
   });
+  const visibleStart = matchingEntries.length ? pageStart + 1 : 0;
+  const visibleEnd = Math.min(pageStart + pageEntries.length, matchingEntries.length);
+  const summary = $('lib-pagination-summary');
+  if (summary) summary.textContent = `Showing ${visibleStart.toLocaleString()}–${visibleEnd.toLocaleString()} of ${matchingEntries.length.toLocaleString()} matching questions`;
+  const status = $('lib-page-status'); if (status) status.textContent = `Page ${LibraryPage.toLocaleString()} of ${pageCount.toLocaleString()}`;
+  const prev = $('lib-page-prev'); if (prev) prev.disabled = LibraryPage <= 1;
+  const next = $('lib-page-next'); if (next) next.disabled = LibraryPage >= pageCount;
   renderMobileRecordList('lib-mobile-list', mobileCards, 'No questions match', 'Try broadening the search term or clearing one of the active filters.');
 }
 
