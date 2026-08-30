@@ -11,7 +11,10 @@ class LocalServerSecurityTests(unittest.TestCase):
     def test_public_static_allowlist_blocks_repository_secrets(self):
         for path in ('.env', '.git/config', 'server.py', 'package.json', 'generated_questions_review.json', '../.env'):
             self.assertFalse(server.is_public_static_path(path), path)
-        for path in ('index.html', 'config.js', 'questions.json', 'lib/client-security.js', 'lib/no-autofill.js', 'assets/avatars/penguin.png'):
+        for path in (
+            'index.html', 'config.js', 'questions.json', 'theme.js', 'set-builder-source.js',
+            'lib/client-security.js', 'lib/no-autofill.js', 'assets/avatars/penguin.png'
+        ):
             self.assertTrue(server.is_public_static_path(path), path)
 
     def test_browser_origin_is_bound_to_local_helper(self):
@@ -30,6 +33,10 @@ class LocalServerSecurityTests(unittest.TestCase):
             with urllib.request.urlopen(base + '/', timeout=3) as response:
                 self.assertEqual(response.status, 200)
                 self.assertIn(b'lib/client-security.js', response.read())
+            with urllib.request.urlopen(base + '/theme.js', timeout=3) as response:
+                self.assertEqual(response.status, 200)
+            with urllib.request.urlopen(base + '/set-builder-source.js', timeout=3) as response:
+                self.assertEqual(response.status, 200)
             with self.assertRaises(urllib.error.HTTPError) as secret_error:
                 urllib.request.urlopen(base + '/.env', timeout=3)
             self.assertEqual(secret_error.exception.code, 404)

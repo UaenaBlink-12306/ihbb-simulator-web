@@ -3172,7 +3172,8 @@ PUBLIC_ROOT_FILES = {
     "index.html", "student.html", "teacher.html", "livebee.html", "admin.html", "login.html",
     "onboarding.html", "profile.html", "app.js", "student.js", "teacher.js", "livebee.js",
     "admin.js", "login.js", "onboarding.js", "profile.js", "avatar-catalog.js", "config.js",
-    "dashboard-feedback.js", "set-builder-quality.js", "styles.css", "questions.json",
+    "dashboard-feedback.js", "set-builder-quality.js", "set-builder-source.js", "theme.js",
+    "styles.css", "questions.json",
     "favicon.ico", "favicon.svg", "manifest.json", "lib/client-security.js", "lib/no-autofill.js",
 }
 PUBLIC_ASSET_EXTENSIONS = {
