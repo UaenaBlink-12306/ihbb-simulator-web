@@ -430,6 +430,21 @@ document.addEventListener('DOMContentLoaded', async () => {
         window.setTimeout(() => controller.abort(), timeoutMs);
         return controller.signal;
     };
+    const modeButtons = [...document.querySelectorAll('.mode-btn')];
+    const modePanels = [...document.querySelectorAll('.mode-panel')];
+    function setMode(mode) {
+        currentMode = mode || 'random';
+        modeButtons.forEach(b => b.classList.toggle('active', b.dataset.mode === currentMode));
+        modePanels.forEach(p => {
+            p.classList.remove('active');
+            p.classList.add('hidden');
+        });
+        const panel = document.getElementById('mode-' + currentMode);
+        if (panel) {
+            panel.classList.remove('hidden');
+            panel.classList.add('active');
+        }
+    }
     const teacherAnalyticsState = {
         loading: false,
         error: '',
@@ -2325,21 +2340,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
 
     // Mode switching (create assignment)
-    const modeButtons = [...document.querySelectorAll('.mode-btn')];
-    const modePanels = [...document.querySelectorAll('.mode-panel')];
-    function setMode(mode) {
-        currentMode = mode || 'random';
-        modeButtons.forEach(b => b.classList.toggle('active', b.dataset.mode === currentMode));
-        modePanels.forEach(p => {
-            p.classList.remove('active');
-            p.classList.add('hidden');
-        });
-        const panel = document.getElementById('mode-' + currentMode);
-        if (panel) {
-            panel.classList.remove('hidden');
-            panel.classList.add('active');
-        }
-    }
     modeButtons.forEach(btn => btn.addEventListener('click', () => setMode(btn.dataset.mode)));
 
     // Logout
@@ -3291,19 +3291,18 @@ document.addEventListener('DOMContentLoaded', async () => {
         const set = myQuestionSets.find(s => s.id === setId);
         if (!set) return;
         isCreatingSet = false;
-        setSelectedQuestions(set.questions || []);
         currentEditSetId = null;
+        setSelectedQuestions(set.questions || []);
         document.getElementById('assign-title').value = set.title;
-        activateDashboardTab('create');
         resetInlineAssignmentSetOption();
-    };
+        activateDashboardTab('create');
         showAlert(`Loaded "${set.title}". Choose a class and publish the assignment.`, 'success');
+    };
 
     window.hostLiveBeeWithSet = (setId) => {
         window.open(`livebee.html?set=${setId}`, '_blank');
     };
 
-    window.deleteQuestionSet = async (id) => {
     window.editQuestionSet = (setId) => {
         const set = myQuestionSets.find(s => s.id === setId && s.creator_id === uid);
         if (!set) {
@@ -3322,6 +3321,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (classEl) classEl.value = set.class_id || '';
     };
 
+    window.deleteQuestionSet = async (id) => {
         if (!confirm('Delete this question set?')) return;
         const { error } = await sb.from('question_sets').delete().eq('id', id).eq('creator_id', uid);
         if (error) {
@@ -4548,7 +4548,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
-    document.getElementById('assign-visibility')?.addEventListener('change', (e) => {
     function syncInlineAssignmentSetOptions() {
         const checkbox = document.getElementById('save-assignment-as-set');
         const options = document.getElementById('assignment-save-set-options');
@@ -4625,12 +4624,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         syncInlineAssignmentSetOptions();
     }
 
+    document.getElementById('assign-visibility')?.addEventListener('change', (e) => {
         toggleBuilderClassSelection(e.target.value);
     });
-
     document.getElementById('save-assignment-as-set')?.addEventListener('change', syncInlineAssignmentSetOptions);
     document.getElementById('assignment-set-visibility')?.addEventListener('change', syncInlineAssignmentSetOptions);
     document.getElementById('assign-class')?.addEventListener('change', syncInlineAssignmentSetOptions);
+
     // Create
     document.getElementById('btn-create-assignment').addEventListener('click', async () => {
         const title = document.getElementById('assign-title').value.trim();

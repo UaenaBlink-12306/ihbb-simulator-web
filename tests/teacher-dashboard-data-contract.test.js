@@ -32,6 +32,10 @@ test('teacher coursework loads before the large question bank and cannot spin fo
   assert.match(source, /const teacherDataAbortSignal = \(timeoutMs = 12000\)/);
   assert.match(source, /from\('classes'\)[\s\S]*?abortSignal\(teacherDataAbortSignal\(\)\)/);
   assert.match(source, /from\('assignments'\)[\s\S]*?abortSignal\(teacherDataAbortSignal\(\)\)/);
+  assert.ok(source.indexOf('const modeButtons =') < earlyCourseworkLoad, 'builder controls used by class settings must initialize before coursework');
+  assert.match(source, /window\.assignQuestionSet = \(setId\) => \{[\s\S]*?showAlert\(`Loaded "\$\{set\.title\}"[\s\S]*?\n    \};/);
+  assert.doesNotMatch(source, /window\.deleteQuestionSet = async \(id\) => \{\s*window\.editQuestionSet/);
+  assert.ok(source.indexOf('function syncInlineAssignmentSetOptions()') < source.indexOf("document.getElementById('assign-visibility')?.addEventListener"), 'assignment option helpers must initialize outside the visibility listener');
 });
 
 test('teacher analytics migration grants only enrolled-student reads', () => {
