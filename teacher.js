@@ -2665,6 +2665,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     <button class="btn ghost" onclick="copyCode('${c.code}')">Copy Code</button>
                     <button class="btn ghost" onclick="viewStudents('${c.id}')">Students</button>
                     <button class="btn ghost" onclick="openClassAnalytics('${c.id}')">Analytics</button>
+                    <button class="btn ghost" onclick="renameClass('${c.id}')">Rename</button>
                     <button class="btn bad" onclick="deleteClass('${c.id}')">Delete</button>
                 </div>
             </div>
@@ -2787,6 +2788,15 @@ document.addEventListener('DOMContentLoaded', async () => {
         updateLiveQuestionNumbers(null, null, false);
     });
     document.getElementById('modal-body').addEventListener('click', async (event) => {
+        if (event.target.id === 'btn-confirm-rename-class') {
+            const classId = String(myClasses.find((c) => String(c.id) === event.target.dataset.renameClassId)?.id || '');
+            await confirmRenameClass(classId);
+            return;
+        }
+        if (event.target.id === 'btn-cancel-rename-class') {
+            closeTeacherModal();
+            return;
+        }
         if (event.target.id === 'btn-review-reset-order') {
             selectedQuestions = [...originalReviewOrder];
             invalidateSelectedQuestionsQualityAnalysis();
@@ -2890,6 +2900,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     });
     document.getElementById('modal-body').addEventListener('keydown', (event) => {
+        if (event.target.id === 'rename-class-name' && event.key === 'Enter') {
+            event.preventDefault();
+            const button = document.getElementById('btn-confirm-rename-class');
+            const classId = button ? String(button.dataset.renameClassId || '') : '';
+            void confirmRenameClass(classId);
+            return;
+        }
         const classRow = event.target.closest('[data-student-detail-class-id]');
         if (!classRow) return;
         if (event.key !== 'Enter' && event.key !== ' ') return;
@@ -2938,6 +2955,58 @@ document.addEventListener('DOMContentLoaded', async () => {
             await Promise.all([loadClasses(), loadAssignments()]);
         } catch (error) {
             showAlert(`Class could not be deleted: ${error?.message || error}`, 'error');
+        }
+    };
+
+    window.renameClass = (id) => {
+        const row = myClasses.find((c) => String(c.id) === String(id));
+        if (!row) return;
+        const currentName = String(row.name || '');
+        showModal('Rename Class', `
+            <div class="card-muted-box">
+                <div class="inline-form">
+                    <input type="text" id="rename-class-name" value="${esc(currentName)}" placeholder="Class name (e.g. History 101)" maxlength="255">
+                    <button id="btn-confirm-rename-class" class="btn pri" data-rename-class-id="${esc(String(row.id))}">Save</button>
+                    <button id="btn-cancel-rename-class" class="btn ghost">Cancel</button>
+                </div>
+            </div>
+            <p class="muted" style="margin: 12px 0 0;">Students keep their enrollment and the class code stays the same — only the displayed name changes.</p>
+        `);
+        const input = document.getElementById('rename-class-name');
+        if (input) {
+            input.focus();
+            input.select();
+        }
+    };
+
+    const confirmRenameClass = async (id) => {
+        const input = document.getElementById('rename-class-name');
+        const button = document.getElementById('btn-confirm-rename-class');
+        if (!input || !button) return;
+        const newName = input.value.trim();
+        if (!newName) {
+            showAlert('Class name cannot be empty.', 'error');
+            input.focus();
+            return;
+        }
+        const row = myClasses.find((c) => String(c.id) === String(id));
+        if (row && String(row.name || '').trim() === newName) {
+            closeTeacherModal();
+            return;
+        }
+        button.disabled = true;
+        const previousLabel = button.textContent;
+        button.textContent = 'Saving...';
+        try {
+            const { error } = await sb.from('classes').update({ name: newName }).eq('id', id).eq('teacher_id', uid);
+            if (error) throw error;
+            closeTeacherModal();
+            showAlert('Class renamed.', 'success');
+            await loadClasses();
+        } catch (error) {
+            showAlert(`Class could not be renamed: ${error?.message || error}`, 'error');
+            button.disabled = false;
+            button.textContent = previousLabel;
         }
     };
 
