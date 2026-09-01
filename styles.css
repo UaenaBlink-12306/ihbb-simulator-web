@@ -7996,10 +7996,15 @@ body.coach-preview-open {
   width: 100%;
   padding: 12px 14px;
   border-radius: 14px;
-  border: 1px solid rgba(25, 35, 62, 0.12);
-  background: rgba(255, 255, 255, 0.9);
-  color: var(--text-strong);
+  border: 1px solid var(--glass-control-border);
+  background:
+    var(--glass-control-bg-strong),
+    var(--glass-control-fill-strong);
+  color: var(--ink);
   font: inherit;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    0 16px 22px -24px rgba(0, 0, 0, 0.72);
 }
 
 .admin-summary-grid {
@@ -8017,8 +8022,12 @@ body.coach-preview-open {
 .admin-inline-code {
   margin: 10px 0 0;
   padding: 12px 14px;
+  border: 1px solid var(--line);
   border-radius: 14px;
-  background: rgba(16, 24, 40, 0.06);
+  background:
+    var(--glass-overlay-soft),
+    rgba(7, 13, 22, 0.5);
+  color: var(--ink);
   overflow: auto;
   font-size: 0.92rem;
   line-height: 1.45;
@@ -8060,10 +8069,13 @@ body.coach-preview-open {
   display: grid;
   gap: 4px;
   padding: 14px 16px;
-  border: 1px solid rgba(25, 35, 62, 0.09);
+  border: 1px solid var(--line);
   border-radius: 16px;
-  background: rgba(255, 255, 255, 0.72);
-  box-shadow: 0 14px 28px rgba(29, 45, 84, 0.06);
+  background:
+    var(--glass-highlight-soft),
+    var(--glass-overlay-soft),
+    var(--surface-glass);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), var(--panel-shadow-soft);
 }
 
 .admin-feedback-count strong {
@@ -8081,10 +8093,13 @@ body.coach-preview-open {
 }
 
 .admin-generated-item {
-  border: 1px solid rgba(25, 35, 62, 0.1);
+  border: 1px solid var(--line);
   border-radius: 22px;
-  background: rgba(255, 255, 255, 0.84);
-  box-shadow: 0 18px 40px rgba(29, 45, 84, 0.08);
+  background:
+    var(--glass-highlight-soft),
+    var(--glass-overlay-soft),
+    var(--surface-glass);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), var(--panel-shadow-soft);
   padding: 18px 20px;
 }
 
@@ -8128,7 +8143,7 @@ body.coach-preview-open {
   border-radius: 999px;
   border: 1px solid rgba(245, 158, 11, 0.34);
   background: rgba(245, 158, 11, 0.12);
-  color: #92400e;
+  color: #fbbf24;
   font-size: 0.76rem;
   font-weight: 800;
   white-space: nowrap;
@@ -8179,7 +8194,7 @@ body.coach-preview-open {
 .admin-table th,
 .admin-table td {
   padding: 12px 14px;
-  border-bottom: 1px solid rgba(25, 35, 62, 0.08);
+  border-bottom: 1px solid var(--line);
   text-align: left;
   vertical-align: top;
 }
@@ -8198,9 +8213,13 @@ body.coach-preview-open {
 }
 
 .admin-table-details {
-  border: 1px solid rgba(25, 35, 62, 0.1);
+  border: 1px solid var(--line);
   border-radius: 18px;
-  background: rgba(255, 255, 255, 0.82);
+  background:
+    var(--glass-highlight-soft),
+    var(--glass-overlay-soft),
+    var(--surface-glass);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), var(--panel-shadow-soft);
   padding: 0 16px 16px;
 }
 
@@ -8218,8 +8237,12 @@ body.coach-preview-open {
 .admin-table-details pre {
   margin: 0;
   padding: 16px;
+  border: 1px solid var(--line);
   border-radius: 14px;
-  background: rgba(16, 24, 40, 0.06);
+  background:
+    var(--glass-overlay-soft),
+    rgba(7, 13, 22, 0.5);
+  color: var(--ink);
   overflow: auto;
   font-size: 0.83rem;
   line-height: 1.45;
@@ -14000,6 +14023,48 @@ html[data-theme="light"] :is(.coach-home-action,
   box-shadow: var(--glass-control-shadow);
   -webkit-backdrop-filter: blur(var(--glass-blur-soft)) saturate(165%);
   backdrop-filter: blur(var(--glass-blur-soft)) saturate(165%);
+}
+
+html[data-theme="light"] .admin-login-form input,
+html[data-theme="light"] .admin-toolbar input,
+html[data-theme="light"] .admin-toolbar select {
+  border-color: rgba(25, 35, 62, 0.12);
+  background: rgba(255, 255, 255, 0.9);
+  color: var(--text-strong);
+  box-shadow: none;
+}
+
+html[data-theme="light"] .admin-feedback-count {
+  border-color: rgba(25, 35, 62, 0.09);
+  background: rgba(255, 255, 255, 0.72);
+  box-shadow: 0 14px 28px rgba(29, 45, 84, 0.06);
+}
+
+html[data-theme="light"] .admin-generated-item {
+  border-color: rgba(25, 35, 62, 0.1);
+  background: rgba(255, 255, 255, 0.84);
+  box-shadow: 0 18px 40px rgba(29, 45, 84, 0.08);
+}
+
+html[data-theme="light"] .admin-feedback-badge {
+  color: #92400e;
+}
+
+html[data-theme="light"] .admin-table th,
+html[data-theme="light"] .admin-table td {
+  border-bottom-color: rgba(25, 35, 62, 0.08);
+}
+
+html[data-theme="light"] .admin-table-details {
+  border-color: rgba(25, 35, 62, 0.1);
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow: none;
+}
+
+html[data-theme="light"] :is(.admin-inline-code, .admin-table-details pre) {
+  border-color: rgba(25, 35, 62, 0.08);
+  background: rgba(16, 24, 40, 0.06);
+  color: var(--text-strong);
 }
 
 @media (max-width: 760px) {
