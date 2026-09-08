@@ -89,7 +89,22 @@
     const container = document.querySelector('#tab-whatsnew .list-container');
     if (!container || container.dataset.whatsnewGrouped === 'true') return;
     const items = Array.from(container.children).filter((child) => child.classList?.contains('list-item'));
-    if (!items.length) return;
+    if (!items.length) {
+      // The page ships static versioned release groups already; nothing to regroup.
+      container.dataset.whatsnewGrouped = 'true';
+      return;
+    }
+
+    // Legacy flat entries added above the static release groups get parked at the top
+    // of the newest release instead of flattening the versioned layout.
+    const newestGroupList = container.querySelector('.whatsnew-groups > .whatsnew-group > .whatsnew-group-list');
+    if (newestGroupList) {
+      for (let i = items.length - 1; i >= 0; i -= 1) {
+        newestGroupList.prepend(items[i]);
+      }
+      container.dataset.whatsnewGrouped = 'true';
+      return;
+    }
 
     const rows = items.map((item, index) => {
       const date = parseWhatsNewDate(item.querySelector('.pill')?.textContent);
