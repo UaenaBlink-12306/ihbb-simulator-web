@@ -112,8 +112,14 @@ test('Practice Hub keeps question-set choices flat and exposes Library Study Lat
   const styles = read('styles.css');
 
   assert.match(html, /class="card-muted-box setup-question-set-box"/);
-  assert.match(html, /class="setup-question-set-actions"[\s\S]*id="qs-picker"[\s\S]*id="qs-preview"/);
-  assert.match(html, /Choose the IHBB Question Bank, Study Later/);
+  assert.match(html, /class="setup-question-set-actions"[\s\S]*id="qs-picker"/);
+  assert.doesNotMatch(html, /id="qs-preview"/);
+  assert.doesNotMatch(html, /id="practice-wrong-bank-toggle"/);
+  assert.match(html, /Choose the IHBB Question Bank, Mistake Notebook, Study Later/);
+  assert.match(practice, /const MISTAKE_NOTEBOOK_SET_ID = 'mistake_notebook'/);
+  assert.match(practice, /function ensureMistakeNotebookOption\(select, counts = \{\}\)/);
+  assert.match(practice, /function buildMistakeNotebookSet\(\)/);
+  assert.match(practice, /if \(isMistakeNotebookSetId\(Library\.activeSetId\)\) return buildMistakeNotebookSet\(\)/);
   assert.match(practice, /function questionSetDisplayName\(set\)/);
   assert.match(practice, /return 'IHBB Question Bank';/);
   assert.doesNotMatch(practice, /document\.createElement\('optgroup'\)/);

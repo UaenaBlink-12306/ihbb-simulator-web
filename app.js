@@ -93,6 +93,10 @@ const BASE_TEACHER_CLASS_GUIDANCE_DRAFT = 'ihbb_teacher_class_guidance_draft';
 const BASE_KEY_STUDY_BOOKMARKS = 'ihbb_v2_study_bookmarks';
 const STUDY_LATER_SET_ID = 'study_later';
 const STUDY_LATER_SET_NAME = 'Study Later';
+// The Mistake Notebook is exposed as a virtual, always up-to-date question set in the
+// Practice Hub picker instead of a separate "practice mistake notebook" toggle.
+const MISTAKE_NOTEBOOK_SET_ID = 'mistake_notebook';
+const MISTAKE_NOTEBOOK_SET_NAME = 'Mistake Notebook';
 const BASE_KEY_ASSIGNMENT_RESULTS = 'ihbb_assignment_result';
 const BASE_KEY_REMEDIATION_PACK = 'ihbb_v2_remediation_pack';
 const STUDY_DATA_RESET_CUTOFF_ISO = '2026-04-10T02:07:20Z';
@@ -233,27 +237,38 @@ const App = {
 function normalizePracticeMode(mode) {
   return mode === 'srs' ? 'srs' : 'random';
 }
+function isMistakeNotebookSetId(id) {
+  return String(id || '') === MISTAKE_NOTEBOOK_SET_ID;
+}
 function isWrongBankPracticeEnabled() {
-  return normalizePracticeMode(App.mode) === 'srs';
+  return isMistakeNotebookSetId(Library.activeSetId) || normalizePracticeMode(App.mode) === 'srs';
 }
 function practiceWrongBankLabel(enabled = isWrongBankPracticeEnabled()) {
   return enabled ? 'Yes' : 'No';
 }
+function selectMistakeNotebookSet() {
+  Library.activeSetId = MISTAKE_NOTEBOOK_SET_ID;
+  App.mode = 'srs';
+  syncPracticeWrongBankToggle();
+}
 function setPracticeWrongBank(enabled) {
-  App.mode = enabled ? 'srs' : 'random';
+  if (enabled) {
+    selectMistakeNotebookSet();
+    return;
+  }
+  App.mode = 'random';
+  if (isMistakeNotebookSetId(Library.activeSetId)) {
+    Library.activeSetId = findPrimaryQuestionSet()?.id || Library.sets[0]?.id || null;
+  }
   syncPracticeWrongBankToggle();
 }
 function syncPracticeWrongBankToggle() {
-  const enabled = isWrongBankPracticeEnabled();
-  const wrap = $('setup-setting-practice-wrong-bank');
-  const input = $('practice-wrong-bank-toggle');
-  const state = $('practice-wrong-bank-state');
-  if (wrap) wrap.dataset.enabled = enabled ? 'true' : 'false';
-  if (input) {
-    input.checked = enabled;
-    input.setAttribute('aria-checked', enabled ? 'true' : 'false');
-  }
-  if (state) state.textContent = practiceWrongBankLabel(enabled);
+  App.mode = isMistakeNotebookSetId(Library.activeSetId) ? 'srs' : 'random';
+  const picker = $('qs-picker');
+  if (!picker || !Library.activeSetId) return;
+  if (picker.value === Library.activeSetId) return;
+  const hasOption = Array.from(picker.options || []).some(option => option.value === Library.activeSetId);
+  if (hasOption) picker.value = Library.activeSetId;
 }
 
 const EXPLICIT_NO_ATTEMPT_ANSWERS = new Set([
@@ -4026,6 +4041,7 @@ function questionSetGroupLabel(set) {
 
 function questionSetDisplayName(set) {
   if (set?.savedSet) return String(set?.name || 'Untitled set').trim() || 'Untitled set';
+  if (isMistakeNotebookSetId(set?.id)) return MISTAKE_NOTEBOOK_SET_NAME;
   if (String(set?.id || '') === STUDY_LATER_SET_ID) return 'Study Later';
   if (set?.volatile || /IHBB Questions/i.test(String(set?.name || ''))) return 'IHBB Question Bank';
   return String(set?.name || 'Untitled set').trim() || 'Untitled set';
@@ -4033,16 +4049,107 @@ function questionSetDisplayName(set) {
 
 function questionSetSelectorRank(set) {
   if (!set?.savedSet && (set?.volatile || /IHBB Questions/i.test(String(set?.name || '')))) return 0;
-  if (String(set?.id || '') === STUDY_LATER_SET_ID) return 1;
-  if (set?.savedSet) return 2;
-  return 3;
+  if (isMistakeNotebookSetId(set?.id)) return 1;
+  if (String(set?.id || '') === STUDY_LATER_SET_ID) return 2;
+  if (set?.savedSet) return 3;
+  return 4;
 }
 
 function questionSetTypeLabel(set) {
   if (set?.savedSet) return 'My saved set';
+  if (isMistakeNotebookSetId(set?.id)) return 'Mistake Notebook';
   if (String(set?.id || '') === STUDY_LATER_SET_ID) return 'Study Later';
   if (set?.volatile || /IHBB Questions/i.test(String(set?.name || ''))) return 'IHBB Question Bank';
   return 'Saved on this device';
+}
+
+// The Mistake Notebook question set is derived from spaced-repetition records, so it
+// always reflects the current notebook instead of a snapshot saved at build time.
+function libraryItemsById() {
+  const itemById = new Map();
+  for (const libSet of (Array.isArray(Library.sets) ? Library.sets : [])) {
+    for (const item of (libSet?.items || [])) {
+      const id = String(item?.id || '').trim();
+      if (id && !itemById.has(id)) itemById.set(id, item);
+    }
+  }
+  return itemById;
+}
+
+function buildMistakeNotebookItems() {
+  const records = getSRS();
+  const now = Date.now();
+  const itemById = libraryItemsById();
+  return Object.entries(records)
+    .map(([id, rec]) => {
+      const base = itemById.get(id) || null;
+      const dueAt = Number(rec?.dueAt || 0);
+      return {
+        id,
+        question: String(base?.question || rec?.q || '').trim() || '(Question audio only)',
+        answer: String(base?.answer || rec?.answer || '').trim() || '(answer)',
+        aliases: (Array.isArray(base?.aliases) && base.aliases.length)
+          ? base.aliases
+          : (Array.isArray(rec?.aliases) ? rec.aliases : []),
+        meta: {
+          category: String(base?.meta?.category || rec?.category || '').trim(),
+          era: String(base?.meta?.era || rec?.era || '').trim(),
+          source: String(base?.meta?.source || rec?.source || '').trim()
+        },
+        srsBox: Number(rec?.box || 1),
+        srsDueAt: dueAt,
+        srsDue: dueAt <= now
+      };
+    })
+    .sort((left, right) => (left.srsDueAt || 0) - (right.srsDueAt || 0));
+}
+
+function buildMistakeNotebookSet() {
+  return {
+    id: MISTAKE_NOTEBOOK_SET_ID,
+    name: MISTAKE_NOTEBOOK_SET_NAME,
+    items: buildMistakeNotebookItems(),
+    volatile: true,
+    mistakeNotebookSet: true
+  };
+}
+
+function mistakeNotebookCounts(counts = {}) {
+  return {
+    total: Number.isFinite(counts.total) ? counts.total : wrongRecords().length,
+    due: Number.isFinite(counts.due) ? counts.due : srsDueList().length
+  };
+}
+
+function mistakeNotebookSummaryText(counts = {}) {
+  const { total, due } = mistakeNotebookCounts(counts);
+  if (!total) return 'No saved mistakes yet';
+  return `${total} saved mistake${total === 1 ? '' : 's'} • ${due} due now`;
+}
+
+function mistakeNotebookOptionLabel(counts = {}) {
+  const { total, due } = mistakeNotebookCounts(counts);
+  if (!total) return `${MISTAKE_NOTEBOOK_SET_NAME} (empty)`;
+  return due
+    ? `${MISTAKE_NOTEBOOK_SET_NAME} (${total} • ${due} due)`
+    : `${MISTAKE_NOTEBOOK_SET_NAME} (${total})`;
+}
+
+function ensureMistakeNotebookOption(select, counts = {}) {
+  if (!select) return;
+  const existing = Array.from(select.options || []).find(option => option.value === MISTAKE_NOTEBOOK_SET_ID) || null;
+  const option = existing || document.createElement('option');
+  option.value = MISTAKE_NOTEBOOK_SET_ID;
+  option.textContent = mistakeNotebookOptionLabel(counts);
+  if (existing) return;
+  const first = (select.options || [])[0] || null;
+  if (first) select.insertBefore(option, first.nextSibling);
+  else select.appendChild(option);
+}
+
+function refreshMistakeNotebookOptions(counts = {}) {
+  ensureMistakeNotebookOption($('qs-picker'), counts);
+  ensureMistakeNotebookOption($('lib-set-sel'), counts);
 }
 
 function fillQuestionSetSelector(select) {
@@ -4066,6 +4173,9 @@ function renderLibrarySelectors() {
     sel1.innerHTML = ''; sel2.innerHTML = '';
     const o = document.createElement('option'); o.value = ''; o.textContent = 'No question sets available';
     sel1.appendChild(o); sel2.appendChild(o.cloneNode(true));
+    ensureMistakeNotebookOption(sel1);
+    ensureMistakeNotebookOption(sel2);
+    if (isMistakeNotebookSetId(Library.activeSetId)) sel1.value = MISTAKE_NOTEBOOK_SET_ID;
     const qm = $('qs-meta'); if (qm) qm.textContent = SavedQuestionSets.loading ? 'Loading your question sets…' : 'Question sets are unavailable right now.';
     const lc = $('lib-count'); if (lc) lc.textContent = '0';
     const lca = $('lib-cats'); if (lca) lca.textContent = '—';
@@ -4075,20 +4185,35 @@ function renderLibrarySelectors() {
   }
   fillQuestionSetSelector(sel1);
   fillQuestionSetSelector(sel2);
-  if (!Library.sets.some(set => set.id === Library.activeSetId)) {
+  ensureMistakeNotebookOption(sel1);
+  ensureMistakeNotebookOption(sel2);
+  if (!isMistakeNotebookSetId(Library.activeSetId) && !Library.sets.some(set => set.id === Library.activeSetId)) {
     Library.activeSetId = findPrimaryQuestionSet()?.id || Library.sets[0].id;
   }
   sel1.value = Library.activeSetId; sel2.value = Library.activeSetId;
   updateSetMeta();
 }
-function getActiveSet() { return Library.sets.find(s => s.id === Library.activeSetId) || null; }
+function getActiveSet() {
+  if (isMistakeNotebookSetId(Library.activeSetId)) return buildMistakeNotebookSet();
+  return Library.sets.find(s => s.id === Library.activeSetId) || null;
+}
 
 function updateSetMeta() {
   const set = getActiveSet();
   const qm = $('qs-meta');
-  if (qm) qm.textContent = set
-    ? `${set.items.length} question${set.items.length === 1 ? '' : 's'} • ${questionSetTypeLabel(set)}`
-    : (SavedQuestionSets.loading ? 'Loading your question sets…' : 'Choose a question set to begin.');
+  if (qm) {
+    if (isMistakeNotebookSetId(Library.activeSetId)) {
+      const total = set ? set.items.length : 0;
+      const due = srsDueList().length;
+      qm.textContent = total
+        ? `${total} saved mistake${total === 1 ? '' : 's'} • ${due} due now • updates automatically`
+        : 'No saved mistakes yet. Miss a question in practice and it appears here automatically.';
+    } else {
+      qm.textContent = set
+        ? `${set.items.length} question${set.items.length === 1 ? '' : 's'} • ${questionSetTypeLabel(set)}`
+        : (SavedQuestionSets.loading ? 'Loading your question sets…' : 'Choose a question set to begin.');
+    }
+  }
   const lc = $('lib-count'); if (lc) lc.textContent = set ? String(set.items.length) : '0';
   const cats = set ? [...new Set(set.items.map(it => it.meta?.category || '').filter(Boolean))] : [];
   const eras = set ? sortEraCodes([...new Set(set.items.map(it => it.meta?.era || '').filter(Boolean))]) : [];
@@ -4840,9 +4965,15 @@ function updateSetupOverview() {
   const set = getActiveSet();
   const wrongBankEnabled = isWrongBankPracticeEnabled();
   const dueNow = srsDueList().length;
-  const wrongBankCount = wrongRecords().length;
+  // When the notebook is the active set its items are already the notebook, so reuse them.
+  const wrongBankCount = (wrongBankEnabled && set) ? set.items.length : wrongRecords().length;
+  const notebookCounts = { total: wrongBankCount, due: dueNow };
   const availableCount = wrongBankEnabled
-    ? (dueNow || wrongBankCount)
+    ? (() => {
+      const notebookPool = set ? buildFilteredPoolFromSet(set) : [];
+      const notebookDue = notebookPool.filter(item => item.srsDue);
+      return (notebookDue.length ? notebookDue : notebookPool).length;
+    })()
     : buildFilteredPoolFromSet(set).length;
   const cats = Array.isArray(App.filters.cats) ? App.filters.cats.filter(Boolean) : [];
   const eras = Array.isArray(App.filters.eras) ? App.filters.eras.filter(Boolean) : [];
@@ -4860,7 +4991,9 @@ function updateSetupOverview() {
   const filterSummary = `${filterCats} • ${filterEras} • ${filterSrc}`;
 
   const setEl = $('setup-summary-set'); if (setEl) setEl.textContent = setText;
-  const wrongBankEl = $('setup-summary-wrong-bank'); if (wrongBankEl) wrongBankEl.textContent = practiceWrongBankLabel(wrongBankEnabled);
+  const notebookSummary = mistakeNotebookSummaryText(notebookCounts);
+  const wrongBankEl = $('setup-summary-wrong-bank'); if (wrongBankEl) wrongBankEl.textContent = notebookSummary;
+  const notebookStatusEl = $('setup-notebook-status'); if (notebookStatusEl) notebookStatusEl.textContent = notebookSummary;
   const lengthEl = $('setup-summary-length'); if (lengthEl) lengthEl.textContent = lengthText;
   const filtersEl = $('setup-summary-filters'); if (filtersEl) filtersEl.textContent = filterSummary;
   const advEl = $('setup-summary-advanced'); if (advEl) advEl.textContent = advancedSummary;
@@ -4897,15 +5030,17 @@ function updateSetupOverview() {
       ? `${lengthText} • Regions: ${filterDetails.regionSummary} • Eras: ${filterDetails.eraSummary} • Source: ${filterDetails.sourceSummary}`
       : 'Load a question set.';
   }
-  const mobileWrongBankEl = $('setup-mobile-wrong-bank'); if (mobileWrongBankEl) mobileWrongBankEl.textContent = `Mistake notebook: ${practiceWrongBankLabel(wrongBankEnabled)}`;
+  const notebookPillText = `Mistake notebook: ${wrongBankCount ? `${wrongBankCount}${dueNow ? ` • ${dueNow} due` : ''}` : 'empty'}`;
+  const mobileWrongBankEl = $('setup-mobile-wrong-bank'); if (mobileWrongBankEl) mobileWrongBankEl.textContent = notebookPillText;
   const mobileNextEl = $('setup-mobile-next'); if (mobileNextEl) mobileNextEl.textContent = nextText;
-  const mobileDockWrongBankEl = $('setup-mobile-dock-wrong-bank'); if (mobileDockWrongBankEl) mobileDockWrongBankEl.textContent = `Mistake notebook: ${practiceWrongBankLabel(wrongBankEnabled)}`;
+  const mobileDockWrongBankEl = $('setup-mobile-dock-wrong-bank'); if (mobileDockWrongBankEl) mobileDockWrongBankEl.textContent = notebookPillText;
   const mobileDockSummaryEl = $('setup-mobile-dock-summary');
   if (mobileDockSummaryEl) {
     mobileDockSummaryEl.textContent = (set || wrongBankEnabled)
       ? `${lengthText} • Regions: ${filterDetails.regionSummary} • Eras: ${filterDetails.eraSummary} • Source: ${filterDetails.sourceSummary}`
       : 'Load a question set.';
   }
+  refreshMistakeNotebookOptions(notebookCounts);
   syncPracticeWrongBankToggle();
   updateSetupMobileDock();
   renderCoachChatChrome();
@@ -5048,7 +5183,6 @@ function srsMark(itemId, isRight) {
   rec.lastSeen = now; setSRS(s);
 }
 function srsDueList() { const s = getSRS(); const now = Date.now(); return Object.entries(s).filter(([_, rec]) => (rec.dueAt || 0) <= now).map(([id]) => id); }
-function srsBuildPseudoItems(ids) { const s = getSRS(); return ids.map(id => ({ id, question: (s[id]?.q) || '(Question audio only)', answer: (s[id]?.answer) || '(answer)', aliases: (s[id]?.aliases) || [], meta: { category: '', era: '', source: '' } })); }
 
 /********************* Session Flow *********************/
 function startSession() {
@@ -5056,7 +5190,7 @@ function startSession() {
   const practicingWrongBank = isWrongBankPracticeEnabled();
   const hasSessionOverride = Array.isArray(App.sessionOverrideItems) && App.sessionOverrideItems.length > 0;
   if (!set && !practicingWrongBank && !hasSessionOverride) { toast('No active set'); return; }
-  if (practicingWrongBank && !wrongRecords().length) {
+  if (practicingWrongBank && !hasSessionOverride && !wrongRecords().length) {
     alert('Your mistake notebook is empty.');
     toast('Mistake Notebook empty');
     return;
@@ -5074,17 +5208,17 @@ function startSession() {
   syncStudyLaterButton();
   if (App._cdIv) { clearInterval(App._cdIv); App._cdIv = null; }
 
-  if (practicingWrongBank) {
-    const dueIds = srsDueList();
-    const map = set ? new Map(set.items.map(it => [it.id, it])) : new Map();
-    let pool = dueIds.map(id => map.get(id) || null).filter(Boolean);
-    const missingIds = dueIds.filter(id => !map.has(id));
-    pool = pool.concat(srsBuildPseudoItems(missingIds));
+  if (practicingWrongBank && !hasSessionOverride) {
+    // The notebook set already carries every tracked mistake (with due-first ordering),
+    // so the pool is just that set narrowed by the active region/era/source filters.
+    const notebookPool = set ? buildFilteredPoolFromSet(set) : [];
+    const duePool = notebookPool.filter(item => item.srsDue);
+    const pool = duePool.length ? duePool : notebookPool;
     if (!pool.length) {
-      const s = getSRS(); const allIds = Object.keys(s); if (!allIds.length) { toast('Mistake Notebook empty'); return; }
-      const found = allIds.map(id => map.get(id) || null).filter(Boolean);
-      const miss = allIds.filter(id => !map.has(id));
-      pool = found.concat(srsBuildPseudoItems(miss));
+      const emptyMessage = notebookPool.length ? 'No mistake notebook items match these filters.' : 'Your mistake notebook is empty.';
+      alert(emptyMessage);
+      toast(notebookPool.length ? 'No matching mistakes' : 'Mistake Notebook empty');
+      return;
     }
     App.pool = pool; App.order = sampleIndices(App.pool.length, App.size);
   } else {
@@ -5642,11 +5776,14 @@ function repeatSession(ts) {
   const arr = JSON.parse(localStorage.getItem(KEY_SESS) || '[]');
   const s = arr.find(x => String(x.ts) === String(ts));
   if (!s) { toast('Session not found'); return; }
-  const set = getActiveSet();
-  const map = set ? new Map(set.items.map(it => [it.id, it])) : new Map();
+  // Resolve history items across every loaded set (and the notebook) so repeat works
+  // even when the Mistake Notebook set is currently selected.
+  const map = libraryItemsById();
+  if (isMistakeNotebookSetId(Library.activeSetId)) {
+    for (const item of buildMistakeNotebookItems()) if (!map.has(item.id)) map.set(item.id, item);
+  }
   const sessionItems = s.items.map(id => map.get(id)).filter(Boolean);
   if (!sessionItems.length) { toast('Saved questions are unavailable in this set'); return; }
-  setPracticeWrongBank(false);
   App.sessionOverrideItems = sessionItems;
   App.size = sessionItems.length;
   startSession();
@@ -5661,6 +5798,8 @@ function renderWrongBank() {
   const recs = wrongRecords();
   const wc = $('wrong-count'); if (wc) wc.textContent = String(recs.length);
   const due = srsDueList().length; const dt = $('due-today'); if (dt) dt.textContent = String(due);
+  // Keep the Setup picker's Mistake Notebook option (and its live count) current.
+  refreshMistakeNotebookOptions({ total: recs.length, due });
   const q = (($('wrong-search') && $('wrong-search').value) || '').toLowerCase();
   const tb = document.querySelector('#tbl-wrong tbody'); if (!tb) return; tb.innerHTML = '';
   const mobileCards = [];
@@ -5707,6 +5846,7 @@ function renderWrongBank() {
       setSRS(s);
       syncWrongIdsDelete([id]);
       renderWrongBank();
+      updateSetupOverview();
     });
   };
   bindDeleteButtons(tb);
@@ -5854,15 +5994,13 @@ $('nav-library')?.addEventListener('click', (e) => { e.preventDefault(); playFee
 window.addEventListener('resize', () => { schedulePracticeViewportFit(); });
 
 // Setup events
-$('qs-preview')?.addEventListener('click', () => {
-  const set = getActiveSet(); if (!set) { toast('No set'); return; }
-  const samp = set.items.slice(0, 5).map((it, i) => `${i + 1}. ${it.question.slice(0, 100)}…\nAnswer: ${it.answer}`).join('\n\n'); alert(samp);
-});
-$('qs-picker')?.addEventListener('change', (e) => { Library.activeSetId = e.target.value || null; saveLibrarySafe('remember question set selection'); updateSetMeta(); updateSetupOverview(); });
-
-// Wrong-bank toggle
-$('practice-wrong-bank-toggle')?.addEventListener('change', (e) => {
-  setPracticeWrongBank(!!e.target.checked);
+// The Mistake Notebook is a selectable question set now, so picking it (or any other
+// set) is the only thing that decides whether the drill reviews saved mistakes.
+$('qs-picker')?.addEventListener('change', (e) => {
+  Library.activeSetId = e.target.value || null;
+  syncPracticeWrongBankToggle();
+  saveLibrarySafe('remember question set selection');
+  updateSetMeta();
   updateSetupOverview();
 });
 // Length chips
@@ -6472,6 +6610,14 @@ async function tryFetchDefault() {
     await tryFetchDefault();
   }
   await loadSavedQuestionSets(preferredQuestionSetId);
+  // The Mistake Notebook set lives outside Library.sets, so restore a remembered
+  // notebook selection after the bank/saved sets have finished loading.
+  if (isMistakeNotebookSetId(preferredQuestionSetId)
+    && !(ASSIGNMENT_ID && HAS_ASSIGNMENT_PAYLOAD)
+    && URL_PARAMS.get('remediation') !== '1') {
+    Library.activeSetId = MISTAKE_NOTEBOOK_SET_ID;
+    renderLibrarySelectors();
+  }
   await hydratePrivateGeneratedQuestions(false);
   await hydrateSharedGeneratedQuestions();
   applyPendingRemediationPack();

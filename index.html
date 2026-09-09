@@ -136,10 +136,9 @@
                     <select id="qs-picker">
                       <option value="">Loading question sets…</option>
                     </select>
-                    <button class="btn ghost" id="qs-preview">Preview questions</button>
                   </div>
                   <div class="muted" id="qs-meta" aria-live="polite">Loading your saved sets…</div>
-                  <p class="muted" style="margin: 0; line-height: 1.55;">Choose the IHBB Question Bank, Study Later, or a set you created or copied to My Sets.</p>
+                  <p class="muted" style="margin: 0; line-height: 1.55;">Choose the IHBB Question Bank, Mistake Notebook, Study Later, or a set you created or copied to My Sets. The Mistake Notebook set updates itself whenever you miss a question.</p>
                 </div>
               </div>
 
@@ -150,17 +149,10 @@
 
               <div class="setup-grid">
                 <div class="setup-group">
-                  <div id="setup-setting-practice-wrong-bank" class="practice-hub-toggle-setting" data-enabled="false">
-                    <div class="practice-hub-toggle-card">
-                      <p class="practice-hub-toggle-summary">Practice Mistake Notebook</p>
-                      <label class="practice-hub-switch" for="practice-wrong-bank-toggle">
-                        <input id="practice-wrong-bank-toggle" type="checkbox" role="switch">
-                        <span class="practice-hub-switch-track" aria-hidden="true">
-                          <span class="practice-hub-switch-thumb"></span>
-                        </span>
-                        <span id="practice-wrong-bank-state" class="practice-hub-switch-state">No</span>
-                      </label>
-                    </div>
+                  <div class="setup-notebook-card">
+                    <p class="setup-notebook-title">Mistake Notebook</p>
+                    <p class="setup-notebook-status" id="setup-notebook-status">No saved mistakes yet</p>
+                    <p class="setup-notebook-hint muted">Select “Mistake Notebook” as your question set to review missed questions with spaced repetition.</p>
                   </div>
                 </div>
                 <div class="setup-group">
@@ -183,7 +175,7 @@
                     <div class="empty-kicker">Quick start</div>
                     <p id="setup-mobile-summary" class="setup-mobile-summary">10 questions • All regions • All sources</p>
                   </div>
-                  <div class="setup-mobile-mode-pill" id="setup-mobile-wrong-bank">Mistake notebook: No</div>
+                  <div class="setup-mobile-mode-pill" id="setup-mobile-wrong-bank">Mistake notebook: empty</div>
                 </div>
                 <div class="form-actions setup-mobile-run-actions">
                   <button id="startSessionMobile" class="btn pri">Start Session</button>
@@ -238,7 +230,7 @@
               </div>
               <div class="summary-item">
                 <span>Mistake notebook</span>
-                <strong id="setup-summary-wrong-bank">No</strong>
+                <strong id="setup-summary-wrong-bank">No saved mistakes yet</strong>
               </div>
               <div class="summary-item">
                 <span>Length</span>
@@ -269,7 +261,7 @@
 
     <div id="setup-mobile-dock" class="setup-mobile-dock" hidden aria-live="polite">
       <div class="setup-mobile-dock-head">
-        <div class="setup-mobile-mode-pill" id="setup-mobile-dock-wrong-bank">Mistake notebook: No</div>
+        <div class="setup-mobile-mode-pill" id="setup-mobile-dock-wrong-bank">Mistake notebook: empty</div>
         <p id="setup-mobile-dock-summary" class="setup-mobile-dock-summary">10 questions • All regions • All sources</p>
       </div>
       <div class="form-actions setup-mobile-dock-actions">
