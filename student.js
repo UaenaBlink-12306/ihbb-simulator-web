@@ -765,10 +765,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (nextTab === 'analytics') loadAnalytics();
         dashboardChat.open = nextTab === 'coach';
         if (nextTab === 'coach') loadCoachWorkspace(false);
-        if (nextTab === 'leaderboard') {
-            const firstSub = document.querySelector('.leaderboard-sub-tab');
-            activateLeaderboardSubtab(firstSub?.dataset.sub || 'class');
-        }
+        if (nextTab === 'leaderboard') refreshLeaderboardClassSelect();
         if (nextTab === 'question-sets') loadQuestionSets();
         if (nextTab === 'create') setupBuilder();
         if (nextTab === 'game-history') {
@@ -5746,26 +5743,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     // ========== LEADERBOARDS ==========
-    function activateLeaderboardSubtab(subTabName) {
-        document.querySelectorAll('.leaderboard-sub-tab').forEach(t => t.classList.toggle('active', t.dataset.sub === subTabName));
-        document.querySelectorAll('.leaderboard-panel').forEach(p => p.classList.add('hidden'));
-        const activePanel = document.getElementById(`leaderboard-view-${subTabName}`);
-        if (activePanel) activePanel.classList.remove('hidden');
-
-        if (subTabName === 'global') {
-            loadLeaderboardGlobal();
-        } else if (subTabName === 'class') {
-            refreshLeaderboardClassSelect();
-        }
-    }
-
-    document.querySelectorAll('.leaderboard-sub-tab').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-            e.preventDefault();
-            activateLeaderboardSubtab(btn.dataset.sub);
-        });
-    });
-
     const leaderboardClassSelect = document.getElementById('leaderboard-class-select');
     if (leaderboardClassSelect) {
         leaderboardClassSelect.addEventListener('change', (e) => {
@@ -5819,19 +5796,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             `);
         });
         container.innerHTML = htmlChunks.join('');
-    }
-
-    async function loadLeaderboardGlobal() {
-        const container = document.getElementById('leaderboard-list-global');
-        if (!container) return;
-        container.innerHTML = '<p class="muted">Loading global rankings...</p>';
-        const { data, error } = await sb.rpc('get_leaderboard_global');
-        if (error) {
-            console.error('Error fetching global leaderboard', error);
-            container.innerHTML = '<p class="muted">Failed to load leaderboard rankings.</p>';
-            return;
-        }
-        renderLeaderboardNodes('leaderboard-list-global', data, 'pts');
     }
 
     async function refreshLeaderboardClassSelect() {
