@@ -58,6 +58,15 @@ test('security migration closes direct-write and public definer paths', () => {
   assert.match(source, /CREATE OR REPLACE FUNCTION public\.finish_bee_game/i);
 });
 
+test('class invite preview migration is deployed as a signed-in-only RPC', () => {
+  const source = read('migrations/20260909112342_repair_class_invite_preview.sql');
+  assert.match(source, /CREATE OR REPLACE FUNCTION public\.preview_class_by_code\(p_code TEXT\)/i);
+  assert.match(source, /SECURITY DEFINER[\s\S]*?SET search_path = ''/i);
+  assert.match(source, /IF caller IS NULL[\s\S]*?RAISE EXCEPTION 'authentication required'/i);
+  assert.match(source, /REVOKE ALL ON FUNCTION public\.preview_class_by_code\(TEXT\) FROM PUBLIC, anon;/i);
+  assert.match(source, /GRANT EXECUTE ON FUNCTION public\.preview_class_by_code\(TEXT\) TO authenticated;/i);
+});
+
 test('untrusted rendered and exported values use URL, DOM, number, and CSV guards', () => {
   const app = read('app.js');
   const student = read('student.js');
