@@ -152,8 +152,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             ${actionHtml ? `<div class="form-actions" style="justify-content:center;margin-top:16px;">${actionHtml}</div>` : ''}
         </div>
     `;
-    const joinClassActionHtml = (label = 'Enter a class code') =>
-        `<a href="#" class="btn ghost" data-action="focus-join-class">${esc(label)}</a>`;
+    const joinClassActionHtml = (label = 'Join a class') =>
+        `<a href="#" class="btn pri" data-action="focus-join-class">${esc(label)}</a>`;
     const canonicalCoachAnswer = (value) => String(value || '')
         .trim()
         .replace(/\s*\([^)]*\)/g, '')
@@ -1086,12 +1086,18 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     function focusJoinClassEntry() {
+        // Close any open Coursework dropdown so the target tab is clearly active.
+        document.querySelectorAll('.dashboard-tab-group.open').forEach((group) => setDashboardMenuOpen(group, false));
         activateDashboardTab('classes');
         const joinInput = document.getElementById('join-code');
         if (!joinInput) return;
-        joinInput.focus();
-        joinInput.select();
         joinInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        try {
+            joinInput.focus({ preventScroll: true });
+        } catch {
+            joinInput.focus();
+        }
+        joinInput.select();
     }
 
     function normalizeJoinedClassRecord(value) {
@@ -5813,10 +5819,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (!currentMemberships || currentMemberships.length === 0) {
             select.innerHTML = '<option value="">No classes found.</option>';
             select.disabled = true;
-            container.innerHTML = `<div class="empty-state">
-                <h3 class="empty-title">You need a class</h3>
-                <p class="empty-copy">Join a class via the 'My Classes' tab to rank against classmates.</p>
-            </div>`;
+            container.innerHTML = emptyStateHtml(
+                'Leaderboard',
+                'You need a class',
+                'Join a class to rank against your classmates. Class rankings appear here as soon as you enroll.',
+                joinClassActionHtml()
+            );
             return;
         }
 
@@ -5910,7 +5918,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         } else if (setVisibilityFilter === 'class') {
             const classIds = currentMemberships.map(m => String(m.class_id || classDetailsForMembership(m)?.id || '').trim()).filter(Boolean);
             if (!classIds.length) {
-                el.innerHTML = emptyStateHtml('Class Sets', 'No classes joined', 'Join a class to see question sets shared by your teacher and classmates.');
+                el.innerHTML = emptyStateHtml(
+                    'Class Sets',
+                    'No classes joined',
+                    'Join a class to see question sets shared by your teacher and classmates.',
+                    joinClassActionHtml()
+                );
                 return;
             }
             query = query.eq('visibility', 'class').in('class_id', classIds);
