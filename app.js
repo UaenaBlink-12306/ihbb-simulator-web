@@ -4993,7 +4993,6 @@ function updateSetupOverview() {
   const setEl = $('setup-summary-set'); if (setEl) setEl.textContent = setText;
   const notebookSummary = mistakeNotebookSummaryText(notebookCounts);
   const wrongBankEl = $('setup-summary-wrong-bank'); if (wrongBankEl) wrongBankEl.textContent = notebookSummary;
-  const notebookStatusEl = $('setup-notebook-status'); if (notebookStatusEl) notebookStatusEl.textContent = notebookSummary;
   const lengthEl = $('setup-summary-length'); if (lengthEl) lengthEl.textContent = lengthText;
   const filtersEl = $('setup-summary-filters'); if (filtersEl) filtersEl.textContent = filterSummary;
   const advEl = $('setup-summary-advanced'); if (advEl) advEl.textContent = advancedSummary;

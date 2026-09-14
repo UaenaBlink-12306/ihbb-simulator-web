@@ -6178,41 +6178,6 @@ input[type=datetime-local]:focus {
   white-space: nowrap;
 }
 
-.setup-notebook-card {
-  display: grid;
-  gap: 8px;
-  padding: 16px 18px;
-  border: 1px solid var(--line);
-  border-radius: 18px;
-  background:
-    var(--glass-highlight-soft),
-    var(--glass-overlay-soft),
-    var(--surface-glass);
-}
-
-.setup-notebook-title {
-  margin: 0;
-  color: var(--ink);
-  font-size: 15px;
-  font-weight: 700;
-  line-height: 1.4;
-}
-
-.setup-notebook-status {
-  margin: 0;
-  color: var(--accent);
-  font-size: 13px;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-  line-height: 1.45;
-}
-
-.setup-notebook-hint {
-  margin: 0;
-  font-size: 13px;
-  line-height: 1.55;
-}
-
 .setup-mobile-quick {
   display: none;
 }
