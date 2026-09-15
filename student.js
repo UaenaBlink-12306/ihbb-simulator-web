@@ -3959,14 +3959,15 @@ document.addEventListener('DOMContentLoaded', async () => {
             todoEl.innerHTML = visibleTodoList.map(a => {
                 const dueState = getAssignmentDueState(a, nowDate);
                 const cls = a.classes?.name || '';
+                const progress = AssignmentProgress.read(uid, String(a.id), 'first');
                 return `<div class="list-item">
                     <div class="item-copy">
                         <span class="item-title">${esc(a.title)}</span>
-                        <span class="item-meta">${esc(cls)} · ${esc(dueState.detail)}</span>
+                        <span class="item-meta">${esc(cls)} · ${esc(dueState.detail)}${progress ? ` · ${progress.results.length}/${progress.items.length} answered · Saved on this browser` : ''}</span>
                     </div>
                     <span class="status-pill pending ${esc(dueState.level)}">${esc(dueState.label)}</span>
                     <div class="item-actions">
-                        <button class="btn pri" type="button" data-student-start-assignment="${esc(a.id)}" data-student-start-title="${esc(a.title)}">Start</button>
+                        <button class="btn pri" type="button" data-student-start-assignment="${esc(a.id)}" data-student-start-title="${esc(a.title)}">${progress ? 'Continue' : 'Start'}</button>
                     </div>
                 </div>`;
             }).join('');

@@ -3809,6 +3809,74 @@ function refreshAssignmentStorageState(userId = StorageScopeUserId) {
 // localStorage, then redirects here with ?assignment=<id>. Init applies the payload
 // AFTER it has restored the persisted library, so the injected volatile set can never
 // be wiped by loadAll() (which was leaving students stranded on the Setup view).
+
+let ActiveAssignmentLaunch = null;
+let AssignmentSessionActive = false;
+function saveAssignmentProgress() {
+  if (!AssignmentSessionActive || !ActiveAssignmentLaunch || !App.order.length) return false;
+  const completed = App.resultsCorrect.length;
+  const ok = AssignmentProgress.save(StorageScopeUserId, ASSIGNMENT_ID, ActiveAssignmentLaunch.retryMode, {
+    title: ActiveAssignmentLaunch.title,
+    items: App.order.map(i => App.pool[i]),
+    results: App.resultsCorrect.slice(), answers: App.submittedAnswers.slice(0, completed),
+    buzzTimes: App.sessionBuzzTimes.slice(), sessionId: App.sessionId,
+    elapsed: Math.max(0, performance.now() - App.startTs),
+    draft: completed <= App.i && ['typing', 'grading'].includes(App.phase) ? ($('user-answer')?.value || '') : '',
+    typing: completed <= App.i && ['typing', 'grading'].includes(App.phase)
+  });
+  const status = $('assignment-save-status');
+  if (status) status.textContent = ok ? 'Progress saved on this browser' : 'Could not save progress. Keep this page open.';
+  return ok;
+}
+function resumeAssignment(saved) {
+  stopSpeech();
+  if (App._cdIv) { clearInterval(App._cdIv); App._cdIv = null; }
+  App.pool = saved.items; App.order = saved.items.map((_, i) => i);
+  App.resultsCorrect = saved.results.slice(); App.submittedAnswers = saved.answers.slice();
+  App.sessionBuzzTimes = saved.buzzTimes || []; App.correct = saved.results.filter(Boolean).length;
+  App.i = saved.results.length; App.sessionId = saved.sessionId;
+  App.startTs = performance.now() - (saved.elapsed || 0); App.submitBusy = false;
+  App.sessionOverrideItems = null; AssignmentSessionActive = true;
+  navSet('nav-practice'); SHOW('view-practice'); updateHeader();
+  if (App.i >= App.order.length) { finishSession(); return; }
+  if (saved.typing) {
+    App.curItem = App.pool[App.i]; App.buzzAt = null;
+    startTypingPhase(10); $('user-answer').value = saved.draft || '';
+  } else { nextQuestion(true); }
+  toast('Assignment progress restored.');
+}
+function showAssignmentResumePrompt(saved, onContinue) {
+  const dialog = document.createElement('dialog');
+  dialog.setAttribute('aria-label', 'Continue where you left off?');
+  dialog.className = 'card'; dialog.style.cssText = 'max-width:440px;width:calc(100% - 40px);padding:24px;';
+  const heading = document.createElement('h2'); heading.textContent = 'Continue where you left off?';
+  const copy = document.createElement('p'); copy.textContent = `${saved.title}: ${saved.results.length} of ${saved.items.length} answered. Progress is saved on this browser.`;
+  const go = document.createElement('button'); go.className = 'btn pri'; go.textContent = 'Continue assignment';
+  const later = document.createElement('button'); later.className = 'btn ghost'; later.textContent = 'Later';
+  later.style.marginLeft = '8px';
+  go.onclick = () => { dialog.close(); onContinue(); };
+  later.onclick = () => dialog.close();
+  dialog.addEventListener('close', () => dialog.remove());
+  dialog.append(heading, copy, go, later); document.body.append(dialog); dialog.showModal();
+}
+function offerSavedAssignmentFromSetup() {
+  if (ASSIGNMENT_ID) return;
+  const saved = AssignmentProgress.list(StorageScopeUserId)[0];
+  if (!saved) return;
+  const open = () => { window.location.href = 'index.html?drill=1&assignment=' + encodeURIComponent(saved.id); };
+  const button = document.createElement('button'); button.className = 'btn pri';
+  button.textContent = 'Continue assignment: ' + saved.title; button.onclick = open;
+  $('view-setup')?.prepend(button);
+  showAssignmentResumePrompt(saved, open);
+}
+window.addEventListener('pagehide', saveAssignmentProgress);
+document.addEventListener('visibilitychange', () => { if (document.hidden) saveAssignmentProgress(); });
+$('user-answer')?.addEventListener('input', saveAssignmentProgress);
+$('btn-save-assignment')?.addEventListener('click', () => {
+  if (App.phase === 'grading') { toast('Please wait for your answer to finish grading.'); return; }
+  if (saveAssignmentProgress()) window.location.href = 'student.html?tab=assignments';
+});
+
 let AssignmentLaunchResolve = null;
 const ASSIGNMENT_LAUNCH_READY = new Promise((resolve) => { AssignmentLaunchResolve = resolve; });
 
@@ -5185,6 +5253,12 @@ function srsDueList() { const s = getSRS(); const now = Date.now(); return Objec
 
 /********************* Session Flow *********************/
 function startSession() {
+  if (ActiveAssignmentLaunch) {
+    const saved = AssignmentProgress.read(StorageScopeUserId, ASSIGNMENT_ID, ActiveAssignmentLaunch.retryMode);
+    if (AssignmentProgress.matches(saved, ActiveAssignmentLaunch.items)) { resumeAssignment(saved); return; }
+    App.sessionOverrideItems = ActiveAssignmentLaunch.items.slice(); App.size = 'all';
+  }
+  AssignmentSessionActive = !!ActiveAssignmentLaunch;
   const set = getActiveSet();
   const practicingWrongBank = isWrongBankPracticeEnabled();
   const hasSessionOverride = Array.isArray(App.sessionOverrideItems) && App.sessionOverrideItems.length > 0;
@@ -5227,6 +5301,7 @@ function startSession() {
   App.sessionOverrideItems = null;
 
   App.startTs = performance.now();
+  saveAssignmentProgress();
   updateHeader();
   navSet('nav-practice'); SHOW('view-practice');
   playFeedbackCue('start');
@@ -5321,6 +5396,7 @@ function markWrong() {
 }
 
 function finishMark(isRight) {
+  saveAssignmentProgress();
   unlockPracticeAfterGrade();
   if (isWrongBankPracticeEnabled()) srsMark(App.curItem.id, isRight);
   if (Settings.autoAdvance) {
@@ -6589,6 +6665,7 @@ async function tryFetchDefault() {
   if (!hadStudyLaterSet) saveLibrarySafe('ensure Study Later set');
   populateVoices();
   await applyPendingAssignmentLaunch();
+  offerSavedAssignmentFromSetup();
   migrateLibrarySources();
   const rr = $('rate'); if (rr) rr.value = Settings.rate || 1.0;
   const sm = $('strictMode'); if (sm) sm.checked = (Settings.strict ?? false);
@@ -6813,6 +6890,8 @@ async function submitAnswer(auto = false) {
     App.sessionBuzzTimes.push(App.buzzAt || 0);
   }
 
+  saveAssignmentProgress();
+
   // Wrong answers get a second, separate coach request after grading is already returned.
   if (!correct) {
     const coachRecord = {
@@ -6940,8 +7019,19 @@ try {
 
     // Auto-start the session after a short delay (DOM needs to be ready)
     setTimeout(() => {
-      toast((launch.retryMode === 'first' ? 'Starting assignment: ' : 'Starting practice retry: ') + launch.title);
-      startSession();
+      ActiveAssignmentLaunch = launch;
+      $('btn-save-assignment').hidden = false;
+      const saved = AssignmentProgress.read(StorageScopeUserId, assignId, launch.retryMode);
+      if (AssignmentProgress.matches(saved, launch.items)) {
+        const resume = () => resumeAssignment(saved);
+        const button = document.createElement('button'); button.className = 'btn pri';
+        button.textContent = 'Continue assignment'; button.onclick = resume;
+        $('view-setup')?.prepend(button);
+        showAssignmentResumePrompt(saved, resume);
+      } else {
+        if (saved) toast('The assignment questions changed. Starting the updated assignment.');
+        startSession();
+      }
     }, 500);
 
     // Monitor for session end (review view becomes active) and submit score.
@@ -6949,7 +7039,7 @@ try {
     const checkDone = setInterval(() => {
       const reviewActive = document.getElementById('view-review')?.classList.contains('active');
       const sessionComplete = App.phase === 'done' || (App.phase === 'idle' && App.i >= App.order.length);
-      if (reviewActive && sessionComplete) {
+      if (AssignmentSessionActive && reviewActive && sessionComplete) {
         clearInterval(checkDone);
         submitAssignmentScore(assignId, launch.items.length);
       }
@@ -6961,9 +7051,9 @@ try {
     if (window._assignmentSubmitted) return;
     window._assignmentSubmitted = true;
     try {
-      if (!window.supabaseClient) return;
+      if (!window.supabaseClient) throw new Error('Not connected');
       const { data: { session } } = await window.supabaseClient.auth.getSession();
-      if (!session) return;
+      if (!session) throw new Error('Please sign in again');
       const retryMode = String(activeAssignmentData?.retryMode || 'first').trim().toLowerCase();
       const itemIds = App.order.map(i => App.pool[i]?.id).filter(Boolean);
       const missedIds = itemIds.filter((id, index) => !App.resultsCorrect[index]);
@@ -7001,6 +7091,8 @@ try {
         });
       }
       if (retryMode !== 'first') {
+        AssignmentSessionActive = false;
+        AssignmentProgress.remove(StorageScopeUserId, aId, retryMode);
         if (launchStorageKey) localStorage.removeItem(launchStorageKey);
         toast('Practice retry saved. Your teacher still sees the original score.');
         setTimeout(() => { window.location.href = 'student.html'; }, 2500);
@@ -7015,13 +7107,14 @@ try {
         p_attempts: attempts
       });
       if (error) throw error;
+      AssignmentSessionActive = false;
+      AssignmentProgress.remove(StorageScopeUserId, aId, retryMode);
       if (launchStorageKey) localStorage.removeItem(launchStorageKey);
       toast('Assignment score submitted. Returning to dashboard...');
       setTimeout(() => { window.location.href = 'student.html'; }, 2500);
     } catch (e) {
-      window._assignmentSubmitted = false;
       console.error('Score submit error:', e);
-      toast('Could not submit assignment score. Please retry.');
+      toast('Could not submit assignment score. Your progress is saved. Reopen the assignment to retry.');
     }
   }
 })();

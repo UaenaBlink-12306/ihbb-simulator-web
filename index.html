@@ -350,6 +350,8 @@
         <div class="practice-control-dock">
           <div class="row practice-bottom">
             <button id="btn-replay" class="btn ghost" disabled>Replay last line</button>
+            <button id="btn-save-assignment" class="btn ghost" hidden>Save &amp; exit</button>
+            <span id="assignment-save-status" class="muted" role="status"></span>
             <button id="btn-next" class="btn ghost" disabled>Next</button>
             <button id="btn-right" class="btn good" disabled style="display:none">✔ Right</button>
             <button id="btn-wrong" class="btn bad" disabled style="display:none">✖ Wrong</button>
@@ -603,6 +605,7 @@
 
   <!-- Your logic file -->
   <script src="coach-era.js"></script>
+  <script src="assignment-progress.js"></script>
   <script src="app.js"></script>
   <script src="dashboard-feedback.js"></script>
 </body>
