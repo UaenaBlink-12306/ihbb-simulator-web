@@ -81,6 +81,7 @@
     </style>
     <script src="set-builder-quality.js" defer></script>
     <script src="set-builder-source.js" defer></script>
+    <script src="assignment-json.js" defer></script>
     <script src="teacher.js" defer></script>
     <script src="dashboard-feedback.js" defer></script>
 </head>
@@ -296,6 +297,18 @@
 
                     <p id="teacher-builder-intro" class="builder-intro-copy">Choose where your questions come from, then build and review the assignment.</p>
 
+                    <section class="builder-workflow-panel" style="margin-bottom: 18px; position: relative; isolation: isolate;">
+                        <div style="position: relative; z-index: 1;">
+                        <h3 style="margin-top: 0;">Upload assignment questions</h3>
+                        <p class="muted">Choose a JSON file to use its questions directly. Uploading replaces the current question selection after confirmation.</p>
+                        <label for="assignment-json-file">Question file (.json)</label>
+                        <input id="assignment-json-file" type="file" accept=".json,application/json" aria-describedby="assignment-json-help assignment-json-status">
+                        <p id="assignment-json-help" class="muted">Up to 200 questions, 5 MB. Accepts a question list or an object with an items or questions list. Each question needs question and answer fields; q/a and question_text/answer_text also work.</p>
+                        <details><summary>Example JSON</summary><pre style="white-space: pre-wrap; overflow-wrap: anywhere;">[{"question": "Who was the first US president?", "answer": "George Washington", "aliases": ["Washington"]}]</pre></details>
+                        <p id="assignment-json-status" role="status" aria-live="polite">No file uploaded yet.</p>
+                        </div>
+                    </section>
+
                     <section class="builder-source-step" aria-labelledby="builder-source-heading">
                         <div class="builder-step-heading">
                             <h3 id="builder-source-heading">1. Choose a question source</h3>
@@ -457,7 +470,7 @@
                         <div class="builder-source-summary" aria-label="Selected question sources">
                             <div class="builder-source-stat builder-source-stat-bank">
                                 <strong data-builder-source-count="bank">0</strong>
-                                <span>Question Bank</span>
+                                <span>Bank / Uploaded</span>
                             </div>
                             <div class="builder-source-stat builder-source-stat-ai">
                                 <strong data-builder-source-count="ai">0</strong>
@@ -909,6 +922,19 @@
                     <div class="list-container">
                         <div class="whatsnew-groups">
                             <details class="whatsnew-group" open>
+    <summary class="whatsnew-group-summary">
+        <span class="whatsnew-group-title">Version 5.6.0</span>
+        <span class="whatsnew-group-meta">September 16, 2026 • 1 update</span>
+    </summary>
+    <div class="whatsnew-group-list">
+        <div class="list-item"><div>
+            <h3 style="margin:0 0 4px;">Assignments from JSON files</h3>
+            <div class="pill">September 16, 2026</div>
+            <p class="muted" style="margin: 8px 0 0;">Teachers can upload a JSON question file, review its questions, and publish it directly as a class assignment.</p>
+        </div></div>
+    </div>
+</details>
+<details class="whatsnew-group">
     <summary class="whatsnew-group-summary">
         <span class="whatsnew-group-title">Version 5.5.0</span>
         <span class="whatsnew-group-meta">September 15, 2026 • 1 updates</span>

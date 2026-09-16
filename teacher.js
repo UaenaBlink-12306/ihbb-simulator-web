@@ -3964,6 +3964,32 @@ document.addEventListener('DOMContentLoaded', async () => {
         syncPickResultSelectionState();
     }
 
+    document.getElementById('assignment-json-file')?.addEventListener('change', async (event) => {
+        const input = event.target;
+        const file = input.files?.[0];
+        if (!file) return;
+        const status = document.getElementById('assignment-json-status');
+        input.disabled = true;
+        try {
+            if (file.size > 5 * 1024 * 1024) throw new Error('Choose a JSON file smaller than 5 MB.');
+            const uploaded = window.AssignmentJson.parse(await file.text(), file.name);
+            if (selectedQuestions.length && !window.confirm('Replace the current question selection with this file?')) {
+                status.textContent = 'Upload cancelled. Your current questions are unchanged.';
+                return;
+            }
+            setSelectedQuestions(uploaded.items);
+            const titleInput = document.getElementById('assign-title');
+            if (!titleInput.value.trim()) titleInput.value = uploaded.title;
+            status.textContent = `${uploaded.items.length} question${uploaded.items.length === 1 ? '' : 's'} loaded from ${file.name}. Review them, choose a class, and create the assignment.`;
+        } catch (error) {
+            status.textContent = error.message;
+            showAlert(error.message, 'error');
+        } finally {
+            input.disabled = false;
+            input.value = '';
+        }
+    });
+
     function normalizeAssignmentSuggestionText(value) {
         return String(value || '')
             .toLowerCase()
