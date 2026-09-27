@@ -3829,7 +3829,7 @@ function saveAssignmentProgress() {
   return ok;
 }
 function resumeAssignment(saved) {
-  stopSpeech();
+  stopSpeech(true);
   if (App._cdIv) { clearInterval(App._cdIv); App._cdIv = null; }
   App.pool = saved.items; App.order = saved.items.map((_, i) => i);
   App.resultsCorrect = saved.results.slice(); App.submittedAnswers = saved.answers.slice();
@@ -3974,19 +3974,25 @@ const rate = () => parseFloat(($('rate') && $('rate').value) || '1.0');
 const curVoice = () => speechSynthesis.getVoices().find(v => v.name === ($('voiceSel') && $('voiceSel').value));
 
 let speechRun = 0;
-let captionUtterance = null;
-function clearSpeechCaption(utterance = null) {
-  if (utterance && captionUtterance !== utterance) return;
-  captionUtterance = null;
+function renderSpeechCaption(text, complete = false) {
+  if (!Settings.captions) return;
   const caption = $('speech-caption');
-  if (caption) { caption.textContent = ''; caption.hidden = true; }
+  if (!caption) return;
+  caption.textContent = text;
+  caption.hidden = !text;
+  caption.classList.toggle('complete', complete);
+  if (!complete) caption.scrollTop = caption.scrollHeight;
 }
-function stopSpeech() {
+function clearSpeechCaption() {
+  const caption = $('speech-caption');
+  if (caption) { caption.textContent = ''; caption.hidden = true; caption.classList.remove('complete'); }
+}
+function stopSpeech(clearCaption = false) {
   speechRun++;
-  clearSpeechCaption();
+  if (clearCaption) clearSpeechCaption();
   try { window.speechSynthesis.cancel(); } catch { /* noop */ }
 }
-function speakOnce(text, voice, r = 1.0, pitch = 1.0, maxMs = 45000, showCaption = false) {
+function speakOnce(text, voice, r = 1.0, pitch = 1.0, maxMs = 45000, captionEvents = null) {
   try { window.speechSynthesis.cancel(); } catch { }
   try { window.speechSynthesis.resume(); } catch { }
   return new Promise((resolve) => {
@@ -3995,15 +4001,19 @@ function speakOnce(text, voice, r = 1.0, pitch = 1.0, maxMs = 45000, showCaption
     if (voice) u.voice = voice;
     u.rate = r; u.pitch = pitch;
     let done = false;
-    const finish = () => { if (done) return; done = true; clearSpeechCaption(u); resolve(); };
-    const t = setTimeout(() => { try { window.speechSynthesis.cancel(); } catch { } finish(); }, maxMs);
-    u.onstart = () => {
-      if (!showCaption || !Settings.captions || run !== speechRun) return;
-      const caption = $('speech-caption');
-      if (caption) { captionUtterance = u; caption.textContent = text; caption.hidden = false; }
+    const finish = (completed) => {
+      if (done) return;
+      done = true;
+      clearTimeout(t);
+      const finishedCurrentRun = completed && run === speechRun;
+      captionEvents?.onFinish?.(finishedCurrentRun);
+      resolve(finishedCurrentRun);
     };
-    u.onend = () => { clearTimeout(t); finish(); };
-    u.onerror = () => { clearTimeout(t); finish(); };
+    const t = setTimeout(() => { finish(false); try { window.speechSynthesis.cancel(); } catch { } }, maxMs);
+    u.onstart = () => { if (run === speechRun) captionEvents?.onStart?.(); };
+    u.onboundary = (event) => { if (run === speechRun) captionEvents?.onBoundary?.(event); };
+    u.onend = () => finish(true);
+    u.onerror = () => finish(false);
     window.speechSynthesis.speak(u);
   });
 }
@@ -4015,15 +4025,58 @@ async function readProgressive(text) {
   const run = speechRun;
   App.rollingSentences = splitSentences(text);
   App.lastLines = [];
+  let spoken = '';
+  let allRead = true;
   for (const s of App.rollingSentences) {
     if (App.readingAbort || run !== speechRun) break;
     App.lastLines.push(s); if (App.lastLines.length > 2) App.lastLines.shift();
-    await speakOnce(s, curVoice(), rate(), 1.0, 15000, true);
+    const prefix = spoken ? `${spoken} ` : '';
+    const words = Array.from(s.matchAll(/\S+/g), match => ({ start: match.index, end: match.index + match[0].length }));
+    let revealedEnd = 0;
+    let fallbackDelay = null;
+    let fallbackInterval = null;
+    const revealThrough = (end) => {
+      revealedEnd = Math.max(revealedEnd, end);
+      renderSpeechCaption(prefix + s.slice(0, revealedEnd));
+    };
+    const stopFallback = () => { clearTimeout(fallbackDelay); clearInterval(fallbackInterval); };
+    const scheduleFallback = () => {
+      stopFallback();
+      fallbackDelay = setTimeout(() => {
+        fallbackInterval = setInterval(() => {
+          const next = words.find(word => word.end > revealedEnd);
+          if (next) revealThrough(next.end);
+          else stopFallback();
+        }, Math.max(180, 330 / rate()));
+      }, Math.max(300, 500 / rate()));
+    };
+    const completed = await speakOnce(s, curVoice(), rate(), 1.0, 15000, {
+      onStart() {
+        if (!Settings.captions || !words.length) return;
+        revealThrough(words[0].end);
+        scheduleFallback();
+      },
+      onBoundary(event) {
+        if (event.name && event.name !== 'word') return;
+        const index = Math.max(0, Number(event.charIndex) || 0);
+        const word = words.find(item => index <= item.end);
+        if (word) revealThrough(word.end);
+        scheduleFallback();
+      },
+      onFinish(wasCompleted) {
+        stopFallback();
+        if (wasCompleted && Settings.captions) revealThrough(s.length);
+      }
+    });
+    if (run !== speechRun || App.readingAbort) break;
+    if (!completed) allRead = false;
+    spoken = prefix + s;
   }
+  if (allRead && run === speechRun && !App.readingAbort) renderSpeechCaption(text.trim(), true);
 }
 function replayLast() {
   if (!App.lastLines.length) return;
-  speakOnce(App.lastLines.join(' '), curVoice(), rate(), 1.0, 12000, true);
+  speakOnce(App.lastLines.join(' '), curVoice(), rate(), 1.0, 12000);
 }
 document.addEventListener('visibilitychange', () => {
   try { if (document.visibilityState === 'visible') window.speechSynthesis.resume(); } catch { }
@@ -5335,7 +5388,7 @@ function startSession() {
 }
 
 async function nextQuestion(first = false) {
-  stopSpeech(); App.readingAbort = false;
+  stopSpeech(true); App.readingAbort = false;
   const run = speechRun;
   App.submitBusy = false;
   clearCoachCard();
@@ -5403,7 +5456,7 @@ function showAnswer() {
     `标准答案：${item.answer}${(item.aliases?.length ? `  (aliases: ${item.aliases.slice(0, 3).join(' • ')})` : '')}`;
   const ans = $('answer'); if (ans) ans.textContent = ansText;
   playFeedbackCue('reveal');
-  speakOnce(`Standard answer: ${item.answer}`, curVoice(), rate(), 1.0, 12000, true);
+  speakOnce(`Standard answer: ${item.answer}`, curVoice(), rate(), 1.0, 12000);
   unlockPracticeAfterGrade();
   setPracticeButtons({ buzz: false, next: false, right: true, wrong: true, replay: true, alias: true, flag: true });
   const cp = $('btn-copy-answer'); if (cp) cp.disabled = false;
@@ -5437,7 +5490,7 @@ function finishMark(isRight) {
 }
 
 function finishSession() {
-  stopSpeech(); if (App._cdIv) { clearInterval(App._cdIv); App._cdIv = null; }
+  stopSpeech(true); if (App._cdIv) { clearInterval(App._cdIv); App._cdIv = null; }
   App.phase = 'done';
   playFeedbackCue('finish');
   const durSec = (performance.now() - App.startTs) / 1000;
@@ -6196,7 +6249,7 @@ $('btn-copy-answer')?.addEventListener('click', async () => {
 $('btn-quit')?.addEventListener('click', () => {
   if (confirm('Quit this session? Progress will be lost for this run.')) {
     playFeedbackCue('nav');
-    stopSpeech(); App.phase = 'idle'; navSet('nav-setup'); SHOW('view-setup');
+    stopSpeech(true); App.phase = 'idle'; navSet('nav-setup'); SHOW('view-setup');
   }
 });
 $('btn-pause')?.addEventListener('click', () => {
@@ -6906,7 +6959,7 @@ async function submitAnswer(auto = false) {
     }, item, correct, reason);
     renderCoachCard(loadingCoach);
   }
-  speakOnce(`Standard answer: ${item.answer}`, curVoice(), rate(), 1.0, 12000, true);
+  speakOnce(`Standard answer: ${item.answer}`, curVoice(), rate(), 1.0, 12000);
 
   if (correct) {
     playFeedbackCue('correct');

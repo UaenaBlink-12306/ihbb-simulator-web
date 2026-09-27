@@ -6916,6 +6916,10 @@ input[type=datetime-local]:focus {
     -webkit-backdrop-filter: blur(18px);
   }
 
+  .setup-mobile-dock[hidden] {
+    display: none;
+  }
+
   .setup-mobile-dock .setup-mobile-mode-pill {
     align-self: flex-start;
     padding: 6px 8px;
@@ -8556,6 +8560,7 @@ body.coach-preview-open {
 
 .practice-stage .speech-caption:not([hidden]) {
   width: min(100%, 760px);
+  height: clamp(120px, 19vh, 160px);
   padding: 14px 18px;
   border: 1px solid var(--line);
   border-radius: 16px;
@@ -8566,6 +8571,12 @@ body.coach-preview-open {
   line-height: 1.5;
   text-align: center;
   overflow-wrap: anywhere;
+  overflow-y: auto;
+}
+
+.practice-stage .speech-caption.complete {
+  height: auto;
+  overflow-y: visible;
 }
 
 .practice-stage .practice-answer-entry,
