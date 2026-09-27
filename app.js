@@ -203,7 +203,7 @@ const GeneratedQuestionsSync = {
 const Settings = {
   voice: null, rate: 1.0, strict: false,
   autoAdvance: false, autoAdvanceDelay: 1,
-  cueTicks: true, cueBeep: true, haptics: true
+  cueTicks: true, cueBeep: true, haptics: true, captions: false
 };
 const Library = { sets: [], activeSetId: null };
 const SAVED_QUESTION_SET_PREFIX = 'saved-set:';
@@ -3973,17 +3973,35 @@ speechSynthesis.onvoiceschanged = populateVoices;
 const rate = () => parseFloat(($('rate') && $('rate').value) || '1.0');
 const curVoice = () => speechSynthesis.getVoices().find(v => v.name === ($('voiceSel') && $('voiceSel').value));
 
-function stopSpeech() { try { window.speechSynthesis.cancel(); } catch { /* noop */ } }
-function speakOnce(text, voice, r = 1.0, pitch = 1.0, maxMs = 45000) {
+let speechRun = 0;
+let captionUtterance = null;
+function clearSpeechCaption(utterance = null) {
+  if (utterance && captionUtterance !== utterance) return;
+  captionUtterance = null;
+  const caption = $('speech-caption');
+  if (caption) { caption.textContent = ''; caption.hidden = true; }
+}
+function stopSpeech() {
+  speechRun++;
+  clearSpeechCaption();
+  try { window.speechSynthesis.cancel(); } catch { /* noop */ }
+}
+function speakOnce(text, voice, r = 1.0, pitch = 1.0, maxMs = 45000, showCaption = false) {
   try { window.speechSynthesis.cancel(); } catch { }
   try { window.speechSynthesis.resume(); } catch { }
   return new Promise((resolve) => {
+    const run = speechRun;
     const u = new SpeechSynthesisUtterance(text);
     if (voice) u.voice = voice;
     u.rate = r; u.pitch = pitch;
     let done = false;
-    const finish = () => { if (done) return; done = true; resolve(); };
+    const finish = () => { if (done) return; done = true; clearSpeechCaption(u); resolve(); };
     const t = setTimeout(() => { try { window.speechSynthesis.cancel(); } catch { } finish(); }, maxMs);
+    u.onstart = () => {
+      if (!showCaption || !Settings.captions || run !== speechRun) return;
+      const caption = $('speech-caption');
+      if (caption) { captionUtterance = u; caption.textContent = text; caption.hidden = false; }
+    };
     u.onend = () => { clearTimeout(t); finish(); };
     u.onerror = () => { clearTimeout(t); finish(); };
     window.speechSynthesis.speak(u);
@@ -3994,17 +4012,18 @@ function splitSentences(text) {
   return parts.map(s => s.trim()).filter(Boolean);
 }
 async function readProgressive(text) {
+  const run = speechRun;
   App.rollingSentences = splitSentences(text);
   App.lastLines = [];
   for (const s of App.rollingSentences) {
-    if (App.readingAbort) break;
+    if (App.readingAbort || run !== speechRun) break;
     App.lastLines.push(s); if (App.lastLines.length > 2) App.lastLines.shift();
-    await speakOnce(s, curVoice(), rate(), 1.0, 15000);
+    await speakOnce(s, curVoice(), rate(), 1.0, 15000, true);
   }
 }
 function replayLast() {
   if (!App.lastLines.length) return;
-  speakOnce(App.lastLines.join(' '), curVoice(), rate(), 1.0, 12000);
+  speakOnce(App.lastLines.join(' '), curVoice(), rate(), 1.0, 12000, true);
 }
 document.addEventListener('visibilitychange', () => {
   try { if (document.visibilityState === 'visible') window.speechSynthesis.resume(); } catch { }
@@ -4952,6 +4971,11 @@ function applyPreset(p) {
     Settings.cueTicks = !!p.cueTicks; const ct = $('cueTicks'); if (ct) ct.checked = Settings.cueTicks;
     Settings.cueBeep = !!p.cueBeep; const cb = $('cueBeep'); if (cb) cb.checked = Settings.cueBeep;
     Settings.haptics = !!p.haptics; const hp = $('haptics'); if (hp) hp.checked = Settings.haptics;
+    if (p.captions !== undefined) {
+      Settings.captions = !!p.captions;
+      const captions = $('captions'); if (captions) captions.checked = Settings.captions;
+      if (!Settings.captions) clearSpeechCaption();
+    }
     setPracticeWrongBank(!!p.practiceWrongBank || p.mode === 'srs');
     if (p.size !== undefined) setLenFromPreset(p.size);
     if (p.filters) {
@@ -5053,7 +5077,8 @@ function updateSetupOverview() {
   const advancedSummary = [
     Settings.strict ? 'Strict spelling' : 'Flexible grading',
     Settings.autoAdvance ? `Auto-advance ${Settings.autoAdvanceDelay || 1}s` : 'Manual pacing',
-    Settings.haptics ? 'Haptics on' : 'Haptics off'
+    Settings.haptics ? 'Haptics on' : 'Haptics off',
+    Settings.captions ? 'Captions on' : 'Captions off'
   ].join(' • ');
   const lengthText = sessionLengthLabel(App.size, { availableCount });
   const filterSummary = `${filterCats} • ${filterEras} • ${filterSrc}`;
@@ -5311,6 +5336,7 @@ function startSession() {
 
 async function nextQuestion(first = false) {
   stopSpeech(); App.readingAbort = false;
+  const run = speechRun;
   App.submitBusy = false;
   clearCoachCard();
   const ans = $('answer'); if (ans) ans.textContent = '';
@@ -5334,7 +5360,7 @@ async function nextQuestion(first = false) {
 
   App.buzzStart = performance.now(); App.buzzAt = null;
   await readProgressive(item.question);
-  if (App.phase !== 'reading') return;
+  if (App.phase !== 'reading' || App.readingAbort || run !== speechRun) return;
   startCountdown(5);
 }
 
@@ -5377,7 +5403,7 @@ function showAnswer() {
     `标准答案：${item.answer}${(item.aliases?.length ? `  (aliases: ${item.aliases.slice(0, 3).join(' • ')})` : '')}`;
   const ans = $('answer'); if (ans) ans.textContent = ansText;
   playFeedbackCue('reveal');
-  speakOnce(`Standard answer: ${item.answer}`, curVoice(), rate(), 1.0, 12000);
+  speakOnce(`Standard answer: ${item.answer}`, curVoice(), rate(), 1.0, 12000, true);
   unlockPracticeAfterGrade();
   setPracticeButtons({ buzz: false, next: false, right: true, wrong: true, replay: true, alias: true, flag: true });
   const cp = $('btn-copy-answer'); if (cp) cp.disabled = false;
@@ -6111,6 +6137,7 @@ $('savePreset')?.addEventListener('click', () => {
     cueTicks: ($('cueTicks') && $('cueTicks').checked) || false,
     cueBeep: ($('cueBeep') && $('cueBeep').checked) || false,
     haptics: ($('haptics') && $('haptics').checked) || false,
+    captions: !!$('captions')?.checked,
     mode: App.mode,
     practiceWrongBank: isWrongBankPracticeEnabled(),
     size: App.size, filters: App.filters, setId: Library.activeSetId
@@ -6124,10 +6151,12 @@ $('delPreset')?.addEventListener('click', () => { const sel = $('presetSel'); if
 $('voiceSel')?.addEventListener('change', () => { Settings.voice = $('voiceSel').value; saveSettings(); updateSetupOverview(); });
 $('rate')?.addEventListener('input', () => { Settings.rate = rate(); saveSettings(); updateSetupOverview(); });
 $('testVoice')?.addEventListener('click', () => speakOnce("Pronunciation test: Yelü Abaoji, Sforza, Shapur, Tenochtitlan, Samarkand.", curVoice(), rate()));
-['strictMode', 'autoAdvance', 'cueTicks', 'cueBeep', 'haptics'].forEach(id => $(id)?.addEventListener('change', () => {
+['strictMode', 'autoAdvance', 'cueTicks', 'cueBeep', 'haptics', 'captions'].forEach(id => $(id)?.addEventListener('change', () => {
   const el = $(id); if (!el) return;
   const key = id === 'strictMode' ? 'strict' : id;
-  Settings[key] = el.checked; saveSettings(); updateSetupOverview();
+  Settings[key] = el.checked;
+  if (id === 'captions' && !el.checked) clearSpeechCaption();
+  saveSettings(); updateSetupOverview();
 }));
 $('autoAdvanceDelay')?.addEventListener('input', () => {
   const el = $('autoAdvanceDelay'); Settings.autoAdvanceDelay = parseInt((el && el.value) || '1', 10) || 1; saveSettings(); updateSetupOverview();
@@ -6674,6 +6703,7 @@ async function tryFetchDefault() {
   const ct = $('cueTicks'); if (ct) ct.checked = (Settings.cueTicks ?? true);
   const cb = $('cueBeep'); if (cb) cb.checked = (Settings.cueBeep ?? true);
   const hp = $('haptics'); if (hp) hp.checked = (Settings.haptics ?? true);
+  const captions = $('captions'); if (captions) captions.checked = !!Settings.captions;
   renderPresets(); renderLibrarySelectors(); updateFilterRow(); renderSourceChips();
   try { const p = document.querySelector('#lib-cats')?.parentElement; if (p) p.innerHTML = p.innerHTML.replace('Categories:', 'Regions:'); } catch { }
   renderHistory(); renderWrongBank();
@@ -6876,7 +6906,7 @@ async function submitAnswer(auto = false) {
     }, item, correct, reason);
     renderCoachCard(loadingCoach);
   }
-  speakOnce(`Standard answer: ${item.answer}`, curVoice(), rate(), 1.0, 12000);
+  speakOnce(`Standard answer: ${item.answer}`, curVoice(), rate(), 1.0, 12000, true);
 
   if (correct) {
     playFeedbackCue('correct');

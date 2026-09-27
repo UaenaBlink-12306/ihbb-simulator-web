@@ -303,6 +303,7 @@
                   <label class="pill"><input id="cueTicks" type="checkbox" checked> Countdown ticks</label>
                   <label class="pill"><input id="cueBeep" type="checkbox" checked> Feedback cues</label>
                   <label class="pill"><input id="haptics" type="checkbox" checked> Haptics</label>
+                  <label class="pill"><input id="captions" type="checkbox"> Spoken captions</label>
                   <label class="pill">Delay <input id="autoAdvanceDelay" type="number" min="0" max="5" value="1" style="width:70px">s</label>
                 </div>
 
@@ -336,6 +337,7 @@
 
         <div class="practice-stage">
           <div class="counter" id="countdown"></div>
+          <div id="speech-caption" class="speech-caption" role="status" aria-live="off" hidden></div>
           <div class="buzz-wrap">
             <button id="btn-buzz" class="buzz pulse">B U Z Z</button>
           </div>

@@ -8554,6 +8554,20 @@ body.coach-preview-open {
   text-align: center;
 }
 
+.practice-stage .speech-caption:not([hidden]) {
+  width: min(100%, 760px);
+  padding: 14px 18px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--surface-strong);
+  color: var(--ink);
+  font-size: clamp(16px, 2vw, 21px);
+  font-weight: 600;
+  line-height: 1.5;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
 .practice-stage .practice-answer-entry,
 .practice-stage .answer,
 .practice-stage .coach-card {
