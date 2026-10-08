@@ -1014,6 +1014,10 @@ module.exports = async function handler(req, res) {
     payload = typeof req.body === 'string'
       ? JSON.parse(req.body || '{}')
       : (req.body || {});
+    if (stringValue(payload.request_type).toLowerCase() === 'coach_preview') {
+      const { coachPreviewReply } = require('./_coach-preview');
+      return res.status(200).json(await coachPreviewReply(payload));
+    }
     if (stringValue(payload.request_type || payload.mode).toLowerCase() === 'assignment_question_selection') {
       return handleAssignmentQuestionSelection(payload, res);
     }

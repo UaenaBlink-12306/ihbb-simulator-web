@@ -2636,30 +2636,60 @@ document.addEventListener('DOMContentLoaded', async () => {
         e.preventDefault(); await sb.auth.signOut(); window.location.replace('login.html');
     });
 
-    // ========== COACH PREVIEW DRAWER (Coming Soon) ==========
-    const coachPreviewBtn = document.getElementById('btn-coach-preview');
-    const coachPreviewDrawer = document.getElementById('coach-preview-drawer');
-    const coachPreviewBackdrop = document.getElementById('coach-preview-backdrop');
-    const coachPreviewClose = document.getElementById('coach-preview-close');
-
-    function setCoachPreviewOpen(open) {
-        if (!coachPreviewDrawer) return;
-        const isOpen = !!open;
-        coachPreviewDrawer.classList.toggle('open', isOpen);
-        coachPreviewDrawer.setAttribute('aria-hidden', isOpen ? 'false' : 'true');
-        coachPreviewBtn?.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
-        if (coachPreviewBackdrop) coachPreviewBackdrop.hidden = !isOpen;
-        document.body.classList.toggle('coach-preview-open', isOpen);
-        if (isOpen) coachPreviewClose?.focus({ preventScroll: true });
-    }
-
-    coachPreviewBtn?.addEventListener('click', () => setCoachPreviewOpen(true));
-    coachPreviewClose?.addEventListener('click', () => setCoachPreviewOpen(false));
-    coachPreviewBackdrop?.addEventListener('click', () => setCoachPreviewOpen(false));
-    document.addEventListener('keydown', (event) => {
-        if (event.key === 'Escape' && coachPreviewDrawer?.classList.contains('open')) {
-            setCoachPreviewOpen(false);
-            coachPreviewBtn?.focus({ preventScroll: true });
+    // ========== CONTEXT-AWARE COACH PREVIEW ==========
+    window.IHBBCoachPreview?.mount({
+        sb, uid,
+        getData: () => ({
+            profile, bank: allQuestions, classes: currentMemberships,
+            assignments: latestStudentAssignments, submissions: latestStudentSubmissions,
+            current_view: `dashboard-${document.querySelector('.dash-tab.active')?.dataset.tab || 'assignments'}`
+        }),
+        alert: showAlert,
+        navigate: async (action) => {
+            if (action.id === 'start_assignment' || action.id === 'retry_assignment') {
+                const before = window.location.href;
+                const target = latestStudentAssignments.find(item => item.id === action.target_id);
+                await window.startAssignment(action.target_id, target?.title || action.label, action.id === 'retry_assignment' ? 'missed' : 'first');
+                if (window.location.href === before) throw new Error('The assignment could not be started. Check its questions and try again.');
+            } else if (action.id === 'open_notebook') {
+                activateDashboardTab('coach');
+                await loadCoachWorkspace(true);
+                if (!coachRecordsCurrent.some(item => item.client_attempt_id === action.target_id)) {
+                    const { data, error } = await sb.from(COACH_SYNC_TABLE).select('*')
+                        .eq('user_id', uid).eq('client_attempt_id', action.target_id).single();
+                    const lesson = !error && normalizeCoachRecord(data);
+                    if (lesson) { coachRecordsCurrent = [lesson, ...coachRecordsCurrent]; renderCoachWorkspace(); }
+                }
+                const record = [...document.querySelectorAll('.coach-note[data-attempt]')].find(el => el.dataset.attempt === action.target_id);
+                if (!record) throw new Error('This notebook lesson is no longer available. Refresh your context for a new recommendation.');
+                const details = record?.querySelector('details');
+                if (details) details.open = true;
+                record?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            } else if (action.id === 'open_analytics') {
+                activateDashboardTab('analytics'); await loadAnalytics();
+            } else if (action.id === 'open_library') {
+                localStorage.setItem(COACH_CHAT_NAV_STORAGE_KEY, JSON.stringify({ mode: 'open_library', query: action.query || '', ts: Date.now() }));
+                window.location.href = 'index.html?drill=1';
+            }
+        },
+        generate: async (action) => {
+            const response = await IHBBSecurity.authenticatedFetch(sb, '/api/generate-questions', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: AbortSignal.timeout(55000),
+                body: JSON.stringify({
+                    count: action.count, region: action.filters.region || 'World', era: action.filters.era,
+                    topic: action.filters.topic, creator_role: 'student', created_from: 'coach-preview',
+                    reference_question: action.reference?.question || '', reference_answer: action.reference?.answer || '',
+                    focus_reason: action.reason
+                })
+            });
+            const result = await response.json().catch(() => ({}));
+            if (!response.ok) throw new Error(result.error || 'Targeted generation is unavailable. Choose existing practice questions instead.');
+            const items = (Array.isArray(result.items) ? result.items : [])
+                .filter(item => window.IHBBCoachContext.matchesQuestion(item, action.filters))
+                .map(window.IHBBCoachContext.question).filter(Boolean).slice(0, action.count);
+            if (!items.length) throw new Error('Generated questions did not match your focus. Try a clearer topic or an existing set.');
+            localStorage.setItem(COACH_CHAT_NAV_STORAGE_KEY, JSON.stringify({ mode: 'coach_preview_drill', user_id: uid, ts: Date.now(), title: action.label, items }));
+            window.location.href = 'index.html?drill=1';
         }
     });
 

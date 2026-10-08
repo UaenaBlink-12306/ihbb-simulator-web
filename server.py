@@ -8,6 +8,7 @@ import time
 import base64
 import hmac
 import hashlib
+import subprocess
 from datetime import datetime, timedelta, timezone
 from typing import List, Dict, Any, Tuple, Optional
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -3174,6 +3175,7 @@ PUBLIC_ROOT_FILES = {
     "admin.js", "login.js", "onboarding.js", "profile.js", "avatar-catalog.js", "config.js",
     "dashboard-feedback.js", "set-builder-quality.js", "set-builder-source.js", "theme.js",
     "styles.css", "questions.json",
+    "coach-context.js", "coach-preview.js", "coach-preview.css", "coach-era.js", "assignment-progress.js",
     "favicon.ico", "favicon.svg", "manifest.json", "lib/client-security.js", "lib/no-autofill.js",
 }
 PUBLIC_ASSET_EXTENSIONS = {
@@ -3510,7 +3512,19 @@ class Handler(BaseHTTPRequestHandler):
         elif parsed.path in ("/analytics-insights", "/api/analytics-insights"):
             result = analytics_insights_with_deepseek(payload)
         elif parsed.path in ("/coach-chat", "/api/coach-chat"):
-            result = coach_chat_with_deepseek(payload)
+            if payload.get("request_type") == "coach_preview":
+                try:
+                    preview_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "api", "_coach-preview.js")
+                    completed = subprocess.run(
+                        ["node", preview_path], input=json.dumps(payload),
+                        capture_output=True, text=True, encoding="utf-8", timeout=25, check=True,
+                        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                    )
+                    result = json.loads(completed.stdout)
+                except (OSError, subprocess.SubprocessError, ValueError):
+                    result = {"request_type": "coach_preview", "source": "fallback", "message": "", "quick_actions": []}
+            else:
+                result = coach_chat_with_deepseek(payload)
         else:
             result = generate_questions_with_deepseek(payload)
         self._write_json(200, result)

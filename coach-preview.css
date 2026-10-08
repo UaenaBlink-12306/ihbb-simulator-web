@@ -1,0 +1,64 @@
+/* Coach drawer: keep the dashboard theme, with one clear recommendation. */
+#coach-preview-drawer.coach-preview-live {
+  display: flex;
+  flex-direction: column;
+  width: min(560px, 96vw);
+  padding: 0;
+  color: var(--ink);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  box-shadow: -18px 0 70px rgba(0, 0, 0, .18);
+  overflow: hidden;
+}
+#coach-preview-drawer.coach-preview-live::before { display: none; }
+.coach-preview-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; padding: 24px 24px 18px; border-bottom: 1px solid var(--line); }
+.coach-preview-header h2 { font-size: 25px; margin: 3px 0 7px; }
+.coach-preview-header p { margin: 0; font-size: 12px; color: var(--muted); }
+#coach-preview-drawer .coach-preview-close { position: static; flex-shrink: 0; color: var(--ink); background: var(--surface); border-color: var(--line); }
+.coach-preview-scroll { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 20px 24px; overscroll-behavior: contain; }
+.coach-preview-plan { border: 1px solid color-mix(in srgb, var(--accent) 27%, var(--line)); border-radius: 20px; padding: 21px; background: color-mix(in srgb, var(--accent) 7%, var(--surface)); }
+.coach-preview-plan h3 { margin: 8px 0 10px; font-size: 21px; line-height: 1.3; overflow-wrap: anywhere; }
+.coach-preview-plan p { font-size: 14px; line-height: 1.6; margin: 9px 0; }
+.coach-preview-evidence { color: var(--muted); }
+.coach-preview-stop { padding-top: 9px; border-top: 1px solid var(--line); }
+.coach-preview-actions { display: flex; flex-direction: column; align-items: stretch; gap: 8px; margin-top: 16px; }
+.coach-preview-actions .btn { white-space: normal; height: auto; min-height: 44px; overflow-wrap: anywhere; text-align: center; }
+.coach-preview-warning { font-size: 12px !important; color: var(--muted); }
+.coach-preview-settings, .coach-preview-context-wrap { border-bottom: 1px solid var(--line); padding: 16px 0; }
+.coach-preview-settings summary, .coach-preview-context-wrap summary { cursor: pointer; font-weight: 600; font-size: 14px; }
+.coach-preview-settings summary:focus-visible, .coach-preview-context-wrap summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
+.coach-preview-preferences { display: grid; grid-template-columns: 1fr 1fr; gap: 13px; padding-top: 16px; }
+.coach-preview-preferences label { display: grid; gap: 6px; color: var(--muted); font-size: 12px; }
+.coach-preview-preferences .wide { grid-column: 1 / -1; }
+.coach-preview-preferences input, .coach-preview-preferences select, .coach-preview-composer textarea { width: 100%; min-width: 0; box-sizing: border-box; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 10px; font: inherit; padding: 10px 12px; }
+.coach-preview-preferences select { color-scheme: light dark; }
+.coach-preview-preferences .coach-preview-checkbox { display: flex; align-items: center; gap: 8px; line-height: 1.4; }
+.coach-preview-checkbox input { width: 16px; height: 16px; }
+.coach-preview-preferences .btn { min-height: 40px; }
+.coach-preview-context-wrap p, .coach-preview-context-stats { font-size: 12px; line-height: 1.65; }
+.coach-preview-context-stats { padding-left: 18px; color: var(--muted); }
+.coach-preview-sources { list-style: none; padding: 0; font-size: 12px; }
+.coach-preview-sources li { display: flex; justify-content: space-between; gap: 12px; padding: 6px 0; }
+.coach-preview-sources li span:last-child { color: var(--muted); flex-shrink: 0; }
+.coach-preview-context-actions { display: flex; justify-content: flex-end; margin-top: 10px; }
+.coach-preview-starters { display: flex; gap: 8px; flex-wrap: wrap; padding: 18px 0 6px; }
+.coach-preview-starters .btn { font-size: 12px; padding: 8px 12px; }
+.coach-preview-message { padding: 14px 0; border-bottom: 1px solid var(--line); }
+.coach-preview-message > span { font-size: 11px; font-weight: 700; color: var(--accent); text-transform: uppercase; letter-spacing: .08em; }
+.coach-preview-message.user > span { color: var(--muted); }
+.coach-preview-message p { font-size: 14px; line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere; margin: 7px 0 0; }
+.coach-preview-composer { flex-shrink: 0; padding: 14px 24px max(16px, env(safe-area-inset-bottom)); border-top: 1px solid var(--line); background: var(--bg); }
+.coach-preview-composer label { display: block; margin-bottom: 7px; font-size: 12px; font-weight: 600; color: var(--muted); }
+.coach-preview-composer textarea { resize: none; min-height: 70px; max-height: 120px; font-size: 14px; }
+.coach-preview-composer-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 8px; }
+.coach-preview-composer-actions .btn { min-height: 40px; }
+.coach-preview-chat-status { min-height: 17px; color: var(--muted); font-size: 11px; margin: 9px 0 0; line-height: 1.45; }
+@media (max-width: 600px) {
+  #coach-preview-drawer.coach-preview-live { width: 100vw; height: 100dvh; border-radius: 0; }
+  .coach-preview-header { padding: 18px 18px 14px; }
+  .coach-preview-scroll { padding: 16px 18px; }
+  .coach-preview-composer { padding-left: 18px; padding-right: 18px; }
+  .coach-preview-plan { padding: 16px; }
+  .coach-preview-preferences input, .coach-preview-preferences select, .coach-preview-composer textarea { font-size: 16px; }
+}
+@media (prefers-reduced-motion: reduce) { #coach-preview-drawer.coach-preview-live { transition: none; } }

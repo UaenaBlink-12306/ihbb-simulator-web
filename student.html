@@ -13,6 +13,7 @@
         rel="stylesheet">
     <script src="theme.js"></script>
     <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="coach-preview.css">
     <!-- Block autofill/password suggestions on every non-credential field -->
     <script src="lib/no-autofill.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -30,6 +31,8 @@
     <script src="set-builder-source.js" defer></script>
     <script src="coach-era.js" defer></script>
     <script src="assignment-progress.js" defer></script>
+    <script src="coach-context.js" defer></script>
+    <script src="coach-preview.js" defer></script>
     <script src="student.js" defer></script>
     <script src="dashboard-feedback.js" defer></script>
 </head>
@@ -73,10 +76,10 @@
                 <a href="https://app.notion.com/p/IHBB-All-Topics-3c03c779c46a80f4b1f2f1cd2d643015?pvs=12" class="btn ghost" target="_blank" rel="noopener noreferrer" title="Open the IHBB All Topics guide in Notion">IHBB All Topics ↗</a>
                 <a href="index.html?drill=1" class="btn pri hub-nav-button">Practice Hub</a>
                 <a href="livebee.html" class="btn ghost">Live Bee</a>
-                <button id="btn-coach-preview" class="btn ghost coach-preview-btn" type="button" title="A smarter coach is coming soon" aria-haspopup="dialog" aria-controls="coach-preview-drawer" aria-expanded="false">
+                <button id="btn-coach-preview" class="btn ghost coach-preview-btn" type="button" title="Get a focused next step from your practice context" aria-haspopup="dialog" aria-controls="coach-preview-drawer" aria-expanded="false">
                     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3c.8 4.2 2.3 5.7 6.5 6.5-4.2.8-5.7 2.3-6.5 6.5-.8-4.2-2.3-5.7-6.5-6.5C9.7 8.7 11.2 7.2 12 3Z"></path><path d="M18.5 15.5c.4 1.9 1 2.5 3 3-2 .4-2.6 1-3 3-.4-2-1-2.6-3-3 2-.5 2.6-1.1 3-3Z"></path></svg>
                     Coach Preview
-                    <span class="coach-preview-pill">Coming soon</span>
+                    <span class="coach-preview-pill">Ready</span>
                 </button>
                 <a href="#" id="btn-logout" class="btn bad">Logout</a>
             </div>
@@ -927,9 +930,16 @@
                             <details class="whatsnew-group" open>
                                 <summary class="whatsnew-group-summary">
                                     <span class="whatsnew-group-title">Version 5.8.0</span>
-                                    <span class="whatsnew-group-meta">October 8, 2026 • 5 updates</span>
+                                    <span class="whatsnew-group-meta">October 8, 2026 • 6 updates</span>
                                 </summary>
                                 <div class="whatsnew-group-list">
+                                    <div class="list-item">
+                                        <div>
+                                            <h3 style="margin:0 0 4px;">Context-aware Coach Preview</h3>
+                                            <div class="pill">October 8, 2026</div>
+                                            <p class="muted" style="margin: 8px 0 0;">Coach Preview is ready: get one focused next step using your assignments, practice history, notebook, goals and saved sets. Start the matching practice directly, keep topic and time limits, and see which context is available.</p>
+                                        </div>
+                                    </div>
                                     <div class="list-item">
                                         <div>
                                             <h3 style="margin:0 0 4px;">Practice Hub DeepSeek connection repair</h3>
@@ -2279,33 +2289,39 @@
     </div>
 
     <div id="coach-preview-backdrop" class="coach-preview-backdrop" hidden></div>
-    <aside class="mistake-notebook-future" id="coach-preview-drawer" aria-labelledby="future-coach-title" aria-hidden="true">
-        <button id="coach-preview-close" class="coach-preview-close" type="button" aria-label="Close coach preview">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"></path></svg>
-        </button>
-        <div class="mistake-notebook-future-icon" aria-hidden="true">
-            <svg viewBox="0 0 48 48"><circle cx="24" cy="24" r="18"></circle><path d="m30.5 17.5-4.3 8.7-8.7 4.3 4.3-8.7 8.7-4.3Z"></path><circle cx="24" cy="24" r="2.5"></circle><path d="M24 3v4M24 41v4M3 24h4M41 24h4"></path></svg>
+    <aside class="coach-preview-live" id="coach-preview-drawer" role="dialog" aria-modal="true" aria-labelledby="future-coach-title" aria-hidden="true" inert>
+        <header class="coach-preview-header">
+            <div><div class="eyebrow">Your practice companion</div><h2 id="future-coach-title">Coach Preview</h2><p id="coach-preview-status" role="status">Open for a focused next step.</p></div>
+            <button id="coach-preview-close" class="coach-preview-close" type="button" aria-label="Close coach preview"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"></path></svg></button>
+        </header>
+        <div id="coach-preview-scroll" class="coach-preview-scroll">
+            <section id="coach-preview-plan" class="coach-preview-plan" aria-label="Recommended practice"><p>Reading your goals, assignments, notebook and practice history…</p></section>
+            <details class="coach-preview-settings">
+                <summary>Your goals &amp; time</summary>
+                <form id="coach-preview-preferences" class="coach-preview-preferences">
+                    <label>Goal<select id="coach-preview-goal"><option value="adaptive">Best next step</option><option value="assignments">Finish class work</option><option value="review">Reinforce mistakes</option><option value="tournament">Prepare for competition</option></select></label>
+                    <label>Minutes available<input id="coach-preview-minutes" type="number" min="3" max="60" value="10" required></label>
+                    <label class="wide">Optional topic<input id="coach-preview-topic" type="text" maxlength="120" placeholder="e.g. French Revolution"></label>
+                    <label>Region<select id="coach-preview-region"></select></label>
+                    <label>Era<select id="coach-preview-era"></select></label>
+                    <label class="wide coach-preview-checkbox"><input id="coach-preview-generated" type="checkbox" checked>Allow targeted generation when matching questions are unavailable</label>
+                    <button class="btn ghost wide" type="submit">Save goals &amp; update plan</button>
+                </form>
+            </details>
+            <details class="coach-preview-context-wrap">
+                <summary>What the Coach knows</summary>
+                <div id="coach-preview-context"></div>
+                <div class="coach-preview-context-actions"><button id="coach-preview-refresh" class="btn ghost" type="button">Refresh context</button></div>
+            </details>
+            <div class="coach-preview-starters"><button class="btn ghost" type="button" data-coach-preview-prompt="What should I practice next?">Choose my next step</button><button class="btn ghost" type="button" data-coach-preview-prompt="Why is this the right practice tool for me?">Explain this choice</button></div>
+            <div id="coach-preview-messages" role="log" aria-label="Coach conversation" aria-live="polite"></div>
         </div>
-        <div class="mistake-notebook-future-copy">
-            <h2 id="future-coach-title">A smarter coach is coming</h2>
-            <strong>Coming Soon</strong>
-            <p>We’re rebuilding the assistant around better context and more reliable actions.</p>
-        </div>
-        <ul class="mistake-notebook-future-list">
-            <li>
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2Z"></path></svg>
-                <span>Understands your notebook</span>
-            </li>
-            <li>
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14.7 6.3 3-3a4.2 4.2 0 0 1 3 6l-3 3"></path><path d="m9.3 17.7-3 3a4.2 4.2 0 1 1-6-6l3-3"></path><path d="m8 16 8-8"></path></svg>
-                <span>Uses the right practice tools</span>
-            </li>
-            <li>
-                <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"></circle><circle cx="12" cy="12" r="3"></circle><path d="M12 2v3M12 19v3M2 12h3M19 12h3"></path></svg>
-                <span>Keeps recommendations focused</span>
-            </li>
-        </ul>
-        <p class="mistake-notebook-future-note">The notebook stays fully available while this space is rebuilt.</p>
+        <form id="coach-preview-form" class="coach-preview-composer">
+            <label for="coach-preview-input">Tell the Coach what you need</label>
+            <textarea id="coach-preview-input" rows="2" maxlength="2000" placeholder="I have 5 minutes. Help me practice the French Revolution."></textarea>
+            <div class="coach-preview-composer-actions"><button id="coach-preview-reset" class="btn ghost" type="button">New conversation</button><button id="coach-preview-send" class="btn pri" type="submit">Ask Coach</button></div>
+            <p id="coach-preview-chat-status" class="coach-preview-chat-status" role="status">Use a recommended action to start, or say “start it”.</p>
+        </form>
     </aside>
 
     <div id="walkthrough-modal" class="modal-overlay hidden">

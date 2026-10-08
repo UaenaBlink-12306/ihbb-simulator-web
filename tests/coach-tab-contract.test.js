@@ -20,21 +20,23 @@ test('student notebook remains while teacher and Practice Hub Coach tabs are rem
   assert.doesNotMatch(practice, /<script src="coach-tab-ui\.js"/);
 });
 
-test('student chat is removed and the future Coach rail opens from a top-right drawer', () => {
+test('working Coach opens in the top-right drawer while the notebook remains separate', () => {
   const html = read('student.html');
   assert.doesNotMatch(html, /id="coach-chat-form"/);
   assert.doesNotMatch(html, /id="coach-chat-input"/);
   assert.doesNotMatch(html, /id="coach-chat-send"/);
   assert.doesNotMatch(html, /data-coach-surface="tab"/);
   assert.doesNotMatch(html, /<script src="coach-tab-ui\.js"(?: defer)?><\/script>/);
-  assert.match(html, /<aside class="mistake-notebook-future"/);
+  assert.match(html, /<aside class="coach-preview-live"/);
   assert.match(html, /id="coach-preview-drawer"/);
   assert.match(html, /<button id="btn-coach-preview"/);
-  assert.match(html, /<strong>Coming Soon<\/strong>/);
-  assert.match(html, /Understands your notebook/);
-  assert.match(html, /Uses the right practice tools/);
-  assert.match(html, /Keeps recommendations focused/);
-  // The Coming Soon rail must live outside the notebook tab, not inside it.
+  assert.match(html, /id="coach-preview-form"/);
+  assert.match(html, /id="coach-preview-context"/);
+  assert.match(html, /id="coach-preview-preferences"/);
+  assert.match(html, /<span class="coach-preview-pill">Ready<\/span>/);
+  assert.match(html, /src="coach-context.js"/);
+  assert.match(html, /src="coach-preview.js"/);
+  // The assistant must live outside the notebook tab, not inside it.
   assert.doesNotMatch(html, /<section id="tab-coach"[\s\S]*?<\/aside>[\s\S]*?<\/section>/);
   assert.match(read('student.js'), /hasChatSurface/);
 });

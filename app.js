@@ -3612,6 +3612,25 @@ async function applyPendingCoachChatAction() {
   if (!pending) return false;
   clearPendingCoachChatAction();
   const mode = String(pending.mode || '').trim();
+  if (mode === 'coach_preview_drill') {
+    const launch = window.IHBBCoachContext?.validateHandoff(pending, StorageScopeUserId);
+    if (!launch) {
+      toast('This Coach practice launch expired or has no matching questions. Return to the dashboard for a fresh plan.');
+      return true;
+    }
+    const set = { id: `coach_preview_${Date.now()}`, name: launch.title, items: launch.items, volatile: true };
+    Library.sets = [set, ...Library.sets.filter(existing => !String(existing.id).startsWith('coach_preview_'))];
+    Library.activeSetId = set.id;
+    App.sessionOverrideItems = launch.items.slice();
+    App.size = 'all';
+    App.mode = 'random';
+    setPracticeWrongBank(false);
+    App.filters = { cat: '', cats: [], era: '', eras: [], src: '' };
+    renderLibrarySelectors(); updateSetMeta();
+    startSession();
+    toast(`${launch.items.length} matching questions ready from your Coach`);
+    return true;
+  }
   if (mode === 'practice_due_now' || mode === 'review_last_misses') {
     navSet('nav-review');
     SHOW('view-review');
