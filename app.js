@@ -5553,14 +5553,22 @@ function finishSession() {
 
 function pushSession(total, correct, durSec, buzzTimes, pool, order, results, sessionId = null) {
   const arr = JSON.parse(localStorage.getItem(KEY_SESS) || '[]');
-  const itemIds = order.map(i => pool[i]?.id).filter(Boolean);
+  const itemIds = order.map(i => String(pool[i]?.id || ''));
   const res = results.slice(0, itemIds.length);
-  const meta = order.slice(0, itemIds.length).map(i => {
+  const meta = order.slice(0, itemIds.length).map((i, index) => {
     const it = pool[i] || {};
     return {
       category: it.meta?.category || '',
       era: it.meta?.era || '',
-      source: it.meta?.source || ''
+      source: it.meta?.source || '',
+      question_text: String(it.question || ''),
+      expected_answer: String(it.answer || ''),
+      ...(index < App.submittedAnswers.length ? { user_answer: String(App.submittedAnswers[index] || '') } : {}),
+      activity_type: AssignmentSessionActive ? 'homework' : 'practice',
+      assignment_id: AssignmentSessionActive ? String(ASSIGNMENT_ID || '') : '',
+      assignment_title: AssignmentSessionActive ? String(ActiveAssignmentLaunch?.title || '') : '',
+      retry_mode: AssignmentSessionActive ? String(ActiveAssignmentLaunch?.retryMode || 'first') : '',
+      set_title: String(getActiveSet()?.name || '')
     };
   });
   const record = {
@@ -5576,19 +5584,36 @@ function pushSession(total, correct, durSec, buzzTimes, pool, order, results, se
     meta
   };
   arr.unshift(record);
-  localStorage.setItem(KEY_SESS, JSON.stringify(arr.slice(0, 200)));
+  let localHistory = arr.slice(0, 200);
+  while (localHistory.length) {
+    try {
+      localStorage.setItem(KEY_SESS, JSON.stringify(localHistory));
+      break;
+    } catch {
+      // Detailed snapshots can fill browser storage. Retain the newest records
+      // when possible, and always continue to cloud sync and session review.
+      localHistory = localHistory.slice(0, Math.floor(localHistory.length / 2));
+    }
+  }
+  if (!localHistory.length) toast('Browser storage is full. This session could not be saved to local history.');
   syncSessionRecord(record);
 }
 
 function normalizeSessionRecordForSync(record) {
-  const buzz = Array.isArray(record?.buzz) ? record.buzz.map(x => Number(x)).filter(x => Number.isFinite(x)) : [];
-  const items = Array.isArray(record?.items) ? record.items.map(x => String(x || '').trim()).filter(Boolean) : [];
+  const buzz = Array.isArray(record?.buzz) ? record.buzz.map(x => Number.isFinite(Number(x)) ? Number(x) : 0) : [];
+  const items = Array.isArray(record?.items) ? record.items.map(x => String(x || '').trim()) : [];
   const results = Array.isArray(record?.results) ? record.results.map(x => !!x).slice(0, items.length) : [];
-  const meta = Array.isArray(record?.meta) ? record.meta.slice(0, items.length).map(m => ({
-    category: String(m?.category || ''),
-    era: String(m?.era || ''),
-    source: String(m?.source || '')
-  })) : [];
+  const meta = Array.isArray(record?.meta) ? record.meta.slice(0, items.length).map(m => {
+    const normalized = {
+      category: String(m?.category || ''),
+      era: String(m?.era || ''),
+      source: String(m?.source || '')
+    };
+    for (const key of ['question_text', 'expected_answer', 'user_answer', 'activity_type', 'assignment_id', 'assignment_title', 'retry_mode', 'set_title']) {
+      if (typeof m?.[key] === 'string') normalized[key] = m[key];
+    }
+    return normalized;
+  }) : [];
   const total = Number(record?.total) || 0;
   const correct = Number(record?.correct) || 0;
   return {
@@ -7229,7 +7254,8 @@ try {
       }
       const attempts = App.order.map((poolIndex, index) => ({
         question_id: String(App.pool[poolIndex]?.id || ''),
-        answer: String(App.submittedAnswers[index] || '')
+        answer: String(App.submittedAnswers[index] || ''),
+        buzz_seconds: Number(App.sessionBuzzTimes[index]) > 0 ? Number(App.sessionBuzzTimes[index]) : null
       }));
       const { error } = await window.supabaseClient.rpc('submit_assignment_attempts', {
         p_assignment_id: aId,

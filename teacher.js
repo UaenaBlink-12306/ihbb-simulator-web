@@ -1431,33 +1431,20 @@ document.addEventListener('DOMContentLoaded', async () => {
             <div class="muted" style="margin-top:10px;">${esc(caption)}</div>
         `;
     };
+    const teacherResultView = window.TeacherResultView.create({
+        sb,
+        formatDate: value => formatDate(value),
+        formatDateTime: value => formatDateTime(value),
+        formatDuration: value => formatDuration(value),
+        eraLabel: value => getEraLabel(value),
+        getQuestionById: () => new Map(allQuestions.map(item => [String(item.id || ''), item])),
+        abortSignal: () => teacherDataAbortSignal()
+    });
     const buildTeacherStudentAssignmentsHtml = (context) => {
         if (!Array.isArray(context?.assignmentItems) || !context.assignmentItems.length) {
             return '<p class="muted">No assignments are attached to this class context yet.</p>';
         }
-        return context.assignmentItems.map((item) => {
-            const submission = item.submission;
-            const score = Number.isFinite(submission?.score) ? `${submission.score}%` : '—';
-            const scoreClass = Number.isFinite(submission?.score)
-                ? (submission.score >= 80 ? 'good' : (submission.score < 65 ? 'bad' : ''))
-                : '';
-            const meta = [
-                item.className ? item.className : '',
-                item.dueDate ? `Due ${formatDate(item.dueDate)}` : '',
-                submission?.submittedAt ? `Submitted ${formatDateTime(submission.submittedAt)}` : 'No submission yet'
-            ].filter(Boolean);
-            return `
-                <div class="list-item">
-                    <div class="item-copy">
-                        <span class="item-title">${esc(item.title || 'Untitled assignment')}</span>
-                        <span class="item-meta">${esc(meta.join(' • '))}</span>
-                    </div>
-                    ${submission
-                        ? `<span class="status-pill done">Completed</span><span class="item-score ${scoreClass}">${esc(`${submission.correct}/${submission.total} • ${score}`)}</span>`
-                        : `<span class="status-pill pending">Pending</span>`}
-                </div>
-            `;
-        }).join('');
+        return context.assignmentItems.map(item => teacherResultView.homeworkHtml(item, teacherStudentDetailState.studentId)).join('');
     };
     const buildTeacherStudentRecentActivityHtml = (detail, context) => {
         const events = [];
@@ -1656,13 +1643,13 @@ document.addEventListener('DOMContentLoaded', async () => {
                     </div>
                 </div>
 
-                <div class="analytics-split-grid teacher-student-detail-grid">
+                <div class="teacher-homework-panels">
                     <div class="analytics-panel">
                         <div class="analytics-panel-head">
                             <div>
                                 <div class="analytics-panel-kicker">Assignments</div>
                                 <h3>Class work</h3>
-                                <p class="analytics-panel-note">Every assignment in the selected class context, including incomplete work.</p>
+                                <p class="analytics-panel-note">Open completed homework to review every saved response. Pending and overdue work stays visible.</p>
                             </div>
                         </div>
                         <div class="list-container teacher-analytics-list">${buildTeacherStudentAssignmentsHtml(context)}</div>
@@ -1678,6 +1665,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                         <div class="list-container teacher-analytics-list">${buildTeacherStudentClassListHtml(detail, context.selectedClassId)}</div>
                     </div>
                 </div>
+
+                ${teacherResultView.practiceHistoryHtml(detail)}
 
                 <div class="analytics-split-grid teacher-student-detail-grid">
                     <div class="analytics-panel">
@@ -2134,6 +2123,21 @@ document.addEventListener('DOMContentLoaded', async () => {
         renderPeerComparison();
         renderPeerComparisonPage();
     }
+    async function readTeacherSessionHistory(studentIds) {
+        const rows = [];
+        const pageSize = 500;
+        for (let offset = 0; ; offset += pageSize) {
+            const response = await sb.from('user_drill_sessions')
+                .select('id, client_session_id, user_id, total, correct, dur, ts, buzz, items, results, meta, created_at')
+                .in('user_id', studentIds).gte('created_at', STUDY_DATA_RESET_CUTOFF_ISO)
+                .order('ts', { ascending: false }).order('id', { ascending: false })
+                .range(offset, offset + pageSize - 1).abortSignal(teacherDataAbortSignal());
+            if (response.error) return response;
+            rows.push(...(response.data || []));
+            if ((response.data || []).length < pageSize) return { data: rows, error: null };
+        }
+    }
+
     async function loadTeacherAnalytics() {
         const version = ++teacherAnalyticsLoadVersion;
         teacherAnalyticsState.loading = true;
@@ -2169,16 +2173,16 @@ document.addEventListener('DOMContentLoaded', async () => {
                     ? sb.from('profiles').select('id, display_name, avatar_id').in('id', studentIds).abortSignal(teacherDataAbortSignal())
                     : Promise.resolve({ data: [] }),
                 assignmentIds.length
-                    ? sb.from('assignment_submissions').select('assignment_id, student_id, correct, total, submitted_at, created_at').in('assignment_id', assignmentIds).eq('verified', true).abortSignal(teacherDataAbortSignal())
+                    ? sb.from('assignment_submissions').select('assignment_id, student_id, correct, total, submitted_at').in('assignment_id', assignmentIds).eq('verified', true).abortSignal(teacherDataAbortSignal())
                     : Promise.resolve({ data: [] }),
                 studentIds.length
-                    ? sb.from('user_drill_sessions').select('user_id, total, correct, dur, ts, buzz, items, results, meta, created_at').in('user_id', studentIds).gte('created_at', STUDY_DATA_RESET_CUTOFF_ISO).abortSignal(teacherDataAbortSignal())
+                    ? readTeacherSessionHistory(studentIds)
                     : Promise.resolve({ data: [] }),
                 studentIds.length
                     ? sb.from('user_wrong_questions').select('user_id, created_at').in('user_id', studentIds).gte('created_at', STUDY_DATA_RESET_CUTOFF_ISO).abortSignal(teacherDataAbortSignal())
                     : Promise.resolve({ data: [] }),
                 studentIds.length
-                    ? sb.from('user_coach_attempts').select('user_id, question_text, expected_answer, user_answer, correct, reason, coach, category, era, source, focus_topic, created_at').in('user_id', studentIds).gte('created_at', STUDY_DATA_RESET_CUTOFF_ISO).abortSignal(teacherDataAbortSignal())
+                    ? sb.from('user_coach_attempts').select('user_id, client_session_id, question_id, question_text, expected_answer, user_answer, correct, reason, coach, category, era, source, focus_topic, created_at').in('user_id', studentIds).gte('created_at', STUDY_DATA_RESET_CUTOFF_ISO).abortSignal(teacherDataAbortSignal())
                     : Promise.resolve({ data: [] })
             ]);
             const analyticsResponses = [rosterRes, assignmentRes, profileRes, submissionRes, sessionRes, wrongRes, coachRes];
@@ -2686,6 +2690,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             modalCard.className = `modal-card card${options.wide ? ' teacher-modal-wide' : ''}${options.cardClass ? ` ${options.cardClass}` : ''}`;
         }
         hydrateAvatarImages(body);
+        teacherResultView.mount(body);
         modal.classList.remove('hidden');
     }
     function showAssignmentQuestionDetails(item, detailLabel = 'Question detail') {
@@ -3161,7 +3166,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     window.viewScores = async (assignId) => {
         try {
         // Get the assignment to find its class
-        const { data: assign, error: assignmentError } = await sb.from('assignments').select('class_id').eq('id', assignId).single();
+        const { data: assign, error: assignmentError } = await sb.from('assignments').select('id, class_id, title, due_date').eq('id', assignId).single();
         if (assignmentError) throw assignmentError;
         // Get all students in the class
         const { data: classStudents, error: rosterError } = await sb.from('class_students').select('student_id').eq('class_id', assign?.class_id);
@@ -3193,33 +3198,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         const html = allStudentIds.map(sid => {
             const sub = subMap[sid];
             const student = profileMap[sid] || { name: 'Unnamed', avatarId: normalizeAvatarId('') };
-            const avatar = userAvatarHtml(student.avatarId, student.name);
-            if (sub) {
-                const pct = sub.total ? Math.round(sub.correct / sub.total * 100) : 0;
-                return `<div class="list-item">
-                    ${avatar}
-                    <div class="item-copy">
-                        <span class="item-title">${esc(student.name)}</span>
-                        <span class="item-meta">Submission recorded for this assignment.</span>
-                    </div>
-                    <span class="item-score ${pct >= 50 ? 'good' : 'bad'}">${sub.correct}/${sub.total} (${pct}%)</span>
-                    <span class="status-pill done">✓ Completed</span>
-                    <a class="btn ghost" href="profile.html?user=${encodeURIComponent(sid)}">Profile</a>
-                </div>`;
-            } else {
-                return `<div class="list-item">
-                    ${avatar}
-                    <div class="item-copy">
-                        <span class="item-title">${esc(student.name)}</span>
-                        <span class="item-meta">No submission has been recorded yet.</span>
-                    </div>
-                    <span class="status-pill pending">⏳ Not Completed</span>
-                    <a class="btn ghost" href="profile.html?user=${encodeURIComponent(sid)}">Profile</a>
-                </div>`;
-            }
+            const item = {
+                assignmentId: assignId, title: assign.title, dueDate: assign.due_date || '',
+                submission: sub ? { correct: sub.correct, total: sub.total, submittedAt: sub.submitted_at } : null
+            };
+            return teacherResultView.homeworkHtml(item, sid, student.name, userAvatarHtml(student.avatarId, student.name));
         }).join('');
-        const doneCount = Object.keys(subMap).length;
-        showModal(`Submissions (${doneCount}/${allStudentIds.length} completed)`, html);
+        const doneCount = allStudentIds.filter(sid => subMap[sid]).length;
+        showModal(`${assign.title || 'Homework'} — ${doneCount}/${allStudentIds.length} submitted`, html, { wide: true });
         } catch (error) {
             showAlert(`Scores could not be loaded: ${error?.message || error}`, 'error');
         }

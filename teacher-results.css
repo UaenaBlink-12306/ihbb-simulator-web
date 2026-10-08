@@ -1,0 +1,61 @@
+.teacher-result {
+    width: 100%;
+    min-width: 0;
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    background: var(--surface-glass);
+}
+.teacher-result > summary {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+    padding: 16px;
+    cursor: pointer;
+    list-style: none;
+}
+.teacher-result > summary::-webkit-details-marker { display: none; }
+.teacher-result > summary::after { content: 'Review answers +'; color: var(--muted); font-size: 12px; }
+.teacher-result[open] > summary::after { content: 'Close review −'; }
+.teacher-result > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 16px; }
+.teacher-result > summary .item-copy { flex: 1 1 180px; min-width: 0; }
+.teacher-result .item-title, .teacher-result .item-meta { overflow-wrap: anywhere; }
+.teacher-result-body { padding: 0 16px 16px; }
+.teacher-result-tools { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; margin: 14px 0; }
+.teacher-result-tools .input-group { flex: 1 1 170px; min-width: 0; margin: 0; }
+.teacher-result-tools input, .teacher-result-tools select { width: 100%; }
+.teacher-result-tools input[type="search"] {
+    box-sizing: border-box;
+    min-height: 44px;
+    padding: 12px 14px;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    background: var(--surface-glass);
+    color: inherit;
+    font: inherit;
+}
+.teacher-result-summary { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+.teacher-result-breakdown { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 12px 0; }
+.teacher-result-breakdown .summary-item { min-width: 0; }
+.teacher-result-questions, .teacher-practice-sessions { display: flex; flex-direction: column; gap: 12px; }
+.teacher-result-question { padding: 16px; border: 1px solid var(--line); border-radius: 12px; min-width: 0; }
+.teacher-result-question[data-outcome="missed"] { border-left: 4px solid #e17a73; }
+.teacher-result-question[data-outcome="correct"] { border-left: 4px solid #4ba881; }
+.teacher-result-question-head { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+.teacher-result-question p { white-space: pre-wrap; overflow-wrap: anywhere; margin: 8px 0; }
+.teacher-result-answers { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 12px; }
+.teacher-result-answers > div { min-width: 0; padding: 12px; background: var(--bg-muted); border-radius: 10px; }
+.teacher-result-answers dt { color: var(--muted); font-size: 12px; }
+.teacher-result-answers dd { margin: 6px 0 0; overflow-wrap: anywhere; white-space: pre-wrap; }
+.teacher-result-empty { margin: 14px 0; }
+.teacher-practice-history .teacher-result-tools { margin-top: 0; }
+.teacher-homework-panels { display: flex; flex-direction: column; gap: 18px; }
+.teacher-result [hidden], .teacher-practice-history [hidden] { display: none !important; }
+.app-teacher-view .teacher-analytics-list > .analytics-student-row { content-visibility: visible; }
+@media (max-width: 600px) {
+    .teacher-result-breakdown, .teacher-result-answers { grid-template-columns: 1fr; }
+    .teacher-result > summary { padding: 12px; }
+    .teacher-result-body { padding: 0 12px 12px; }
+    .teacher-result-question { padding: 12px; }
+    .teacher-result-tools { align-items: stretch; }
+}
