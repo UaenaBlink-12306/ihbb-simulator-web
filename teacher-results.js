@@ -23,14 +23,19 @@
             const hasAnswer = !!attempt && Object.prototype.hasOwnProperty.call(attempt, 'answer');
             const aliases = list(q?.aliases).map(text);
             const accepted = [q?.answer_text, ...aliases].filter(value => value !== undefined && value !== null);
-            const correct = q && hasAnswer && accepted.length
+            const systemCorrect = q && hasAnswer && accepted.length
                 ? accepted.some(value => answerKey(value) === answerKey(attempt.answer))
                 : null;
+            const override = submission?.grading_overrides?.[id];
+            const teacherCorrected = override?.active === true && override?.correct === true;
+            const correct = teacherCorrected ? true : systemCorrect;
             return {
                 id, index: index + 1,
                 question: text(q?.question_text), expected: text(q?.answer_text),
                 answer: hasAnswer ? text(attempt.answer) : null,
-                correct, category: text(q?.category), era: text(q?.era), source: text(q?.source), aliases,
+                correct, systemCorrect, teacherCorrected,
+                reviewedAt: text(override?.reviewed_at),
+                category: text(q?.category), era: text(q?.era), source: text(q?.source), aliases,
                 buzz: number(attempt?.buzz_seconds) > 0 ? number(attempt.buzz_seconds) : null
             };
         });

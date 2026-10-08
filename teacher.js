@@ -1438,7 +1438,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         formatDuration: value => formatDuration(value),
         eraLabel: value => getEraLabel(value),
         getQuestionById: () => new Map(allQuestions.map(item => [String(item.id || ''), item])),
-        abortSignal: () => teacherDataAbortSignal()
+        abortSignal: () => teacherDataAbortSignal(),
+        onGradeChanged: () => loadTeacherAnalytics()
     });
     const buildTeacherStudentAssignmentsHtml = (context) => {
         if (!Array.isArray(context?.assignmentItems) || !context.assignmentItems.length) {

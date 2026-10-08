@@ -41,6 +41,23 @@ test('legacy, incomplete, and removed homework details stay unknown rather than 
     assert.equal(reports.rowSummary(rows).noAnswer, 1);
 });
 
+test('teacher corrections supersede automatic matching without changing the saved answer', () => {
+    const submission = { attempts: [{ question_id: 'q2', answer: 'Han Dynasty' }], grading_overrides: {
+        q2: { active: true, correct: true, original_correct: false, reviewed_at: '2026-10-08T01:00:00Z' }
+    } };
+    const row = reports.homeworkRows(questions.slice(1, 2), submission)[0];
+    assert.equal(row.correct, true);
+    assert.equal(row.systemCorrect, false);
+    assert.equal(row.teacherCorrected, true);
+    assert.equal(row.answer, 'Han Dynasty');
+    assert.equal(row.reviewedAt, '2026-10-08T01:00:00Z');
+    assert.equal(reports.breakdown([row], 'category')[0].accuracy, 100);
+    submission.grading_overrides.q2.active = false;
+    const restored = reports.homeworkRows(questions.slice(1, 2), submission)[0];
+    assert.equal(restored.correct, false);
+    assert.equal(restored.teacherCorrected, false);
+});
+
 test('practice snapshots preserve custom question text and answers independently of the current bank', () => {
     const session = {
         items: ['custom', 'q1'], results: [false, true], buzz: [null, 2.5],

@@ -7,7 +7,7 @@
     let nextControl = 0;
 
     root.TeacherResultView = {
-        create({ sb, formatDate, formatDateTime, formatDuration, eraLabel, getQuestionById, abortSignal }) {
+        create({ sb, formatDate, formatDateTime, formatDuration, eraLabel, getQuestionById, abortSignal, onGradeChanged }) {
             const mounted = new WeakSet();
             const homeworkCache = new Map();
             const histories = new Map();
@@ -27,7 +27,7 @@
                 </details>`;
             }
 
-            function questionReviewHtml(rows, note) {
+            function questionReviewHtml(rows, note, canOverride = false) {
                 if (!rows.length) return `<p class="muted teacher-result-empty">No question-level details were saved for this record.</p>`;
                 const summary = data.rowSummary(rows);
                 const control = ++nextControl;
@@ -58,6 +58,8 @@
                             <div class="item-meta">${esc(tags)}</div>
                             <dl class="teacher-result-answers"><div><dt>Student's answer</dt><dd>${esc(row.answer === null ? 'Not recorded' : (row.answer.trim() ? row.answer : 'No answer entered'))}</dd></div><div><dt>Accepted answer</dt><dd>${esc(row.expected || 'Not available')}</dd></div></dl>
                             ${row.aliases.length ? `<p class="muted">Accepted alternatives: ${esc(row.aliases.join('; '))}</p>` : ''}
+                            ${row.teacherCorrected ? `<p class="muted">Teacher marked correct · System originally marked incorrect${row.reviewedAt ? ` · ${esc(formatDateTime(row.reviewedAt))}` : ''}</p>` : ''}
+                            ${canOverride && (row.correct === false || row.teacherCorrected) ? `<button class="btn ghost" type="button" data-grade-override="${esc(row.id)}" data-grade-action="${row.teacherCorrected ? 'reset' : 'correct'}">${row.teacherCorrected ? 'Undo teacher override' : 'Mark correct'}</button>` : ''}
                         </article>`;
                     }).join('')}</div>
                     <p class="muted teacher-result-empty" data-result-empty hidden>No questions match these filters.</p>
@@ -76,7 +78,7 @@
                 try {
                     if (!homeworkCache.has(key)) {
                         const promise = Promise.all([
-                            sb.from('assignment_submissions').select('assignment_id, student_id, correct, total, submitted_at, verified, attempts')
+                            sb.from('assignment_submissions').select('assignment_id, student_id, correct, total, submitted_at, verified, attempts, grading_overrides')
                                 .eq('assignment_id', assignmentId).eq('student_id', studentId).eq('verified', true).maybeSingle().abortSignal(abortSignal()),
                             sb.from('assignment_questions').select('question_id, question_text, answer_text, category, era, source, aliases')
                                 .eq('assignment_id', assignmentId).abortSignal(abortSignal())
@@ -95,12 +97,72 @@
                     if (!list(submission.attempts).length) note += ' This older submission has no saved answers.';
                     else if (summary.correct !== Number(submission.correct) || rows.length !== Number(submission.total)) note += ' The current answer key or saved question details differ from this submission; the verified score above is unchanged.';
                     if (!target.isConnected) return;
-                    target.innerHTML = questionReviewHtml(rows, note);
+                    const score = element.querySelector('.item-score');
+                    if (score) score.textContent = `${submission.correct}/${submission.total} · ${submission.total > 0 ? `${Math.round(submission.correct / submission.total * 100)}%` : '—'}`;
+                    const canOverride = summary.unknown === 0 && summary.correct === Number(submission.correct) && rows.length === Number(submission.total);
+                    if (!canOverride) note += ' Teacher overrides require complete saved answers and a matching answer key.';
+                    target.innerHTML = questionReviewHtml(rows, note, canOverride);
                     target.dataset.loaded = 'true';
                 } catch (error) {
                     homeworkCache.delete(key);
                     if (!target.isConnected) return;
                     target.innerHTML = `<p class="muted" role="alert">Saved answers could not be loaded: ${esc(error?.message || 'Please try again.')}</p><button class="btn ghost" type="button" data-homework-retry>Retry loading answers</button>`;
+                }
+            }
+
+            async function overrideHomework(button) {
+                const element = button.closest('[data-homework-assignment]');
+                if (!element || element.dataset.savingGrade) return;
+                element.dataset.savingGrade = 'true';
+                const buttons = [...element.querySelectorAll('[data-grade-override]')];
+                buttons.forEach(control => { control.disabled = true; });
+                const body = element.querySelector('[data-homework-body]');
+                body.querySelector('[data-grade-status]')?.remove();
+                const status = document.createElement('p');
+                status.dataset.gradeStatus = 'true';
+                status.setAttribute('role', 'status');
+                status.textContent = 'Saving teacher grade…';
+                body.prepend(status);
+                try {
+                    const { data: saved, error } = await sb.rpc('override_assignment_grade', {
+                        p_assignment_id: element.dataset.homeworkAssignment,
+                        p_student_id: element.dataset.homeworkStudent,
+                        p_question_id: button.dataset.gradeOverride,
+                        p_mark_correct: button.dataset.gradeAction === 'correct'
+                    });
+                    if (error) throw error;
+                    if (!saved) throw new Error('The corrected grade was not returned. Please reload and try again.');
+                    const key = `${element.dataset.homeworkAssignment}:${element.dataset.homeworkStudent}`;
+                    homeworkCache.delete(key);
+                    document.querySelectorAll('[data-homework-assignment]').forEach(review => {
+                        if (review.dataset.homeworkAssignment !== element.dataset.homeworkAssignment || review.dataset.homeworkStudent !== element.dataset.homeworkStudent) return;
+                        delete review.querySelector('[data-homework-body]').dataset.loaded;
+                        const score = review.querySelector('.item-score');
+                        if (score) score.textContent = `${saved.correct}/${saved.total} · ${saved.total > 0 ? `${Math.round(saved.correct / saved.total * 100)}%` : '—'}`;
+                    });
+                    const outcome = body.querySelector('[data-result-outcome]')?.value || 'all';
+                    const search = body.querySelector('[data-result-search]')?.value || '';
+                    await loadHomework(element, true);
+                    const review = body.querySelector('[data-question-review]');
+                    if (review) {
+                        review.querySelector('[data-result-outcome]').value = outcome;
+                        review.querySelector('[data-result-search]').value = search;
+                        filterQuestions(review);
+                        const message = document.createElement('p');
+                        message.setAttribute('role', 'status');
+                        message.textContent = button.dataset.gradeAction === 'correct' ? 'Teacher correction saved. The official homework score has been updated.' : 'Teacher override undone. The original mark has been restored.';
+                        review.prepend(message);
+                    }
+                    document.querySelectorAll('[data-homework-assignment]').forEach(other => {
+                        if (other !== element && other.open && other.dataset.homeworkAssignment === element.dataset.homeworkAssignment && other.dataset.homeworkStudent === element.dataset.homeworkStudent) void loadHomework(other);
+                    });
+                    if (onGradeChanged) void Promise.resolve(onGradeChanged(saved)).catch(error => console.warn('Grade saved; analytics refresh failed.', error));
+                } catch (error) {
+                    status.setAttribute('role', 'alert');
+                    status.textContent = `Grade could not be saved: ${error?.message || 'Please try again.'}`;
+                } finally {
+                    delete element.dataset.savingGrade;
+                    buttons.forEach(control => { control.disabled = false; });
                 }
             }
 
@@ -188,6 +250,8 @@
                     if (event.target.matches('[data-practice-range], [data-practice-kind], [data-practice-search]')) renderPractice(event.target.closest('[data-practice-student]'));
                 });
                 container.addEventListener('click', event => {
+                    const gradeButton = event.target.closest('[data-grade-override]');
+                    if (gradeButton) void overrideHomework(gradeButton);
                     if (event.target.closest('[data-homework-retry]')) void loadHomework(event.target.closest('[data-homework-assignment]'), true);
                     const more = event.target.closest('[data-practice-more]');
                     if (more) {
