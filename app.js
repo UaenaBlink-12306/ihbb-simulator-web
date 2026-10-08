@@ -3084,7 +3084,7 @@ async function requestCoachChatReply(message, options = {}) {
     response_detail: normalizeAssistantResponseDetail(options.responseDetail || getCurrentAccountSettings().assistant_response_detail),
     user_role: await ensureCurrentProfileRole() || 'student'
   };
-  const response = await IHBBSecurity.authenticatedFetch(sb, '/api/coach-chat', {
+  const response = await IHBBSecurity.authenticatedFetch(window.supabaseClient, '/api/coach-chat', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload)
@@ -4714,7 +4714,7 @@ async function requestGeneratedQuestions(options = {}) {
     wrong_answer: String(options.wrongAnswer || '').trim(),
     avoid_answers: Array.isArray(options.avoidAnswers) ? options.avoidAnswers : collectAvoidAnswers(options)
   };
-  const res = await IHBBSecurity.authenticatedFetch(sb, '/api/generate-questions', {
+  const res = await IHBBSecurity.authenticatedFetch(window.supabaseClient, '/api/generate-questions', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload)
@@ -6944,7 +6944,7 @@ async function submitAnswer(auto = false) {
       correct = false;
       reason = 'No attempt submitted.';
     } else {
-      const res = await IHBBSecurity.authenticatedFetch(sb, '/api/grade', {
+      const res = await IHBBSecurity.authenticatedFetch(window.supabaseClient, '/api/grade', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           question: item.question,
@@ -7109,7 +7109,7 @@ async function submitAnswer(auto = false) {
         return;
       }
       try {
-        const coachRes = await IHBBSecurity.authenticatedFetch(sb, '/api/grade', {
+        const coachRes = await IHBBSecurity.authenticatedFetch(window.supabaseClient, '/api/grade', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
