@@ -3789,6 +3789,10 @@ function coachFocusFromAttemptId(attemptId) {
 // Detect assignment launch early so init can avoid overriding the assignment set.
 const URL_PARAMS = new URLSearchParams(window.location.search);
 const ASSIGNMENT_ID = URL_PARAMS.get('assignment');
+const BROWSED_SET_ID = ASSIGNMENT_ID ? '' : String(URL_PARAMS.get('setId') || '').trim();
+const browsedSetStartButtons = ['startSession', 'startSessionMobile', 'startSessionDock', 'startLast', 'startLastMobile', 'startLastDock']
+  .map(id => $(id)).filter(Boolean);
+if (BROWSED_SET_ID) browsedSetStartButtons.forEach(button => { button.disabled = true; });
 let ASSIGNMENT_STORAGE_KEY = null;
 let HAS_ASSIGNMENT_PAYLOAD = false;
 function assignmentStorageKey(assignId, userId = StorageScopeUserId) {
@@ -3860,7 +3864,7 @@ function showAssignmentResumePrompt(saved, onContinue) {
   dialog.append(heading, copy, go, later); document.body.append(dialog); dialog.showModal();
 }
 function offerSavedAssignmentFromSetup() {
-  if (ASSIGNMENT_ID) return;
+  if (ASSIGNMENT_ID || BROWSED_SET_ID) return;
   const saved = AssignmentProgress.list(StorageScopeUserId)[0];
   if (!saved) return;
   const open = () => { window.location.href = 'index.html?drill=1&assignment=' + encodeURIComponent(saved.id); };
@@ -4382,7 +4386,7 @@ function updateSetMeta() {
   renderCategoryChips(cats);
   renderEraChips(eras);
   updateSetupOverview();
-  if (!(ASSIGNMENT_ID && HAS_ASSIGNMENT_PAYLOAD)) applyPendingCoachGuidedDrill();
+  if (!BROWSED_SET_ID && !(ASSIGNMENT_ID && HAS_ASSIGNMENT_PAYLOAD)) applyPendingCoachGuidedDrill();
 }
 
 function normalizeSavedQuestionSet(row) {
@@ -4434,6 +4438,47 @@ async function loadSavedQuestionSets(preferredSetId = '') {
   } finally {
     SavedQuestionSets.loading = false;
     updateSetMeta();
+  }
+}
+
+// Fetch the clicked set under the signed-in user's existing access rules.
+// Shared sets can be practiced directly without adding a copy to My Sets.
+async function launchBrowsedQuestionSet() {
+  if (!BROWSED_SET_ID || ASSIGNMENT_ID) return false;
+  try {
+    if (!window.supabaseClient || !StorageScopeUserId) throw new Error('Sign in to practice this set.');
+    const { data, error } = await window.supabaseClient
+      .from('question_sets')
+      .select('id, title, questions, visibility, created_at')
+      .eq('id', BROWSED_SET_ID)
+      .maybeSingle();
+    if (error || !data) throw new Error('This set is no longer available or could not be loaded. Return to Browse Sets and try again.');
+    const set = normalizeSavedQuestionSet(data);
+    if (!set) throw new Error('This set has no playable questions. Choose another set in Browse Sets.');
+    Library.sets = Library.sets.filter(existing => existing.id !== set.id).concat(set);
+    Library.activeSetId = set.id;
+    App.filters = { cat: '', cats: [], era: '', eras: [], src: '' };
+    App.sessionOverrideItems = set.items.slice();
+    setPracticeWrongBank(false);
+    setLenFromPreset('all');
+    renderLibrarySelectors();
+    renderLibraryTable();
+    saveLibrarySafe('remember browsed question set');
+    toast(`Starting ${set.name}: ${set.items.length} questions`);
+    startSession();
+    return true;
+  } catch (error) {
+    navSet('nav-setup'); SHOW('view-setup');
+    const notice = document.createElement('p');
+    notice.id = 'set-launch-error';
+    notice.className = 'card';
+    notice.setAttribute('role', 'alert');
+    notice.textContent = error.message;
+    $('view-setup')?.prepend(notice);
+    toast(error.message);
+    return false;
+  } finally {
+    browsedSetStartButtons.forEach(button => { button.disabled = false; });
   }
 }
 
@@ -6779,10 +6824,11 @@ async function tryFetchDefault() {
   }
   await hydratePrivateGeneratedQuestions(false);
   await hydrateSharedGeneratedQuestions();
-  applyPendingRemediationPack();
+  if (!BROWSED_SET_ID) applyPendingRemediationPack();
   updateSetupOverview();
   renderCoachChatChrome();
-  if (!(ASSIGNMENT_ID && HAS_ASSIGNMENT_PAYLOAD)) await applyPendingCoachChatAction();
+  if (BROWSED_SET_ID) await launchBrowsedQuestionSet();
+  else if (!(ASSIGNMENT_ID && HAS_ASSIGNMENT_PAYLOAD)) await applyPendingCoachChatAction();
   setTimeout(() => { maybeAutoOpenCoachChat('init'); }, 500);
 })();
 

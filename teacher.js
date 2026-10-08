@@ -3293,6 +3293,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                         <div class="list-item-meta">${count} questions • ${visibilityLabel} • By ${isMine ? 'Me' : (set.creator_role === 'teacher' ? 'Teacher' : 'Student')}</div>
                     </div>
                     <div class="list-item-actions">
+                        ${count ? `<a class="btn pri" href="index.html?drill=1&amp;setId=${esc(encodeURIComponent(set.id))}">Practice this set</a>` : '<button class="btn pri" disabled title="This set has no questions">Practice this set</button>'}
                         <button class="btn ghost" onclick="assignQuestionSet('${set.id}')">Assign to Class</button>
                         <button class="btn ghost" onclick="hostLiveBeeWithSet('${set.id}')">Host Live Bee</button>
                         ${isMine ? `
