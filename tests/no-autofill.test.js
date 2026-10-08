@@ -189,3 +189,59 @@ test('all app pages load the shared guard and page scripts do not override it', 
     assert.doesNotMatch(pageScript, /unlockForUserInput/, file);
   }
 });
+
+
+test('Practice Hub answer stays editable across focus cycles and page restores', () => {
+  const answer = new FakeField('input', { type: 'text', 'data-autofill-lock': 'off' });
+  const search = new FakeField('input', { type: 'search' });
+  const output = new FakeField('input', { type: 'text', readonly: '', 'data-autofill-lock': 'off' });
+  const guard = runGuard([answer, search, output]);
+
+  for (let attempt = 0; attempt < 3; attempt++) {
+    guard.document.activeElement = answer;
+    answer.dispatch('focus');
+    answer.dispatch('pointerdown', { pointerType: 'touch' });
+    answer.dispatch('click');
+    guard.flushTimers();
+    answer.dispatch('blur');
+    guard.window.dispatch('pageshow');
+    assert.equal(answer.hasAttribute('readonly'), false);
+    assert.equal(answer.getAttribute('autocomplete'), 'off');
+    assert.equal(answer.getAttribute('data-bwignore'), 'true');
+    assert.equal(search.hasAttribute('readonly'), true);
+    assert.equal(output.hasAttribute('readonly'), true);
+  }
+  assert.match(read('index.html'), /id="user-answer"[^>]*data-autofill-lock="off"/);
+});
+
+test('typing phase focuses the visible, enabled answer synchronously on every question', () => {
+  const app = read('app.js');
+  const typingPhase = app.slice(app.indexOf('function startTypingPhase(sec) {'), app.indexOf('async function submitAnswer('));
+  const elements = new Map();
+  const get = id => {
+    if (!elements.has(id)) elements.set(id, { style: {}, disabled: true, value: '' });
+    return elements.get(id);
+  };
+  let focusCount = 0;
+  get('user-answer').focus = () => {
+    assert.equal(get('typing-row').style.display, 'flex');
+    assert.equal(get('user-answer').disabled, false);
+    focusCount++;
+  };
+  const context = {
+    $: get, App: {}, Settings: {},
+    unlockPracticeAfterGrade() {}, setPracticeButtons() {}, schedulePracticeViewportFit() {},
+    setInterval: () => 1, clearInterval() {},
+    setTimeout: () => assert.fail('focus must stay inside the user gesture')
+  };
+  vm.createContext(context);
+  vm.runInContext(typingPhase, context);
+  for (let attempt = 0; attempt < 3; attempt++) {
+    get('user-answer').disabled = true;
+    get('user-answer').value = 'previous answer';
+    context.startTypingPhase(10);
+    assert.equal(focusCount, attempt + 1);
+    assert.equal(get('user-answer').value, '');
+    assert.equal(context.App.phase, 'typing');
+  }
+});

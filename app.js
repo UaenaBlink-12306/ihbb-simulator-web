@@ -6869,7 +6869,13 @@ function startTypingPhase(sec) {
   App.phase = 'typing';
   App.submitBusy = false;
   const row = $('typing-row'); if (row) row.style.display = 'flex';
-  const inp = $('user-answer'); if (inp) { inp.disabled = false; inp.value = ''; setTimeout(() => inp.focus(), 0); }
+  const inp = $('user-answer');
+  if (inp) {
+    inp.disabled = false;
+    inp.value = '';
+    // Focus inside the Buzz gesture: iOS will not open its keyboard from a timer.
+    inp.focus();
+  }
   const sb = $('btn-submit-answer'); if (sb) sb.disabled = false;
   unlockPracticeAfterGrade();
   const cp = $('btn-copy-answer'); if (cp) cp.disabled = true;
