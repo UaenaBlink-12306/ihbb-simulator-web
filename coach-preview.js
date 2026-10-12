@@ -22,6 +22,7 @@
     messages = messages.slice(-20).filter(message => message && ['user', 'assistant'].includes(message.role) && typeof message.text === 'string').map(message => ({ role: message.role, text: message.text.slice(0, 3000) }));
     let snapshot = null, raw = null, currentPlan = null, planMessage = '', loading = null, busy = false, actionBusy = false;
     let contextUpdatedAt = 0, previousFocus = null, requestNumber = 0;
+    const mobile = root.matchMedia('(max-width: 760px)');
     const cloud = {};
     const sourceNames = { classes: 'Classes', assignments: 'Assignments', submissions: 'Assignment results', sessions: 'Practice history', notebook: 'Notebook lessons', mistakes: 'Mistake cards', sets: 'Saved sets', games: 'Live Bee results', goals: 'Weekly goals' };
     const local = suffix => read(`ihbb_v2_${suffix}_${uid}`, suffix === 'wrong_srs' || suffix === 'library' || suffix === 'settings' ? {} : []);
@@ -46,7 +47,7 @@
     async function refresh(force = false) {
       if (loading) { await loading; return rebuild(); }
       if (!force && contextUpdatedAt && Date.now() - contextUpdatedAt < 60000) return rebuild();
-      $('coach-preview-status').textContent = 'Reading your practice context…';
+      $('coach-preview-status').textContent = 'Updating practice context…';
       $('coach-preview-plan').setAttribute('aria-busy', 'true');
       disableControls(true);
       loading = (async () => {
@@ -99,7 +100,7 @@
     }
 
     function disableControls(disabled) {
-      $('coach-preview-send').disabled = disabled || busy || actionBusy;
+      $('coach-preview-send').disabled = disabled || busy || actionBusy || !$('coach-preview-input').value.trim();
       $('coach-preview-refresh').disabled = disabled || busy || actionBusy;
       drawer.querySelectorAll('[data-coach-preview-action]').forEach(button => { button.disabled = disabled || busy || actionBusy; });
       drawer.querySelectorAll('#coach-preview-preferences input, #coach-preview-preferences select, #coach-preview-preferences button, [data-coach-preview-prompt], #coach-preview-reset').forEach(control => { control.disabled = disabled || busy || actionBusy; });
@@ -113,13 +114,14 @@
     function renderPlan(plan = currentPlan) {
       if (!plan) return;
       $('coach-preview-plan').removeAttribute('aria-busy');
-      $('coach-preview-plan').innerHTML = `<div class="eyebrow">Your next step</div><h3>${esc(plan.title)}</h3><p>${esc(plan.message)}</p><p class="coach-preview-evidence">${esc(plan.evidence)}</p><p class="coach-preview-stop">${esc(plan.stop_rule)}</p><div class="coach-preview-actions">${actionHtml(plan.primary, 0, true)}${actionHtml(plan.alternative, 1)}</div>${plan.warnings.map(warning => `<p class="coach-preview-warning">${esc(warning)}</p>`).join('')}`;
+      const hasReply = messages.at(-1)?.role === 'assistant';
+      $('coach-preview-plan').innerHTML = `<div class="eyebrow">Suggested next step</div><h3>${esc(plan.title)}</h3>${hasReply ? '' : `<p>${esc(plan.message)}</p>`}<div class="coach-preview-actions">${actionHtml(plan.primary, 0, true)}${actionHtml(plan.alternative, 1)}</div><details class="coach-preview-reason"><summary>Why this recommendation</summary><p class="coach-preview-evidence">${esc(plan.evidence)}</p><p class="coach-preview-stop">${esc(plan.stop_rule)}</p></details>${plan.warnings.map(warning => `<p class="coach-preview-warning">${esc(warning)}</p>`).join('')}`;
       disableControls(!!loading);
     }
 
     function render() {
       const missing = Object.values(snapshot.sources).some(status => status !== 'ready');
-      $('coach-preview-status').textContent = missing ? 'Using available context · some sources need a refresh' : 'Context up to date · one focused next step';
+      $('coach-preview-status').textContent = missing ? 'Some context unavailable · see Context' : 'Using your latest practice context';
       const sourceList = Object.entries(sourceNames).map(([name, label]) => `<li><span>${label}</span><span>${snapshot.sources[name] === 'ready' ? 'Loaded' : snapshot.sources[name] === 'partial' ? 'Partial' : 'Unavailable'}</span></li>`).join('');
       const stats = [
         `${snapshot.performance.total_sessions} practice sessions · ${snapshot.performance.total_attempts} questions`,
@@ -136,8 +138,32 @@
 
     function renderMessages() {
       $('coach-preview-messages').innerHTML = messages.map(message => `<div class="coach-preview-message ${message.role}"><span>${message.role === 'user' ? 'You' : 'Coach'}</span><p>${esc(message.text)}</p></div>`).join('');
-      const body = $('coach-preview-scroll');
-      if (messages.length) requestAnimationFrame(() => { body.scrollTop = body.scrollHeight; });
+      $('coach-preview-welcome').hidden = messages.length > 0;
+      scrollToLatest();
+    }
+
+    function scrollToLatest() {
+      if (messages.length) requestAnimationFrame(() => {
+        const body = $('coach-preview-scroll');
+        body.scrollTop = body.scrollHeight;
+      });
+    }
+
+    function resizeInput() {
+      const input = $('coach-preview-input');
+      input.style.height = 'auto';
+      input.style.height = `${Math.min(128, input.scrollHeight)}px`;
+      disableControls(!!loading);
+    }
+
+    function showTools(panel = '') {
+      $('coach-preview-tools').hidden = !panel;
+      $('coach-preview-scroll').hidden = !!panel;
+      $('coach-preview-settings').hidden = panel !== 'goals';
+      $('coach-preview-context-panel').hidden = panel !== 'context';
+      $('coach-preview-goals-toggle').setAttribute('aria-expanded', String(panel === 'goals'));
+      $('coach-preview-context-toggle').setAttribute('aria-expanded', String(panel === 'context'));
+      scrollToLatest();
     }
 
     function addMessage(role, content) {
@@ -160,9 +186,13 @@
       const clean = String(message || '').trim().slice(0, 2000);
       if (!clean || busy || actionBusy) return;
       const priorAction = currentPlan?.primary;
+      showTools();
       addMessage('user', clean);
       $('coach-preview-input').value = '';
       busy = true;
+      resizeInput();
+      $('coach-preview-thinking').hidden = false;
+      $('coach-preview-plan').hidden = true;
       const turn = ++requestNumber;
       $('coach-preview-chat-status').textContent = 'Checking your context…';
       disableControls(true);
@@ -193,7 +223,11 @@
         if (currentPlan) addMessage('assistant', `${currentPlan.message}\n${currentPlan.evidence}\n${currentPlan.stop_rule}`);
         $('coach-preview-chat-status').textContent = 'AI explanation is unavailable. Your context-based plan and actions still work.';
       } finally {
-        busy = false; disableControls(!!loading);
+        busy = false;
+        $('coach-preview-thinking').hidden = true;
+        $('coach-preview-plan').hidden = false;
+        renderPlan(); disableControls(!!loading); scrollToLatest();
+        if (drawer.classList.contains('open') && !mobile.matches && !actionBusy) $('coach-preview-input').focus({ preventScroll: true });
       }
     }
 
@@ -260,7 +294,7 @@
         const message = error?.message || 'Could not start this action. Try refreshing your context.';
         $('coach-preview-chat-status').textContent = message;
         notify?.(message, 'error');
-      } finally { actionBusy = false; disableControls(!!loading); }
+      } finally { actionBusy = false; disableControls(!!loading); scrollToLatest(); }
     }
 
     function recordAction(action) {
@@ -269,13 +303,15 @@
     }
 
     function open() {
+      if (drawer.classList.contains('open')) { close(); return; }
       previousFocus = document.activeElement;
       drawer.classList.add('open'); drawer.removeAttribute('inert');
       drawer.setAttribute('aria-hidden', 'false');
-      $('coach-preview-backdrop').hidden = false;
       $('btn-coach-preview').setAttribute('aria-expanded', 'true');
       document.body.classList.add('coach-preview-open');
-      $('coach-preview-close').focus();
+      syncViewport();
+      (mobile.matches ? $('coach-preview-close') : $('coach-preview-input')).focus({ preventScroll: true });
+      resizeInput(); scrollToLatest();
       void refresh().catch(() => { $('coach-preview-status').textContent = 'Could not read context. Use Refresh to try again.'; });
     }
 
@@ -288,13 +324,28 @@
       (previousFocus?.isConnected ? previousFocus : $('btn-coach-preview')).focus({ preventScroll: true });
     }
 
+    function syncViewport() {
+      drawer.setAttribute('aria-modal', String(mobile.matches));
+      $('coach-preview-backdrop').hidden = !mobile.matches || !drawer.classList.contains('open');
+      const viewport = root.visualViewport;
+      drawer.style.setProperty('--coach-viewport-height', `${viewport?.height || root.innerHeight}px`);
+      drawer.style.setProperty('--coach-viewport-top', `${viewport?.offsetTop || 0}px`);
+    }
+    mobile.addEventListener('change', syncViewport);
+    root.visualViewport?.addEventListener('resize', syncViewport);
+    root.visualViewport?.addEventListener('scroll', syncViewport);
+    root.addEventListener('resize', syncViewport);
+    syncViewport();
+
     $('coach-preview-region').innerHTML = `<option value="">Any region</option>${core.REGIONS.map(value => `<option>${esc(value)}</option>`).join('')}`;
     $('coach-preview-era').innerHTML = `<option value="">Any era</option>${core.ERAS.map((value, index) => `<option value="${String(index + 1).padStart(2, '0')}">${esc(value)}</option>`).join('')}`;
     syncPreferences(); renderMessages();
     $('btn-coach-preview').addEventListener('click', open);
     $('coach-preview-close').addEventListener('click', close);
     $('coach-preview-backdrop').addEventListener('click', close);
-    $('coach-preview-refresh').addEventListener('click', () => { void refresh(true); });
+    $('coach-preview-goals-toggle').addEventListener('click', () => showTools($('coach-preview-settings').hidden ? 'goals' : ''));
+    $('coach-preview-context-toggle').addEventListener('click', () => showTools($('coach-preview-context-panel').hidden ? 'context' : ''));
+    $('coach-preview-refresh').addEventListener('click', () => { void refresh(true).catch(() => { $('coach-preview-status').textContent = 'Could not refresh context. Try again.'; }); });
     $('coach-preview-preferences').addEventListener('submit', event => {
       event.preventDefault();
       if (busy || actionBusy || loading) return;
@@ -302,13 +353,23 @@
       planMessage = '';
       if (!write(key('preferences'), prefs)) notify?.('Goals could not be saved on this browser.', 'error');
       syncPreferences(); if (raw) rebuild();
+      showTools();
       $('coach-preview-chat-status').textContent = 'Goals saved on this browser. Your next step is updated.';
     });
     $('coach-preview-form').addEventListener('submit', event => { event.preventDefault(); void send($('coach-preview-input').value); });
     $('coach-preview-input').addEventListener('keydown', event => {
       if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) { event.preventDefault(); void send(event.target.value); }
     });
-    $('coach-preview-reset').addEventListener('click', () => { if (busy || actionBusy) return; messages = []; planMessage = ''; write(key('messages'), []); renderMessages(); if (raw) rebuild(); $('coach-preview-chat-status').textContent = 'Conversation cleared. Your saved goals are kept.'; });
+    $('coach-preview-input').addEventListener('input', resizeInput);
+    $('coach-preview-reset').addEventListener('click', () => {
+      if (busy || actionBusy || loading) return;
+      messages = []; planMessage = ''; write(key('messages'), []);
+      $('coach-preview-input').value = ''; resizeInput(); showTools(); renderMessages();
+      $('coach-preview-scroll').scrollTop = 0;
+      if (raw) rebuild();
+      $('coach-preview-chat-status').textContent = 'New chat started. Your saved goals are kept.';
+      $('coach-preview-input').focus({ preventScroll: true });
+    });
     drawer.addEventListener('click', event => {
       const button = event.target.closest('[data-coach-preview-action]');
       if (button) void execute(Number(button.dataset.coachPreviewAction) === 0 ? currentPlan?.primary : currentPlan?.alternative);
@@ -318,7 +379,7 @@
     document.addEventListener('keydown', event => {
       if (!drawer.classList.contains('open')) return;
       if (event.key === 'Escape') { event.preventDefault(); close(); return; }
-      if (event.key !== 'Tab') return;
+      if (event.key !== 'Tab' || !mobile.matches) return;
       const focusable = [...drawer.querySelectorAll('button, input, select, textarea, summary')].filter(el => !el.disabled && el.getClientRects().length);
       const first = focusable[0], last = focusable[focusable.length - 1];
       if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }

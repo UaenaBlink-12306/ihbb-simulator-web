@@ -929,6 +929,21 @@
                         <div class="whatsnew-groups">
                             <details class="whatsnew-group" open>
                                 <summary class="whatsnew-group-summary">
+                                    <span class="whatsnew-group-title">Version 5.9.0</span>
+                                    <span class="whatsnew-group-meta">October 12, 2026 • 1 update</span>
+                                </summary>
+                                <div class="whatsnew-group-list">
+                                    <div class="list-item">
+                                        <div>
+                                            <h3 style="margin:0 0 4px;">Coach chat sidebar</h3>
+                                            <div class="pill">October 12, 2026</div>
+                                            <p class="muted" style="margin: 8px 0 0;">Coach Preview now opens as a chat sidebar with clear messages, quick prompts, and an input that stays within reach. Goals and context have their own views, recommendations appear beside the conversation, and the mobile layout adapts to the keyboard.</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </details>
+                            <details class="whatsnew-group">
+                                <summary class="whatsnew-group-summary">
                                     <span class="whatsnew-group-title">Version 5.8.0</span>
                                     <span class="whatsnew-group-meta">October 8, 2026 • 6 updates</span>
                                 </summary>
@@ -2291,13 +2306,17 @@
     <div id="coach-preview-backdrop" class="coach-preview-backdrop" hidden></div>
     <aside class="coach-preview-live" id="coach-preview-drawer" role="dialog" aria-modal="true" aria-labelledby="future-coach-title" aria-hidden="true" inert>
         <header class="coach-preview-header">
-            <div><div class="eyebrow">Your practice companion</div><h2 id="future-coach-title">Coach Preview</h2><p id="coach-preview-status" role="status">Open for a focused next step.</p></div>
+            <div class="coach-preview-heading"><span class="coach-preview-avatar" aria-hidden="true">✦</span><div><h2 id="future-coach-title">Coach <span>Preview</span></h2><p id="coach-preview-status" role="status">Your practice companion</p></div></div>
             <button id="coach-preview-close" class="coach-preview-close" type="button" aria-label="Close coach preview"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"></path></svg></button>
         </header>
-        <div id="coach-preview-scroll" class="coach-preview-scroll">
-            <section id="coach-preview-plan" class="coach-preview-plan" aria-label="Recommended practice"><p>Reading your goals, assignments, notebook and practice history…</p></section>
-            <details class="coach-preview-settings">
-                <summary>Your goals &amp; time</summary>
+        <nav class="coach-preview-toolbar" aria-label="Coach tools">
+            <button id="coach-preview-reset" class="btn ghost" type="button" title="Start a new conversation">＋ New chat</button>
+            <button id="coach-preview-goals-toggle" class="btn ghost" type="button" aria-expanded="false" aria-controls="coach-preview-settings">Goals &amp; time</button>
+            <button id="coach-preview-context-toggle" class="btn ghost" type="button" aria-expanded="false" aria-controls="coach-preview-context-panel">Context</button>
+        </nav>
+        <div id="coach-preview-tools" class="coach-preview-tools" hidden>
+            <section id="coach-preview-settings" class="coach-preview-settings" aria-label="Your goals and time" hidden>
+                <h3>Your goals &amp; time</h3><p class="muted">Set your focus, or simply tell the Coach in chat.</p>
                 <form id="coach-preview-preferences" class="coach-preview-preferences">
                     <label>Goal<select id="coach-preview-goal"><option value="adaptive">Best next step</option><option value="assignments">Finish class work</option><option value="review">Reinforce mistakes</option><option value="tournament">Prepare for competition</option></select></label>
                     <label>Minutes available<input id="coach-preview-minutes" type="number" min="3" max="60" value="10" required></label>
@@ -2307,20 +2326,25 @@
                     <label class="wide coach-preview-checkbox"><input id="coach-preview-generated" type="checkbox" checked>Allow targeted generation when matching questions are unavailable</label>
                     <button class="btn ghost wide" type="submit">Save goals &amp; update plan</button>
                 </form>
-            </details>
-            <details class="coach-preview-context-wrap">
-                <summary>What the Coach knows</summary>
+            </section>
+            <section id="coach-preview-context-panel" class="coach-preview-context-wrap" aria-label="What the Coach knows" hidden>
+                <h3>What the Coach knows</h3>
                 <div id="coach-preview-context"></div>
                 <div class="coach-preview-context-actions"><button id="coach-preview-refresh" class="btn ghost" type="button">Refresh context</button></div>
-            </details>
-            <div class="coach-preview-starters"><button class="btn ghost" type="button" data-coach-preview-prompt="What should I practice next?">Choose my next step</button><button class="btn ghost" type="button" data-coach-preview-prompt="Why is this the right practice tool for me?">Explain this choice</button></div>
-            <div id="coach-preview-messages" role="log" aria-label="Coach conversation" aria-live="polite"></div>
+            </section>
+        </div>
+        <div id="coach-preview-scroll" class="coach-preview-scroll" role="log" aria-label="Coach conversation" aria-live="polite" aria-relevant="additions text">
+            <div id="coach-preview-welcome" class="coach-preview-welcome"><span class="coach-preview-avatar" aria-hidden="true">✦</span><h3>What shall we work on?</h3><p>I’ll use your practice history and goals to help you choose one useful next step.</p></div>
+            <div id="coach-preview-messages"></div>
+            <div id="coach-preview-thinking" class="coach-preview-thinking" hidden><span aria-hidden="true">● ● ●</span> Coach is thinking…</div>
+            <section id="coach-preview-plan" class="coach-preview-plan" aria-label="Recommended practice"><p>Finding your next step…</p></section>
         </div>
         <form id="coach-preview-form" class="coach-preview-composer">
-            <label for="coach-preview-input">Tell the Coach what you need</label>
-            <textarea id="coach-preview-input" rows="2" maxlength="2000" placeholder="I have 5 minutes. Help me practice the French Revolution."></textarea>
-            <div class="coach-preview-composer-actions"><button id="coach-preview-reset" class="btn ghost" type="button">New conversation</button><button id="coach-preview-send" class="btn pri" type="submit">Ask Coach</button></div>
-            <p id="coach-preview-chat-status" class="coach-preview-chat-status" role="status">Use a recommended action to start, or say “start it”.</p>
+            <div class="coach-preview-starters"><button class="btn ghost" type="button" data-coach-preview-prompt="What should I practice next?">What’s next?</button><button class="btn ghost" type="button" data-coach-preview-prompt="I have 5 minutes. What should I practice?">I have 5 minutes</button><button class="btn ghost" type="button" data-coach-preview-prompt="Why is this the right practice tool for me?">Why this choice?</button></div>
+            <label class="coach-preview-sr-only" for="coach-preview-input">Message Coach</label>
+            <div class="coach-preview-input-row"><textarea id="coach-preview-input" rows="1" maxlength="2000" placeholder="Ask Coach, or tell me your focus…" aria-describedby="coach-preview-input-hint"></textarea><button id="coach-preview-send" class="btn pri" type="submit" aria-label="Send message" title="Send message" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 12 6-6 6 6M12 6v13"></path></svg></button></div>
+            <p id="coach-preview-input-hint" class="coach-preview-input-hint">Enter to send · Shift + Enter for a new line</p>
+            <p id="coach-preview-chat-status" class="coach-preview-chat-status" role="status"></p>
         </form>
     </aside>
 
