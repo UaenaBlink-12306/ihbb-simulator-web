@@ -1,0 +1,13 @@
+{
+  "name": "practice-hub-standalone",
+  "version": "1.0.0",
+  "description": "Standalone Practice Hub: upload a JSON question set, drill it with filters, optional DeepSeek AI grading (key read from DEEPSEEK_API_KEY env var).",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "MIT"
+}

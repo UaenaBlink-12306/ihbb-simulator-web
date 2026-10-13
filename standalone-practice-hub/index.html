@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Practice Hub — JSON Drill</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header class="topbar">
+    <div class="brand">
+        <span class="brand-dot"></span>
+        <span class="brand-name">Practice Hub</span>
+        <span class="brand-sub">JSON Drill</span>
+    </div>
+    <div class="top-actions">
+        <button id="btn-settings" class="btn ghost small" title="API settings">⚙ Settings</button>
+        <button id="btn-new-set" class="btn ghost small" hidden>↺ Load another JSON</button>
+    </div>
+</header>
+
+<main>
+    <!-- ============ VIEW 1: UPLOAD ============ -->
+    <section id="view-upload" class="view">
+        <div class="card center-card">
+            <h1>Load your question set</h1>
+            <p class="muted">Drop a JSON file here — it will be parsed, normalized and ready to drill.
+                Supports <code>{ "items": [...] }</code>, <code>{ "questions": [...] }</code>, a bare array,
+                or a multi-set library <code>{ "sets": [...] }</code>. Each question needs at least
+                <code>question</code> and <code>answer</code> (aliases <code>q/a/prompt/correct/solution</code> also accepted).</p>
+
+            <div id="dropzone" class="dropzone" tabindex="0">
+                <input type="file" id="file-input" accept=".json,application/json" hidden>
+                <div class="dz-icon">📄</div>
+                <div class="dz-text">Drag &amp; drop a <b>.json</b> file here<br><span class="muted">or click to browse</span></div>
+            </div>
+
+            <details class="paste-box">
+                <summary>…or paste JSON text</summary>
+                <textarea id="paste-area" rows="6" placeholder='{"items":[{"question":"...","answer":"..."}]}'></textarea>
+                <button id="btn-parse-paste" class="btn primary">Parse pasted JSON</button>
+            </details>
+
+            <div class="upload-help">
+                <button id="btn-load-sample" class="btn ghost small">Try the sample set (24 questions)</button>
+            </div>
+
+            <div id="parse-result" class="parse-result" hidden></div>
+        </div>
+    </section>
+
+    <!-- ============ VIEW 2: SETUP / FILTERS ============ -->
+    <section id="view-setup" class="view" hidden>
+        <div class="card">
+            <div class="setup-head">
+                <h1>Set up your session</h1>
+                <div class="set-summary" id="set-summary"></div>
+            </div>
+
+            <div class="filter-row">
+                <div class="filter-label">Region <span class="muted">(multi-select)</span></div>
+                <div class="chips" id="cat-chips"></div>
+            </div>
+            <div class="filter-row">
+                <div class="filter-label">Era <span class="muted">(multi-select)</span></div>
+                <div class="chips" id="era-chips"></div>
+            </div>
+            <div class="filter-row">
+                <div class="filter-label">Source</div>
+                <div class="chips" id="src-chips"></div>
+            </div>
+            <div class="filter-row">
+                <div class="filter-label">Session length</div>
+                <div class="chips" id="len-chips">
+                    <button class="chip" data-n="10">10</button>
+                    <button class="chip" data-n="15">15</button>
+                    <button class="chip" data-n="20">20</button>
+                    <button class="chip" data-n="50">50</button>
+                    <button class="chip" data-n="all">All</button>
+                    <button class="chip" data-n="custom">Custom</button>
+                    <input type="number" id="len-custom" min="1" max="500" placeholder="1–500" hidden>
+                </div>
+            </div>
+            <div class="filter-row inline">
+                <div class="filter-label">Timer per question</div>
+                <select id="timer-select">
+                    <option value="10" selected>10 seconds</option>
+                    <option value="20">20 seconds</option>
+                    <option value="30">30 seconds</option>
+                    <option value="60">60 seconds</option>
+                    <option value="0">No timer</option>
+                </select>
+                <label class="check-label"><input type="checkbox" id="strict-mode"> Strict mode (no lenient spelling)</label>
+            </div>
+
+            <div class="pool-bar">
+                <div><span id="pool-count">0</span> questions match your filters</div>
+                <button id="btn-start" class="btn primary big">▶ Start session</button>
+            </div>
+        </div>
+    </section>
+
+    <!-- ============ VIEW 3: SESSION ============ -->
+    <section id="view-session" class="view" hidden>
+        <div class="stats-bar">
+            <div class="stat"><span class="stat-label">Progress</span><span id="drill-progress">0 / 0</span></div>
+            <div class="stat"><span class="stat-label">Correct</span><span id="drill-correct" class="good">0</span></div>
+            <div class="stat"><span class="stat-label">Accuracy</span><span id="drill-acc">—</span></div>
+            <div class="stat timer"><span class="stat-label">Timer</span><span id="countdown">—</span></div>
+            <div class="progress-track"><div id="barfill"></div></div>
+            <button id="btn-end" class="btn ghost small">End session</button>
+        </div>
+
+        <div class="card question-card">
+            <div class="q-meta" id="q-meta"></div>
+            <div class="q-text" id="q-text"></div>
+            <div class="countdown-big" id="countdown-big"></div>
+
+            <div id="typing-row" class="typing-row">
+                <input type="text" id="user-answer" placeholder="Type your answer…" autocomplete="off" spellcheck="false">
+                <button id="btn-submit-answer" class="btn primary">Submit</button>
+                <button id="btn-give-up" class="btn ghost">Skip</button>
+            </div>
+
+            <div id="answer" class="answer-box" hidden></div>
+
+            <div id="grade-row" class="grade-row" hidden>
+                <button id="btn-mark-right" class="btn good">✓ I was right</button>
+                <button id="btn-mark-wrong" class="btn bad">✗ I was wrong</button>
+                <button id="btn-next" class="btn primary">Next →</button>
+            </div>
+
+            <div id="status" class="status"></div>
+        </div>
+    </section>
+
+    <!-- ============ VIEW 4: RESULTS ============ -->
+    <section id="view-results" class="view" hidden>
+        <div class="card">
+            <h1>Session complete</h1>
+            <div class="results-summary" id="results-summary"></div>
+            <div id="wrong-list" class="wrong-list"></div>
+            <div class="results-actions">
+                <button id="btn-again-same" class="btn primary">Drill again (same filters)</button>
+                <button id="btn-back-setup" class="btn ghost">Change filters</button>
+            </div>
+        </div>
+    </section>
+</main>
+
+<!-- ============ SETTINGS DIALOG ============ -->
+<dialog id="settings-dialog">
+    <div class="dialog-body">
+        <h2>AI Grading Settings</h2>
+        <p class="muted">Answers are always checked locally first (lenient spelling match). If a DeepSeek key is
+            available, AI grading gives a smarter verdict on borderline answers. When running via the bundled
+            <code>server.js</code>, the key is read from the <code>DEEPSEEK_API_KEY</code> environment variable —
+            no need to paste it here.</p>
+        <label class="field-label">DeepSeek API key (browser-stored, optional)
+            <input type="password" id="api-key-input" placeholder="sk-…">
+        </label>
+        <label class="field-label">Model
+            <input type="text" id="model-input" placeholder="deepseek-chat">
+        </label>
+        <div id="env-status" class="muted small-note"></div>
+        <div class="dialog-actions">
+            <button id="btn-settings-save" class="btn primary">Save</button>
+            <button id="btn-settings-close" class="btn ghost">Close</button>
+        </div>
+    </div>
+</dialog>
+
+<footer class="foot muted">Standalone Practice Hub • upload any question JSON and drill • AI grading optional</footer>
+
+<script src="config.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
