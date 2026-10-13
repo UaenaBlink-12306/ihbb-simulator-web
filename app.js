@@ -3989,7 +3989,11 @@ function populateVoices() {
   const sel = $('voiceSel'); if (!sel) return;
   sel.innerHTML = '';
   for (const v of eng) { const o = document.createElement('option'); o.value = v.name; o.textContent = `${v.name} • ${v.lang}`; sel.appendChild(o); }
-  if (eng.length) { sel.value = Settings.voice && eng.some(v => v.name === Settings.voice) ? Settings.voice : eng[0].name; Settings.voice = sel.value; }
+  if (eng.length) {
+    const defaultVoice = eng.find(v => /\bZira\b|\bFemale\b/i.test(v.name)) || eng[0];
+    sel.value = Settings.voice && eng.some(v => v.name === Settings.voice) ? Settings.voice : defaultVoice.name;
+    Settings.voice = sel.value;
+  }
 }
 speechSynthesis.onvoiceschanged = populateVoices;
 
