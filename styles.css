@@ -14105,3 +14105,11 @@ html[data-theme="light"] :is(.admin-inline-code, .admin-table-details pre) {
       linear-gradient(145deg, #f7fcff 0%, #d4e9ff 48%, #c4e4fb 72%, #effaff 100%);
   }
 }
+
+/* Packet topics keep their complete sequence together on desktop and phones. */
+#bowl-topic-controls[hidden], #practice-bowl-topic[hidden],
+#cat-row[hidden], #filter-row[hidden], #session-length-row[hidden] { display: none !important; }
+#bowl-topic-controls input, #bowl-topic-controls select { width: 100%; min-width: 0; }
+#bowl-topic-controls, #practice-bowl-topic { min-width: 0; overflow-wrap: anywhere; }
+#bowl-topic-search { min-height: 44px; box-sizing: border-box; padding: 10px 14px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); color: var(--ink); font: inherit; }
+#bowl-topic-search:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }

@@ -3174,7 +3174,7 @@ PUBLIC_ROOT_FILES = {
     "onboarding.html", "profile.html", "app.js", "student.js", "teacher.js", "livebee.js",
     "admin.js", "login.js", "onboarding.js", "profile.js", "avatar-catalog.js", "config.js",
     "dashboard-feedback.js", "set-builder-quality.js", "set-builder-source.js", "theme.js",
-    "styles.css", "questions.json",
+    "styles.css", "questions.json", "bowl-topics.js",
     "coach-context.js", "coach-preview.js", "coach-preview.css", "coach-era.js", "assignment-progress.js",
     "favicon.ico", "favicon.svg", "manifest.json", "lib/client-security.js", "lib/no-autofill.js",
 }

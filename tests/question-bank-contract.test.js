@@ -20,7 +20,7 @@ function canonicalQuestion(value) {
 }
 
 function validateQuestionSet(payload, label) {
-  assert.deepEqual(Object.keys(payload).sort(), ['categories', 'id', 'items', 'name'], `${label} root schema`);
+  assert.deepEqual(Object.keys(payload).filter(key => key !== 'bowlThirdQuarterGroups').sort(), ['categories', 'id', 'items', 'name'], `${label} root schema`);
   assert.ok(Array.isArray(payload.categories) && payload.categories.length > 0, `${label} categories`);
   assert.ok(Array.isArray(payload.items) && payload.items.length > 0, `${label} items`);
   const categories = new Set(payload.categories);

@@ -4367,6 +4367,8 @@ function getActiveSet() {
 
 function updateSetMeta() {
   const set = getActiveSet();
+  if (App.filters.bowlTopic && !getSelectedBowlTopic()) App.filters.bowlTopic = '';
+  renderBowlTopicPicker();
   const qm = $('qs-meta');
   if (qm) {
     if (isMistakeNotebookSetId(Library.activeSetId)) {
@@ -4923,7 +4925,6 @@ function sanitizeItem(it) {
   let m; while ((m = aliasRe.exec(ans))) { const chunk = (m[1] || m[2] || '').trim(); if (chunk) it.aliases.push(chunk); }
   ans = ans.replace(aliasRe, '').trim();
   ans = ans.replace(/(\d{4}.*?(Round|Regional|Extra|Packet|Bee|Bowl|Championship).*)$/i, '').trim();
-  ans = ans.replace(/(\d{4}.*)$/, '').trim();
   ans = ans.replace(/^"|"$/g, '').trim();
   it.answer = ans;
 }
@@ -5027,7 +5028,7 @@ function parseJsonImport(obj, fallbackName = 'Imported JSON') {
       const rawItems = extractQuestionArray(s);
       const items = normalizeJsonItems(rawItems);
       if (!items.length) return;
-      sets.push({ id: stringVal(s?.id) || uid(), name: stringVal(s?.name) || `Set ${i + 1}`, items, volatile: fallbackName === 'IHBB Questions' });
+      sets.push({ id: stringVal(s?.id) || uid(), name: stringVal(s?.name) || `Set ${i + 1}`, items, bowlThirdQuarterGroups: IHBBBowlTopics.normalizeGroups(s.bowlThirdQuarterGroups, items), volatile: fallbackName === 'IHBB Questions' });
     });
     if (sets.length) {
       return { type: 'library', sets, activeSetId: stringVal(obj.activeSetId) || sets[0]?.id || null };
@@ -5047,8 +5048,63 @@ function parseJsonImport(obj, fallbackName = 'Imported JSON') {
     return null;
   }
   logImport('info', 'parseJsonImport: parsed single set', { itemCount: items.length });
-  return { type: 'set', set: { id: stringVal(obj.id) || uid(), name: stringVal(obj.name) || fallbackName, items, volatile: fallbackName === 'IHBB Questions' } };
+  return { type: 'set', set: { id: stringVal(obj.id) || uid(), name: stringVal(obj.name) || fallbackName, items, bowlThirdQuarterGroups: IHBBBowlTopics.normalizeGroups(obj.bowlThirdQuarterGroups, items), volatile: fallbackName === 'IHBB Questions' } };
 }
+/********************* Bowl third-quarter topics *********************/
+function getSelectedBowlTopic() {
+  return IHBBBowlTopics.selectedGroup(getActiveSet(), App.filters.bowlTopic);
+}
+function renderBowlTopicPicker() {
+  const set = getActiveSet();
+  const groups = set?.bowlThirdQuarterGroups || [];
+  const wrap = $('bowl-topic-controls');
+  const picker = $('bowl-topic-picker');
+  if (!wrap || !picker) return;
+  wrap.hidden = !groups.length;
+  const search = String($('bowl-topic-search')?.value || '').trim().toLocaleLowerCase();
+  picker.replaceChildren();
+  const all = document.createElement('option');
+  all.value = ''; all.textContent = 'All questions (no topic filter)'; picker.appendChild(all);
+  let matches = 0;
+  groups.slice().sort((a, b) => a.topic.localeCompare(b.topic) || a.packet.localeCompare(b.packet)).forEach(group => {
+    const matchesSearch = !search || (group.topic + ' ' + group.packet).toLocaleLowerCase().includes(search);
+    if (!matchesSearch && group.id !== App.filters.bowlTopic) return;
+    if (matchesSearch) matches++;
+    const option = document.createElement('option');
+    option.value = group.id;
+    option.textContent = group.topic + ' (' + group.questionIds.length + ') — ' + IHBBBowlTopics.packetLabel(group.packet);
+    picker.appendChild(option);
+  });
+  picker.value = App.filters.bowlTopic || '';
+  const group = getSelectedBowlTopic();
+  const meta = $('bowl-topic-meta');
+  if (meta) meta.textContent = group
+    ? group.topic + ' • ' + group.questionIds.length + ' questions • Entire topic in packet order. ' + group.prompt
+    : (matches ? matches + ' original topic groups. Choose one to practice its complete question sequence.' : 'No topics match this search.');
+  ['cat-row', 'filter-row', 'session-length-row'].forEach(id => {
+    const el = $(id); if (el) el.hidden = !!group;
+  });
+}
+function renderPracticeBowlTopic() {
+  const group = App.sessionBowlTopic;
+  const banner = $('practice-bowl-topic');
+  if (!banner) return;
+  banner.hidden = !group;
+  if ($('practice-bowl-topic-title')) $('practice-bowl-topic-title').textContent = group ? 'Third quarter: ' + group.topic : '';
+  if ($('practice-bowl-topic-prompt')) $('practice-bowl-topic-prompt').textContent = group?.prompt || '';
+}
+$('bowl-topic-search')?.addEventListener('input', renderBowlTopicPicker);
+$('bowl-topic-picker')?.addEventListener('change', e => {
+  App.filters.bowlTopic = e.target.value;
+  // Selecting a packet topic always practices the complete group, including
+  // cross-region clues and questions with different historical eras.
+  if (getSelectedBowlTopic()) {
+    App.filters.cat = ''; App.filters.cats = []; App.filters.era = ''; App.filters.eras = []; App.filters.src = '';
+  }
+  renderBowlTopicPicker();
+  updateSetMeta();
+});
+
 /********************* Presets *********************/
 function renderPresets() {
   const sel = $('presetSel'); if (!sel) return;
@@ -5103,6 +5159,7 @@ function applyPreset(p) {
       // Merge with defaults to keep new keys like 'cats' and 'eras'
       App.filters = Object.assign({ cat: '', cats: [], era: '', eras: [], src: '' }, p.filters);
     }
+    renderBowlTopicPicker();
     if (!Array.isArray(App.filters.eras)) App.filters.eras = App.filters.era ? [App.filters.era] : [];
     App.filters.era = App.filters.eras.length === 1 ? App.filters.eras[0] : '';
     updateFilterRowSafe(); saveSettings();
@@ -5121,6 +5178,7 @@ function applyPreset(p) {
 /********************* Pool build & UI helpers *********************/
 function buildFilteredPoolFromSet(set) {
   if (!set) return [];
+  if (App.filters.bowlTopic) return IHBBBowlTopics.groupItems(set, App.filters.bowlTopic);
   let arr = set.items.slice();
   if (Array.isArray(App.filters.cats) && App.filters.cats.length) {
     arr = arr.filter(it => App.filters.cats.includes((it.meta?.category || '')));
@@ -5190,7 +5248,8 @@ function updateSetupOverview() {
     : buildFilteredPoolFromSet(set).length;
   const cats = Array.isArray(App.filters.cats) ? App.filters.cats.filter(Boolean) : [];
   const eras = Array.isArray(App.filters.eras) ? App.filters.eras.filter(Boolean) : [];
-  const setText = set ? `${questionSetDisplayName(set)} (${set.items.length} items)` : 'No set loaded';
+  const bowlTopic = getSelectedBowlTopic();
+  const setText = bowlTopic ? `Third quarter: ${bowlTopic.topic} (${bowlTopic.questionIds.length} questions)` : (set ? `${questionSetDisplayName(set)} (${set.items.length} items)` : 'No set loaded');
   const filterDetails = getSetupFilterDetails();
   const filterCats = formatDetailedFilterSelection('Regions', filterDetails.selectedRegions, 'All regions');
   const filterEras = formatDetailedFilterSelection('Eras', filterDetails.selectedEras, 'All eras');
@@ -5201,8 +5260,8 @@ function updateSetupOverview() {
     Settings.haptics ? 'Haptics on' : 'Haptics off',
     Settings.captions ? 'Captions on' : 'Captions off'
   ].join(' • ');
-  const lengthText = sessionLengthLabel(App.size, { availableCount });
-  const filterSummary = `${filterCats} • ${filterEras} • ${filterSrc}`;
+  const lengthText = sessionLengthLabel(bowlTopic ? 'all' : App.size, { availableCount });
+  const filterSummary = bowlTopic ? 'Complete topic • Original packet order' : `${filterCats} • ${filterEras} • ${filterSrc}`;
 
   const setEl = $('setup-summary-set'); if (setEl) setEl.textContent = setText;
   const notebookSummary = mistakeNotebookSummaryText(notebookCounts);
@@ -5240,7 +5299,7 @@ function updateSetupOverview() {
   const mobileSummaryEl = $('setup-mobile-summary');
   if (mobileSummaryEl) {
     mobileSummaryEl.textContent = (set || wrongBankEnabled)
-      ? `${lengthText} • Regions: ${filterDetails.regionSummary} • Eras: ${filterDetails.eraSummary} • Source: ${filterDetails.sourceSummary}`
+      ? (bowlTopic ? `${lengthText} • ${bowlTopic.topic} • Packet order` : `${lengthText} • Regions: ${filterDetails.regionSummary} • Eras: ${filterDetails.eraSummary} • Source: ${filterDetails.sourceSummary}`)
       : 'Load a question set.';
   }
   const notebookPillText = `Mistake notebook: ${wrongBankCount ? `${wrongBankCount}${dueNow ? ` • ${dueNow} due` : ''}` : 'empty'}`;
@@ -5250,7 +5309,7 @@ function updateSetupOverview() {
   const mobileDockSummaryEl = $('setup-mobile-dock-summary');
   if (mobileDockSummaryEl) {
     mobileDockSummaryEl.textContent = (set || wrongBankEnabled)
-      ? `${lengthText} • Regions: ${filterDetails.regionSummary} • Eras: ${filterDetails.eraSummary} • Source: ${filterDetails.sourceSummary}`
+      ? (bowlTopic ? `${lengthText} • ${bowlTopic.topic} • Packet order` : `${lengthText} • Regions: ${filterDetails.regionSummary} • Eras: ${filterDetails.eraSummary} • Source: ${filterDetails.sourceSummary}`)
       : 'Load a question set.';
   }
   refreshMistakeNotebookOptions(notebookCounts);
@@ -5444,6 +5503,9 @@ function startSession() {
     buildPool(); if (!App.pool.length) { toast('No items in pool with current filters'); return; }
     App.order = sampleIndices(App.pool.length, App.size);
   }
+  App.sessionBowlTopic = hasSessionOverride ? null : getSelectedBowlTopic();
+  if (App.sessionBowlTopic) App.order = App.pool.map((_, index) => index);
+  renderPracticeBowlTopic();
   App.sessionOverrideItems = null;
 
   App.startTs = performance.now();
@@ -5480,7 +5542,7 @@ async function nextQuestion(first = false) {
   const bz = $('btn-buzz'); if (bz) bz.classList.add('pulse');
 
   App.buzzStart = performance.now(); App.buzzAt = null;
-  await readProgressive(item.question);
+  await readProgressive(IHBBBowlTopics.spokenQuestion(App.sessionBowlTopic, item.question));
   if (App.phase !== 'reading' || App.readingAbort || run !== speechRun) return;
   startCountdown(5);
 }
@@ -6778,7 +6840,7 @@ window.addEventListener('resize', () => {
 async function tryFetchDefault() {
   // Ensure the default volatile questions exist in memory on startup.
   if (Array.isArray(Library.sets)) {
-    if (Library.sets.some(s => s.volatile || s.name?.includes('IHBB Questions'))) {
+    if (Library.sets.some(s => s.volatile && Array.isArray(s.bowlThirdQuarterGroups) && s.bowlThirdQuarterGroups.length)) {
       logImport('info', 'startup default load skipped because default set is already loaded', { localSetCount: Library.sets.length });
       return false;
     }
@@ -6807,6 +6869,7 @@ async function tryFetchDefault() {
       }
       const set = parsed.set;
       ensureSetItemSources(set, 'original');
+      Library.sets = Library.sets.filter(existing => existing.id !== set.id);
       Library.sets.unshift(set); Library.activeSetId = set.id;
       saveLibrary(); renderLibrarySelectors(); renderLibraryTable(); updateSetMeta();
       renderWrongBank();

@@ -142,12 +142,24 @@
                 </div>
               </div>
 
+              <div id="bowl-topic-controls" class="card-muted-box stack" hidden>
+                <div class="input-group" style="margin:0;">
+                  <label class="muted" for="bowl-topic-search">Bowl third-quarter topics</label>
+                  <input id="bowl-topic-search" type="search" placeholder="Search topics or packets…" data-autofill-lock="off" aria-controls="bowl-topic-picker">
+                  <label class="muted" for="bowl-topic-picker">Practice one original topic</label>
+                  <select id="bowl-topic-picker" aria-describedby="bowl-topic-meta">
+                    <option value="">All questions (no topic filter)</option>
+                  </select>
+                  <p id="bowl-topic-meta" class="muted" aria-live="polite" style="margin:0;line-height:1.55;"></p>
+                </div>
+              </div>
+
               <div id="cat-row" class="setup-group">
                 <label class="muted">Practice by region</label>
                 <div id="cat-chips" class="chips"></div>
               </div>
 
-              <div class="setup-grid">
+              <div id="session-length-row" class="setup-grid">
                 <div class="setup-group">
                   <label class="muted">Session length</label>
                   <div class="chips" id="len-chips">
@@ -333,6 +345,11 @@
           <div class="grow"></div>
           <button id="btn-pause" class="btn ghost">Pause</button>
           <button id="btn-quit" class="btn ghost">Quit</button>
+        </div>
+
+        <div id="practice-bowl-topic" class="card-muted-box" hidden>
+          <strong id="practice-bowl-topic-title"></strong>
+          <p id="practice-bowl-topic-prompt" class="muted" style="margin:6px 0 0;"></p>
         </div>
 
         <div class="practice-stage">
@@ -609,6 +626,7 @@
   <script src="coach-era.js"></script>
   <script src="assignment-progress.js"></script>
   <script src="coach-context.js"></script>
+  <script src="bowl-topics.js"></script>
   <script src="app.js"></script>
   <script src="dashboard-feedback.js"></script>
 </body>

@@ -12,7 +12,7 @@ class LocalServerSecurityTests(unittest.TestCase):
         for path in ('.env', '.git/config', 'server.py', 'package.json', 'generated_questions_review.json', '../.env'):
             self.assertFalse(server.is_public_static_path(path), path)
         for path in (
-            'index.html', 'config.js', 'questions.json', 'theme.js', 'set-builder-source.js',
+            'index.html', 'config.js', 'questions.json', 'theme.js', 'set-builder-source.js', 'bowl-topics.js',
             'lib/client-security.js', 'lib/no-autofill.js', 'assets/avatars/penguin.png'
         ):
             self.assertTrue(server.is_public_static_path(path), path)
@@ -37,6 +37,9 @@ class LocalServerSecurityTests(unittest.TestCase):
                 self.assertEqual(response.status, 200)
             with urllib.request.urlopen(base + '/set-builder-source.js', timeout=3) as response:
                 self.assertEqual(response.status, 200)
+            with urllib.request.urlopen(base + '/bowl-topics.js', timeout=3) as response:
+                self.assertEqual(response.status, 200)
+                self.assertIn(b'IHBBBowlTopics', response.read())
             with self.assertRaises(urllib.error.HTTPError) as secret_error:
                 urllib.request.urlopen(base + '/.env', timeout=3)
             self.assertEqual(secret_error.exception.code, 404)
