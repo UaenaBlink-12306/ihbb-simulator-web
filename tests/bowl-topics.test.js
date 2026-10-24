@@ -47,3 +47,21 @@ test('shared prompts are read without changing the stored clue', () => {
   assert.equal(topics.spokenQuestion(group, group.prompt + ' ' + question), group.prompt + ' ' + question);
   assert.equal(topics.spokenQuestion(null, question), question);
 });
+
+test('Library third-quarter browsing uses packet membership, preserves slots, and keeps set indices', () => {
+  const items = [
+    { id: 'long', question: 'An ungrouped short clue.', answer: 'Other', meta: { category: 'Europe', era: '05' } },
+    { id: 'b', question: 'Second clue.', answer: 'Two', meta: { category: 'Europe', era: '06' } },
+    { id: 'a', question: 'First clue.', answer: 'One', meta: { category: 'North America', era: '06' } }
+  ];
+  const group = { id: 'g', topic: 'Eisenhower', prompt: 'Name the...', packet: 'Bowl-Round-1.pdf', questionIds: ['a', 'b', 'a'] };
+  const set = { items, bowlThirdQuarterGroups: [group] };
+  const entries = topics.libraryEntries(set, { thirdQuarterOnly: true });
+  assert.deepEqual(entries.map(e => [e.it.id, e.idx, e.number]), [['a', 2, 1], ['b', 1, 2], ['a', 2, 3]]);
+  assert.equal(topics.libraryEntries(set).length, 3, 'ordinary browsing retains ungrouped questions');
+  assert.equal(topics.libraryEntries(set, { thirdQuarterOnly: true, topicId: 'missing' }).length, 0);
+  assert.equal(topics.libraryEntries({ items }, { thirdQuarterOnly: true }).length, 0);
+  assert.equal(topics.libraryEntries(set, { thirdQuarterOnly: true, query: 'eisenhower' }).length, 3, 'search finds topic headings');
+  assert.equal(topics.libraryEntries(set, { thirdQuarterOnly: true, query: 'round-1', category: 'Europe', era: '06' }).length, 1);
+  assert.equal(topics.libraryEntries(set, { thirdQuarterOnly: true, query: 'Two' })[0].it.id, 'b');
+});

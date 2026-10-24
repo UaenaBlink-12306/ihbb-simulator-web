@@ -5503,7 +5503,8 @@ function startSession() {
     buildPool(); if (!App.pool.length) { toast('No items in pool with current filters'); return; }
     App.order = sampleIndices(App.pool.length, App.size);
   }
-  App.sessionBowlTopic = hasSessionOverride ? null : getSelectedBowlTopic();
+  App.sessionBowlTopic = hasSessionOverride ? (App.sessionOverrideBowlTopic || null) : getSelectedBowlTopic();
+  App.sessionOverrideBowlTopic = null;
   if (App.sessionBowlTopic) App.order = App.pool.map((_, index) => index);
   renderPracticeBowlTopic();
   App.sessionOverrideItems = null;
@@ -6496,6 +6497,43 @@ let LibraryPage = 1;
 function resetLibraryPage() { LibraryPage = 1; }
 $('lib-set-sel')?.addEventListener('change', (e) => { Library.activeSetId = e.target.value || null; resetLibraryPage(); saveLibrarySafe('remember question set selection'); renderLibrarySelectors(); renderLibraryTable(); });
 $('lib-search')?.addEventListener('input', () => { resetLibraryPage(); renderLibraryTable(); });
+function syncLibraryBowlControls() {
+  const set = getActiveSet();
+  const groups = set?.bowlThirdQuarterGroups || [];
+  const controls = $('lib-bowl-controls');
+  const toggle = $('lib-third-quarter-only');
+  const picker = $('lib-bowl-topic');
+  if (!controls || !toggle || !picker) return;
+  controls.hidden = !groups.length;
+  if (!groups.length) toggle.checked = false;
+  if (picker.dataset.setId !== String(set?.id || '') || picker.dataset.groupCount !== String(groups.length)) {
+    picker.dataset.setId = String(set?.id || '');
+    picker.dataset.groupCount = String(groups.length);
+    picker.replaceChildren();
+    const all = document.createElement('option');
+    all.value = ''; all.textContent = 'All third-quarter topics'; picker.appendChild(all);
+    groups.slice().sort((a, b) => a.topic.localeCompare(b.topic) || a.packet.localeCompare(b.packet)).forEach(group => {
+      const option = document.createElement('option');
+      option.value = group.id;
+      option.textContent = group.topic + ' (' + group.questionIds.length + ') — ' + IHBBBowlTopics.packetLabel(group.packet);
+      picker.appendChild(option);
+    });
+  }
+  const field = $('lib-bowl-topic-field'); if (field) field.hidden = !toggle.checked;
+  const search = $('lib-search'); if (search) search.placeholder = toggle.checked ? 'Search topic, packet, question, or answer…' : 'Search question/answer…';
+}
+function libraryMatchingEntries() {
+  return IHBBBowlTopics.libraryEntries(getActiveSet(), {
+    thirdQuarterOnly: !!$('lib-third-quarter-only')?.checked,
+    topicId: $('lib-bowl-topic')?.value || '',
+    query: $('lib-search')?.value || '',
+    category: $('lib-filter-cat')?.value || '',
+    era: $('lib-filter-era')?.value || ''
+  });
+}
+['lib-third-quarter-only', 'lib-bowl-topic'].forEach(id => $(id)?.addEventListener('change', () => {
+  resetLibraryPage(); renderLibraryTable();
+}));
 // Keep Library region filter in sync with Setup filter and App.filters
 $('lib-filter-cat')?.addEventListener('change', (e) => {
   resetLibraryPage();
@@ -6526,6 +6564,25 @@ $('lib-page-next')?.addEventListener('click', () => {
 
 // Quick-start practice with current Library filters
 $('lib-practice-filtered')?.addEventListener('click', () => {
+  if ($('lib-third-quarter-only')?.checked) {
+    const entries = libraryMatchingEntries();
+    if (!entries.length) { toast('No third-quarter questions match these filters'); return; }
+    const topic = IHBBBowlTopics.selectedGroup(getActiveSet(), $('lib-bowl-topic')?.value);
+    const seen = new Set();
+    App.sessionOverrideItems = entries.filter(({ it }) => {
+      if (topic) return true;
+      if (seen.has(it.id)) return false;
+      seen.add(it.id); return true;
+    }).map(({ it, group }) => ({ ...it, question: IHBBBowlTopics.spokenQuestion(group, it.question) }));
+    App.sessionOverrideBowlTopic = topic;
+    App.filters.bowlTopic = '';
+    renderBowlTopicPicker();
+    startSession();
+    return;
+  }
+
+  App.filters.bowlTopic = '';
+  renderBowlTopicPicker();
   const rc = ($('lib-filter-cat') && $('lib-filter-cat').value) || '';
   const re = ($('lib-filter-era') && $('lib-filter-era').value) || '';
   const fc = $('filter-cat'); if (fc) fc.value = rc; App.filters.cat = rc;
@@ -6548,7 +6605,7 @@ function closeLibraryQuestionModal() {
   if (modal) modal.remove();
 }
 
-function openLibraryQuestionModal(item, index) {
+function openLibraryQuestionModal(item, index, group = null, number = null) {
   if (!item) return;
   closeLibraryQuestionModal();
   const modal = document.createElement('div');
@@ -6562,12 +6619,13 @@ function openLibraryQuestionModal(item, index) {
     <div class="modal-card card library-question-modal-card">
       <div class="section-head">
         <div>
-          <div class="eyebrow">Question ${Number(index) + 1}</div>
+          <div class="eyebrow">Question ${group && number ? `${number} of ${group.questionIds.length}` : Number(index) + 1}</div>
           <h2 id="library-question-modal-title" class="card-title">${escHtml(item.answer || 'Answer')}</h2>
         </div>
         <button class="btn ghost library-question-modal-close" type="button" aria-label="Close question popup">Close</button>
       </div>
       <div class="library-question-modal-body">
+        ${group ? `<div class="library-bowl-context"><strong>${escHtml(group.topic)}</strong><p class="muted">${escHtml(group.prompt)}</p><p class="muted">${escHtml(IHBBBowlTopics.packetLabel(group.packet))}</p></div>` : ''}
         <div>
           <div class="empty-kicker">Question</div>
           <p class="library-question-text">${escHtml(item.question || 'No question text available.')}</p>
@@ -6591,7 +6649,7 @@ document.addEventListener('click', (e) => {
     const set = getActiveSet();
     const index = Number(openButton.dataset.libraryIndex);
     const item = Number.isInteger(index) ? set?.items?.[index] : null;
-    if (item) openLibraryQuestionModal(item, index);
+    if (item) openLibraryQuestionModal(item, index, IHBBBowlTopics.selectedGroup(set, openButton.dataset.bowlTopicId), Number(openButton.dataset.bowlQuestionNumber));
     return;
   }
   const studyLaterToggleButton = e.target.closest?.('[data-study-later-toggle]');
@@ -6619,6 +6677,7 @@ document.addEventListener('keydown', (e) => {
 });
 
 function renderLibraryTable() {
+  syncLibraryBowlControls();
   const set = getActiveSet(); const tb = document.querySelector('#tbl-lib tbody'); if (!tb) return;
   tb.innerHTML = '';
   if (!set) {
@@ -6629,46 +6688,39 @@ function renderLibraryTable() {
     renderMobileRecordList('lib-mobile-list', [], 'No set selected', 'Choose a question set above to browse its questions.');
     return;
   }
-  const q = (($('lib-search') && $('lib-search').value) || '').toLowerCase();
-  const fc = ($('lib-filter-cat') && $('lib-filter-cat').value) || '';
-  const fe = ($('lib-filter-era') && $('lib-filter-era').value) || '';
+  const thirdQuarterOnly = !!$('lib-third-quarter-only')?.checked;
   const isStudyLaterSet = String(set.id || '') === STUDY_LATER_SET_ID;
   const mobileCards = [];
-  const matchingEntries = [];
-  set.items.forEach((it, idx) => {
-    if (q && !it.answer.toLowerCase().includes(q) && !it.question.toLowerCase().includes(q)) return;
-    if (fc && (it.meta?.category || '') !== fc) return;
-    if (fe && (it.meta?.era || '') !== fe) return;
-    matchingEntries.push({ it, idx });
-  });
+  const matchingEntries = libraryMatchingEntries();
   const pageCount = Math.max(1, Math.ceil(matchingEntries.length / LIBRARY_PAGE_SIZE));
   LibraryPage = Math.max(1, Math.min(LibraryPage, pageCount));
   const pageStart = (LibraryPage - 1) * LIBRARY_PAGE_SIZE;
   const pageEntries = matchingEntries.slice(pageStart, pageStart + LIBRARY_PAGE_SIZE);
-  pageEntries.forEach(({ it, idx }) => {
+  pageEntries.forEach(({ it, idx, group, number }) => {
     const tr = document.createElement('tr');
     const savedForLater = isQuestionInStudyLaterSet(it);
     const studyLaterAction = `<button class="btn ghost library-study-later-toggle${savedForLater ? ' is-saved' : ''}" type="button" data-library-index="${idx}" data-study-later-toggle="${escHtml(it.id)}" aria-pressed="${savedForLater}">${savedForLater ? (isStudyLaterSet ? 'Remove' : 'Remove from Study Later') : 'Study Later'}</button>`;
-    tr.innerHTML = `<td class='stat'>${idx + 1}</td><td><button class="library-answer-button" type="button" data-library-index="${idx}">${escHtml(it.answer)}</button></td><td>${escHtml((it.aliases || []).slice(0, 3).join(', '))}</td><td>${escHtml(it.meta?.category || '')}</td><td>${escHtml(getEraName(it.meta?.era || ''))}</td><td>${escHtml(it.meta?.source || '')}</td><td>${studyLaterAction}</td>`;
+    tr.innerHTML = `<td class='stat'>${group ? `${number} / ${group.questionIds.length}` : idx + 1}</td><td>${group ? `<div class="library-bowl-context"><strong>${escHtml(group.topic)}</strong></div><p class="library-bowl-clue">${escHtml(it.question)}</p>` : ''}<button class="library-answer-button" type="button" data-library-index="${idx}" data-bowl-topic-id="${escHtml(group?.id || '')}" data-bowl-question-number="${number || ''}">${escHtml(it.answer)}</button></td><td>${escHtml((it.aliases || []).slice(0, 3).join(', '))}</td><td>${escHtml(it.meta?.category || '')}</td><td>${escHtml(getEraName(it.meta?.era || ''))}</td><td>${escHtml(it.meta?.source || '')}</td><td>${studyLaterAction}</td>`;
     tb.appendChild(tr);
     mobileCards.push(mobileRecordCard({
-      eyebrow: `Question ${idx + 1}`,
+      eyebrow: group ? `${group.topic} • Question ${number} of ${group.questionIds.length}` : `Question ${idx + 1}`,
       title: it.answer,
       pills: [
         ['Region', it.meta?.category || '—'],
         ['Era', getEraName(it.meta?.era || '') || '—']
       ],
       details: [
+        group ? escHtml(it.question) : '',
         (it.aliases || []).length ? `Aliases: ${escHtml((it.aliases || []).slice(0, 3).join(', '))}` : 'Aliases: —',
         it.meta?.source ? `Source: ${escHtml(it.meta.source)}` : ''
       ],
-      actionHtml: `<button class="btn ghost library-answer-button" type="button" data-library-index="${idx}">View question</button>${studyLaterAction}`
+      actionHtml: `<button class="btn ghost library-answer-button" type="button" data-library-index="${idx}" data-bowl-topic-id="${escHtml(group?.id || '')}" data-bowl-question-number="${number || ''}">View question</button>${studyLaterAction}`
     }));
   });
   const visibleStart = matchingEntries.length ? pageStart + 1 : 0;
   const visibleEnd = Math.min(pageStart + pageEntries.length, matchingEntries.length);
   const summary = $('lib-pagination-summary');
-  if (summary) summary.textContent = `Showing ${visibleStart.toLocaleString()}–${visibleEnd.toLocaleString()} of ${matchingEntries.length.toLocaleString()} matching questions`;
+  if (summary) summary.textContent = `Showing ${visibleStart.toLocaleString()}–${visibleEnd.toLocaleString()} of ${matchingEntries.length.toLocaleString()} ${thirdQuarterOnly ? 'third-quarter question entries' : 'matching questions'}`;
   const status = $('lib-page-status'); if (status) status.textContent = `Page ${LibraryPage.toLocaleString()} of ${pageCount.toLocaleString()}`;
   const prev = $('lib-page-prev'); if (prev) prev.disabled = LibraryPage <= 1;
   const next = $('lib-page-next'); if (next) next.disabled = LibraryPage >= pageCount;

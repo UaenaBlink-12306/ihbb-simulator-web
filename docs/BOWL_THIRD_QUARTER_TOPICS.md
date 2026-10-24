@@ -63,3 +63,11 @@ answers, compact numbering, and duplicated printed question numbers. Browser
 checks exercise topic search, complete six/eight-question sessions, clearing a
 topic, empty search, notebook switching, legacy-cache refresh, and phone layout.
 Browser checks use isolated account fixtures, not a live authenticated account.
+
+The Library also offers **Show third-quarter questions only**, an original-topic
+selector, and topic/packet search. Topic mode shows each packet slot in order,
+including its clue text; shared questions can appear in more than one packet
+version. Region/era filters still narrow browsing. Question popups show the
+shared prompt and packet. Practice filtered starts exactly the matching questions
+(one selected topic stays in packet order; mixed-topic practice removes repeated
+question IDs and uses the configured session length).

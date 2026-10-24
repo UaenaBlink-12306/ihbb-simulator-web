@@ -32,6 +32,29 @@
   function packetLabel(packet) {
     return String(packet || '').replace(/\.pdf$/i, '').replace(/[_/]+/g, ' / ').replace(/-/g, ' ');
   }
+  function libraryEntries(set, { thirdQuarterOnly = false, topicId = '', query = '', category = '', era = '' } = {}) {
+    const items = set?.items || [];
+    let entries;
+    if (thirdQuarterOnly) {
+      const byId = new Map(items.map((it, idx) => [it.id, { it, idx }]));
+      entries = (set?.bowlThirdQuarterGroups || [])
+        .filter(group => !topicId || group.id === topicId)
+        .slice().sort((a, b) => a.topic.localeCompare(b.topic) || a.packet.localeCompare(b.packet))
+        .flatMap(group => group.questionIds.flatMap((id, index) => {
+          const entry = byId.get(id);
+          return entry ? [{ ...entry, group, number: index + 1 }] : [];
+        }));
+    } else {
+      entries = items.map((it, idx) => ({ it, idx, group: null }));
+    }
+    const search = String(query || '').trim().toLocaleLowerCase();
+    return entries.filter(({ it, group }) => {
+      if (category && (it.meta?.category || '') !== category) return false;
+      if (era && (it.meta?.era || '') !== era) return false;
+      return !search || [it.question, it.answer, group?.topic, group?.prompt, group?.packet]
+        .some(value => String(value || '').toLocaleLowerCase().includes(search));
+    });
+  }
   function spokenQuestion(group, question) {
     if (!group) return question;
     const context = group.prompt || group.topic;
@@ -41,5 +64,5 @@
       || lower.startsWith('concerning ' + topic) || lower.startsWith('regarding ' + topic);
     return hasContext ? question : group.topic + '. ' + context + ' ' + question;
   }
-  return { normalizeGroups, selectedGroup, groupItems, packetLabel, spokenQuestion };
+  return { normalizeGroups, selectedGroup, groupItems, packetLabel, spokenQuestion, libraryEntries };
 });
