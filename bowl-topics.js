@@ -32,28 +32,31 @@
   function packetLabel(packet) {
     return String(packet || '').replace(/\.pdf$/i, '').replace(/[_/]+/g, ' / ').replace(/-/g, ' ');
   }
-  function libraryEntries(set, { thirdQuarterOnly = false, topicId = '', query = '', category = '', era = '' } = {}) {
-    const items = set?.items || [];
-    let entries;
-    if (thirdQuarterOnly) {
-      const byId = new Map(items.map((it, idx) => [it.id, { it, idx }]));
-      entries = (set?.bowlThirdQuarterGroups || [])
-        .filter(group => !topicId || group.id === topicId)
-        .slice().sort((a, b) => a.topic.localeCompare(b.topic) || a.packet.localeCompare(b.packet))
-        .flatMap(group => group.questionIds.flatMap((id, index) => {
-          const entry = byId.get(id);
-          return entry ? [{ ...entry, group, number: index + 1 }] : [];
-        }));
-    } else {
-      entries = items.map((it, idx) => ({ it, idx, group: null }));
-    }
+  function libraryEntries(set, { query = '', category = '', era = '' } = {}) {
     const search = String(query || '').trim().toLocaleLowerCase();
-    return entries.filter(({ it, group }) => {
+    return (set?.items || []).map((it, idx) => ({ it, idx, group: null })).filter(({ it }) => {
       if (category && (it.meta?.category || '') !== category) return false;
       if (era && (it.meta?.era || '') !== era) return false;
-      return !search || [it.question, it.answer, group?.topic, group?.prompt, group?.packet]
-        .some(value => String(value || '').toLocaleLowerCase().includes(search));
+      return !search || [it.question, it.answer].some(value => String(value || '').toLocaleLowerCase().includes(search));
     });
+  }
+  function librarySets(set, { topicId = '', query = '', category = '', era = '' } = {}) {
+    const byId = new Map((set?.items || []).map(item => [item.id, item]));
+    const search = String(query || '').trim().toLocaleLowerCase();
+    return (set?.bowlThirdQuarterGroups || [])
+      .filter(group => !topicId || group.id === topicId)
+      .slice().sort((a, b) => a.topic.localeCompare(b.topic) || a.packet.localeCompare(b.packet))
+      .flatMap(group => {
+        const items = group.questionIds.map(id => byId.get(id));
+        if (!items.length || items.some(item => !item)) return [];
+        // Search and metadata filters find packages; they never remove clues
+        // from the package the learner opens or practices.
+        if (search && ![group.topic, group.prompt, group.packet]
+          .some(value => String(value || '').toLocaleLowerCase().includes(search))) return [];
+        if (!items.some(item => (!category || item.meta?.category === category)
+          && (!era || item.meta?.era === era))) return [];
+        return [{ group, items }];
+      });
   }
   function spokenQuestion(group, question) {
     if (!group) return question;
@@ -64,5 +67,5 @@
       || lower.startsWith('concerning ' + topic) || lower.startsWith('regarding ' + topic);
     return hasContext ? question : group.topic + '. ' + context + ' ' + question;
   }
-  return { normalizeGroups, selectedGroup, groupItems, packetLabel, spokenQuestion, libraryEntries };
+  return { normalizeGroups, selectedGroup, groupItems, packetLabel, spokenQuestion, libraryEntries, librarySets };
 });

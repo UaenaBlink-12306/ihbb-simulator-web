@@ -48,20 +48,29 @@ test('shared prompts are read without changing the stored clue', () => {
   assert.equal(topics.spokenQuestion(null, question), question);
 });
 
-test('Library third-quarter browsing uses packet membership, preserves slots, and keeps set indices', () => {
+test('Library set searches return complete packages, even when only one clue matches a metadata filter', () => {
   const items = [
-    { id: 'long', question: 'An ungrouped short clue.', answer: 'Other', meta: { category: 'Europe', era: '05' } },
-    { id: 'b', question: 'Second clue.', answer: 'Two', meta: { category: 'Europe', era: '06' } },
-    { id: 'a', question: 'First clue.', answer: 'One', meta: { category: 'North America', era: '06' } }
+    { id: 'other', question: 'Ungrouped short question.', answer: 'Other', meta: { category: 'Europe', era: '05' } },
+    { id: 'b', question: 'Satellite clue.', answer: 'Sputnik', meta: { category: 'World', era: '06' } },
+    { id: 'a', question: 'Vice president clue.', answer: 'Nixon', meta: { category: 'North America', era: '06' } }
   ];
-  const group = { id: 'g', topic: 'Eisenhower', prompt: 'Name the...', packet: 'Bowl-Round-1.pdf', questionIds: ['a', 'b', 'a'] };
-  const set = { items, bowlThirdQuarterGroups: [group] };
-  const entries = topics.libraryEntries(set, { thirdQuarterOnly: true });
-  assert.deepEqual(entries.map(e => [e.it.id, e.idx, e.number]), [['a', 2, 1], ['b', 1, 2], ['a', 2, 3]]);
-  assert.equal(topics.libraryEntries(set).length, 3, 'ordinary browsing retains ungrouped questions');
-  assert.equal(topics.libraryEntries(set, { thirdQuarterOnly: true, topicId: 'missing' }).length, 0);
-  assert.equal(topics.libraryEntries({ items }, { thirdQuarterOnly: true }).length, 0);
-  assert.equal(topics.libraryEntries(set, { thirdQuarterOnly: true, query: 'eisenhower' }).length, 3, 'search finds topic headings');
-  assert.equal(topics.libraryEntries(set, { thirdQuarterOnly: true, query: 'round-1', category: 'Europe', era: '06' }).length, 1);
-  assert.equal(topics.libraryEntries(set, { thirdQuarterOnly: true, query: 'Two' })[0].it.id, 'b');
+  const group = { id: 'g', topic: 'Eisenhower Administration', prompt: 'Name the...', packet: 'Canada/Bowl-Round-1.pdf', questionIds: ['a', 'b', 'a'] };
+  const variant = { ...group, id: 'g2', packet: 'US/Bowl-Round-2.pdf', questionIds: ['b', 'a'] };
+  const set = { items, bowlThirdQuarterGroups: [group, variant] };
+  const results = topics.librarySets(set, { query: 'Eisenhower', category: 'World', era: '06' });
+  assert.equal(results.length, 2, 'results count packages, not individual clues');
+  assert.deepEqual(results[0].items.map(item => item.id), ['a', 'b', 'a'], 'all original slots stay together');
+  assert.equal(topics.librarySets(set, { query: 'Canada' })[0].group.id, 'g');
+  assert.equal(topics.librarySets(set, { query: 'Nixon' }).length, 0, 'package search uses topic and packet, not loose answers');
+  assert.equal(topics.librarySets(set, { topicId: 'g2' })[0].items.length, 2);
+  assert.deepEqual(topics.librarySets(set, { topicId: 'missing' }), []);
+  assert.deepEqual(topics.librarySets({ items }), []);
+  assert.equal(topics.libraryEntries(set, { query: 'Nixon' }).length, 1, 'ordinary question browsing still works');
 });
+
+test('the official topic catalog exposes one full package for every original group', () => {
+  const sets = topics.librarySets(bank);
+  assert.equal(sets.length, bank.bowlThirdQuarterGroups.length);
+  for (const entry of sets) assert.deepEqual(entry.items.map(item => item.id), entry.group.questionIds);
+});
+

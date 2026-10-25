@@ -6493,6 +6493,7 @@ document.addEventListener('click', (e) => {
 
 // Library actions
 const LIBRARY_PAGE_SIZE = 100;
+const LIBRARY_BOWL_PAGE_SIZE = 12;
 let LibraryPage = 1;
 function resetLibraryPage() { LibraryPage = 1; }
 $('lib-set-sel')?.addEventListener('change', (e) => { Library.activeSetId = e.target.value || null; resetLibraryPage(); saveLibrarySafe('remember question set selection'); renderLibrarySelectors(); renderLibraryTable(); });
@@ -6520,17 +6521,72 @@ function syncLibraryBowlControls() {
     });
   }
   const field = $('lib-bowl-topic-field'); if (field) field.hidden = !toggle.checked;
-  const search = $('lib-search'); if (search) search.placeholder = toggle.checked ? 'Search topic, packet, question, or answer…' : 'Search question/answer…';
+  const search = $('lib-search'); if (search) search.placeholder = toggle.checked ? 'Search sets by topic or packet…' : 'Search question/answer…';
+  const practiceFiltered = $('lib-practice-filtered'); if (practiceFiltered) practiceFiltered.hidden = toggle.checked;
 }
 function libraryMatchingEntries() {
   return IHBBBowlTopics.libraryEntries(getActiveSet(), {
-    thirdQuarterOnly: !!$('lib-third-quarter-only')?.checked,
+    query: $('lib-search')?.value || '',
+    category: $('lib-filter-cat')?.value || '',
+    era: $('lib-filter-era')?.value || ''
+  });
+}
+function libraryMatchingSets() {
+  return IHBBBowlTopics.librarySets(getActiveSet(), {
     topicId: $('lib-bowl-topic')?.value || '',
     query: $('lib-search')?.value || '',
     category: $('lib-filter-cat')?.value || '',
     era: $('lib-filter-era')?.value || ''
   });
 }
+function renderLibraryBowlSets() {
+  const list = $('lib-bowl-sets'); if (!list) return;
+  const openSets = new Set(Array.from(list.querySelectorAll('details[open]')).map(el => el.dataset.bowlSet));
+  const matches = libraryMatchingSets();
+  const pageCount = Math.max(1, Math.ceil(matches.length / LIBRARY_BOWL_PAGE_SIZE));
+  LibraryPage = Math.max(1, Math.min(LibraryPage, pageCount));
+  const start = (LibraryPage - 1) * LIBRARY_BOWL_PAGE_SIZE;
+  list.innerHTML = matches.slice(start, start + LIBRARY_BOWL_PAGE_SIZE).map(({ group, items }) => `
+    <article class="card-muted-box library-bowl-set" data-bowl-set-id="${escHtml(group.id)}">
+      <div class="library-bowl-set-heading">
+        <h3>${escHtml(group.topic)}</h3>
+        <span class="pill">${items.length} questions</span>
+      </div>
+      <p class="muted library-bowl-set-source">${escHtml(IHBBBowlTopics.packetLabel(group.packet))}</p>
+      ${group.prompt ? `<p class="library-bowl-set-prompt">${escHtml(group.prompt)}</p>` : ''}
+      <details class="library-bowl-set-details" data-bowl-set="${escHtml(group.id)}"${openSets.has(group.id) ? ' open' : ''}>
+        <summary>View all ${items.length} questions and answers</summary>
+        <ol class="library-bowl-set-questions">${items.map(item => `
+          <li><p class="library-bowl-set-question">${escHtml(item.question)}</p>
+            <p class="library-bowl-set-answer"><strong>Answer:</strong> ${escHtml(item.answer)}</p></li>`).join('')}
+        </ol>
+      </details>
+      <button class="btn pri" type="button" data-library-practice-bowl-set="${escHtml(group.id)}" aria-label="Practice entire ${escHtml(group.topic)} set">Practice entire set</button>
+    </article>`).join('');
+  if (!matches.length) list.innerHTML = '<div class="list-empty"><p>No third-quarter sets match.</p><p class="muted">Try another topic or packet name, or clear the filters.</p></div>';
+  const end = Math.min(start + LIBRARY_BOWL_PAGE_SIZE, matches.length);
+  if ($('lib-pagination-summary')) $('lib-pagination-summary').textContent = `Showing ${matches.length ? start + 1 : 0}–${end} of ${matches.length.toLocaleString()} third-quarter sets`;
+  if ($('lib-page-status')) $('lib-page-status').textContent = `Page ${LibraryPage} of ${pageCount}`;
+  if ($('lib-page-prev')) $('lib-page-prev').disabled = LibraryPage <= 1;
+  if ($('lib-page-next')) $('lib-page-next').disabled = LibraryPage >= pageCount;
+}
+function practiceLibraryBowlSet(groupId) {
+  const set = getActiveSet();
+  const group = IHBBBowlTopics.selectedGroup(set, groupId);
+  const items = IHBBBowlTopics.groupItems(set, groupId);
+  if (!group || !items.length) { toast('This topic set is unavailable'); return; }
+  // A new set practice is independent of any saved assignment checkpoint.
+  ActiveAssignmentLaunch = null; AssignmentSessionActive = false;
+  App.sessionOverrideItems = items.slice();
+  App.sessionOverrideBowlTopic = group;
+  App.filters.bowlTopic = '';
+  renderBowlTopicPicker();
+  startSession();
+}
+document.addEventListener('click', e => {
+  const button = e.target.closest?.('[data-library-practice-bowl-set]');
+  if (button) practiceLibraryBowlSet(button.dataset.libraryPracticeBowlSet);
+});
 ['lib-third-quarter-only', 'lib-bowl-topic'].forEach(id => $(id)?.addEventListener('change', () => {
   resetLibraryPage(); renderLibraryTable();
 }));
@@ -6564,22 +6620,7 @@ $('lib-page-next')?.addEventListener('click', () => {
 
 // Quick-start practice with current Library filters
 $('lib-practice-filtered')?.addEventListener('click', () => {
-  if ($('lib-third-quarter-only')?.checked) {
-    const entries = libraryMatchingEntries();
-    if (!entries.length) { toast('No third-quarter questions match these filters'); return; }
-    const topic = IHBBBowlTopics.selectedGroup(getActiveSet(), $('lib-bowl-topic')?.value);
-    const seen = new Set();
-    App.sessionOverrideItems = entries.filter(({ it }) => {
-      if (topic) return true;
-      if (seen.has(it.id)) return false;
-      seen.add(it.id); return true;
-    }).map(({ it, group }) => ({ ...it, question: IHBBBowlTopics.spokenQuestion(group, it.question) }));
-    App.sessionOverrideBowlTopic = topic;
-    App.filters.bowlTopic = '';
-    renderBowlTopicPicker();
-    startSession();
-    return;
-  }
+  if ($('lib-third-quarter-only')?.checked) return;
 
   App.filters.bowlTopic = '';
   renderBowlTopicPicker();
@@ -6678,6 +6719,14 @@ document.addEventListener('keydown', (e) => {
 
 function renderLibraryTable() {
   syncLibraryBowlControls();
+  const packagedSets = !!$('lib-third-quarter-only')?.checked;
+  if ($('lib-bowl-sets')) $('lib-bowl-sets').hidden = !packagedSets;
+  if ($('lib-question-results')) $('lib-question-results').hidden = packagedSets;
+  if ($('lib-results-title')) $('lib-results-title').textContent = packagedSets ? 'Third-quarter topic sets' : 'Filtered question list';
+  if ($('lib-results-description')) $('lib-results-description').textContent = packagedSets
+    ? 'Each result is one complete original topic set. Open a set to read every question and answer.'
+    : 'Current filtered results.';
+  if (packagedSets) { renderLibraryBowlSets(); return; }
   const set = getActiveSet(); const tb = document.querySelector('#tbl-lib tbody'); if (!tb) return;
   tb.innerHTML = '';
   if (!set) {

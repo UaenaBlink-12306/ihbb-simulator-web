@@ -14119,3 +14119,16 @@ html[data-theme="light"] :is(.admin-inline-code, .admin-table-details pre) {
 #lib-bowl-topic { width: 100%; min-width: 0; }
 .library-bowl-context { color: var(--ink); overflow-wrap: anywhere; }
 .library-bowl-clue { margin: 6px 0 10px; line-height: 1.6; min-width: 220px; max-width: 520px; }
+#lib-bowl-sets[hidden], #lib-question-results[hidden], #lib-practice-filtered[hidden] { display: none !important; }
+.library-bowl-set-list { display: grid; gap: 18px; }
+.library-bowl-set { min-width: 0; overflow-wrap: anywhere; }
+.library-bowl-set-heading { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; }
+.library-bowl-set-heading h3 { margin: 0; font-size: 20px; }
+.library-bowl-set-source { margin: 10px 0; font-size: 13px; line-height: 1.6; }
+.library-bowl-set-prompt { margin: 10px 0; line-height: 1.6; }
+.library-bowl-set-details { margin: 16px 0; }
+.library-bowl-set-details summary { cursor: pointer; color: var(--ink); font-weight: 700; padding: 10px 0; }
+.library-bowl-set-details summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.library-bowl-set-questions { margin: 10px 0 18px; padding-left: 24px; }
+.library-bowl-set-questions li { padding: 12px 0; border-bottom: 1px solid var(--line); }
+.library-bowl-set-question, .library-bowl-set-answer { margin: 0 0 8px; line-height: 1.65; }

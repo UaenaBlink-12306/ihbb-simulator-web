@@ -534,12 +534,12 @@
             <button id="lib-practice-filtered" class="btn pri">Practice filtered</button>
           </div>
           <div id="lib-bowl-controls" class="library-bowl-controls" hidden>
-            <label class="pill" for="lib-third-quarter-only"><input id="lib-third-quarter-only" type="checkbox"> Show third-quarter questions only</label>
+            <label class="pill" for="lib-third-quarter-only"><input id="lib-third-quarter-only" type="checkbox"> Show third-quarter sets only</label>
             <div id="lib-bowl-topic-field" class="input-group" hidden>
               <label class="muted" for="lib-bowl-topic">Original topic</label>
               <select id="lib-bowl-topic"><option value="">All third-quarter topics</option></select>
             </div>
-            <p class="muted" style="margin:0;">Browse questions in their original topic groups. Search above by topic, packet, question, or answer.</p>
+            <p class="muted" style="margin:0;">Find a topic set, open it to read every question and answer, then practice the complete set in its original order.</p>
           </div>
         </div>
       </div>
@@ -548,10 +548,12 @@
         <div class="section-head">
           <div>
             <div class="eyebrow">Set contents</div>
-            <h2 class="card-title">Filtered question list</h2>
-            <p class="section-subtitle">Current filtered results.</p>
+            <h2 id="lib-results-title" class="card-title">Filtered question list</h2>
+            <p id="lib-results-description" class="section-subtitle">Current filtered results.</p>
           </div>
         </div>
+        <div id="lib-bowl-sets" class="library-bowl-set-list" hidden></div>
+        <div id="lib-question-results">
         <div class="table-frame library-table-frame">
           <table id="tbl-lib">
             <thead>
@@ -569,6 +571,7 @@
           </table>
         </div>
         <div id="lib-mobile-list" class="mobile-record-list" aria-live="polite"></div>
+        </div>
         <div id="lib-pagination" class="inline-actions" style="margin-top:16px; justify-content:space-between;" aria-label="Question list pages">
           <div id="lib-pagination-summary" class="muted">Showing 0 questions</div>
           <div class="inline-actions">
