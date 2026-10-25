@@ -73,4 +73,3 @@ test('the official topic catalog exposes one full package for every original gro
   assert.equal(sets.length, bank.bowlThirdQuarterGroups.length);
   for (const entry of sets) assert.deepEqual(entry.items.map(item => item.id), entry.group.questionIds);
 });
-
