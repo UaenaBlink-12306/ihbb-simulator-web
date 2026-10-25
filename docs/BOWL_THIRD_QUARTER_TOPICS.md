@@ -1,15 +1,16 @@
 # Bowl third-quarter topic groups
 
-The Practice Hub's built-in IHBB Question Bank now indexes 1,905 third-quarter
-groups from 635 distinct, text-readable official Bowl packets. Each group retains
+The Practice Hub's built-in IHBB Question Bank now indexes 2,520 third-quarter
+groups, including 615 Asia topic sets from 205 linked Bowl packets. The existing
+1,905 groups come from 635 distinct, text-readable Canada, Europe, and US packets. Each group retains
 the packet's topic, shared prompt, and six- or eight-question order. Packet versions
 remain separate, including middle-school and high-school variants.
 
 `questions.json` keeps its existing `items` array. All 37,032 pre-existing items,
 their IDs, text, answers, aliases, and classifications were preserved. Restoring
 complete groups recovered 114 additional source clues that the older extraction
-had omitted. The bank now has 37,146 items; 9,512 distinct items participate in
-the topic groups. Shared clues can appear in multiple packet groups without
+had omitted. Before the Asia archive import, the bank had 37,146 items; 9,512 distinct items
+participated in those original topic groups. See the Asia import below for current totals. Shared clues can appear in multiple packet groups without
 duplicating bank items. If a source packet prints a clue twice, both ordered
 slots are retained.
 
@@ -70,3 +71,35 @@ a set to read every numbered question and answer, and use **Practice entire set*
 to launch all six or eight questions in packet order. Region and era filters
 find packages containing matching questions; they never remove questions from
 an opened set. The ordinary question table stays available when set mode is off.
+
+## Asia archive import (October 25, 2026)
+
+The [official Asia practice archive](https://iacompetitionsasia.com/history-bee-bowl-practice-materials/)
+contains the 14 entries shown in the supplied reference: the two samples plus the
+2017–2022 season and championship collections. Its 310 linked files include 22
+native Word packets. We downloaded all 308 available files (290 distinct file
+hashes), extracting 14,663 source question-and-answer occurrences. Shared
+middle-school/high-school questions and copies across divisions mean this number
+is not a count of unique additions. The import adds 1,388 unique missing questions, bringing the bank to 38,534.
+All 37,146 pre-existing questions and 1,905 groups are kept unchanged.
+
+The Asia Bowl packets contribute 615 complete topics and 4,326 ordered clue slots.
+They use the same Practice Hub topic picker and Library third-quarter set browser,
+including searches for `Asia/` and packet names. Bee questions and other Bowl
+quarters remain ordinary bank questions. The two legacy sample DOC links currently
+return HTTP 404; neither invented substitutes nor third-party copies are included.
+
+[ASIA_ARCHIVE_IMPORT.json](ASIA_ARCHIVE_IMPORT.json) records every archive heading,
+source URL, file hash, extraction count, and topic size, including unavailable
+links. Full raw-text audits are temporary artifacts outside committed source.
+Rebuild using Python with `pypdf` and `pdfplumber`, after downloading each manifest
+URL to its relative `path` under the source directory:
+
+```sh
+python scripts/import_asia_archive.py --source-root "<downloaded packets>" --manifest docs/ASIA_ARCHIVE_IMPORT.json --cache "<temporary cache>" --audit "<temporary audit.json>" --extract-only
+```
+
+Omit `--extract-only` to merge after reviewing the extraction. A nonzero answer-marker
+delta or incomplete Bowl topic aborts the merge. Native DOCX automatic numbering
+and restarts are read from Word XML. The parsers also recognize a printed
+`ANSWR:` typo and inline bonus answers found in these packets.

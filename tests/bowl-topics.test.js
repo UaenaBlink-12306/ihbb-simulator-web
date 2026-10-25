@@ -12,7 +12,7 @@ test('packet groups reference existing questions in source order, with stable to
   assert.deepEqual(topics.normalizeGroups(groups, bank.items), groups);
   const itemIds = new Set(bank.items.map(item => item.id));
   for (const group of groups) {
-    assert.ok(group.topic && group.packet.endsWith('.pdf'));
+    assert.ok(group.topic && /\.(pdf|docx)$/i.test(group.packet));
     assert.ok([6, 8].includes(group.questionIds.length), group.topic + ' retains its packet group size');
     assert.ok(group.questionIds.every(id => itemIds.has(id)));
   }
@@ -72,4 +72,41 @@ test('the official topic catalog exposes one full package for every original gro
   const sets = topics.librarySets(bank);
   assert.equal(sets.length, bank.bowlThirdQuarterGroups.length);
   for (const entry of sets) assert.deepEqual(entry.items.map(item => item.id), entry.group.questionIds);
+});
+
+
+test('the official Asia archive contributes every complete Bowl topic alongside existing divisions', () => {
+  const inventory = JSON.parse(fs.readFileSync(path.join(__dirname, '../docs/ASIA_ARCHIVE_IMPORT.json'), 'utf8'));
+  const asia = bank.bowlThirdQuarterGroups.filter(group => group.packet.startsWith('Asia/'));
+  assert.equal(asia.length, 615);
+  assert.equal(new Set(asia.map(group => group.packet)).size, 205);
+  assert.equal(asia.filter(group => group.packet.endsWith('.docx')).length, 42);
+  assert.equal(inventory.packets.filter(packet => packet.status === 'imported').length, 308);
+  assert.equal(inventory.packets.filter(packet => packet.status === 'unavailable').length, 2);
+  const grouped = new Map();
+  for (const group of asia) {
+    const list = grouped.get(group.packet) || [];
+    list.push(group);
+    grouped.set(group.packet, list);
+  }
+  for (const packet of inventory.packets.filter(packet => packet.status === 'imported')) {
+    assert.equal(packet.unmatchedAnswerMarkers, 0, packet.path);
+    assert.deepEqual((grouped.get(packet.path) || []).map(group => [group.topic, group.questionIds.length]), packet.thirdQuarterTopics.map(topic => [topic.topic, topic.questionCount]));
+  }
+});
+
+test('Asia Boxer Rebellion packets retain the first clue despite a printed ANSWR typo', () => {
+  const group = bank.bowlThirdQuarterGroups.find(group => group.packet === 'Asia/2020-2021-question-sets/VarsityJV_Bowl-Round-2.pdf' && group.topic === 'Boxer Rebellion');
+  const questions = topics.groupItems(bank, group.id);
+  assert.equal(questions.length, 8);
+  assert.match(questions[0].answer, /Christianity/);
+  assert.match(questions[7].answer, /Cixi/);
+});
+
+test('native Asia Word packets expose their original complete topic order', () => {
+  const group = bank.bowlThirdQuarterGroups.find(group => group.packet === 'Asia/2019-2020-question-sets/2019-2020-IHBB-Alpha_Bowl-Round-1.docx' && group.topic === 'Andrew Carnegie');
+  const questions = topics.groupItems(bank, group.id);
+  assert.equal(questions.length, 8);
+  assert.match(questions[0].answer, /steel/i);
+  assert.match(questions[1].answer, /Pittsburgh/);
 });

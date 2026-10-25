@@ -45,7 +45,7 @@ NUMBER_RE = re.compile(
 )
 # A few packet exports attach their one-letter difficulty code directly to the
 # marker (for example, "DANSWER:"). Treat that code as layout metadata.
-ANSWER_RE = re.compile(r"(?im)^\s*[ARD]?(?:ANSWER|ANS)\s*:\s*")
+ANSWER_RE = re.compile(r"(?im)^\s*[ARD]?(?:ANSWER|ANSWR|ANS)\s*:\s*")
 BONUS_RE = re.compile(r"(?im)^\s*(?:BONUS(?:\s+QUESTION)?|TOSSUP)\s*:\s*")
 CONTEXT_RE = re.compile(
     r"^(?!\s*(?:\(\d{1,3}\)|\d{1,3}[.)]))(?:Concerning\b.*\bname\b|Regarding\b.*\bname\b|"
@@ -551,6 +551,15 @@ def extract_pdf(path: Path, relative_path: str) -> tuple[list[RawPair], dict]:
         audit["error"] = f"{type(exc).__name__}: {exc}"
         return [], audit
 
+    return extract_pages(pages, relative_path, audit)
+
+
+def extract_pages(pages: Sequence[str], relative_path: str, audit: dict | None = None) -> tuple[list[RawPair], dict]:
+    """Parse extracted packet pages, including native Word paragraph text."""
+    if audit is None:
+        audit = {"path": relative_path, "status": "ok"}
+    # A few official bonuses print their answer on the final prompt line.
+    pages = [re.sub(r'(\S)[ \t]+([ARD]?(?:ANSWER|ANSWR|ANS)\s*:)', r'\1\n\2', normalize_chars(page)) for page in pages]
     audit["pages"] = len(pages)
     headers = repeated_page_headers(pages)
     audit["removed_repeated_headers"] = sorted(headers)

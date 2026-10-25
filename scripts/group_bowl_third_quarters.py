@@ -19,7 +19,7 @@ from import_question_pdfs import (compact, canonical, normalize_chars,
 START = re.compile(r"^(?:(?:Third\s+Quarter|Quarter\s*3)(?:\s*[-–—:].*)?|Sixty[- ]Second Rounds?|60[- ]Second Rounds?)\s*:?$", re.I)
 STOP = re.compile(r"^(?:Fourth\s+Quarter|Quarter\s*4|Second Half|Tiebreakers?|Extra Questions?)\b", re.I)
 NUMBER_RE = re.compile(r'^\s*(?:\((\d{1,2})\)\s*|(\d{1,2})[.)]\s*)(\S.*)$')
-GROUP_ANSWER = re.compile(r'^\s*(?:ANSWER|ANS)(?:\s*[:.]\s*|\s+(?!some\b))', re.I)
+GROUP_ANSWER = re.compile(r'^\s*(?:ANSWER|ANSWR|ANS)(?:\s*[:.]\s*|\s+(?!some\b))', re.I)
 PROMPT = re.compile(r"^(?:Name\b|Concerning\b|Regarding\b|Which\b|What\b|Who\b|Identify\b|Given\b|For each\b|In (?!Memoriam\b)|During\b|With regard|If an answer|Before, during|Answer some)", re.I)
 
 def read_packet(job):
