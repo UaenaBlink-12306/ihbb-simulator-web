@@ -12,6 +12,9 @@
         },
         "api/generate-questions.js": {
             "maxDuration": 60
+        },
+        "api/grade.js": {
+            "maxDuration": 60
         }
     },
     "rewrites": [

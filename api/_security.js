@@ -64,14 +64,19 @@ async function authenticateRequest(req) {
   if (!token) return { error: 'Authentication required.', status: 401 };
   if (!SUPABASE_URL || !SUPABASE_AUTH_KEY) return { error: 'Authentication is not configured.', status: 503 };
   let response;
+  let user;
   try {
     response = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
-      headers: { apikey: SUPABASE_AUTH_KEY, Authorization: `Bearer ${token}` }
+      headers: { apikey: SUPABASE_AUTH_KEY, Authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(5000)
     });
+    user = await parseJsonResponse(response);
   } catch {
     return { error: 'Authentication service is unavailable.', status: 503 };
   }
-  const user = await parseJsonResponse(response);
+  if (response.status >= 500 || response.status === 429) {
+    return { error: 'Authentication service is temporarily unavailable.', status: 503 };
+  }
   if (!response.ok || !user?.id) return { error: 'Authentication required.', status: 401 };
   return { user, token };
 }
@@ -96,6 +101,7 @@ async function fetchProfileRole(userId) {
 async function consumeRateLimit(bucket, subject, limit, windowSeconds) {
   if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) return { allowed: false, unavailable: true };
   let response;
+  let value;
   try {
     response = await fetch(`${SUPABASE_URL}/rest/v1/rpc/consume_security_rate_limit`, {
       method: 'POST',
@@ -104,6 +110,7 @@ async function consumeRateLimit(bucket, subject, limit, windowSeconds) {
         Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
         'Content-Type': 'application/json'
       },
+      signal: AbortSignal.timeout(5000),
       body: JSON.stringify({
         p_bucket: String(bucket || '').slice(0, 80),
         p_subject: String(subject || '').slice(0, 160),
@@ -111,10 +118,10 @@ async function consumeRateLimit(bucket, subject, limit, windowSeconds) {
         p_window_seconds: Math.max(1, Math.min(86400, Number(windowSeconds) || 60))
       })
     });
+    value = await parseJsonResponse(response);
   } catch {
     return { allowed: false, unavailable: true };
   }
-  const value = await parseJsonResponse(response);
   if (!response.ok) return { allowed: false, unavailable: true };
   const row = Array.isArray(value) ? value[0] : value;
   if (!row || typeof row.allowed !== 'boolean') return { allowed: false, unavailable: true };

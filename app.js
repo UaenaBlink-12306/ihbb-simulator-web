@@ -7126,40 +7126,42 @@ async function submitAnswer(auto = false) {
     : 'Incorrect — building your coach micro-lesson...';
   let correct = false;
   let reason = '';
+  let localGrade = false;
   try {
     if (skipDeepSeekForNoAttempt) {
       correct = false;
       reason = 'No attempt submitted.';
     } else {
-      const res = await IHBBSecurity.authenticatedFetch(window.supabaseClient, '/api/grade', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          question: item.question,
-          question_id: item.id,
-          expected: item.answer,
-          aliases: item.aliases || [],
-          answer: userAns,
-          user_answer: userAns,
-          strict: !!Settings.strict,
-          client_attempt_id: clientAttemptId,
-          coach_enabled: false,
-          meta: {
-            category: item.meta?.category || '',
-            era: item.meta?.era || '',
-            source: item.meta?.source || ''
-          }
-        })
+      const data = await IHBBSecurity.requestGrade(window.supabaseClient, {
+        question: item.question,
+        question_id: item.id,
+        expected: item.answer,
+        aliases: item.aliases || [],
+        answer: userAns,
+        user_answer: userAns,
+        strict: !!Settings.strict,
+        client_attempt_id: clientAttemptId,
+        coach_enabled: false,
+        meta: {
+          category: item.meta?.category || '',
+          era: item.meta?.era || '',
+          source: item.meta?.source || ''
+        }
+      }, {
+        onRetry: () => {
+          if (st) st.textContent = 'Connection interrupted — retrying AI grading...';
+          if (ans) ans.textContent = 'Reconnecting to AI grading. Keeping your submitted answer while we retry.';
+        }
       });
-      if (res.ok) {
-        const data = await res.json();
-        correct = !!data.correct; reason = data.reason || '';
-      } else {
-        reason = `Server error ${res.status}`;
-        correct = basicMatch(userAns, item.answer, item.aliases);
-      }
+      correct = data.correct;
+      localGrade = data.source === 'fallback';
+      reason = localGrade ? 'AI grading unavailable; used local answer matching.' : (data.reason || '');
     }
   } catch (e) {
-    reason = 'Offline grading fallback used';
+    localGrade = true;
+    reason = e.code === 'AUTH_REQUIRED' ? 'Please sign in again for AI grading; used local answer matching.'
+      : e.code === 'QUOTA_EXCEEDED' ? 'AI request limit reached; used local answer matching.'
+      : 'AI grading unavailable after retrying; used local answer matching.';
     correct = basicMatch(userAns, item.answer, item.aliases);
   }
   const quickCoach = fallbackCoachForItem(item, correct, reason, userAns);
@@ -7184,7 +7186,7 @@ async function submitAnswer(auto = false) {
   }
   if (correct) {
     App.phase = 'graded';
-    if (st) st.textContent = 'Correct.';
+    if (st) st.textContent = localGrade ? 'Correct (local answer match).' : 'Correct.';
     clearCoachCard();
   } else {
     App.phase = 'coach-loading';
@@ -7290,39 +7292,38 @@ async function submitAnswer(auto = false) {
       maybeAutoOpenCoachChat('miss');
     };
     const fetchCoachAsync = async () => {
-      if (skipDeepSeekForNoAttempt) {
+      if (skipDeepSeekForNoAttempt || localGrade) {
         const fallback = fallbackCoachForItem(item, false, reason || 'No attempt submitted.', userAns);
-        finalizeIncorrectCoach(fallback, 'No attempt submitted — quick coaching ready.');
+        finalizeIncorrectCoach(fallback, localGrade
+          ? 'Incorrect (local answer match) — quick coaching ready.'
+          : 'No attempt submitted — quick coaching ready.');
         return;
       }
       try {
-        const coachRes = await IHBBSecurity.authenticatedFetch(window.supabaseClient, '/api/grade', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            question: item.question,
-            question_id: item.id,
-            expected: item.answer,
-            expected_answer: item.answer,
-            aliases: item.aliases || [],
-            answer: userAns,
-            user_answer: userAns,
-            strict: !!Settings.strict,
-            coach_enabled: true,
-            coach_only: true,
-            coach_depth: 'full',
-            correct: !!correct,
-            reason: String(reason || ''),
-            client_attempt_id: clientAttemptId,
-            meta: {
-              category: item.meta?.category || '',
-              era: item.meta?.era || '',
-              source: item.meta?.source || ''
-            }
-          })
+        const coachData = await IHBBSecurity.requestGrade(window.supabaseClient, {
+          question: item.question,
+          question_id: item.id,
+          expected: item.answer,
+          expected_answer: item.answer,
+          aliases: item.aliases || [],
+          answer: userAns,
+          user_answer: userAns,
+          strict: !!Settings.strict,
+          coach_enabled: true,
+          coach_only: true,
+          coach_depth: 'full',
+          correct: !!correct,
+          reason: String(reason || ''),
+          client_attempt_id: clientAttemptId,
+          meta: {
+            category: item.meta?.category || '',
+            era: item.meta?.era || '',
+            source: item.meta?.source || ''
+          }
+        }, {
+          onRetry: () => { if (st) st.textContent = 'Connection interrupted — retrying your coach lesson...'; }
         });
-        if (!coachRes.ok) throw new Error(`Server error ${coachRes.status}`);
-        const coachData = await coachRes.json();
+        if (coachData.source === 'fallback' || !coachData.coach) throw new Error('Coach unavailable.');
         const finalCoach = normalizeCoach(coachData?.coach, item, correct, reason);
         finalizeIncorrectCoach(finalCoach, 'Incorrect — coach lesson ready.');
       } catch (err) {

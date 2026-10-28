@@ -1,4 +1,5 @@
 const { requireAiAccess } = require('./_security');
+const { requestDeepSeekJson } = require('./_deepseek');
 
 module.exports = async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -91,26 +92,6 @@ module.exports = async function handler(req, res) {
         }
       }
       return false;
-    }
-
-    function parseJsonFromContent(content) {
-      if (!content) return null;
-      const trimmed = String(content).trim();
-      try {
-        return JSON.parse(trimmed);
-      } catch {}
-
-      const cleaned = trimmed
-        .replace(/^```(?:json)?\s*/i, '')
-        .replace(/\s*```$/, '');
-      const start = cleaned.indexOf('{');
-      const end = cleaned.lastIndexOf('}');
-      if (start === -1 || end <= start) return null;
-      try {
-        return JSON.parse(cleaned.slice(start, end + 1));
-      } catch {
-        return null;
-      }
     }
 
     function guessTopic(q) {
@@ -316,27 +297,29 @@ module.exports = async function handler(req, res) {
       };
     }
 
+    let providerFailure = '';
+    const fallbackMeta = () => ({ source: 'fallback', fallback_code: providerFailure || 'PROVIDER_INVALID_JSON' });
+    function hasCoach(value) {
+      const coach = value?.coach || value;
+      return !!(coach && (String(coach.summary || '').trim()
+        || (Array.isArray(coach.explanation_bullets) && coach.explanation_bullets.length)));
+    }
     async function callDeepSeek(messages, maxTokens) {
-      const key = process.env.DEEPSEEK_API_KEY;
-      const model = process.env.DEEPSEEK_MODEL || 'deepseek-v4-flash';
-      const response = await fetch('https://api.deepseek.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${key}`
-        },
-        body: JSON.stringify({
-          model,
-          thinking: { type: 'disabled' },
-          messages,
-          response_format: { type: 'json_object' },
-          temperature: 0.0,
-          max_tokens: maxTokens
-        })
-      });
-      const data = await response.json();
-      const content = data?.choices?.[0]?.message?.content?.trim();
-      return parseJsonFromContent(content);
+      try {
+        return await requestDeepSeekJson({
+          model: process.env.DEEPSEEK_MODEL || 'deepseek-v4-flash',
+          thinking: { type: 'disabled' }, messages,
+          response_format: { type: 'json_object' }, temperature: 0.0, max_tokens: maxTokens
+        }, {
+          timeoutMs: coachEnabled ? 18000 : 12000,
+          validate: value => coachOnly ? hasCoach(value)
+            : (typeof value.correct === 'boolean' && (!coachEnabled || value.correct || hasCoach(value)))
+        });
+      } catch (error) {
+        providerFailure = error.code || 'PROVIDER_NETWORK';
+        console.warn('DeepSeek grading unavailable:', providerFailure);
+        return null;
+      }
     }
 
     const fallbackCorrect = lenientMatch(userAnswer, expected, aliases);
@@ -345,7 +328,7 @@ module.exports = async function handler(req, res) {
     if (!process.env.DEEPSEEK_API_KEY) {
       const lockedCorrect = (coachOnly && suppliedCorrect !== null) ? suppliedCorrect : fallbackCorrect;
       const lockedReason = coachOnly ? (suppliedReason || noKeyReason) : noKeyReason;
-      const output = { correct: lockedCorrect, reason: lockedReason };
+      const output = { correct: lockedCorrect, reason: lockedReason, source: 'fallback', fallback_code: 'PROVIDER_NOT_CONFIGURED' };
       if (coachEnabled) output.coach = lockedCorrect ? null : buildFallbackCoach(lockedCorrect, lockedReason);
       return res.status(200).json(output);
     }
@@ -368,7 +351,7 @@ module.exports = async function handler(req, res) {
       ];
       const result = await callDeepSeek(messages, 220);
       if (!result || typeof result.correct !== 'boolean') {
-        return res.status(200).json({ correct: fallbackCorrect, reason: 'Could not parse DeepSeek response, used basic match instead.' });
+        return res.status(200).json({ correct: fallbackCorrect, reason: 'AI grading unavailable; used local answer matching.', ...fallbackMeta() });
       }
       let correct = !!result.correct;
       let reason = String(result.reason || '');
@@ -378,7 +361,8 @@ module.exports = async function handler(req, res) {
       }
       return res.status(200).json({
         correct,
-        reason
+        reason,
+        source: 'deepseek'
       });
     }
 
@@ -386,7 +370,7 @@ module.exports = async function handler(req, res) {
       const lockedCorrect = suppliedCorrect === null ? fallbackCorrect : suppliedCorrect;
       const lockedReason = suppliedReason || (lockedCorrect ? 'Correct by prior grading pass.' : 'Incorrect by prior grading pass.');
       if (lockedCorrect) {
-        return res.status(200).json({ correct: lockedCorrect, reason: lockedReason, coach: null });
+        return res.status(200).json({ correct: lockedCorrect, reason: lockedReason, coach: null, source: 'deepseek' });
       }
       const coachOnlySystem = [
         'Act as a personalized IHBB coach. Generate only coaching content for an already-graded incorrect answer.',
@@ -435,11 +419,12 @@ module.exports = async function handler(req, res) {
         return res.status(200).json({
           correct: lockedCorrect,
           reason: lockedReason,
+          ...fallbackMeta(),
           coach: buildFallbackCoach(lockedCorrect, lockedReason)
         });
       }
       const coach = normalizeCoach(coached.coach || coached, lockedCorrect, lockedReason);
-      return res.status(200).json({ correct: lockedCorrect, reason: lockedReason, coach });
+      return res.status(200).json({ correct: lockedCorrect, reason: lockedReason, coach, source: 'deepseek' });
     }
 
     const coachSystem = [
@@ -488,7 +473,8 @@ module.exports = async function handler(req, res) {
     if (!graded || typeof graded.correct !== 'boolean') {
       return res.status(200).json({
         correct: fallbackCorrect,
-        reason: 'Could not parse DeepSeek response, used basic match instead.',
+        reason: 'AI grading unavailable; used local answer matching.',
+        ...fallbackMeta(),
         coach: fallbackCorrect ? null : buildFallbackCoach(fallbackCorrect, 'Could not parse DeepSeek response, used fallback coach.')
       });
     }
@@ -496,11 +482,11 @@ module.exports = async function handler(req, res) {
     const correct = !!graded.correct;
     const reason = String(graded.reason || '');
     if (correct) {
-      return res.status(200).json({ correct, reason, coach: null });
+      return res.status(200).json({ correct, reason, coach: null, source: 'deepseek' });
     }
     const coach = normalizeCoach(graded.coach || graded, correct, reason);
 
-    return res.status(200).json({ correct, reason, coach });
+    return res.status(200).json({ correct, reason, coach, source: 'deepseek' });
   } catch (err) {
     return res.status(500).json({ error: err.message || 'Internal error' });
   }

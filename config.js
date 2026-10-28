@@ -61,6 +61,14 @@ function isRecoverableSessionError(error) {
     );
 }
 
+function isTemporarySessionError(error) {
+    return error?.name === 'AuthRetryableFetchError'
+        || error?.name === 'AbortError'
+        || error instanceof TypeError
+        || Number(error?.status) >= 500
+        || /failed to fetch|network|timeout|timed out|empty_response|load failed/i.test(String(error?.message || ''));
+}
+
 // Ensure this script runs after the Supabase CDN script is loaded
 if (window.supabase) {
     const client = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -72,6 +80,11 @@ if (window.supabase) {
             if (result?.error) throw result.error;
             return result;
         } catch (error) {
+            if (isTemporarySessionError(error)) {
+                console.warn('[Supabase] Session lookup interrupted; keeping saved sign-in for retry.');
+                error.retryable = true;
+                return { data: { session: null }, error };
+            }
             if (!isRecoverableSessionError(error)) {
                 console.warn('[Supabase] Session lookup failed; falling back to a signed-out state.', error);
             } else {

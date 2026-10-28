@@ -2,6 +2,7 @@ import logging
 import os
 import json
 import math
+import random
 import re
 import uuid
 import time
@@ -521,30 +522,36 @@ def call_deepseek(messages: List[Dict[str, str]], max_tokens: int = 300, tempera
                 return reasoning_parsed, content, reasoning_content, string_value(choice.get("finish_reason")) or "unknown"
         return None, content, reasoning_content, string_value(choice.get("finish_reason")) or "unknown"
 
-    parsed, content, reasoning_content, finish_reason = perform_request(json_output)
-    if parsed or not json_output:
-        if not parsed:
-            log.warning(
-                "DeepSeek %s returned empty or unparsable content without response_format (finish_reason=%s).",
-                resolved_model,
-                finish_reason,
-            )
-        return parsed
-    log.warning(
-        "DeepSeek %s returned empty or unparsable JSON output (finish_reason=%s, content_len=%s, reasoning_len=%s); retrying without response_format.",
-        resolved_model,
-        finish_reason,
-        len(content),
-        len(reasoning_content),
-    )
-    parsed, _, _, finish_reason = perform_request(False)
-    if not parsed:
-        log.warning(
-            "DeepSeek %s retry without response_format still did not produce parseable JSON (finish_reason=%s).",
-            resolved_model,
-            finish_reason,
-        )
-    return parsed
+    use_json_output = json_output
+    for attempt in range(2):
+        try:
+            parsed, _, _, _ = perform_request(use_json_output)
+            if parsed:
+                return parsed
+            if attempt == 1:
+                return None
+            use_json_output = False
+            log.warning("DeepSeek returned empty or invalid JSON; retrying once.")
+        except (requests.exceptions.Timeout, requests.exceptions.ConnectionError):
+            if attempt == 1:
+                raise
+        except requests.exceptions.HTTPError as error:
+            response = error.response
+            if attempt == 1 or response is None or response.status_code not in (408, 425, 429, 500, 502, 503, 504):
+                raise
+            try:
+                delay = float(response.headers.get("Retry-After", "0"))
+            except (ValueError, TypeError):
+                delay = 0
+            if delay > 2:
+                raise
+            time.sleep(max(0.5, delay))
+            continue
+        except ValueError:
+            if attempt == 1:
+                raise
+        time.sleep(0.5 + random.random() * 0.25)
+    return None
 
 
 def grade_with_deepseek(payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -566,7 +573,7 @@ def grade_with_deepseek(payload: Dict[str, Any]) -> Dict[str, Any]:
         locked_reason = supplied_reason if coach_only and supplied_reason else "DEEPSEEK_API_KEY not set; used lenient matcher"
         out = {
             "correct": locked_correct,
-            "reason": locked_reason
+            "reason": locked_reason, "source": "fallback", "fallback_code": "PROVIDER_NOT_CONFIGURED"
         }
         if coach_enabled:
             out["coach"] = None if locked_correct else fallback_coach(payload, locked_correct, out["reason"])
@@ -590,18 +597,18 @@ def grade_with_deepseek(payload: Dict[str, Any]) -> Dict[str, Any]:
             obj = call_deepseek([
                 {"role": "system", "content": system},
                 {"role": "user", "content": json.dumps(user, ensure_ascii=False)},
-            ], max_tokens=220)
+            ], max_tokens=220, timeout=12)
             if not isinstance(obj, dict) or not isinstance(obj.get("correct"), bool):
                 return {
                     "correct": fallback_correct,
-                    "reason": "Could not parse DeepSeek response; used fallback matcher"
+                    "reason": "AI grading unavailable; used local answer matching.", "source": "fallback", "fallback_code": "PROVIDER_INVALID_JSON"
                 }
             correct = bool(obj.get("correct"))
             reason = str(obj.get("reason", ""))
             if not correct and re.search(r"(spell|typo|phon|pronoun|misspell|capital)", reason, re.I) and lenient_match(user_answer, expected, aliases):
                 correct = True
                 reason = "Accepted with lenient spelling matching."
-            return {"correct": correct, "reason": reason}
+            return {"correct": correct, "reason": reason, "source": "deepseek"}
 
         if coach_only:
             locked_correct = fallback_correct if supplied_correct is None else bool(supplied_correct)
@@ -662,15 +669,16 @@ def grade_with_deepseek(payload: Dict[str, Any]) -> Dict[str, Any]:
             coach_obj = call_deepseek([
                 {"role": "system", "content": coach_only_system},
                 {"role": "user", "content": json.dumps(coach_only_user, ensure_ascii=False)},
-            ], max_tokens=760)
+            ], max_tokens=760, timeout=18)
             if not isinstance(coach_obj, dict):
                 return {
                     "correct": locked_correct,
                     "reason": locked_reason,
+                    "source": "fallback", "fallback_code": "PROVIDER_INVALID_JSON",
                     "coach": fallback_coach(payload, locked_correct, locked_reason)
                 }
             coach = normalize_coach(coach_obj.get("coach", coach_obj), payload, locked_correct, locked_reason)
-            return {"correct": locked_correct, "reason": locked_reason, "coach": coach}
+            return {"correct": locked_correct, "reason": locked_reason, "coach": coach, "source": "deepseek"}
 
         coach_system = (
             "Act as a personalized IHBB coach. Your goal is to provide a high-density \"Micro-Lesson\" "
@@ -724,21 +732,21 @@ def grade_with_deepseek(payload: Dict[str, Any]) -> Dict[str, Any]:
         obj = call_deepseek([
             {"role": "system", "content": coach_system},
             {"role": "user", "content": json.dumps(coach_user, ensure_ascii=False)},
-        ], max_tokens=900)
+        ], max_tokens=900, timeout=18)
         if not isinstance(obj, dict) or not isinstance(obj.get("correct"), bool):
             reason = "Could not parse DeepSeek response; used fallback matcher"
             return {
                 "correct": fallback_correct,
-                "reason": reason,
+                "reason": reason, "source": "fallback", "fallback_code": "PROVIDER_INVALID_JSON",
                 "coach": None if fallback_correct else fallback_coach(payload, fallback_correct, reason)
             }
 
         correct = bool(obj.get("correct"))
         reason = str(obj.get("reason", ""))
         if correct:
-            return {"correct": correct, "reason": reason, "coach": None}
+            return {"correct": correct, "reason": reason, "source": "deepseek", "coach": None}
         coach = normalize_coach(obj.get("coach", obj), payload, correct, reason)
-        return {"correct": correct, "reason": reason, "coach": coach}
+        return {"correct": correct, "reason": reason, "source": "deepseek", "coach": coach}
 
     except requests.exceptions.Timeout as e:
         log.error("DeepSeek API request timeout: %s", e)
@@ -750,9 +758,11 @@ def grade_with_deepseek(payload: Dict[str, Any]) -> Dict[str, Any]:
         log.exception("DeepSeek API unexpected error: %s", e)
 
     reason = "LLM grading unavailable; used fallback matcher"
-    out = {"correct": fallback_correct, "reason": reason}
+    locked_correct = supplied_correct if (coach_only and supplied_correct is not None) else fallback_correct
+    out = {"correct": locked_correct, "reason": supplied_reason if coach_only and supplied_reason else reason,
+           "source": "fallback", "fallback_code": "PROVIDER_UNAVAILABLE"}
     if coach_enabled:
-        out["coach"] = None if fallback_correct else fallback_coach(payload, fallback_correct, reason)
+        out["coach"] = None if locked_correct else fallback_coach(payload, locked_correct, out["reason"])
     return out
 
 
