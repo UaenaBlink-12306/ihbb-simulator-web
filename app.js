@@ -5475,6 +5475,8 @@ function startSession() {
   }
   App.correct = 0; App.sessionBuzzTimes = []; App.resultsCorrect = []; App.submittedAnswers = []; App.i = 0; App.phase = 'idle'; App.curItem = null;
   App.sessionId = `sess_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  App.sessionSetId = !AssignmentSessionActive && !practicingWrongBank ? String(set?.savedSetId || '') : '';
+  App.sessionSetTitle = String(set?.name || '');
   App.submitBusy = false;
   clearCoachCard();
   const ans = $('answer'); if (ans) ans.textContent = '';
@@ -5654,7 +5656,8 @@ function pushSession(total, correct, durSec, buzzTimes, pool, order, results, se
       assignment_id: AssignmentSessionActive ? String(ASSIGNMENT_ID || '') : '',
       assignment_title: AssignmentSessionActive ? String(ActiveAssignmentLaunch?.title || '') : '',
       retry_mode: AssignmentSessionActive ? String(ActiveAssignmentLaunch?.retryMode || 'first') : '',
-      set_title: String(getActiveSet()?.name || '')
+      set_id: String(App.sessionSetId || ''),
+      set_title: String(App.sessionSetTitle || getActiveSet()?.name || '')
     };
   });
   const record = {
@@ -5695,7 +5698,7 @@ function normalizeSessionRecordForSync(record) {
       era: String(m?.era || ''),
       source: String(m?.source || '')
     };
-    for (const key of ['question_text', 'expected_answer', 'user_answer', 'activity_type', 'assignment_id', 'assignment_title', 'retry_mode', 'set_title']) {
+    for (const key of ['question_text', 'expected_answer', 'user_answer', 'activity_type', 'assignment_id', 'assignment_title', 'retry_mode', 'set_id', 'set_title']) {
       if (typeof m?.[key] === 'string') normalized[key] = m[key];
     }
     return normalized;

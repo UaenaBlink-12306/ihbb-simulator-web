@@ -3225,6 +3225,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     };
 
     // ========== QUESTION SETS ==========
+    document.getElementById('question-sets-list')?.addEventListener('click', (event) => {
+        const button = event.target.closest('[data-review-set-id]');
+        if (!button) return;
+        const set = myQuestionSets.find(row => String(row.id) === button.dataset.reviewSetId);
+        if (set) window.QuestionSetReview.show(set);
+    });
     async function loadQuestionSets() {
         const el = document.getElementById('question-sets-list');
         if (!el) return;
@@ -3269,7 +3275,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             return;
         }
         el.innerHTML = list.map(set => {
-            const count = Array.isArray(set.questions) ? set.questions.length : 0;
+            const count = window.QuestionSetReview.questions(set).length;
             const isMine = set.creator_id === uid;
             const visibilityLabel = set.visibility === 'public' ? 'Public' : (set.visibility === 'class' ? 'Class' : 'Private');
             
@@ -3281,6 +3287,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     </div>
                     <div class="list-item-actions">
                         ${count ? `<a class="btn pri" href="index.html?drill=1&amp;setId=${esc(encodeURIComponent(set.id))}">Practice this set</a>` : '<button class="btn pri" disabled title="This set has no questions">Practice this set</button>'}
+                        <button class="btn ghost" data-review-set-id="${esc(set.id)}" ${count ? '' : 'disabled'}>View questions &amp; answers</button>
                         <button class="btn ghost" onclick="assignQuestionSet('${set.id}')">Assign to Class</button>
                         <button class="btn ghost" onclick="hostLiveBeeWithSet('${set.id}')">Host Live Bee</button>
                         ${isMine ? `

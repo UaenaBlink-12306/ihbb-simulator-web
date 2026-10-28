@@ -5937,9 +5937,31 @@ document.addEventListener('DOMContentLoaded', async () => {
     };
 
     // ========== QUESTION SETS ==========
+    let questionSetLoadId = 0;
+    let completedQuestionSetIds = new Set();
+    let questionSetReviewStatus = 'checking';
+    document.getElementById('question-sets-list')?.addEventListener('click', (event) => {
+        const button = event.target.closest('[data-review-set-id]');
+        if (!button) return;
+        const set = myQuestionSets.find(row => String(row.id) === button.dataset.reviewSetId);
+        if (!set || !completedQuestionSetIds.has(set.id)) {
+            showAlert('Complete every question in this set once to unlock review.', 'error');
+            return;
+        }
+        window.QuestionSetReview.show(set);
+    });
+    const refreshVisibleQuestionSets = () => {
+        if (document.getElementById('tab-question-sets')?.classList.contains('active')) loadQuestionSets();
+    };
+    window.addEventListener('pageshow', event => { if (event.persisted) refreshVisibleQuestionSets(); });
+    window.addEventListener('storage', event => { if (event.key === KEY_SESS) refreshVisibleQuestionSets(); });
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshVisibleQuestionSets(); });
     async function loadQuestionSets() {
         const el = document.getElementById('question-sets-list');
         if (!el) return;
+        const loadId = ++questionSetLoadId;
+        completedQuestionSetIds = new Set();
+        questionSetReviewStatus = 'checking';
         el.innerHTML = '<p class="muted">Loading question sets...</p>';
 
         let query = sb.from('question_sets').select('*').order('created_at', { ascending: false });
@@ -5963,11 +5985,17 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
 
         const { data, error } = await query;
+        if (loadId !== questionSetLoadId) return;
         if (error) {
             el.innerHTML = '<p class="muted">Failed to load question sets.</p>';
             return;
         }
         myQuestionSets = data || [];
+        renderQuestionSets();
+        const review = await window.QuestionSetReview.loadCompletedSets(sb, uid, myQuestionSets, localStorage);
+        if (loadId !== questionSetLoadId) return;
+        completedQuestionSetIds = review.ids;
+        questionSetReviewStatus = review.unavailable ? 'unavailable' : 'ready';
         renderQuestionSets();
     }
 
@@ -5982,7 +6010,13 @@ document.addEventListener('DOMContentLoaded', async () => {
             return;
         }
         el.innerHTML = myQuestionSets.map(set => {
-            const count = Array.isArray(set.questions) ? set.questions.length : 0;
+            const count = window.QuestionSetReview.questions(set).length;
+            const canReview = completedQuestionSetIds.has(set.id);
+            const reviewNote = !count ? 'This set has no questions yet.'
+                : canReview ? 'Completed once • Review unlocked'
+                : questionSetReviewStatus === 'checking' ? 'Checking your completion history…'
+                : questionSetReviewStatus === 'unavailable' ? 'Cloud history could not be checked. Refresh to try again.'
+                : 'Complete every question in this set once to unlock review.';
             const isMine = set.creator_id === uid;
             const visibilityLabel = set.visibility === 'public' ? 'Public' : (set.visibility === 'class' ? 'Class' : 'Private');
             
@@ -5991,9 +6025,11 @@ document.addEventListener('DOMContentLoaded', async () => {
                     <div class="list-item-main">
                         <div class="list-item-title">${esc(set.title)}</div>
                         <div class="list-item-meta">${count} questions • ${visibilityLabel} • By ${isMine ? 'Me' : 'Peer'}</div>
+                        <p class="muted question-set-review-note">${esc(reviewNote)}</p>
                     </div>
                     <div class="list-item-actions">
                         ${count ? `<a class="btn pri" href="index.html?drill=1&amp;setId=${esc(encodeURIComponent(set.id))}">Practice this set</a>` : '<button class="btn pri" disabled title="This set has no questions">Practice this set</button>'}
+                        <button class="btn ghost" data-review-set-id="${esc(set.id)}" ${canReview ? '' : 'disabled'} title="${esc(reviewNote)}">${canReview ? 'Review questions &amp; answers' : 'Review locked'}</button>
                         <button class="btn ghost" onclick="hostLiveBeeWithSet('${set.id}')">Host Live Bee</button>
                         ${isMine ? `
                             <button class="btn ghost" onclick="editQuestionSet('${set.id}')">Edit</button>
